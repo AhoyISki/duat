@@ -370,6 +370,7 @@ impl Strs {
     /// Returns a struct of two `&[u8]` representing a [`TextRange`]
     /// from the slice.
     #[track_caller]
+    #[inline]
     pub fn slices(&self, range: impl TextRange) -> [&[u8]; 2] {
         let formed = FormedStrs::new(self);
         let range = {
@@ -412,6 +413,7 @@ impl Strs {
     /// Returns and [`Iterator`] over the [bytes] of this `Strs`
     ///
     /// [bytes]: u8
+    #[inline]
     pub fn bytes(&self) -> impl DoubleEndedIterator<Item = u8> {
         self.slices(..)
             .into_iter()
@@ -456,11 +458,12 @@ impl Strs {
     /// character equivalents are here. This depends on your
     /// [`PrintOpts`] because of the `tabstop` field.
     #[track_caller]
+    #[inline]
     pub fn indent(&self, opts: PrintOpts) -> usize {
-        self.chars()
-            .take_while(|&char| char == ' ' || char == '\t')
-            .fold(0, |sum, char| {
-                if char == ' ' {
+        self.bytes()
+            .take_while(|&byte| byte == b' ' || byte == b'\t')
+            .fold(0, |sum, byte| {
+                if byte == b' ' {
                     sum + 1
                 } else {
                     sum + opts.tabstop as usize - (sum % opts.tabstop as usize)

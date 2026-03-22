@@ -63,7 +63,7 @@ pub fn add_prompt_hook() {
                 pl.text = Text::with_default_main_selection();
                 pl.text_mut().replace_range(0..0, &prompt.starting_text);
 
-                let tag = Ghost::new(match pl.prompt_of_id(prompt.ty) {
+                let tag = Ghost::inlay(match pl.prompt_of_id(prompt.ty) {
                     Some(text) => txt!("{text}[prompt.colon]:"),
                     None => txt!("{}[prompt.colon]:", prompt.mode.prompt()),
                 });
@@ -173,7 +173,7 @@ impl Prompt {
             handle.text_mut(pa).insert_tag_after(
                 *PREVIEW_TAGGER,
                 0,
-                Ghost::new(txt!("[prompt.preview]{}", ty_history.last().unwrap())),
+                Ghost::inlay(txt!("[prompt.preview]{}", ty_history.last().unwrap())),
             );
         }
     }

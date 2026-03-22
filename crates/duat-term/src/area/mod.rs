@@ -13,7 +13,7 @@ use duat_core::{
         cache::{Decode, Encode},
     },
     form::{CONTROL_CHAR_ID, Painter},
-    mode::VPoint,
+    mode::{Selections, VPoint},
     opts::PrintOpts,
     session::TwoPointsPlace,
     text::{Point, Text, TextPart, TextPlace, TwoPoints, txt},
@@ -23,7 +23,6 @@ use duat_core::{
     },
 };
 use iter::{PrintedPlace, print_iter, rev_print_iter};
-use unicode_width::UnicodeWidthChar;
 
 pub use self::print_info::PrintInfo;
 use crate::{
@@ -160,12 +159,10 @@ impl Area {
             |lines, len, max_x| {
                 if lines.coords().br.x == max_x {
                     lines.write_all(b"\x1b[0K").unwrap();
-                    false
                 } else {
                     lines
                         .write_all(&SPACES[..(lines.coords().width() - len) as usize])
                         .unwrap();
-                    true
                 }
             },
             |lines, spacer_len| lines.write_all(&SPACES[..spacer_len as usize]).unwrap(),
@@ -175,7 +172,7 @@ impl Area {
 
         let spawns = text.get_spawned_ids();
 
-		// To prevent deadlocks while sending spawned lines.
+        // To prevent deadlocks while sending spawned lines.
         drop(painter);
 
         self.layouts
@@ -777,9 +774,9 @@ pub fn print_text(
     (text, opts, painter): (&Text, PrintOpts, &mut Painter),
     (coords, max): (Coords, Coord),
     (is_active, s_points, x_shift): (bool, TwoPoints, u32),
-    start_line: fn(&mut Lines, u32),
-    end_line: fn(&mut Lines, u32, u32) -> bool,
-    print_spacer: fn(&mut Lines, u32),
+    start_line: impl Fn(&mut Lines, u32),
+    end_line: impl Fn(&mut Lines, u32, u32),
+    print_spacer: impl Fn(&mut Lines, u32),
 ) -> Option<(Lines, Vec<(SpawnId, Coord, u32)>)> {
     enum Cursor {
         Main(bool, bool),
@@ -798,14 +795,14 @@ pub fn print_text(
 
         let next_c = move |lines: &mut Lines, painter: &mut Painter, real, ghost: Option<_>| {
             let mut last_found = None;
-            while let Some(sel) =
-                selections.next_if(|(p, ..)| (*p == real && ghost.is_none()) || *p < real)
+            while let Some(sel) = selections
+                .next_if(|parts| (parts.point == real && ghost.is_none()) || parts.point < real)
             {
                 last_found = Some(sel)
             }
 
             match last_found {
-                Some((_, true, is_caret, starts_range)) => {
+                Some(CursorParts { is_main: true, is_caret, is_start, .. }) => {
                     if let Some(shape) = painter.main_cursor()
                         && is_active
                     {
@@ -814,12 +811,12 @@ pub fn print_text(
                     }
 
                     lines.hide_real_cursor();
-                    painter.apply_main_selection(is_caret, starts_range == Some(true));
-                    Some(Cursor::Main(is_caret, starts_range == Some(false)))
+                    painter.apply_main_selection(is_caret, is_start == Some(true));
+                    Some(Cursor::Main(is_caret, is_start == Some(false)))
                 }
-                Some((_, false, is_caret, starts_range)) => {
-                    painter.apply_extra_selection(is_caret, starts_range == Some(true));
-                    Some(Cursor::Extra(is_caret, starts_range == Some(false)))
+                Some(CursorParts { is_main: false, is_caret, is_start, .. }) => {
+                    painter.apply_extra_selection(is_caret, is_start == Some(true));
+                    Some(Cursor::Extra(is_caret, is_start == Some(false)))
                 }
                 None => None,
             }
@@ -837,58 +834,40 @@ pub fn print_text(
     let mut spawns_for_next: Vec<SpawnId> = Vec::new();
     let mut observed_spawns = Vec::new();
     let mut style_was_set = false;
-    let mut replace_chars: Vec<char> = Vec::new();
-    let mut inlays = Vec::new();
+    let mut overlays = Vec::new();
 
-    let end_line = |lines: &mut Lines, painter: &mut Painter, last_x, inlays: &mut Vec<_>| {
-        let move_fwd = |lines: &mut Lines, len| {
-            if len > 0 {
-                write!(lines, "\x1b[{len}C").unwrap()
-            }
-        };
-
+    let end_line = |lines: &mut Lines, painter: &mut Painter, last_x, overlays: &mut Vec<_>| {
         let mut default = painter.get_default();
         default.style.foreground_color = None;
         default.style.underline_color = None;
         default.style.attributes = Attributes::from(Attribute::Reset);
         print_style(lines, default.style);
 
-        let coords = Coords::new(
-            Coord::new(coords.tl.x + last_x, 0),
-            Coord::new(coords.br.x, 1),
-        );
-
-        let mut moved_fwd_on_end = end_line(lines, last_x, max.x);
+        end_line(lines, last_x, max.x);
         let mut observed_spawns = Vec::new();
 
-        for inlay in inlays.drain(..) {
-            if let Some((inlay_lines, obs_spawns)) = {
-                painter.prepare_for_inlay();
-                let ret = print_text(
-                    (inlay, opts, painter),
-                    (coords, max),
-                    (is_active, TwoPoints::default(), x_shift),
-                    move_fwd,
-                    |lines, len, _| {
-                        let len = lines.coords().width() - len;
-                        if len > 0 {
-                            write!(lines, "\x1b[{len}C").unwrap()
-                        }
-                        true
-                    },
-                    move_fwd,
-                );
-                painter.return_from_inlay();
-                ret
-            } {
-                if moved_fwd_on_end {
-                    write!(lines, "\x1b[{}D", coords.width()).unwrap();
-                }
-                moved_fwd_on_end = true;
+        let opts = PrintOpts { print_new_line: false, ..opts };
 
-                lines.add_inlay(inlay_lines);
+        for (x, point, overlay) in overlays.drain(..) {
+            let coords = Coords::new(Coord::new(coords.tl.x + x, 0), Coord::new(coords.br.x, 1));
+            write!(lines, "\x1b[{}G", coords.tl.x + x + 1).unwrap();
+
+            painter.prepare_for_overlay();
+            if let Some((overlay, obs_spawns)) = print_overlay(
+                (overlay, opts, painter),
+                (point, text),
+                coords,
+                (is_active, TwoPoints::default(), x_shift),
+                |lines: &mut Lines, len| {
+                    if len > 0 {
+                        write!(lines, "\x1b[{len}C").unwrap()
+                    }
+                },
+            ) {
+                lines.add_overlay(overlay);
                 observed_spawns.extend(obs_spawns);
             }
+            painter.return_from_overlay();
         }
 
         lines.flush().unwrap();
@@ -906,7 +885,7 @@ pub fn print_text(
                 break;
             }
             if y > lines.coords().tl.y {
-                let new_spawns = end_line(lines, painter, last_x, &mut inlays);
+                let new_spawns = end_line(lines, painter, last_x, &mut overlays);
                 observed_spawns.extend(new_spawns);
             }
             let initial_space = x.saturating_sub(x_shift).min(lines.coords().width());
@@ -931,9 +910,7 @@ pub fn print_text(
                 let cursor_style = next_cursor_end(lines, painter, real, ghost);
                 style_was_set |= cursor_style.is_some();
 
-                if replace_chars.is_empty()
-                    && let Some(str) = get_control_str(char)
-                {
+                if let Some(str) = get_control_str(char) {
                     painter.apply(CONTROL_CHAR_ID, 100);
                     if let Some(style) = painter.relative_style() {
                         print_style(lines, style);
@@ -949,36 +926,18 @@ pub fn print_text(
 
                     match char {
                         '\t' => {
-                            let mut truncated_start = x_shift.saturating_sub(x);
+                            let truncated_start = x_shift.saturating_sub(x);
                             let truncated_end =
                                 (x + len).saturating_sub(lines.coords().width() + x_shift);
-                            let mut tab_len = len - (truncated_start + truncated_end);
-
-                            for char in replace_chars.drain(..) {
-                                let len = UnicodeWidthChar::width(char).unwrap_or(0) as u32;
-
-                                if tab_len >= len && truncated_start == 0 {
-                                    tab_len -= len;
-                                    char.encode_utf8(&mut bytes);
-                                    lines.write_all(&bytes[..char.len_utf8()]).unwrap();
-                                } else {
-                                    let spaces = len.saturating_sub(truncated_start);
-                                    lines.write_all(&SPACES[..spaces as usize]).unwrap();
-                                    tab_len -= spaces;
-                                    truncated_start = truncated_start.saturating_sub(len);
-                                }
-                            }
-
+                            let tab_len = len - (truncated_start + truncated_end);
                             lines.write_all(&SPACES[..tab_len as usize]).unwrap()
                         }
-                        char => match replace_chars.drain(..).next().unwrap_or(char) {
-                            '\n' if len == 1 => lines.write_all(b" ").unwrap(),
-                            '\n' | '\r' => {}
-                            char => {
-                                char.encode_utf8(&mut bytes);
-                                lines.write_all(&bytes[..char.len_utf8()]).unwrap();
-                            }
-                        },
+                        '\n' if len == 1 => lines.write_all(b" ").unwrap(),
+                        '\n' | '\r' => {}
+                        char => {
+                            char.encode_utf8(&mut bytes);
+                            lines.write_all(&bytes[..char.len_utf8()]).unwrap();
+                        }
                     }
                 }
 
@@ -1008,7 +967,6 @@ pub fn print_text(
                 style_was_set = false;
             }
             TextPart::Char(_) => {
-                replace_chars.drain(..);
                 let cursor_style = next_cursor_end(lines, painter, real, ghost);
                 style_was_set |= cursor_style.is_some();
 
@@ -1048,18 +1006,201 @@ pub fn print_text(
             }
             TextPart::ResetState => print_style(lines, painter.reset()),
             TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
-            TextPart::SwapChar(char) => replace_chars.push(char),
-            TextPart::Inlay(inlay) => inlays.push(inlay),
+            TextPart::Overlay(overlay) => overlays.push((x - x_shift, real, overlay)),
             TextPart::ToggleStart(_) | TextPart::ToggleEnd(_) => {}
         }
     }
 
-    let new_spawns = end_line(&mut lines, painter, last_x, &mut inlays);
+    let new_spawns = end_line(&mut lines, painter, last_x, &mut overlays);
     observed_spawns.extend(new_spawns);
 
     for _ in 0..lines.coords().br.y - y {
         let new_spawns = end_line(&mut lines, painter, 0, &mut Vec::new());
         observed_spawns.extend(new_spawns);
+    }
+
+    Some((lines, observed_spawns))
+}
+
+/// The [`Text`] printing function
+#[allow(clippy::type_complexity)]
+pub fn print_overlay(
+    (text, opts, painter): (&Text, PrintOpts, &mut Painter),
+    (point, parent_text): (Point, &Text),
+    coords: Coords,
+    (is_active, s_points, x_shift): (bool, TwoPoints, u32),
+    print_spacer: impl Fn(&mut Lines, u32),
+) -> Option<(Lines, Vec<(SpawnId, Coord, u32)>)> {
+    enum Cursor {
+        Main(bool, bool),
+        Extra(bool, bool),
+    }
+
+    if coords.width() == 0 || coords.height() == 0 {
+        return None;
+    }
+
+    let (mut lines, iter, mut next_cursor_end) = {
+        let lines = Lines::new(coords);
+        let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
+        let iter = print_iter(text, s_points, width, opts);
+        let mut selections = iter_selections(parent_text, point).peekable();
+
+        let next_c = move |lines: &mut Lines, painter: &mut Painter, real: Point| {
+            let mut last_found = None;
+            // Compare chars because the byte indices of cursors may not match up
+            // when overlays contain non ascii text.
+            // Line comparisons are necessary in order to not print cursors on
+            // different lines that have the same byte due to a longer overlay
+            // than the size of the line itself.
+            while let Some(sel) = selections.next_if(|parts| {
+                parts.point.char() <= real.char() + point.char()
+                    && parts.point.line() <= real.line() + point.line()
+            }) {
+                last_found = Some(sel)
+            }
+
+            match last_found {
+                Some(CursorParts { is_main: true, is_caret, is_start, .. }) => {
+                    if let Some(shape) = painter.main_cursor()
+                        && is_active
+                    {
+                        lines.show_real_cursor();
+                        queue!(lines, shape, cursor::SavePosition).unwrap();
+                    }
+
+                    lines.hide_real_cursor();
+                    painter.apply_main_selection(is_caret, is_start == Some(true));
+                    Some(Cursor::Main(is_caret, is_start == Some(false)))
+                }
+                Some(CursorParts { is_main: false, is_caret, is_start, .. }) => {
+                    painter.apply_extra_selection(is_caret, is_start == Some(true));
+                    Some(Cursor::Extra(is_caret, is_start == Some(false)))
+                }
+                None => None,
+            }
+        };
+
+        (lines, iter, next_c)
+    };
+
+    // For specific Tags
+    let mut spawns_for_next: Vec<SpawnId> = Vec::new();
+    let mut observed_spawns = Vec::new();
+    let mut style_was_set = false;
+
+    for (place, item) in iter {
+        let lines = &mut lines;
+
+        let PrintedPlace { x, len, wrap } = place;
+        let TextPlace { part, real, .. } = item;
+
+        if wrap && real != Point::default() {
+            break;
+        }
+
+        let is_contained = x + len > x_shift && x < x_shift + lines.coords().width();
+
+        match part {
+            TextPart::Char(char) if is_contained => {
+                let cursor_style = next_cursor_end(lines, painter, real);
+                style_was_set |= cursor_style.is_some();
+
+                if let Some(str) = get_control_str(char) {
+                    painter.apply(CONTROL_CHAR_ID, 100);
+                    if let Some(style) = painter.relative_style() {
+                        print_style(lines, style);
+                    }
+                    lines.write_all(str.as_bytes()).unwrap();
+                    painter.remove(CONTROL_CHAR_ID)
+                } else {
+                    if style_was_set && let Some(style) = painter.relative_style() {
+                        print_style(lines, style);
+                    }
+
+                    let mut bytes = [0; 4];
+
+                    match char {
+                        '\t' => {
+                            let truncated_start = x_shift.saturating_sub(x);
+                            let truncated_end =
+                                (x + len).saturating_sub(lines.coords().width() + x_shift);
+                            let tab_len = len - (truncated_start + truncated_end);
+                            lines.write_all(&SPACES[..tab_len as usize]).unwrap()
+                        }
+                        '\n' if len == 1 => lines.write_all(b" ").unwrap(),
+                        '\n' | '\r' => {}
+                        char => {
+                            char.encode_utf8(&mut bytes);
+                            lines.write_all(&bytes[..char.len_utf8()]).unwrap();
+                        }
+                    }
+                }
+
+                if let Some(cursor) = cursor_style {
+                    match cursor {
+                        Cursor::Main(is_caret, end_range) => {
+                            painter.remove_main_selection(is_caret, end_range)
+                        }
+                        Cursor::Extra(is_caret, end_range) => {
+                            painter.remove_extra_selection(is_caret, end_range)
+                        }
+                    }
+                    if let Some(style) = painter.relative_style() {
+                        print_style(lines, style)
+                    }
+                }
+
+                for id in spawns_for_next.drain(..) {
+                    observed_spawns.push((
+                        id,
+                        Coord::new(lines.coords().tl.x + x - x_shift, lines.coords().tl.y),
+                        len,
+                    ));
+                }
+
+                style_was_set = false;
+            }
+            TextPart::Char(_) => {
+                let cursor_style = next_cursor_end(lines, painter, real);
+                style_was_set |= cursor_style.is_some();
+
+                match cursor_style {
+                    Some(Cursor::Main(is_caret, end_range)) => {
+                        painter.remove_main_selection(is_caret, end_range)
+                    }
+                    Some(Cursor::Extra(is_caret, end_range)) => {
+                        painter.remove_extra_selection(is_caret, end_range)
+                    }
+                    None => {}
+                }
+                spawns_for_next.clear();
+            }
+            TextPart::PushForm(id, prio) => {
+                painter.apply(id, prio);
+                style_was_set = true;
+            }
+            TextPart::PopForm(id) => {
+                painter.remove(id);
+                style_was_set = true;
+            }
+            TextPart::Spacer => {
+                if style_was_set && let Some(style) = painter.relative_style() {
+                    print_style(lines, style);
+                }
+                style_was_set = false;
+                let truncated_start = x_shift.saturating_sub(x).min(len);
+                let truncated_end = (x + len)
+                    .saturating_sub(lines.coords().width().saturating_sub(x_shift))
+                    .min(len);
+                let spacer_len = len - (truncated_start + truncated_end);
+                print_spacer(lines, spacer_len);
+            }
+            TextPart::ResetState => print_style(lines, painter.reset()),
+            TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
+            TextPart::Overlay(_) => unreachable!(),
+            TextPart::ToggleStart(_) | TextPart::ToggleEnd(_) => {}
+        }
     }
 
     Some((lines, observed_spawns))
@@ -1162,10 +1303,7 @@ const fn get_control_str(char: char) -> Option<&'static str> {
 
 const SPACES: &[u8] = &[b' '; 3000];
 
-fn iter_selections(
-    text: &Text,
-    from: Point,
-) -> impl Iterator<Item = (Point, bool, bool, Option<bool>)> {
+fn iter_selections(text: &Text, from: Point) -> impl Iterator<Item = CursorParts> {
     text.selections()
         .iter_within(from..)
         .flat_map(|(_, sel, is_main)| {
@@ -1176,12 +1314,28 @@ fn iter_selections(
                 let start = sel.caret().min(anchor);
                 let end = sel.caret().max(anchor);
                 [
-                    Some((start, is_main, caret_is_start, Some(true))),
-                    Some((end, is_main, !caret_is_start, Some(false))),
+                    Some(CursorParts::new(start, is_main, caret_is_start, Some(true))),
+                    Some(CursorParts::new(end, is_main, !caret_is_start, Some(false))),
                 ]
             } else {
-                [Some((sel.caret(), is_main, true, None)), None]
+                [
+                    Some(CursorParts::new(sel.caret(), is_main, true, None)),
+                    None,
+                ]
             }
         })
         .flatten()
+}
+
+pub struct CursorParts {
+    point: Point,
+    is_main: bool,
+    is_caret: bool,
+    is_start: Option<bool>,
+}
+
+impl CursorParts {
+    fn new(point: Point, is_main: bool, is_caret: bool, is_start: Option<bool>) -> Self {
+        Self { point, is_main, is_caret, is_start }
+    }
 }

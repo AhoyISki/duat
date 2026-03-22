@@ -590,8 +590,7 @@ pub mod prelude {
         setup_duat,
         state::*,
         text::{
-            self, Conceal, Ghost, Point, RegexHaystack, Spacer, SpawnTag, Strs, SwapChar, Tagger,
-            Text, txt,
+            self, Conceal, Ghost, Point, RegexHaystack, Spacer, SpawnTag, Strs, Tagger, Text, txt,
         },
         ui::{self, Area, Widget},
         widgets::{self, status},

@@ -5,13 +5,17 @@
 //! this is defined separately is that one may wish to replace the
 //! default implementor of these opts, in order to make them more
 //! compatible with other settings in Duat.
-use std::{ops::Range, sync::LazyLock};
+use std::{
+    collections::HashMap,
+    ops::Range,
+    sync::{LazyLock, Mutex},
+};
 
 use duat_core::{
     buffer::{BufferOpts, BufferParts, BufferTracker, PerBuffer},
-    form,
+    form::{self, FormId},
     hook::{self, BufferClosed, BufferOpened, BufferPrinted, BufferUpdated},
-    text::{Ghost, RegexHaystack, Spacer, Strs, SwapChar, Tagger, Tags, txt},
+    text::{Ghost, RegexHaystack, Spacer, Strs, Tagger, Tags, txt},
     utils::Memoized,
 };
 
@@ -68,7 +72,7 @@ pub fn enable_parser() {
 
 fn hightlight_current_line(parts: &mut BufferParts, tagger: Tagger) {
     static CUR_LINE_INLAY: LazyLock<Ghost> =
-        LazyLock::new(|| Ghost::inlay(txt!("[current_line] {Spacer}")));
+        LazyLock::new(|| Ghost::overlay(txt!("[current_line] {Spacer}")));
 
     let caret = parts.selections.main().caret();
     let line_range = parts.strs.line(caret.line()).byte_range();
@@ -87,6 +91,20 @@ fn replace_chars(
     taggers: [Tagger; 2],
     opts_changed: bool,
 ) {
+    static OVERLAYS: LazyLock<Mutex<HashMap<(char, FormId), Ghost>>> =
+        LazyLock::new(Mutex::default);
+    let mut overlays = OVERLAYS.lock().unwrap();
+
+    macro_rules! overlay {
+        ($char:expr, $form:literal) => {{
+            let form = form::id_of!($form);
+            overlays
+                .entry(($char, form))
+                .or_insert_with(|| Ghost::overlay(txt!("{}{}", form.to_tag(90), $char)))
+                .clone()
+        }};
+    }
+
     if opts_changed {
         parts.ranges_to_update.add_ranges([..]);
     } else {
@@ -105,14 +123,21 @@ fn replace_chars(
 
     let [nl_tagger, space_tagger] = taggers;
 
-    let space_form = form::id_of!("replace.space").to_tag(90);
-    let space_form_trailing = form::id_of!("replace.space.trailing").to_tag(90);
-
-    let nl_form = form::id_of!("replace.new_line").to_tag(90);
-    let nl_form_empty = form::id_of!("replace.new_line.empty").to_tag(90);
-    let nl_form_trailing = form::id_of!("replace.new_line.trailing").to_tag(90);
-
     let opts = parts.opts;
+
+    let space_overlay = opts.space_char.map(|char| overlay!(char, "replace.space"));
+    let space_overlay_trailing = opts
+        .space_char_trailing
+        .map(|char| overlay!(char, "replace.space.trailing"));
+
+    let nl_overlay =
+        (opts.new_line_char != ' ').then(|| overlay!(opts.new_line_char, "replace.new_line"));
+    let nl_overlay_empty = opts
+        .new_line_on_empty
+        .map(|char| overlay!(char, "replace.new_line.empty"));
+    let nl_overlay_trailing = opts
+        .new_line_trailing
+        .map(|char| overlay!(char, "replace.new_line.trailing"));
 
     for range in lines_to_update.iter().cloned() {
         parts.tags.remove(space_tagger, range.start..range.end);
@@ -127,36 +152,32 @@ fn replace_chars(
             let byte = line_start + byte;
             match char {
                 '\n' => {
-                    let (nl_char, nl_form) = opts
-                        .new_line_trailing
-                        .and_then(|char| space_start.and(Some((char, nl_form_trailing))))
-                        .or(opts
-                            .new_line_on_empty
-                            .and_then(|char| (byte == line_start).then_some((char, nl_form_empty))))
-                        .unwrap_or((opts.new_line_char, nl_form));
+                    let overlay = space_start
+                        .and_then(|_| nl_overlay_trailing.clone())
+                        .or_else(|| {
+                            nl_overlay_empty
+                                .as_ref()
+                                .filter(|_| byte == line_start)
+                                .cloned()
+                        })
+                        .or_else(|| nl_overlay.clone());
 
-                    if nl_char != ' ' {
-                        parts.tags.insert(nl_tagger, byte..byte + 1, nl_form);
-                        parts.tags.insert(nl_tagger, byte, SwapChar::new(nl_char));
+                    if let Some(overlay) = overlay {
+                        parts.tags.insert(nl_tagger, byte, overlay);
                     }
 
                     if let Some(start) = space_start.take()
                         && start != line_start
                         && let Some(char) = opts.space_char_trailing
                         && char != ' '
+                        && let Some(overlay) = &space_overlay_trailing
                     {
                         for (b, char) in parts.strs[start..=byte].char_indices() {
                             let b = start + b;
-                            if char == ' '
-                                && let Some(char) = opts.space_char
-                            {
-                                parts.tags.insert(space_tagger, b, SwapChar::new(char));
+                            if char == ' ' {
+                                parts.tags.insert(space_tagger, b, overlay.clone());
                             }
                         }
-
-                        parts
-                            .tags
-                            .insert(space_tagger, start..byte, space_form_trailing);
                     }
                 }
                 ' ' => _ = space_start.get_or_insert(byte),
@@ -165,12 +186,11 @@ fn replace_chars(
                         && start != line_start
                         && let Some(char) = opts.space_char
                         && char != ' '
+                        && let Some(overlay) = &space_overlay
                     {
                         for byte in start..byte {
-                            parts.tags.insert(space_tagger, byte, SwapChar::new(char));
+                            parts.tags.insert(space_tagger, byte, overlay.clone());
                         }
-
-                        parts.tags.insert(space_tagger, start..byte, space_form);
                     }
                 }
             }
@@ -257,12 +277,12 @@ fn show_indents(
 
                 set_capped(&mut state, line, indent);
                 for line in empty_lines.drain(..) {
-                    state.indent_line(line, &mut parts.tags, tagger, parts.opts);
+                    state.indent_line(line, &mut parts.tags, tagger);
                 }
                 state.capped = false;
 
                 state.increment(indent);
-                state.indent_line(line, &mut parts.tags, tagger, parts.opts);
+                state.indent_line(line, &mut parts.tags, tagger)
             }
         }
 
@@ -306,8 +326,8 @@ impl IndentState {
         }
     }
 
-    fn indent_line(&self, line: &Strs, tags: &mut Tags, tagger: Tagger, opts: &BufferOpts) {
-        static INLAYS: Memoized<IndentState, Ghost> = Memoized::new();
+    fn indent_line(&self, line: &Strs, tags: &mut Tags, tagger: Tagger) {
+        static OVERLAYS: Memoized<IndentState, Ghost> = Memoized::new();
 
         let range = line.byte_range();
         tags.remove_excl(tagger, range.clone());
@@ -321,59 +341,19 @@ impl IndentState {
         };
 
         let indent_form = form::id_of!("replace.indent").to_tag(90);
-        let indent_form_empty = form::id_of!("replace.indent.empty").to_tag(90);
 
-        let first_char = indent_str.chars().next().unwrap();
+        let overlay = OVERLAYS.get_or_insert_with(self, || {
+            let ghost: String = self
+                .list
+                .iter()
+                .copied()
+                .chain(self.capped.then_some(self.tabstop as usize))
+                .flat_map(|len| indent_str.chars().chain(std::iter::repeat(' ')).take(len))
+                .collect();
 
-        if line.is_empty_line() {
-            tags.insert(tagger, range.start, SwapChar::new(first_char));
+            Ghost::overlay(txt!("{indent_form}{ghost}"))
+        });
 
-            let inlay = INLAYS.get_or_insert_with(self, || {
-                let mut skip = 1;
-                let ghost: String = self
-                    .list
-                    .iter()
-                    .copied()
-                    .chain(self.capped.then_some(self.tabstop as usize))
-                    .flat_map(|len| {
-                        let chars = indent_str
-                            .chars()
-                            .chain(std::iter::repeat(' '))
-                            .take(len)
-                            .skip(skip);
-                        skip = 0;
-                        chars
-                    })
-                    .collect();
-
-                Ghost::inlay(txt!("{indent_form_empty}{ghost}"))
-            });
-
-            tags.insert(tagger, range.start, inlay);
-            tags.insert(tagger, range.clone(), indent_form_empty);
-        } else {
-            let chars = self.list.iter().flat_map(|len| {
-                indent_str
-                    .chars()
-                    .map(Some)
-                    .chain(std::iter::repeat(None))
-                    .take(*len)
-            });
-
-            let nl_char = opts.new_line_trailing.unwrap_or(opts.new_line_char);
-
-            let mut end = 0;
-
-            for ((byte, char), replacement) in line.char_indices().zip(chars) {
-                if char != '\n' || nl_char == ' ' {
-                    end += 1;
-                    if let Some(char) = replacement {
-                        tags.insert(tagger, range.start + byte, SwapChar::new(char));
-                    }
-                }
-            }
-
-            tags.insert(tagger, range.start..range.start + end, indent_form)
-        }
+        tags.insert(tagger, range.start, overlay);
     }
 }

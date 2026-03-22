@@ -518,8 +518,8 @@ impl Lines {
         }
     }
 
-    pub fn add_inlay(&mut self, lines: Lines) {
-        self.bytes.extend(lines.bytes);
+    pub fn add_overlay(&mut self, overlay: Lines) {
+        self.bytes.extend(overlay.bytes);
     }
 
     /// Show the real cursor, making the main cursor [`CursorShape`]

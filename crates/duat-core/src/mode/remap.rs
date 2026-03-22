@@ -703,7 +703,7 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
                         widget.text_mut().insert_tag(
                             Tagger::for_alias(),
                             main,
-                            Ghost::new(txt!("[alias]{}", keys_to_string(&mapped_seq))),
+                            Ghost::inlay(txt!("[alias]{}", keys_to_string(&mapped_seq))),
                         );
                     });
                 }

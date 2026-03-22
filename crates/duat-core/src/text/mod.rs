@@ -101,8 +101,7 @@ pub use crate::{
         search::{Matches, RegexHaystack, RegexPattern},
         strs::{Lines, Strs},
         tags::{
-            Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, SwapChar, Tag, Tagger,
-            Tags, ToggleId,
+            Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, Tag, Tagger, Tags, ToggleId,
         },
         utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     },
@@ -874,7 +873,10 @@ impl<'t> TextMut<'t> {
     /// [`Widget`]: crate::ui::Widget
     pub(crate) fn get_widget_spawns(
         &mut self,
-    ) -> Vec<(SpawnId, Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>)> {
+    ) -> Vec<(
+        SpawnId,
+        Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>,
+    )> {
         std::mem::take(&mut self.text.0.tags.spawn_fns.0)
     }
 

@@ -1,4 +1,4 @@
-//! Utilities for stylizing the text of Duat
+//! Utilities for stylizing the text of Duat.
 use std::sync::{RwLock, RwLockReadGuard};
 
 use FormKind::*;
@@ -58,7 +58,7 @@ mod global {
     static COLORSCHEMES: LazyLock<Mutex<HashMap<Arc<str>, ColorschemeFn>>> =
         LazyLock::new(Mutex::default);
 
-    /// Sets the [`Form`] by the name of `name`
+    /// Sets the [`Form`] by the name of `name`.
     ///
     /// This will create a new form or replace one that already
     /// exists, and you can either set it to a [`Form`] directly, or
@@ -90,7 +90,7 @@ mod global {
         }
     }
 
-    /// Sets a form, "weakly"
+    /// Sets a form, "weakly".
     ///
     /// The difference between this function and [`form::set`] is
     /// that this function will only trigger if the form didn't
@@ -130,17 +130,17 @@ mod global {
         PALETTE.form_from_id(id).unwrap_or_default()
     }
 
-    /// The current main cursor, with the `"caret.main"` [`Form`]
+    /// The current main cursor, with the `"caret.main"` [`Form`].
     pub fn main_cursor() -> (Form, Option<CursorShape>) {
         PALETTE.main_cursor()
     }
 
-    /// The current extra cursor, with the `"caret.extra"` [`Form`]
+    /// The current extra cursor, with the `"caret.extra"` [`Form`].
     pub fn extra_cursor() -> (Form, Option<CursorShape>) {
         PALETTE.extra_cursor()
     }
 
-    /// Sets the main cursor's [shape]
+    /// Sets the main cursor's [shape].
     ///
     /// Cursors in Duat can either be a distinct [shape], or can be
     /// defined as a [`Form`], just like the rest of the styling.
@@ -166,7 +166,7 @@ mod global {
         PALETTE.set_main_cursor(shape);
     }
 
-    /// Sets extra cursors's [shape]s
+    /// Sets extra cursors's [shape]s.
     ///
     /// Cursors in Duat can either be a distinct [shape], or can be
     /// defined as a [`Form`], just like the rest of the styling.
@@ -192,7 +192,7 @@ mod global {
         PALETTE.set_extra_cursor(shape);
     }
 
-    /// Removes the main cursor's [shape]
+    /// Removes the main cursor's [shape].
     ///
     /// By doing this, you will force Duat to draw the main cursor by
     /// use of the `"caret.main"` form.
@@ -206,7 +206,7 @@ mod global {
         PALETTE.unset_main_cursor();
     }
 
-    /// Removes extra cursors's [shape]s
+    /// Removes extra cursors's [shape]s.
     ///
     /// By doing this, you will force Duat to draw the extra cursor by
     /// use of the `"caret.main"` form. Do note however that, in
@@ -223,7 +223,7 @@ mod global {
         PALETTE.unset_extra_cursor();
     }
 
-    /// Removes all cursors's [shape]s
+    /// Removes all cursors's [shape]s.
     ///
     /// Is the equivalent of calling [`unset_main_cursor`] and
     /// [`unset_extra_cursor`].
@@ -234,7 +234,7 @@ mod global {
         PALETTE.unset_extra_cursor();
     }
 
-    /// Creates a [`Painter`] with a mask
+    /// Creates a [`Painter`] with a mask.
     ///
     /// # Warning
     ///
@@ -252,7 +252,7 @@ mod global {
         PALETTE.painter(super::DEFAULT_ID, mask)
     }
 
-    /// Creates a [`Painter`] with a mask and a widget
+    /// Creates a [`Painter`] with a mask and a widget.
     pub(crate) fn painter_with_widget_and_mask<W: ?Sized + 'static>(mask: &'static str) -> Painter {
         PALETTE.painter(
             default_id(TypeId::of::<W>(), crate::utils::duat_name::<W>()),
@@ -260,7 +260,7 @@ mod global {
         )
     }
 
-    /// Enables the use of this mask
+    /// Enables the use of this mask.
     ///
     /// A mask is essentially a remapping of [`Form`]s based on
     /// suffix, this remapping doesn't take place outside of a
@@ -335,7 +335,7 @@ mod global {
         }
     }
 
-    /// Returns the [`FormId`] from the name of a [`Form`]
+    /// Returns the [`FormId`] from the name of a [`Form`].
     ///
     /// If there is no [`Form`] with the given name, a new one is
     /// created, which will behave according to the following
@@ -390,7 +390,7 @@ mod global {
         }};
     }
 
-    /// Non static version of [`id_of!`]
+    /// Non static version of [`id_of!`].
     ///
     /// You should only use this if the names of the [`Form`]s in
     /// question are not known at compile time. And if that is the
@@ -401,7 +401,7 @@ mod global {
         set_many([(name, None)])[0]
     }
 
-    /// Non static version of [`id_of!`], for many [`Form`]s
+    /// Non static version of [`id_of!`], for many [`Form`]s.
     ///
     /// You should only use this if the names of the [`Form`]s in
     /// question are not known at compile time. And if that is the
@@ -411,7 +411,7 @@ mod global {
         set_many(names.into_iter().map(|n| (n.to_string(), None)))
     }
 
-    /// Sets a bunch of [`Form`]s
+    /// Sets a bunch of [`Form`]s.
     #[doc(hidden)]
     pub fn set_many<S: AsRef<str>>(
         sets: impl IntoIterator<Item = (S, Option<Form>)>,
@@ -419,7 +419,7 @@ mod global {
         PALETTE.set_many(&Vec::from_iter(sets))
     }
 
-    /// Adds a colorscheme to the list of colorschemes
+    /// Adds a colorscheme to the list of colorschemes.
     ///
     /// A colorscheme is just a name in the form of a `&'static str`,
     /// and a list of name/[`Form`] pairs.
@@ -462,7 +462,7 @@ mod global {
         }
     }
 
-    /// Gets all available colorscheme names
+    /// Gets all available colorscheme names.
     pub fn colorscheme_list() -> Vec<String> {
         COLORSCHEMES
             .lock()
@@ -472,22 +472,23 @@ mod global {
             .collect()
     }
 
-    /// Wether or not a specific [`Form`] has been set
+    /// Wether or not a specific [`Form`] has been set.
     pub(crate) fn exists(name: &str) -> bool {
         let palette = PALETTE.0.read().unwrap();
         palette.forms.iter().any(|(n, _)| *n == name)
     }
 
-    /// Wether or not a specific [`ColorScheme`] was added
+    /// Wether or not a specific `colorscheme` was added.
     pub(crate) fn colorscheme_exists(name: &str) -> bool {
         COLORSCHEMES.lock().unwrap().contains_key(name)
     }
 
-    /// The name of a form, given a [`FormId`]
+    /// The name of a form, given a [`FormId`].
     pub(super) fn name_of(id: FormId) -> &'static str {
         PALETTE.0.read().unwrap().forms[id.0 as usize].0
     }
 
+	/// The default [`FormId`] of a `Widget`.
     fn default_id(type_id: TypeId, type_name: &'static str) -> FormId {
         static IDS: LazyLock<Mutex<HashMap<TypeId, FormId>>> = LazyLock::new(Mutex::default);
         let mut ids = IDS.lock().unwrap();
@@ -505,9 +506,9 @@ mod global {
     type ColorschemeFn = Box<dyn FnMut() -> Vec<(String, Form)> + Send>;
 }
 
-/// An identifier of a [`Form`]
+/// An identifier of a [`Form`].
 ///
-/// [`Builder`] part: Applies the [`Form`] destructively
+/// [`Builder`] part: Applies the [`Form`] destructively.
 ///
 /// This struct is always going to point to the same form, since those
 /// cannot be destroyed.
@@ -518,11 +519,11 @@ mod global {
 ///
 /// [`txt!`]: crate::text::txt
 /// [`Builder`]: crate::text::Builder
-#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FormId(u16);
 
 impl FormId {
-    /// Creates a [`Tag`] out of this [`FormId`]
+    /// Creates a [`Tag`] out of this [`FormId`].
     ///
     /// In order to push a [`Form`] to the [`Text`], it needs a
     /// priority value, in order to properly sort the [`Form`]s within
@@ -534,14 +535,14 @@ impl FormId {
         FormTag { id: self, priority: prio }
     }
 
-    /// The internal id of the [`FormId`]
+    /// The internal id of the [`FormId`].
     ///
     /// This may be useful in certain situations.
     pub const fn to_u16(self) -> u16 {
         self.0
     }
 
-    /// The name of this [`FormId`]
+    /// The name of this [`FormId`].
     pub fn name(self) -> &'static str {
         name_of(self)
     }
@@ -553,7 +554,7 @@ impl std::fmt::Debug for FormId {
     }
 }
 
-/// Mimics [`ContentStyle`] methods for the [`Form`] type
+/// Mimics [`ContentStyle`] methods for the [`Form`] type.
 macro_rules! mimic_method {
     (#[$attr:meta] $method:ident $attrib:expr) => {
         /// New [`Form`] with the
@@ -601,7 +602,7 @@ macro_rules! mimic_method {
 /// A style for text.
 #[derive(Default, Clone, Copy)]
 pub struct Form {
-    /// The actual [style](ContentStyle) that is applied
+    /// The actual [style](ContentStyle) that is applied.
     pub style: ContentStyle,
     kind: FormKind,
 }
@@ -746,7 +747,7 @@ impl Form {
         self
     }
 
-    /// New `Form` with a colored underline..
+    /// New `Form` with a colored underline.
     ///
     /// Note that this doesn't actually make the underline show up, it
     /// merely colors one that is set via a command like
@@ -812,7 +813,7 @@ impl Eq for Form {}
 pub struct Palette(RwLock<InnerPalette>);
 
 impl Palette {
-    /// Returns a new instance of [`FormPalette`]
+    /// Returns a new instance of [`Palette`].
     fn new() -> Self {
         let main_cursor = Some(CursorShape::DefaultUserShape);
         Self(RwLock::new(InnerPalette {
@@ -823,25 +824,25 @@ impl Palette {
         }))
     }
 
-    /// Sets a [`Form`]
+    /// Sets a [`Form`].
     fn set_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
         let name = name.as_ref();
         self.0.write().unwrap().set_form(name, form)
     }
 
-    /// Sets a [`Form`] "weakly"
+    /// Sets a [`Form`] "weakly".
     fn set_weak_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
         let name = name.as_ref();
         self.0.write().unwrap().set_weak_form(name, form)
     }
 
-    /// Makes a [`Form`] reference another
+    /// Makes a [`Form`] reference another.
     fn set_ref(&self, name: impl AsRef<str>, refed: u16, override_style: ContentStyle) -> FormId {
         let name = name.as_ref();
         self.0.write().unwrap().set_ref(name, refed, override_style)
     }
 
-    /// Makes a [`Form`] reference another "weakly"
+    /// Makes a [`Form`] reference another "weakly".
     fn set_weak_ref(
         &self,
         name: impl AsRef<str>,
@@ -853,7 +854,7 @@ impl Palette {
         inner_palette.set_weak_ref(name, refed, override_style)
     }
 
-    /// Sets many [`Form`]s
+    /// Sets many [`Form`]s.
     fn set_many<S: AsRef<str>>(&self, sets: &[(S, Option<Form>)]) -> Vec<FormId> {
         let mut inner = self.0.write().unwrap();
         let mut ids = Vec::new();
@@ -884,43 +885,43 @@ impl Palette {
         inner.forms.get(id.0 as usize).map(|(_, form)| *form)
     }
 
-    /// The [`Form`] and [`CursorShape`] of the main cursor
+    /// The [`Form`] and [`CursorShape`] of the main cursor.
     fn main_cursor(&self) -> (Form, Option<CursorShape>) {
         let form = self.form_from_id(M_CAR_ID).unwrap();
         (form, self.0.read().unwrap().main_cursor)
     }
 
-    /// The [`Form`] and [`CursorShape`] of extra cursors
+    /// The [`Form`] and [`CursorShape`] of extra cursors.
     fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
         let form = self.form_from_id(E_CAR_ID).unwrap();
         (form, self.0.read().unwrap().extra_cursor)
     }
 
-    /// Sets the [`CursorShape`] of the main cursor
+    /// Sets the [`CursorShape`] of the main cursor.
     fn set_main_cursor(&self, shape: CursorShape) {
         self.0.write().unwrap().main_cursor = Some(shape);
         sender().send(DuatEvent::FormChange);
     }
 
-    /// Sets the [`CursorShape`] of extra cursors
+    /// Sets the [`CursorShape`] of extra cursors.
     fn set_extra_cursor(&self, shape: CursorShape) {
         self.0.write().unwrap().extra_cursor = Some(shape);
         sender().send(DuatEvent::FormChange);
     }
 
-    /// Unsets the [`CursorShape`] of the main cursor
+    /// Unsets the [`CursorShape`] of the main cursor.
     fn unset_main_cursor(&self) {
         self.0.write().unwrap().main_cursor = None;
         sender().send(DuatEvent::FormChange);
     }
 
-    /// Unsets the [`CursorShape`] of the extra cursors
+    /// Unsets the [`CursorShape`] of the extra cursors.
     fn unset_extra_cursor(&self) {
         self.0.write().unwrap().extra_cursor = None;
         sender().send(DuatEvent::FormChange);
     }
 
-    /// Returns a [`Painter`]
+    /// Returns a [`Painter`].
     fn painter(&'static self, default_id: FormId, mask: &str) -> Painter {
         let inner = self.0.read().unwrap();
         let mask_i = inner
@@ -956,7 +957,7 @@ struct InnerPalette {
 }
 
 impl InnerPalette {
-    /// Sets a [`Form`]
+    /// Sets a [`Form`].
     fn set_form(&mut self, name: &str, form: Form) -> FormId {
         let (idx, _) = position_and_form(&mut self.forms, name);
 
@@ -976,7 +977,7 @@ impl InnerPalette {
         FormId(idx as u16)
     }
 
-    /// Sets a [`Form`] "weakly"
+    /// Sets a [`Form`] "weakly".
     fn set_weak_form(&mut self, name: &str, form: Form) -> FormId {
         let (idx, _) = position_and_form(&mut self.forms, name);
 
@@ -996,7 +997,7 @@ impl InnerPalette {
         FormId(idx as u16)
     }
 
-    /// Makes a [`Form`] reference another
+    /// Makes a [`Form`] reference another.
     fn set_ref(&mut self, name: &str, refed: u16, override_style: ContentStyle) -> FormId {
         let (_, form) = self.forms[refed as usize];
         let (idx, _) = position_and_form(&mut self.forms, name);
@@ -1022,7 +1023,7 @@ impl InnerPalette {
         FormId(idx as u16)
     }
 
-    /// Makes a [`Form`] reference another "weakly"
+    /// Makes a [`Form`] reference another "weakly".
     fn set_weak_ref(&mut self, name: &str, refed: u16, override_style: ContentStyle) -> FormId {
         let (_, form) = self.forms[refed as usize];
         let (idx, _) = position_and_form(&mut self.forms, name);
@@ -1075,7 +1076,7 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
     }
 }
 
-/// A struct to create [`Form`]s from [`RawTag`] in a [`Text`]
+/// A struct to create [`Form`]s from [`RawTag`] in a [`Text`].
 ///
 /// This [`Painter`] not only prints the [`Form`]s in the [`Text`],
 /// but within it there is also a "mask". This mask will remap
@@ -1168,7 +1169,7 @@ impl Painter {
     }
 
     /// Removes the [`Form`] with the given `id` and returns the
-    /// result, given previous triggers
+    /// result, given previous triggers.
     #[inline(always)]
     pub fn remove(&mut self, id: FormId) {
         let mask = &self.inner.masks[self.mask_i].1;
@@ -1185,9 +1186,9 @@ impl Painter {
         };
     }
 
-    /// Removes all [`Form`]s except the default one
+    /// Removes all [`Form`]s except the default one.
     ///
-    /// Should be used when a [`ResetState`] part is printed
+    /// Should be used when a [`ResetState`] part is printed.
     ///
     /// [`ResetState`]: crate::text::TextPart::ResetState
     #[inline(always)]
@@ -1196,7 +1197,7 @@ impl Painter {
         self.absolute_style()
     }
 
-    /// Generates the absolute [`ContentStyle`] to be set
+    /// Generates the absolute [`ContentStyle`] to be set.
     ///
     /// This function assumes that all previous styling is not being
     /// carried over, i.e., we're styling from scratch.
@@ -1218,7 +1219,7 @@ impl Painter {
         style
     }
 
-    /// Generates the relative [`ContentStyle`] to be set
+    /// Generates the relative [`ContentStyle`] to be set.
     ///
     /// This function assumes that previously printed styles are being
     /// carried over, influencing this one.
@@ -1270,7 +1271,7 @@ impl Painter {
     }
 
     /// Makes it so the next call to [`relative_style`] returns the
-    /// same thing as a call to [`absolute_style`]
+    /// same thing as a call to [`absolute_style`].
     ///
     /// [`relative_style`]: Self::relative_style
     /// [`absolute_style`]: Self::absolute_style
@@ -1282,7 +1283,7 @@ impl Painter {
         self.parts.reset_attrs = true;
     }
 
-    /// Applies the `"caret.main"` [`Form`]
+    /// Applies the `"caret.main"` [`Form`].
     #[inline(always)]
     pub fn apply_main_selection(&mut self, is_caret: bool, start_range: bool) {
         if is_caret {
@@ -1293,7 +1294,7 @@ impl Painter {
         }
     }
 
-    /// Removes the `"caret.main"` [`Form`]
+    /// Removes the `"caret.main"` [`Form`].
     #[inline(always)]
     pub fn remove_main_selection(&mut self, is_caret: bool, end_range: bool) {
         if is_caret {
@@ -1304,7 +1305,7 @@ impl Painter {
         }
     }
 
-    /// Applies the `"caret.extra"` [`Form`]
+    /// Applies the `"caret.extra"` [`Form`].
     #[inline(always)]
     pub fn apply_extra_selection(&mut self, is_caret: bool, start_range: bool) {
         if is_caret {
@@ -1315,7 +1316,7 @@ impl Painter {
         }
     }
 
-    /// Removes the `"caret.extra"` [`Form`]
+    /// Removes the `"caret.extra"` [`Form`].
     #[inline(always)]
     pub fn remove_extra_selection(&mut self, is_caret: bool, end_range: bool) {
         if is_caret {
@@ -1326,24 +1327,20 @@ impl Painter {
         }
     }
 
-    /// Prepares this `Painter` to print an [`Inlay`] text
-    ///
-    /// [`Inlay`]: crate::text::TextPart::Inlay
-    pub fn prepare_for_inlay(&mut self) {
+    /// Prepares this `Painter` to print an "overlay" text.
+    pub fn prepare_for_overlay(&mut self) {
         self.main_parts = Some(std::mem::take(&mut self.parts));
     }
 
-    /// Prepares this `Painter` to print an [`Inlay`] text
-    ///
-    /// [`Inlay`]: crate::text::TextPart::Inlay
+    /// Returns this `Painter` from "overlay" printing mode.
     ///
     /// # Panics
     ///
-    /// Panics if [`prepare_for_inlay`] wasn't called first.
+    /// Panics if [`prepare_for_overlay`] wasn't called first.
     ///
-    /// [`prepare_for_inlay`]: Self::prepare_for_inlay
+    /// [`prepare_for_overlay`]: Self::prepare_for_overlay
     #[track_caller]
-    pub fn return_from_inlay(&mut self) {
+    pub fn return_from_overlay(&mut self) {
         self.parts = self.main_parts.take().unwrap();
     }
 
@@ -1357,7 +1354,7 @@ impl Painter {
         self.inner.extra_cursor
     }
 
-    /// The `"default"` form's [`Form`]
+    /// The `"default"` form's [`Form`].
     pub fn get_default(&self) -> Form {
         self.default
     }
@@ -1385,7 +1382,7 @@ impl Default for PainterParts {
     }
 }
 
-/// An enum that helps in the modification of forms
+/// An enum that helps in the modification of forms.
 #[derive(Default, Clone, Copy)]
 enum FormKind {
     #[default]
@@ -1395,7 +1392,7 @@ enum FormKind {
     WeakestRef(u16, ContentStyle),
 }
 
-/// The position of each form that eventually references the `n`th
+/// The position of each form that eventually references the `n`th.
 fn refs_of(inner: &InnerPalette, refed: usize) -> Vec<(usize, ContentStyle)> {
     let mut refs = Vec::new();
     for (i, (_, form)) in inner.forms.iter().enumerate() {
@@ -1409,7 +1406,7 @@ fn refs_of(inner: &InnerPalette, refed: usize) -> Vec<(usize, ContentStyle)> {
     refs
 }
 
-/// If form references would eventually lead to a loop
+/// If form references would eventually lead to a loop.
 fn would_be_circular(inner: &InnerPalette, referee: usize, refed: usize) -> bool {
     if let FormKind::Ref(id, _) | FormKind::WeakestRef(id, _) = inner.forms[refed].1.kind {
         match id as usize == referee {
@@ -1441,7 +1438,7 @@ fn position_and_form(
     }
 }
 
-/// Converts a string to a color, supporst hex, RGB and HSL
+/// Converts a string to a color, supporst hex, RGB and HSL.
 const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
     const fn strip_prefix<'a>(prefix: &str, str: &'a str) -> Option<&'a str> {
         let prefix = prefix.as_bytes();
@@ -1558,7 +1555,7 @@ const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
     }
 }
 
-/// Returns the default [`ContentStyle`].
+/// Returns the default [`ContentStyle`]..
 const fn default_style() -> ContentStyle {
     ContentStyle {
         foreground_color: None,
@@ -1666,17 +1663,17 @@ impl std::fmt::Debug for FormKind {
     }
 }
 
-/// The [`FormId`] of `"default"`
+/// The [`FormId`] of `"default"`.
 pub const DEFAULT_ID: FormId = FormId(0);
-/// The [`FormId`] of `"accent"`
+/// The [`FormId`] of `"accent"`.
 pub const ACCENT_ID: FormId = FormId(1);
-/// The [`FormId`] of `"caret.main"`
+/// The [`FormId`] of `"caret.main"`.
 pub const M_CAR_ID: FormId = FormId(2);
-/// The [`FormId`] of `"caret.extra"`
+/// The [`FormId`] of `"caret.extra"`.
 pub const E_CAR_ID: FormId = FormId(3);
-/// The [`FormId`] of `"slection.main"`
+/// The [`FormId`] of `"slection.main"`.
 pub const M_SEL_ID: FormId = FormId(4);
-/// The [`FormId`] of `"selection.extra"`
+/// The [`FormId`] of `"selection.extra"`.
 pub const E_SEL_ID: FormId = FormId(5);
-/// The [`FormId`] of `"character.control"`
+/// The [`FormId`] of `"character.control"`.
 pub const CONTROL_CHAR_ID: FormId = FormId(7);

@@ -73,7 +73,7 @@ pub(crate) fn add_parser_hook() {
                 parser.highlight(range.clone(), &mut parts);
                 parts.ranges_to_update.update_on([range]);
             }
-
+            
             true
         } else {
             false
@@ -91,7 +91,6 @@ pub(crate) fn add_parser_hook() {
         };
 
         if let Some(lang_parts) = lang_parts_of(filetype, handle) {
-            let start = std::time::Instant::now();
             let len_bytes = handle.text(pa).len();
 
             let mut parser = TsParser::new();
@@ -109,7 +108,6 @@ pub(crate) fn add_parser_hook() {
             });
 
             async_parse(pa, handle, printed_lines.clone(), false);
-            duat_core::debug!("took {:?}", start.elapsed());
         }
     });
 }

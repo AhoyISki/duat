@@ -498,7 +498,7 @@ pub fn default_renderer(entries: &GutterEntries, gutterer: Gutterer, mut parts: 
                     .end_point();
                 parts
                     .tags
-                    .insert(tagger, msg_start, Ghost::new(txt!("{entry.msg}\n")));
+                    .insert(tagger, msg_start, Ghost::inlay(txt!("{entry.msg}\n")));
             }
         }
     }

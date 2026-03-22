@@ -18,7 +18,7 @@ use self::{bounds::Bounds, taggers::TaggerExtents, types::Toggle};
 pub use self::{
     ids::*,
     taggers::Tagger,
-    types::{Conceal, FormTag, Ghost, RawTag, Spacer, SpawnTag, SwapChar, Tag},
+    types::{Conceal, FormTag, Ghost, RawTag, Spacer, SpawnTag, Tag},
 };
 use crate::{
     context::Handle,
@@ -326,15 +326,13 @@ impl InnerTags {
                     }
                 }
                 ConcealUntil(_) => unreachable!(),
-                RawTag::Ghost(_, id) | RawTag::Inlay(_, id) => {
+                RawTag::Inlay(_, id) | RawTag::Overlay(_, id) => {
                     self.ghosts
                         .extend(other.ghosts.iter().find(|(l, _)| l == &id).cloned());
                     self.insert_raw((b, tag), None, false);
                 }
                 StartToggle(..) | EndToggle(..) => todo!(),
-                RawTag::Spacer(_) | RawTag::SwapChar(..) | SpawnedWidget(..) => {
-                    self.insert_raw((b, tag), None, false);
-                }
+                RawTag::Spacer(_) | SpawnedWidget(..) => _ = self.insert_raw((b, tag), None, false),
             };
         }
     }
@@ -659,7 +657,7 @@ impl InnerTags {
     /// Returns the length of all [`Ghost`]s in a byte
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
-            RawTag::Ghost(_, id) => {
+            RawTag::Inlay(_, id) => {
                 let (_, text) = self.ghosts.iter().find(|(lhs, _)| *lhs == id)?;
                 Some(p.map_or(text.last_point(), |p| p + text.last_point()))
             }
@@ -746,7 +744,7 @@ impl PartialEq for InnerTags {
                     l_id == r_id && l_prio == r_prio && l_b == r_b
                 }
                 (PopForm(_, lhs), PopForm(_, rhs)) => lhs == rhs && l_b == r_b,
-                (Ghost(_, lhs), Ghost(_, rhs)) | (Inlay(_, lhs), Inlay(_, rhs)) => {
+                (Inlay(_, lhs), Inlay(_, rhs)) | (Overlay(_, lhs), Overlay(_, rhs)) => {
                     let self_ghost = self
                         .ghosts
                         .iter()

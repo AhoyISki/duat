@@ -18,7 +18,7 @@ use super::{Change, Tagger, Text};
 use crate::{
     buffer::PathKind,
     form::FormId,
-    text::{FormTag, Ghost, Spacer, SwapChar},
+    text::{FormTag, Ghost, Spacer},
 };
 
 /// Builds and modifies a [`Text`], based on replacements applied
@@ -157,7 +157,6 @@ impl Builder {
                 }
                 BP::Spacer(_) => builder.text.insert_tag(tagger, end, Spacer),
                 BP::Ghost(ghost) => builder.text.insert_tag(tagger, end, ghost.clone()),
-                BP::SwapChar(tag) => builder.text.insert_tag(tagger, end, tag),
                 BP::ToString(_) => unsafe { std::hint::unreachable_unchecked() },
             }
         }
@@ -293,8 +292,6 @@ pub enum BuilderPart<'a, D: Display = String, _T = ()> {
     Spacer(PhantomData<_T>),
     /// Ghost [`Text`] that is separate from the real thing
     Ghost(&'a Ghost),
-    /// A [`SwapChar`] tag
-    SwapChar(SwapChar),
 }
 
 impl<'a, D: Display, _T> BuilderPart<'a, D, _T> {
@@ -308,7 +305,6 @@ impl<'a, D: Display, _T> BuilderPart<'a, D, _T> {
             BuilderPart::Form(form_id) => Ok(BuilderPart::Form(form_id)),
             BuilderPart::Spacer(_) => Ok(BuilderPart::Spacer(PhantomData)),
             BuilderPart::Ghost(ghost) => Ok(BuilderPart::Ghost(ghost)),
-            BuilderPart::SwapChar(replacement) => Ok(BuilderPart::SwapChar(replacement)),
         }
     }
 }
@@ -340,7 +336,6 @@ implAsBuilderPart!(FormId, form_id, BuilderPart::Form(form_id.to_tag(0)));
 implAsBuilderPart!(FormTag, form_tag, BuilderPart::Form(*form_tag));
 implAsBuilderPart!(Spacer, _spacer, BuilderPart::Spacer(PhantomData));
 implAsBuilderPart!(Ghost, ghost, BuilderPart::Ghost(ghost));
-implAsBuilderPart!(SwapChar, replace, BuilderPart::SwapChar(*replace));
 implAsBuilderPart!(Text, text, BuilderPart::Text(text));
 implAsBuilderPart!(Path, path, BuilderPart::Path(path));
 implAsBuilderPart!(PathKind, path, BuilderPart::PathKind(path.name_txt()));

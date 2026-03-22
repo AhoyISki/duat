@@ -1267,10 +1267,8 @@ impl InnerHooks {
         };
 
         hooks_of.0.borrow_mut().retain_mut(|hook| {
-            let has_been_removed = || match &hook.group {
-                Some(group_id) if !self.group_exists(group_id) => true,
-                _ => false,
-            };
+            let has_been_removed =
+                || matches!(&hook.group, Some(group_id) if !self.group_exists(group_id));
 
             if has_been_removed() {
                 return false;

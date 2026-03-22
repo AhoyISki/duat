@@ -112,7 +112,7 @@ impl<'t> FwdIter<'t> {
     #[inline(always)]
     fn handle_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
-            RawTag::Ghost(_, id) => {
+            RawTag::Inlay(_, id) => {
                 if b < self.point.byte() || self.conceals > 0 {
                     return true;
                 }
@@ -155,8 +155,7 @@ impl<'t> FwdIter<'t> {
                 *self = FwdIter::new_at(self.text, point.to_two_points_before(), false);
                 return false;
             }
-            RawTag::Spacer(_) | RawTag::SwapChar(..) | RawTag::SpawnedWidget(..)
-                if b < self.init_point.byte() => {}
+            RawTag::Spacer(_) | RawTag::SpawnedWidget(..) if b < self.init_point.byte() => {}
             _ => return false,
         }
 
@@ -279,7 +278,7 @@ impl<'t> RevIter<'t> {
     #[inline]
     fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
-            RawTag::Ghost(_, id) => {
+            RawTag::Inlay(_, id) => {
                 if b > self.point.byte() || self.conceals > 0 {
                     return true;
                 }
@@ -324,8 +323,7 @@ impl<'t> RevIter<'t> {
                 *self = RevIter::new_at(self.text, point.to_two_points_before());
                 return false;
             }
-            RawTag::Spacer(_) | RawTag::SwapChar(..) | RawTag::SpawnedWidget(..)
-                if b > self.init_point.byte() => {}
+            RawTag::Spacer(_) | RawTag::SpawnedWidget(..) if b > self.init_point.byte() => {}
             _ => return false,
         }
 
@@ -515,8 +513,6 @@ pub enum TextPart<'t> {
     ///
     /// [`Spacer`]: super::Spacer
     Spacer,
-    /// Replaces the next character, or the next space of a tab.
-    SwapChar(char),
     /// Starts a toggleable region for the given [`ToggleId`].
     ToggleStart(ToggleId),
     /// Ends a toggleable region for the given [`ToggleId`].
@@ -527,7 +523,7 @@ pub enum TextPart<'t> {
     SpawnedWidget(SpawnId),
 
     /// An inlay [`Text`].
-    Inlay(&'t Text),
+    Overlay(&'t Text),
 
     /// Resets all [`FormId`]s, [`ToggleId`]s and alignments.
     ///
@@ -552,13 +548,12 @@ impl<'t> TextPart<'t> {
             RawTag::PushForm(_, id, prio) => Self::PushForm(id, prio),
             RawTag::PopForm(_, id) => Self::PopForm(id),
             RawTag::Spacer(_) => Self::Spacer,
-            RawTag::SwapChar(_, char) => Self::SwapChar(char),
             RawTag::StartToggle(_, id) => Self::ToggleStart(id),
             RawTag::EndToggle(_, id) => Self::ToggleEnd(id),
             RawTag::ConcealUntil(_) => Self::ResetState,
             RawTag::SpawnedWidget(_, id) => Self::SpawnedWidget(id),
-            RawTag::Inlay(_, id) => Self::Inlay(tags.get_ghost(id).unwrap()),
-            RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::Ghost(..) => {
+            RawTag::Overlay(_, id) => Self::Overlay(tags.get_ghost(id).unwrap()),
+            RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::Inlay(..) => {
                 unreachable!("These tags are automatically processed elsewhere.")
             }
         }
