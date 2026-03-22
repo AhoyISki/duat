@@ -13,7 +13,7 @@ use duat_core::{
         cache::{Decode, Encode},
     },
     form::{CONTROL_CHAR_ID, Painter},
-    mode::{Selections, VPoint},
+    mode::VPoint,
     opts::PrintOpts,
     session::TwoPointsPlace,
     text::{Point, Text, TextPart, TextPlace, TwoPoints, txt},
@@ -1006,7 +1006,7 @@ pub fn print_text(
             }
             TextPart::ResetState => print_style(lines, painter.reset()),
             TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
-            TextPart::Overlay(overlay) => overlays.push((x - x_shift, real, overlay)),
+            TextPart::Overlay(overlay) => overlays.push((x, real, overlay)),
             TextPart::ToggleStart(_) | TextPart::ToggleEnd(_) => {}
         }
     }
