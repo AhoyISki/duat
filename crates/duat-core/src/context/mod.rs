@@ -166,6 +166,8 @@ mod global {
     /// 1. Try to look for those pushed around the current [`Buffer`].
     /// 2. Try to look for those pushed around the current [`Window`].
     /// 3. Try to look for those pushed around other [`Window`]s.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
     pub fn handle_of<W: Widget>(pa: &Pass) -> Option<Handle<W>> {
         windows()
             .node_of::<W>(pa)

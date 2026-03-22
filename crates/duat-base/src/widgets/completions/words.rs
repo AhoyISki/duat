@@ -28,7 +28,7 @@ use duat_core::{
 use crate::widgets::completions::{CompletionsProvider, string_cmp};
 
 static TRACKER: BufferTracker = BufferTracker::new();
-static BUFFER_WORDS: Mutex<BTreeMap<String, WordInfo>> = Mutex::new(BTreeMap::new());
+static BUFFER_WORDS: Mutex<BTreeMap<Arc<str>, WordInfo>> = Mutex::new(BTreeMap::new());
 
 pub struct WordCompletions;
 
@@ -42,7 +42,7 @@ impl CompletionsProvider for WordCompletions {
         )
     }
 
-    fn matches(&mut self, text: &Text, caret: Point, prefix: &str) -> Vec<(String, Self::Info)> {
+    fn matches(&mut self, text: &Text, caret: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
         let suffix = &text[text.search(r"\A\w*").range(caret..).next().unwrap()];
 
         let mut matches: Vec<_> = BUFFER_WORDS
@@ -90,7 +90,7 @@ pub(super) fn track_words() {
         let buffer = handle.read(pa);
         let source: Arc<str> = buffer.name().into();
         for range in buffer.text().search(r"\w{3,}") {
-            let word = buffer.text()[range].to_string();
+            let word = buffer.text()[range].to_string().into();
             let info = words
                 .entry(word)
                 .or_insert_with(|| WordInfo { source: source.clone(), count: 0 });
@@ -148,10 +148,7 @@ fn update_counts(pa: &mut Pass, handle: &Handle) {
         match (buffer_words.get_mut(word), is_taken) {
             (Some(info), false) => info.count += 1,
             (None, false) => {
-                buffer_words.insert(word.to_string(), WordInfo {
-                    source: source.clone(),
-                    count: 1,
-                });
+                buffer_words.insert(word.into(), WordInfo { source: source.clone(), count: 1 });
             }
             (Some(info), true) if info.count > 1 => info.count -= 1,
             (Some(_), true) => {

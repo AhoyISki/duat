@@ -402,7 +402,7 @@ mod global {
     ///
     /// [`hook::remove`]: remove
     pub fn group_exists(group: impl Into<InnerGroupId>) -> bool {
-        HOOKS.group_exists(group.into())
+        HOOKS.group_exists(&group.into())
     }
 }
 
@@ -1267,6 +1267,15 @@ impl InnerHooks {
         };
 
         hooks_of.0.borrow_mut().retain_mut(|hook| {
+            let has_been_removed = || match &hook.group {
+                Some(group_id) if !self.group_exists(group_id) => true,
+                _ => false,
+            };
+
+            if has_been_removed() {
+                return false;
+            }
+
             if let Some(filter) = hook.filter.as_ref()
                 && !filter(&hookable)
             {
@@ -1278,7 +1287,7 @@ impl InnerHooks {
             match &mut hook.callback {
                 Callback::FnMut(fn_mut) => {
                     catch_panic(|| fn_mut(pa, input));
-                    true
+                    !has_been_removed()
                 }
                 Callback::FnOnce(fn_once) => {
                     catch_panic(|| fn_once.take().unwrap()(pa, input));
@@ -1312,8 +1321,8 @@ impl InnerHooks {
     }
 
     /// Checks if a hook group exists.
-    fn group_exists(&self, group: InnerGroupId) -> bool {
-        self.groups.lock().unwrap().contains(&group)
+    fn group_exists(&self, group: &InnerGroupId) -> bool {
+        self.groups.lock().unwrap().contains(group)
     }
 }
 

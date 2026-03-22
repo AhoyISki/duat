@@ -230,7 +230,7 @@ impl Node {
         }
 
         let widgets_to_spawn = widget.text_mut().get_widget_spawns();
-        for spawn in widgets_to_spawn {
+        for (_, spawn) in widgets_to_spawn {
             spawn(pa, win, self.handle.clone());
         }
 

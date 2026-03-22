@@ -438,7 +438,7 @@ impl Tag<Point> for SpawnTag {
 
     fn on_insertion(self, tags: &mut super::InnerTags) {
         tags.spawns.push(super::SpawnCell(self.0));
-        tags.spawn_fns.0.push(self.1);
+        tags.spawn_fns.0.push((self.0, self.1));
     }
 }
 
@@ -460,7 +460,7 @@ impl Tag<usize> for SpawnTag {
 
     fn on_insertion(self, tags: &mut super::InnerTags) {
         tags.spawns.push(super::SpawnCell(self.0));
-        tags.spawn_fns.0.push(self.1);
+        tags.spawn_fns.0.push((self.0, self.1));
     }
 }
 

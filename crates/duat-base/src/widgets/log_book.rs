@@ -27,8 +27,6 @@ pub fn add_logbook_hooks() {
 
         let (lb, area) = logbook.write_with_area(pa);
 
-        let at_the_bottom = area.end_points(&lb.text, lb.print_opts()) == lb.text.end_points();
-
         let fmt_recs = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
             if let Some(rec_text) = fmt(rec) {
                 lb.text.insert_text(lb.text.len(), &rec_text);
@@ -45,9 +43,7 @@ pub fn add_logbook_hooks() {
             fmt_recs(&mut |rec| default_fmt(lb.show_source, rec));
         }
 
-        if at_the_bottom {
-            area.scroll_ver(&lb.text, i32::MAX, lb.print_opts());
-        }
+        area.scroll_ver(&lb.text, i32::MAX, lb.print_opts());
     });
 
     hook::add::<FocusedOn<LogBook>>(|pa, (_, logbook)| logbook.area().reveal(pa).unwrap());
@@ -227,7 +223,7 @@ fn default_fmt(show_source: bool, rec: Record) -> Option<Text> {
 
     builder.push(txt!("[log_book.bracket][] {}", rec.text().clone(),));
 
-    if show_source {
+    if show_source && rec.level() != duat_core::context::Level::Info {
         builder.push(txt!(
             "{Spacer}([log_book.location]{}[log_book.bracket])",
             rec.location()

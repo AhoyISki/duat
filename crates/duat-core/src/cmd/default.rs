@@ -317,7 +317,7 @@ pub fn add_defalt_commands() {
 
             let pk = match arg {
                 PathOrBufferOrCfg::Cfg => {
-                    PathKind::from(crate::utils::crate_dir()?.join("src").join("lib.rs"))
+                    PathKind::from(crate::utils::crate_dir()?.join("src").join("main.rs"))
                 }
                 PathOrBufferOrCfg::CfgManifest => {
                     PathKind::from(crate::utils::crate_dir()?.join("Cargo.toml"))
@@ -361,7 +361,7 @@ pub fn add_defalt_commands() {
 
             let (pk, msg) = match arg {
                 PathOrBufferOrCfg::Cfg => (
-                    PathKind::from(crate::utils::crate_dir()?.join("src").join("lib.rs")),
+                    PathKind::from(crate::utils::crate_dir()?.join("src").join("main.rs")),
                     None,
                 ),
                 PathOrBufferOrCfg::CfgManifest => (

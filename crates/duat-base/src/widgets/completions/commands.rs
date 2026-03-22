@@ -2,6 +2,8 @@
 //!
 //! This provider will show all available commands, as well as
 //! information about the commands.
+use std::sync::Arc;
+
 use duat_core::{
     cmd::{CmdDoc, Description},
     data::Pass,
@@ -28,8 +30,8 @@ impl CompletionsProvider for CommandsCompletions {
         txt!("[cmd.Completions]{entry}{Spacer}")
     }
 
-    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<(String, Self::Info)> {
-        let mut matches: Vec<_> = Vec::from_iter(
+    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
+        let mut matches = Vec::from_iter(
             self.0
                 .iter()
                 .filter_map(|desc| {
@@ -41,7 +43,7 @@ impl CompletionsProvider for CommandsCompletions {
                         None
                     }
                 })
-                .map(|desc| (desc.caller.to_string(), desc.clone())),
+                .map(|desc| (desc.caller.clone(), desc.clone())),
         );
 
         matches.sort_by(|(lhs, _), (rhs, _)| {
@@ -55,7 +57,7 @@ impl CompletionsProvider for CommandsCompletions {
         Some(text.search(r"[^\s]*").range(..caret).next_back()?.start)
     }
 
-    fn default_info_on(&self, (_, doc): (&str, &Self::Info)) -> Option<(Text, Orientation)> {
+    fn default_info_on(&self, _: &str, doc: &Self::Info) -> Option<(Text, Orientation)> {
         let mut builder = Text::builder();
 
         let short = doc.short.as_ref()?;

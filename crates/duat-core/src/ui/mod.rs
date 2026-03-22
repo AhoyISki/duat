@@ -707,6 +707,7 @@ impl PushTarget for Window {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SpawnId(u16);
 
+
 impl SpawnId {
     /// Creates a new [`SpawnId`]
     #[allow(clippy::new_without_default)]

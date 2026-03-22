@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use duat_core::text::{Point, RegexHaystack, Spacer, Text, txt};
 
 use crate::widgets::{CompletionsProvider, completions::string_cmp};
@@ -9,11 +11,11 @@ impl<S: AsRef<str> + Send + 'static> CompletionsProvider for Vec<S> {
         txt!("{entry}{Spacer}")
     }
 
-    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<(String, Self::Info)> {
-        let mut entries: Vec<_> = self
+    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
+        let mut entries: Vec<(Arc<str>, _)> = self
             .iter()
             .filter_map(|entry| {
-                string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().to_string(), ()))
+                string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().into(), ()))
             })
             .collect();
 
@@ -38,11 +40,11 @@ impl<const N: usize, S: AsRef<str> + Send + 'static> CompletionsProvider for [S;
         txt!("{entry}{Spacer}")
     }
 
-    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<(String, Self::Info)> {
-        let mut entries: Vec<_> = self
+    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
+        let mut entries: Vec<(Arc<str>, _)> = self
             .iter()
             .filter_map(|entry| {
-                string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().to_string(), ()))
+                string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().into(), ()))
             })
             .collect();
 
@@ -80,7 +82,7 @@ impl<S: AsRef<str> + Send + 'static> CompletionsProvider for ExhaustiveCompletio
         txt!("{entry}{Spacer}")
     }
 
-    fn matches(&mut self, text: &Text, caret: Point, prefix: &str) -> Vec<(String, Self::Info)> {
+    fn matches(&mut self, text: &Text, caret: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
         let yet_to_be_typed: Vec<_> = self
             .list
             .iter()
@@ -91,10 +93,10 @@ impl<S: AsRef<str> + Send + 'static> CompletionsProvider for ExhaustiveCompletio
             return Vec::new();
         }
 
-        let mut entries: Vec<_> = yet_to_be_typed
+        let mut entries: Vec<(Arc<str>, _)> = yet_to_be_typed
             .iter()
             .filter_map(|entry| {
-                string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().to_string(), ()))
+                string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().into(), ()))
             })
             .collect();
 

@@ -14,7 +14,7 @@
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
-    sync::{LazyLock, Mutex},
+    sync::{Arc, LazyLock, Mutex},
 };
 
 use duat_core::{
@@ -102,14 +102,18 @@ pub fn setup_completions() {
         builder.with_provider(duat_core::form::colorscheme_list())
     });
 
-    let group = hook::GroupId::new();
-
     hook::add::<WidgetOpened<Completions>>(move |pa, completions| {
         Completions::set_frame(pa, completions);
 
         let completions = completions.clone();
+        let group = hook::GroupId::new();
 
         hook::add::<KeySent>(move |pa, _| {
+            if completions.is_closed(pa) {
+                hook::remove(group);
+                return;
+            }
+
             Completions::update_text_and_position(pa, &completions, 0);
             let completions_master = completions.master(pa).unwrap();
             completions.write(pa).last_caret = completions_master.selections(pa).main().caret();
@@ -119,10 +123,7 @@ pub fn setup_completions() {
         .grouped(group);
     });
 
-    hook::add::<FocusChanged>(move |pa, (prev, _)| {
-        hook::remove(group);
-        prev.text_mut(pa).remove_tags(*TAGGER, ..)
-    });
+    hook::add::<FocusChanged>(move |pa, (prev, _)| prev.text_mut(pa).remove_tags(*TAGGER, ..));
 
     hook::add::<OnMouseEvent<Completions>>(|pa, (_, event)| match event.kind {
         MouseEventKind::ScrollDown => _ = Completions::scroll(pa, 1),
@@ -173,7 +174,12 @@ impl CompletionsBuilder {
     /// [`Selection`]: duat_core::mode::Selection
     pub fn open(self, pa: &mut Pass) {
         let handle = context::current_widget(pa).clone();
+        // Do both removals, because the previous Completions need to be
+        // removed immediately.
         handle.text_mut(pa).remove_tags(*TAGGER, ..);
+        if let Some(completions) = context::handle_of::<Completions>(pa) {
+            _ = completions.close(pa);
+        }
 
         let Some(main) = handle.selections(pa).get_main() else {
             context::warn!("Tried spawning [a]Completions[] on a Widget with no [a]Selection[]s");
@@ -335,10 +341,7 @@ impl Completions {
             return None;
         }
 
-        let handle = context::windows()
-            .handles_of::<Completions>(pa)
-            .first()
-            .cloned()?;
+        let handle = context::handle_of::<Completions>(pa)?;
 
         let main_repl = Completions::update_text_and_position(pa, &handle, scroll);
         handle.write(pa).show_without_prefix = true;
@@ -347,11 +350,10 @@ impl Completions {
 
     /// Wether there is an open `Completions` [`Widget`]
     pub fn is_open(pa: &Pass) -> bool {
-        context::current_window(pa)
-            .handles(pa)
-            .any(|handle| handle.widget().is::<Completions>())
+        context::handle_of::<Completions>(pa).is_some()
     }
 
+    #[track_caller]
     fn update_text_and_position(
         pa: &mut Pass,
         completions: &Handle<Self>,
@@ -389,7 +391,7 @@ impl Completions {
         // from invalidating the following code.
         let (other, start_fn) = mat.unzip();
 
-        let main_repl = if let Some((start_byte, ((text, sides), replacement))) = other {
+        let main_replacement = if let Some((start_byte, ((text, sides), replacement))) = other {
             comp.text = text;
             comp.sidebar = sides;
 
@@ -487,8 +489,8 @@ impl Completions {
                 };
 
                 let mut text = master_handle.text_mut(pa);
-                text.remove_tags(*TAGGER, ..);
                 text.insert_tag(*TAGGER, start_byte, SpawnTag::new(new_comp, SPAWN_SPECS));
+                _ = completions.close(pa);
                 return main_replacement;
             } else {
                 comp.start_byte = new_start_byte;
@@ -504,7 +506,7 @@ impl Completions {
 
         Completions::set_frame(pa, completions);
 
-        main_repl
+        main_replacement
     }
 
     fn set_frame(pa: &mut Pass, handle: &Handle<Self>) {
@@ -533,8 +535,8 @@ impl Completions {
         .unwrap();
 
         let height = comp.text.end_point().line() as f32;
-        area.set_height(if comp.text.is_empty() { 0.0 } else { height })
-            .unwrap();
+        let height = if comp.text.is_empty() { 0.0 } else { height };
+        area.set_height(height).unwrap();
     }
 }
 
@@ -588,7 +590,7 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// or moves the cursor around.
     ///
     /// [caret]: duat_core::mode::Selection::caret
-    fn matches(&mut self, text: &Text, caret: Point, prefix: &str) -> Vec<(String, Self::Info)>;
+    fn matches(&mut self, text: &Text, caret: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)>;
 
     /// Get the starting byte for this completions
     ///
@@ -622,7 +624,8 @@ pub trait CompletionsProvider: Send + Sized + 'static {
 
     /// Additional information about an entry, which can be shown when
     /// it is selected.
-    fn default_info_on(&self, _: (&str, &Self::Info)) -> Option<(Text, Orientation)> {
+    #[allow(unused_variables)]
+    fn default_info_on(&self, entry: &str, info: &Self::Info) -> Option<(Text, Orientation)> {
         None
     }
 }
@@ -651,9 +654,9 @@ struct InnerProvider<P: CompletionsProvider> {
     fmt: Box<dyn FnMut(&str, &P::Info) -> Text + Send>,
 
     orig_prefix: String,
-    current: Option<(String, usize)>,
+    current: Option<(Arc<str>, usize)>,
 
-    matches: Vec<(String, P::Info)>,
+    matches: Vec<(Arc<str>, P::Info)>,
 }
 
 impl<P: CompletionsProvider> InnerProvider<P> {
@@ -668,7 +671,6 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             .unwrap_or(main_caret.byte());
 
         let orig_prefix = text[start..main_caret.byte()].to_string();
-
         let matches = provider.matches(text, main_caret, &orig_prefix);
 
         let mut inner = Self {
@@ -709,7 +711,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
 
         // This should only be true if edits other than the one applied by
         // Completions take place.
-        let target_changed = self.current.as_ref().is_some_and(|(c, _)| *c != prefix)
+        let target_changed = self.current.as_ref().is_some_and(|(c, _)| **c != prefix)
             || (self.current.is_none() && self.orig_prefix != prefix);
 
         if target_changed {
@@ -734,7 +736,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let mut ret_info = None;
         if scroll != 0 {
             // No try blocks on stable Rust 🤮.
-            self.current = (|| -> Option<(String, usize)> {
+            self.current = (|| -> Option<(Arc<str>, usize)> {
                 if let Some((prev, dist)) = &self.current {
                     let dist = dist.saturating_add_signed(scroll as isize).min(height - 1);
                     let prev_i = self.matches.iter().position(|(w, _)| w == prev)?;
@@ -791,9 +793,9 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let replacement = if scroll != 0 {
             self.current
                 .clone()
-                .map(|(w, _)| {
-                    let text = self.provider.default_info_on((&w, ret_info.unwrap()));
-                    (w, text)
+                .map(|(word, _)| {
+                    let text = self.provider.default_info_on(&word, ret_info.unwrap());
+                    (word.to_string(), text)
                 })
                 .or_else(|| Some((self.orig_prefix.clone(), None)))
         } else {

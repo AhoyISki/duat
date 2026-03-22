@@ -874,7 +874,7 @@ impl<'t> TextMut<'t> {
     /// [`Widget`]: crate::ui::Widget
     pub(crate) fn get_widget_spawns(
         &mut self,
-    ) -> Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>> {
+    ) -> Vec<(SpawnId, Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>)> {
         std::mem::take(&mut self.text.0.tags.spawn_fns.0)
     }
 

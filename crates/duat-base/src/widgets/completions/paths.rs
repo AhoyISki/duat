@@ -7,6 +7,7 @@
 use std::{
     fs::ReadDir,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use duat_core::{
@@ -39,7 +40,7 @@ impl CompletionsProvider for PathCompletions {
         txt!("[path.Completions]{entry}{Spacer}")
     }
 
-    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<(String, Self::Info)> {
+    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
         let prefix = match prefix.strip_prefix("'") {
             Some(prefix) => prefix,
             None => prefix,
@@ -49,8 +50,9 @@ impl CompletionsProvider for PathCompletions {
             return Vec::new();
         };
 
-        let mut entries =
-            Vec::from_iter(entries.filter_map(|entry| entry.ok()).filter_map(|entry| {
+        let mut entries: Vec<(Arc<str>, _)> = entries
+            .filter_map(|entry| entry.ok())
+            .filter_map(|entry| {
                 let path = entry.path();
 
                 let mut path = if let Some(cur_dir) = &cur_dir {
@@ -67,8 +69,9 @@ impl CompletionsProvider for PathCompletions {
                     path.to_mut().insert(0, '\'');
                 }
 
-                super::string_cmp(&prefix, &path).map(|_| (path.to_string(), ()))
-            }));
+                super::string_cmp(&prefix, &path).map(|_| (path.to_string().into(), ()))
+            })
+            .collect();
 
         entries.sort();
         entries.sort_by_key(|(path, _)| {

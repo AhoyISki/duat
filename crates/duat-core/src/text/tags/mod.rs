@@ -462,6 +462,7 @@ impl InnerTags {
                     }
                 } else if let RawTag::SpawnedWidget(_, spawn_id) = tag {
                     self.spawns.retain(|spawn_cell| spawn_cell.0 != spawn_id);
+                    self.spawn_fns.0.retain(|(id, _)| *id != spawn_id);
                 }
             });
 
@@ -927,7 +928,10 @@ impl Drop for SpawnCell {
 }
 
 pub(super) struct SpawnFns(
-    pub(super) Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>>,
+    pub(super)  Vec<(
+        SpawnId,
+        Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>,
+    )>,
 );
 
 /// SAFETY: The function are only ever used when there's access to a

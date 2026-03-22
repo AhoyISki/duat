@@ -653,10 +653,10 @@ impl Parameter for Existing {
 
 /// Command [`Parameter`]: `--cfg` or `--cfg-manifest`
 ///
-/// This is a quick shorthand to get `{duat_config}/src/lib.rs` or
+/// This is a quick shorthand to get `{duat_config}/src/main.rs` or
 /// `{duat_config}/Cargo.toml`, respectively
 pub enum CfgOrManifest {
-    /// Represents `{duat_config}/src/lib.rs`
+    /// Represents `{duat_config}/src/main.rs`
     Cfg,
     /// Represents `{duat_config}/Cargo.toml`
     Manifest,
