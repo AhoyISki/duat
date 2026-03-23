@@ -31,7 +31,7 @@ use crate::{
     form,
     hook::{self, BufferClosed, BufferUnloaded, WindowOpened},
     mode,
-    opts::{OPTS, STATUSLINE_FMT},
+    opts::{OPTS, Opts},
     prelude::BufferSaved,
 };
 
@@ -39,7 +39,8 @@ use crate::{
 pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
 
 #[doc(hidden)]
-pub fn pre_setup() -> Ui {
+#[inline(never)]
+pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, Vec<TypeId>, BufferOpts) {
     static BUFFER_WATCHER: LazyLock<Watcher> = LazyLock::new(|| {
         Watcher::new(|event, from_duat| {
             use dissimilar::Chunk::*;
@@ -107,11 +108,12 @@ pub fn pre_setup() -> Ui {
     hook::add::<WindowOpened>(|pa, handle| {
         use crate::{state::*, text::Spacer};
 
-        let opts = OPTS.lock().unwrap();
+        let mut opts = OPTS.lock().unwrap();
+        let one_line_footer = opts.one_line_footer;
 
-        let status = match &mut *STATUSLINE_FMT.lock().unwrap() {
+        let status = match &mut opts.status_fmt_fn {
             Some(status_fn) => status_fn(pa),
-            None if opts.one_line_footer => {
+            None if one_line_footer => {
                 let mode_txt = mode_txt();
                 let duat_param_txt = duat_param_txt();
                 status!("{Spacer}{name_txt} {mode_txt} {sels_txt} {duat_param_txt} {main_txt}")
@@ -307,13 +309,12 @@ pub fn pre_setup() -> Ui {
     crate::colorscheme::add_default();
 
     #[cfg(feature = "term-ui")]
-    duat_core::ui::Ui::new::<duat_term::Ui>()
-}
+    let ui = duat_core::ui::Ui::new::<duat_term::Ui>();
 
-#[doc(hidden)]
-pub fn post_setup() -> (Vec<TypeId>, BufferOpts) {
+    let mut opts = OPTS.lock().unwrap();
+    duat_core::utils::catch_panic(|| setup(&mut opts));
+
     let default_buffer_opts = {
-        let opts = OPTS.lock().unwrap();
         BufferOpts {
             highlight_current_line: opts.highlight_current_line,
             wrap_lines: opts.wrap_lines,
@@ -336,5 +337,6 @@ pub fn post_setup() -> (Vec<TypeId>, BufferOpts) {
     };
 
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
-    (already_plugged, default_buffer_opts)
+
+    (ui, already_plugged, default_buffer_opts)
 }

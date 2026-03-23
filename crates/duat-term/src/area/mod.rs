@@ -889,6 +889,8 @@ pub fn print_text(
             if y > lines.coords().tl.y {
                 let new_spawns = end_line(lines, painter, last_x, &mut overlays);
                 observed_spawns.extend(new_spawns);
+            } else {
+                overlays.clear();
             }
             let initial_space = x.saturating_sub(x_shift).min(lines.coords().width());
             if initial_space > 0 {

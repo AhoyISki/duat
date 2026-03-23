@@ -1,12 +1,9 @@
 //! General options for Duat.
 //!
-//! These options apply _globally_ and mostly serve as convenience
-//! methods to modify Duat's behavior. If you wish to apply them on a
-//! case by case way, you should reach out for [hooks].
-//!
-//! The main way in which things are configured is through the
-//! [`opts::set`] function, which serves as a way to set options for
-//! newly opened [`Widget`]s and various other properties of Duat.
+//! This struct is sent as an argument to duat's setup function, are
+//! applied _globally_, and mostly serve as convenience methods to
+//! modify Duat's behavior. If you wish to apply them on a case by
+//! case basis, you should reach out for [hooks].
 //!
 //! If you want to remove the default `Buffer` widgets
 //! ([`LineNumbers`] and [`VertRule`]), you can add:
@@ -62,11 +59,10 @@ use duatmode::opts::DuatModeOpts;
 
 use crate::widgets::NotificationsOpts;
 
-pub(crate) static OPTS: LazyLock<Mutex<StartOpts>> = LazyLock::new(Mutex::default);
-pub(crate) static STATUSLINE_FMT: StatusLineFn = Mutex::new(None);
+pub(crate) static OPTS: LazyLock<Mutex<Opts>> = LazyLock::new(Mutex::default);
 
 /// General options to set when starting Duat.
-pub struct StartOpts {
+pub struct Opts {
     /// Highlights the current line.
     ///
     /// The default is `true`
@@ -167,7 +163,7 @@ pub struct StartOpts {
     /// or on every `\t` character, replacing that many characters of
     /// the tab stop with those of the string.
     ///
-    /// For example, if `tabstop == 2 && indent_str == Some("│   ")`,
+    /// For example, if `tabstop == 2 && indent_str == Some("│")`,
     /// this:
     ///
     /// ```txt
@@ -445,9 +441,214 @@ pub struct StartOpts {
     /// [`Plugin`]: crate::Plugin
     /// [`LogBook`]: crate::widgets::LogBook
     pub logs: LogBookOpts,
+    pub(crate) status_fmt_fn: Option<StatusLineFn>,
 }
 
-impl Default for StartOpts {
+impl Opts {
+    /// Reformat the [`StatusLine`] using the [`status!`] macro.
+    ///
+    /// The `status!` macro is very convenient for showing information
+    /// about Duat, but most importantly to show information about
+    /// [`Buffer`]s.
+    ///
+    /// The `status!` macro follows the same syntax as the [`txt!`]
+    /// macro, although inlined arguments tend to be functions,
+    /// rather than just variables. Here's the default
+    /// [`StatusLine`]:
+    ///
+    /// ```rust
+    /// # use duat::prelude::*;
+    /// let mode = mode_txt();
+    /// status!("{mode}{Spacer}{name_txt} {sels_txt} {main_txt}");
+    /// ```
+    ///
+    /// The `mode` has to be explicitely returned, because
+    /// [`mode_txt`] isn't a `StatusLine` part, but a function
+    /// that returns a [`DataMap<&str, Text>`], which can be used
+    /// as a `StatusLine` part.
+    ///
+    /// The [`Spacer`] here serves to do just that, separate the text
+    /// into two parts, each on one part of the screen. You can
+    /// place as many of these as you want, for example, this
+    /// function will place the `Buffer`'s name in between the two
+    /// side parts:
+    ///
+    /// ```rust
+    /// # use duat::prelude::*;
+    /// let mode = mode_txt();
+    /// status!("{mode}{Spacer}{name_txt}{Spacer}{sels_txt} {main_txt}");
+    /// ```
+    ///
+    /// # Configuration
+    ///
+    /// Duat provides a bunch of built-in functions to modify the
+    /// `StatusLine`:
+    ///
+    /// - [`name_txt`]: `Text` with the `Buffer`'s name.
+    /// - [`path_txt`]: `Text` with the `Buffer`'s full path.
+    /// - [`mode_name`]: Unformatted mode (e.g. `"Prompt"`,
+    ///   `"Normal"`).
+    /// - [`mode_txt`]: Formatted mode as `Text` (e.g. "normal").
+    /// - [`main_byte`]: byte index of the main cursor, 1 indexed.
+    /// - [`main_char`]: character index of the main cursor, 1
+    ///   indexed.
+    /// - [`main_line`]: line index of the main cursor, 1 indexed.
+    /// - [`main_col`]: column of the main cursor, 1 indexed.
+    /// - [`main_txt`]: `Text` showing main cursor and line count
+    ///   info.
+    /// - [`sels_txt`]: `Text` showing the number of cursors.
+    /// - [`mapped_txt`]: `Text` showing the keys being mapped.
+    /// - [`last_key`]: The last typed key.
+    ///
+    /// A rule of thumb is that every argument suffixed with `_txt` is
+    /// a function that returns a [`Text`], usually by making use
+    /// of the [`txt!`] macro. The [`Spacer`] in there is just one
+    /// of the many [`Tag`]s that can be placed on `Text`.
+    ///
+    /// The other functions could return anything that implements the
+    /// [`Display`] or [`Debug`] traits.
+    ///
+    /// It is rather easy to make a function that can be slotted into
+    /// the [`StatusLine`]:
+    ///
+    /// ```rust
+    /// # use duat::prelude::*;
+    /// fn zero_main_txt(buffer: &Buffer, area: &Area) -> Text {
+    ///     txt!(
+    ///         "[coord]{}[separator]|[coord]{}[separator]/[coord]{}",
+    ///         main_col(buffer, area) - 1,
+    ///         main_line(buffer) - 1,
+    ///         buffer.text().end_point().line()
+    ///     )
+    /// }
+    ///
+    /// let mode = mode_txt();
+    /// status!("{mode}{Spacer}{name_txt} {sels_txt} {zero_main_txt}");
+    /// ```
+    ///
+    /// This is just the main cursor ([`Selection`]), but 0 indexed,
+    /// as opposed to 1 indexed. The `[coord]` and `[spearator]`
+    /// bits apply the `"coord"` and `"separator"` [`Form`]s,
+    /// which you can change by calling [`form::set`].
+    ///
+    /// Of course, you could do this inline as well:
+    ///
+    /// ```rust
+    /// # fn test() {
+    /// # use duat::prelude::*;
+    /// let mode = mode_txt();
+    /// status!(
+    ///     "{mode}{Spacer}{name_txt} {sels_txt} [coord]{}[separator]|[coord]{}[separator]/[coord]{}",
+    ///     |buf: &Buffer, area: &Area| main_col(buf, area) - 1,
+    ///     |buf: &Buffer| main_line(buf) - 1,
+    ///     |buf: &Buffer| buf.text().end_point().line()
+    /// );
+    /// # }
+    /// ```
+    ///
+    /// A full list of which types can be used as `StatusLine` parts
+    /// can be found in the documentation for the [`status!`]
+    /// macro.
+    ///
+    /// # Where to place
+    ///
+    /// Normally, the [`StatusLine`] is included in the
+    /// [`FooterWidgets`], which is a "bundle" of [`Widget`]s,
+    /// including the [`PromptLine`] and [`Notifications`]. This
+    /// means that it will follow them around, so you have a few
+    /// options for customization of this group, all in the
+    /// [`Opts`] struct:
+    ///
+    /// - [`Opts::footer_on_top`]: Will place the `StatusLine`,
+    ///   `PromptLine`, and `Notifications` `Widget`s on top of the
+    ///   window, rather than at the bottom.
+    ///
+    /// - [`Opts::one_line_footer`]: These widgets will occupy one
+    ///   line rather than two, Kakoune style.
+    ///
+    /// # Which [`Buffer`]?
+    ///
+    /// As you could see above, the [`status!`] macro can take
+    /// functions that take `Buffer`s. But if there are multiple
+    /// open `Buffer`s, which one is used as an argument?
+    ///
+    /// Basically, the [`Buffer`] in question is the "most relevant
+    /// `Buffer`", which is determined as follows, on a `StatusLine`
+    /// by `StatusLine` basis:
+    ///
+    /// - If the `StatusLine` was [pushed onto a `Buffer`], then that
+    ///   `Buffer` is the argument.
+    /// - If it was [pushed around the window], the [active `Buffer`]
+    ///   is the argument. This is where the [`FooterWidgets`] are
+    ///   placed by default.
+    ///
+    /// This means that, with multiple `StatusLine`s, you could create
+    /// custom statuses that show global information, as well as
+    /// information about each [`Buffer`]:
+    ///
+    /// ```rust
+    /// setup_duat!(setup);
+    /// use duat::prelude::*;
+    ///
+    /// fn buf_percent(text: &Text, main: &Selection) -> Text {
+    ///     // The caret is the part of the cursor that moves, as opposed to the anchor.
+    ///     let caret = main.caret();
+    ///     txt!("[coord]{}%", (100 * caret.line()) / text.end_point().line())
+    /// }
+    ///
+    /// fn setup() {
+    ///     hook::add::<BufferOpened>(|pa, handle| {
+    ///         status!("{name_txt}{Spacer}{buf_percent}")
+    ///             .above()
+    ///             .push_on(pa, handle);
+    ///     });
+    /// }
+    /// ```
+    ///
+    /// With the snipped above, not only will there be the global
+    /// [`StatusLine`] at the bottom, but each [`Buffer`] will also
+    /// have a `StatusLine` above, showing the `Buffer`'s name and
+    /// the line percentage covered by the main cursor.
+    ///
+    /// [`StatusLine`]: crate::widgets::StatusLine
+    /// [`status!`]: crate::widgets::status
+    /// [`Buffer`]: crate::widgets::Buffer
+    /// [`txt!`]: crate::text::txt
+    /// [`Text`]: crate::text::Text
+    /// [`Spacer`]: crate::text::Spacer
+    /// [`Tag`]: crate::text::Tag
+    /// [`name_txt`]: crate::state::name_txt
+    /// [`path_txt`]: crate::state::path_txt
+    /// [`mode_name`]: crate::state::mode_name
+    /// [`mode_txt`]: crate::state::mode_txt
+    /// [`main_byte`]: crate::state::main_byte
+    /// [`main_char`]: crate::state::main_char
+    /// [`main_line`]: crate::state::main_line
+    /// [`main_col`]: crate::state::main_col
+    /// [`main_txt`]: crate::state::main_txt
+    /// [`sels_txt`]: crate::state::sels_txt
+    /// [`mapped_txt`]: crate::state::mapped_txt
+    /// [`last_key`]: crate::state::last_key
+    /// [`Display`]: std::fmt::Display
+    /// [`Debug`]: std::fmt::Debug
+    /// [`Selection`]: crate::mode::Selection
+    /// [`Form`]: crate::form::Form
+    /// [`form::set`]: crate::form::set
+    /// [`DataMap<&str, Text>`]: crate::data::DataMap
+    /// [pushed onto a `Buffer`]: crate::context::Handle::push_outer_widget
+    /// [pushed around the window]: crate::ui::Window::push_outer
+    /// [active `Buffer`]: crate::context::dynamic_buffer
+    /// [`Widget`]: crate::ui::Widget
+    /// [`PromptLine`]: crate::widgets::PromptLine
+    /// [`Notifications`]: crate::widgets::Notifications
+    /// [`FooterWidgets`]: crate::widgets::FooterWidgets
+    /// [`opts::set`]: set
+    pub fn fmt_status(&mut self, fmt: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'static) {
+        self.status_fmt_fn = Some(Box::new(fmt));
+    }
+}
+
+impl Default for Opts {
     fn default() -> Self {
         Self {
             highlight_current_line: false,
@@ -475,264 +676,9 @@ impl Default for StartOpts {
             notifications: NotificationsOpts::default(),
             whichkey: WhichKeyOpts::default(),
             logs: LogBookOpts::default(),
+            status_fmt_fn: None,
         }
     }
-}
-
-/// Changes global options for Duat.
-///
-/// Most of these options concern the [`Buffer`] widget, which is the
-/// primary [`Widget`] of Duat. But there are also options for the
-/// other widgets, as well as options to change the layout and
-/// behavior of Duat itself.
-///
-/// Within the `setup` function, this is how you'd use this function;
-///
-/// ```rust
-/// use duat::prelude::*;
-///
-/// opts::set(|opts| {
-///     opts.tabstop = 2;
-///     opts.scrolloff.x = 0;
-///     opts.duatmode.indent_on_capital_i = false;
-/// });
-/// ```
-///
-/// If you want to set these options on a [`Buffer`] by `Buffer`
-/// basis, you should reach out for [hooks]:
-///
-/// ```rust
-/// use duat::prelude::*;
-///
-/// hook::add::<BufferOpened>(|pa, handle| {
-///     let buffer = handle.write(pa);
-///
-///     match buffer.filetype() {
-///         Some("lua" | "c" | "javascript") => {
-///             buffer.opts.tabstop = 2;
-///         }
-///         Some("markdown") => {
-///             buffer.opts.extra_word_chars = &['-'];
-///             buffer.opts.wrap_on_word = true;
-///         }
-///         _ => {}
-///     }
-/// });
-/// ```
-///
-/// Do note that in this case, the only opts available in
-/// `buffer.opts` are those that actually concern only the [`Buffer`]
-/// struct. For now this is the [`PrintOpts`], which is also used by
-/// other `Widget`s, but it will have more dedicated options in the
-/// near future.
-///
-/// More options will come in the future!
-///
-/// [`Buffer`]: crate::widgets::Buffer
-/// [`ScrollOff { x: 3, y: 3 }`]: ScrollOff
-/// [hooks]: crate::hook
-/// [`Text`]: crate::text::Text
-/// [`Widget`]: crate::widgets::Widget
-pub fn set(set_fn: impl FnOnce(&mut StartOpts)) {
-    let mut opts = std::mem::take(&mut *OPTS.lock().unwrap());
-    set_fn(&mut opts);
-    duatmode::opts::set(|duatmode| *duatmode = opts.duatmode);
-    *OPTS.lock().unwrap() = opts;
-}
-
-/// Reformat the [`StatusLine`] using the [`status!`] macro.
-///
-/// The `status!` macro is very convenient for showing information
-/// about Duat, but most importantly to show information about
-/// [`Buffer`]s.
-///
-/// The `status!` macro follows the same syntax as the [`txt!`] macro,
-/// although inlined arguments tend to be functions, rather than just
-/// variables. Here's the default [`StatusLine`]:
-///
-/// ```rust
-/// # use duat::prelude::*;
-/// let mode = mode_txt();
-/// status!("{mode}{Spacer}{name_txt} {sels_txt} {main_txt}");
-/// ```
-///
-/// The `mode` has to be explicitely returned, because [`mode_txt`]
-/// isn't a `StatusLine` part, but a function that returns a
-/// [`DataMap<&str, Text>`], which can be used as a `StatusLine`
-/// part.
-///
-/// The [`Spacer`] here serves to do just that, separate the text into
-/// two parts, each on one part of the screen. You can place as many
-/// of these as you want, for example, this function will place the
-/// `Buffer`'s name in between the two side parts:
-///
-/// ```rust
-/// # use duat::prelude::*;
-/// let mode = mode_txt();
-/// status!("{mode}{Spacer}{name_txt}{Spacer}{sels_txt} {main_txt}");
-/// ```
-///
-/// # Configuration
-///
-/// Duat provides a bunch of built-in functions to modify the
-/// `StatusLine`:
-///
-/// - [`name_txt`]: `Text` with the `Buffer`'s name.
-/// - [`path_txt`]: `Text` with the `Buffer`'s full path.
-/// - [`mode_name`]: Unformatted mode (e.g. `"IncSearch<SearchFwd>"`).
-/// - [`mode_txt`]: Formatted mode as `Text` (e.g. "normal").
-/// - [`main_byte`]: byte index of the main cursor, 1 indexed.
-/// - [`main_char`]: character index of the main cursor, 1 indexed.
-/// - [`main_line`]: line index of the main cursor, 1 indexed.
-/// - [`main_col`]: column of the main cursor, 1 indexed.
-/// - [`main_txt`]: `Text` showing main cursor and line count info.
-/// - [`sels_txt`]: `Text` showing the number of cursors.
-/// - [`current_sequence_txt`]: `Text` showing the keys being mapped.
-/// - [`last_key`]: The last typed key.
-///
-/// A rule of thumb is that every argument suffixed with `_txt` is a
-/// function that returns a [`Text`], usually by making use of the
-/// [`txt!`] macro. The [`Spacer`] in there is just one of the many
-/// [`Tag`]s that can be placed on `Text`.
-///
-/// The other functions could return anything that implements the
-/// [`Display`] or [`Debug`] traits.
-///
-/// It is rather easy to make a function that can be slotted into the
-/// [`StatusLine`]:
-///
-/// ```rust
-/// # use duat::prelude::*;
-/// fn zero_main_txt(buffer: &Buffer, area: &Area) -> Text {
-///     txt!(
-///         "[coord]{}[separator]|[coord]{}[separator]/[coord]{}",
-///         main_col(buffer, area) - 1,
-///         main_line(buffer) - 1,
-///         buffer.text().end_point().line()
-///     )
-/// }
-///
-/// let mode = mode_txt();
-/// status!("{mode}{Spacer}{name_txt} {sels_txt} {zero_main_txt}");
-/// ```
-///
-/// This is just the main cursor ([`Selection`]), but 0 indexed, as
-/// opposed to 1 indexed. The `[coord]` and `[spearator]` bits apply
-/// the `"coord"` and `"separator"` [`Form`]s, which you can change by
-/// calling [`form::set`].
-///
-/// Of course, you could do this inline as well:
-///
-/// ```rust
-/// # fn test() {
-/// # use duat::prelude::*;
-/// let mode = mode_txt();
-/// status!(
-///     "{mode}{Spacer}{name_txt} {sels_txt} [coord]{}[separator]|[coord]{}[separator]/[coord]{}",
-///     |buf: &Buffer, area: &Area| main_col(buf, area) - 1,
-///     |buf: &Buffer| main_line(buf) - 1,
-///     |buf: &Buffer| buf.text().end_point().line()
-/// );
-/// # }
-/// ```
-///
-/// . A full list of which types can be used as `StatusLine` parts can
-/// be found in the documentation for the [`status!`] macro.
-///
-/// # Where to place
-///
-/// Normally, the [`StatusLine`] is included in the [`FooterWidgets`],
-/// which is a "bundle" of [`Widget`]s, including the [`PromptLine`]
-/// and [`Notifications`]. This means that it will follow
-/// them around, so you have a few options for customization of this
-/// group, all set in [`opts::set`]:
-///
-/// - [`StartOpts::footer_on_top`]: Will place the `StatusLine`,
-///   `PromptLine`, and `Notifications` `Widget`s on top of the
-///   window, rather than at the bottom.
-///
-/// - [`StartOpts::one_line_footer`]: These widgets will occupy one
-///   line, rather than two, Kakoune style.
-///
-/// # Which [`Buffer`]?
-///
-/// As you could see above, the [`status!`] macro can take functions
-/// that take `Buffer`s. But if there are multiple open `Buffer`s,
-/// which one is used as an argument?
-///
-/// Basically, the [`Buffer`] in question is the "most relevant
-/// `Buffer`", which is determined as follows, on a `StatusLine` by
-/// `StatusLine` basis:
-///
-/// - If the `StatusLine` was [pushed onto a `Buffer`], then that
-///   `Buffer` is the argument.
-/// - If it was [pushed around the window], the [active `Buffer`] is
-///   the argument. This is where the [`FooterWidgets`] are placed by
-///   default.
-///
-/// This means that, with multiple [`StatusLine`]s, you could create
-/// custom statuses that show global information, as well as
-/// information about each [`Buffer`]:
-///
-/// ```rust
-/// setup_duat!(setup);
-/// use duat::prelude::*;
-///
-/// fn buf_percent(text: &Text, main: &Selection) -> Text {
-///     // The caret is the part of the cursor that moves, as opposed to the anchor.
-///     let caret = main.caret();
-///     txt!("[coord]{}%", (100 * caret.line()) / text.end_point().line())
-/// }
-///
-/// fn setup() {
-///     hook::add::<BufferOpened>(|pa, handle| {
-///         status!("{name_txt}{Spacer}{buf_percent}")
-///             .above()
-///             .push_on(pa, handle);
-///     });
-/// }
-/// ```
-///
-/// With the snipped above, not only will there be the global
-/// [`StatusLine`] at the bottom, but each [`Buffer`] will also have a
-/// `StatusLine` above, showing the `Buffer`'s name and the line
-/// percentage covered by the main cursor.
-///
-/// [`StatusLine`]: crate::widgets::StatusLine
-/// [`status!`]: crate::widgets::status
-/// [`Buffer`]: crate::widgets::Buffer
-/// [`txt!`]: crate::text::txt
-/// [`Text`]: crate::text::Text
-/// [`Spacer`]: crate::text::Spacer
-/// [`Tag`]: crate::text::Tag
-/// [`name_txt`]: crate::state::name_txt
-/// [`path_txt`]: crate::state::path_txt
-/// [`mode_name`]: crate::state::mode_name
-/// [`mode_txt`]: crate::state::mode_txt
-/// [`main_byte`]: crate::state::main_byte
-/// [`main_char`]: crate::state::main_char
-/// [`main_line`]: crate::state::main_line
-/// [`main_col`]: crate::state::main_col
-/// [`main_txt`]: crate::state::main_txt
-/// [`sels_txt`]: crate::state::sels_txt
-/// [`current_sequence_txt`]: crate::state::current_sequence_txt
-/// [`last_key`]: crate::state::last_key
-/// [`Display`]: std::fmt::Display
-/// [`Debug`]: std::fmt::Debug
-/// [`Selection`]: crate::mode::Selection
-/// [`Form`]: crate::form::Form
-/// [`form::set`]: crate::form::set
-/// [`DataMap<&str, Text>`]: crate::data::DataMap
-/// [pushed onto a `Buffer`]: crate::context::Handle::push_outer_widget
-/// [pushed around the window]: crate::ui::Window::push_outer
-/// [active `Buffer`]: crate::context::dynamic_buffer
-/// [`Widget`]: crate::ui::Widget
-/// [`PromptLine`]: crate::widgets::PromptLine
-/// [`Notifications`]: crate::widgets::Notifications
-/// [`FooterWidgets`]: crate::widgets::FooterWidgets
-/// [`opts::set`]: set
-pub fn fmt_status(set_fn: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'static) {
-    *STATUSLINE_FMT.lock().unwrap() = Some(Box::new(set_fn));
 }
 
 /// Options for the [`WhichKey`] widget.
@@ -747,17 +693,10 @@ pub fn fmt_status(set_fn: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'stati
 ///
 /// [`WhichKey`]: crate::widgets::WhichKey
 /// [`disable_for`]: WhichKeyOpts::disable_for
-/// [help key]: StartOpts::help_key
+/// [help key]: Opts::help_key
 /// [remove]: crate::hook::remove
-#[allow(clippy::type_complexity)] // ??? where?
 pub struct WhichKeyOpts {
-    pub(crate) fmt_getter: Option<
-        Box<
-            dyn Fn() -> Box<dyn FnMut(Description) -> Option<(Text, Text)> + 'static>
-                + Send
-                + 'static,
-        >,
-    >,
+    pub(crate) fmt_getter: Option<Box<dyn Fn() -> DescriptionFn + Send + 'static>>,
     pub(crate) disabled_modes: Vec<TypeId>,
     pub(crate) always_shown_modes: Vec<TypeId>,
     /// Where to place the [`Widget`].
@@ -811,7 +750,7 @@ impl WhichKeyOpts {
     /// [always shown list].
     ///
     /// [`Mode`]: crate::mode::Mode
-    /// [help key]: StartOpts::help_key
+    /// [help key]: Opts::help_key
     /// [`Insert`]: crate::mode::Insert
     /// [always shown list]: Self::always_show
     pub fn disable_for<M: Mode>(&mut self) {
@@ -854,4 +793,5 @@ impl WhichKeyOpts {
     }
 }
 
-type StatusLineFn = Mutex<Option<Box<dyn FnMut(&mut Pass) -> StatusLineFmt + Send>>>;
+type StatusLineFn = Box<dyn FnMut(&mut Pass) -> StatusLineFmt + Send + 'static>;
+type DescriptionFn = Box<dyn FnMut(Description<'_>) -> Option<(Text, Text)> + 'static>;

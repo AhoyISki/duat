@@ -155,7 +155,8 @@ impl<'t> FwdIter<'t> {
                 *self = FwdIter::new_at(self.text, point.to_two_points_before(), false);
                 return false;
             }
-            RawTag::Spacer(_) | RawTag::SpawnedWidget(..) if b < self.init_point.byte() => {}
+            RawTag::Spacer(_) | RawTag::SpawnedWidget(..) | RawTag::Overlay(..)
+                if b < self.init_point.byte() => {}
             _ => return false,
         }
 
@@ -323,7 +324,8 @@ impl<'t> RevIter<'t> {
                 *self = RevIter::new_at(self.text, point.to_two_points_before());
                 return false;
             }
-            RawTag::Spacer(_) | RawTag::SpawnedWidget(..) if b > self.init_point.byte() => {}
+            RawTag::Spacer(_) | RawTag::SpawnedWidget(..) | RawTag::Overlay(..)
+                if b > self.init_point.byte() => {}
             _ => return false,
         }
 
@@ -336,10 +338,9 @@ impl<'t> Iterator for RevIter<'t> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let tag = self.tags.peek();
-
-        if let Some(&(b, tag)) = tag
-            && (b >= self.point.byte() || self.conceals > 0)
+        if let Some((b, tag)) = self
+            .tags
+            .next_if(|(b, _)| *b >= self.point.byte() || self.conceals > 0)
         {
             self.tags.next();
 

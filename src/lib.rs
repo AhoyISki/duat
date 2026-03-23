@@ -535,7 +535,7 @@ pub mod private_exports {
         utils::catch_panic,
     };
 
-    pub use crate::setup::{post_setup, pre_setup};
+    pub use crate::setup::full_setup;
 }
 
 /// Pre and post setup for Duat
@@ -548,12 +548,7 @@ macro_rules! setup_duat {
         use $crate::{prelude::Buffer, private_exports::*};
 
         fn main() -> Result<(), std::io::Error> {
-            start(|| {
-                let ui = pre_setup();
-                catch_panic(setup);
-                let (already_plugged, buffer_opts) = post_setup();
-                (ui, already_plugged, buffer_opts)
-            })
+            start(|| full_setup(setup))
         }
     };
 }
@@ -586,7 +581,7 @@ pub mod prelude {
             self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,
             User, alias, alt, ctrl, event, map, shift,
         },
-        opts::{self, ScrollOff},
+        opts::{Opts, ScrollOff},
         setup_duat,
         state::*,
         text::{
