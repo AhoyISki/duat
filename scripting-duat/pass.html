@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-361da70c.js";
+            window.path_to_searchindex_js = "../searchindex-36010e7a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -195,7 +195,7 @@ and whenever you borrow it normally, you get non mutable access to said state:</
 // You don't need to write the types of `pa` and `handle`, they're
 // just here for tutorial reasons.
 hook::add::&lt;BufferOpened&gt;(|pa: &amp;mut Pass, handle: &amp;Handle&lt;Buffer&gt;| {
-    // This function will mutably borrow the `Pass`, preventing other 
+    // This function will mutably borrow the `Pass`, preventing other
     // uses of it, thus following Rust's mutability XOR aliasing rule.
     let buf_mut: &amp;mut Buffer = handle.write(pa);
 
@@ -235,7 +235,7 @@ mutable borrow, which can’t be reused after acquiring other references, and th
 second one is the immutable borrow, which can coexist with any number of other
 immutable references.</p>
 <p>These two borrows govern all of the configuration of duat, and they can only
-bedone on the main thread, given the non <code>Send</code> nature of <code>&amp;Pass</code> and <code>&amp;mut  Pass</code>. Additionally, you won’t always have a <code>&amp;mut Pass</code>. In some APIs, you
+bedone on the main thread, given the non <code>Send</code> nature of <code>&amp;Pass</code> and <code>&amp;mut Pass</code>. Additionally, you won’t always have a <code>&amp;mut Pass</code>. In some APIs, you
 only get access to a <code>&amp;Pass</code>, which grants only reading access to global state,
 making for APIs that are harder to mess up.</p>
 <blockquote class="blockquote-tag blockquote-tag-tip">
@@ -263,11 +263,11 @@ global access will eventually go through an <code>RwData</code>.</p>
 <code>StatusLine</code> wether a value has changed:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     let value = RwData::new(0);
     let value_clone = value.clone();
-   
-    opts::fmt_status(move |_| {
+
+    opts.fmt_status(move |_| {
         let value_changed = {
             // One copy for this function
             let value = value_clone.clone();
@@ -279,13 +279,13 @@ fn setup() {
                 }
             }
         };
-        
+
         // And one copy for the `StatusLine`.
         // This is done so the `StatusLine` updates automatically.
         let value = value_clone.clone();
         status!("{name_txt} {value_changed}{value}{Spacer}{main_txt}")
     });
-    
+
     cmd::add("change-value", move |pa: &amp;mut Pass, new: usize| {
         *value.write(pa) = new;
         Ok(None)
@@ -301,38 +301,38 @@ function was called in any other copy of the same <code>RwData</code>:</p>
 fn test(pa: &amp;mut Pass) {
     let value = RwData::new("hello");
     let value_clone = value.clone();
-    
+
     // Since `RwData::read` hasn't been called, both are considered
     // to have changed.
     assert!(value.has_changed() == true);
     assert!(value_clone.has_changed() == true);
-    
+
     // Further calls to `RwData::has_changed` will return `true` until
     // you call `RwData::read`
     assert!(value.has_changed() == true);
-    
+
     _ = value_clone.read(pa);
-    
+
     *value.write(pa) = "bye";
-    
+
     // Since `value` was written to, copies of `value` will be notified
     // that the data within has changed.
     assert!(value_clone.has_changed() == true);
-    
+
     // An `RwData::write` also assumes that you have read the value, so
     // `value.has_changed()` will return `false`.
     assert!(value.has_changed() == false);
-    
+
     // If you don't have a Pass available (rare), you can also say that
     // you don't care if the data has changed by calling this function.
     value_clone.declare_as_read();
-    
+
     assert!(value_clone.has_changed() == false);
-    
+
     // Without a Pass, you can also tell other copies that a value has
     // been changed, even if nothing changed at all
     value_clone.declare_written();
-    
+
     assert!(value.has_changed() == true);
 }</code></pre>
 <h3 id="widget-handles"><a class="header" href="#widget-handles">Widget <code>Handle</code>s</a></h3>
@@ -353,7 +353,7 @@ fn setup() {
     cmd::add("dedup-selections", |pa: &amp;mut Pass| {
         let buf: Handle&lt;Buffer&gt; = context::current_buffer(pa);
         let mut dupes = Vec::new();
-        
+
         // Handle::edit_all will apply an editing function to all cursors
         // Because it edits the cursors of the `Buffer`, it needs
         // mutable access to it, hence the `&amp;mut Pass`.
@@ -364,17 +364,18 @@ fn setup() {
                 dupes.push(c.selection().to_string());
             }
         });
-    
+
         Ok(None)
     })
     .doc(txt!("Removes selections with duplicate text content"), None);
 }</code></pre>
 <p>The <code>raison d'être</code> of <code>Handle</code>s is to keep both the <code>RwArea</code> and <code>RwData&lt;W&gt;</code>
 in the same struct, so you can use methods that require reading from both:</p>
-<pre><code class="language-rust">use duat::prelude::*;
+<pre><code class="language-rust">setup_duat!(setup);
+use duat::prelude::*;
 
-fn setup() {
-    opts::fmt_status(|_| {
+fn setup(opts: &amp;mut Opts) {
+    opts.fmt_status(|_| {
         status!("{name_txt} {}{Spacer}{main_txt}{cursors_on_screen}", mode_txt())
     });
 }
@@ -383,9 +384,9 @@ fn cursors_on_screen(pa: &amp;Pass, handle: &amp;Handle) -&gt; Text {
     /// In order to get the range of the `Text` that is on screen,
     /// you need both the `Buffer` and the `RwArea` at the same time.
     let range = handle.full_printed_range(pa);
-    
+
     let total = handle.selections(pa).iter_within(range).count();
-    
+
     txt!("On screen[separator]:[] [coord]{total}")
 }</code></pre>
 <h3 id="the-type-erased-rwarea"><a class="header" href="#the-type-erased-rwarea">The type erased <code>RwArea</code></a></h3>
@@ -401,15 +402,15 @@ the need for a <code>Pass</code>.</p>
 fn test&lt;W: Widget&gt;(pa: &amp;mut Pass, handle: &amp;Handle&lt;W&gt;) {
     let rw_area: &amp;RwArea = handle.area();
     let area: &amp;mut Area = rw_area.write(pa);
-    
+
     area.set_width(5.0).unwrap();
-    
+
     // Normally, calling `Handle::write` returns only `W`, for
     // convenience reasons and because you mostly don't need to
     // access the `Area` value.
     // You can do this if you need mutable access to both.
     let (widget, area): (&amp;mut W, &amp;mut Area) = handle.write_with_area(pa);
-    
+
     area.set_height(10.0).unwrap();
     widget.text_mut().replace_range(.., "lmao");
 }</code></pre>
@@ -424,11 +425,11 @@ on the <code>StatusLine</code> just to get it to update properly.</p>
 <p>Well, there is actually an existing solution to that, which can be achieved by calling the <code>RwData::map</code> function:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     let value = RwData::new(0);
     let value_clone = value.clone();
-   
-    opts::fmt_status(move |_| {
+
+    opts.fmt_status(move |_| {
         // Clone to check if it has changed from within the function,
         // you never really need to do this.
         let clone = value_clone.clone();
@@ -440,10 +441,10 @@ fn setup() {
                 format!("{value}")
             }
         });
-        
+
         status!("{name_txt} {show_value}{Spacer}{main_txt}")
     });
-    
+
     cmd::add("change-value", move |pa: &amp;mut Pass, new: usize| {
         *value.write(pa) = new;
         Ok(None)
@@ -477,7 +478,7 @@ use std::{sync::atomic::{AtomicBool, Ordering}, time::Duration};
 static DATA: BulkDataWriter&lt;Duration&gt; = BulkDataWriter::new();
 static QUITTING: AtomicBool = AtomicBool::new(false);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     std::thread::spawn(|| {
         let one_sec = Duration::from_secs(1);
         while !QUITTING.load(Ordering::Relaxed) {
@@ -517,17 +518,17 @@ fn test(pa: &amp;mut Pass, lhs: [&amp;RwData&lt;u32&gt;; 2], rhs: &amp;RwData&lt
     // of `RwData`-like structures and this function will give you a
     // mutable reference to all of them.
     let ([l0, l1], r): ([&amp;mut u32; 2], &amp;mut u32) = pa.write_many((lhs, rhs));
-    
+
     let trouble = [lhs[0], lhs[0]];
     // Note here that I'm writing to the same variable twice.
     // Instead of returning two mutable references to the same value, this
     // call will just panic, returning control to Duat and cancelling
     // whatever you were doing.
     let [oops0, oops1] = pa.write_many(trouble);
-    
+
     // If you think this might happen, you can call this instead.
     let handled = pa.try_write_many(trouble);
-    
+
     // This function will return an `Err(text)` in the case of failure.
     assert!(handled.is_err());
 }</code></pre>

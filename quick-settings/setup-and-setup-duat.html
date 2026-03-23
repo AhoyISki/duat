@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-361da70c.js";
+            window.path_to_searchindex_js = "../searchindex-36010e7a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -186,7 +186,7 @@
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {}</code></pre>
+fn setup(opts: &amp;mut Opts) {}</code></pre>
 <p>That’s because Duat will call the <code>setup</code> function (after some initial setup,
 and before some final setup) in order configure Duat. For all intents and
 purposes, treat the <code>setup</code> function as if it were the <code>init.lua</code> on a neovim
@@ -194,23 +194,23 @@ configuration.</p>
 <p>Of course, not everything needs to be placed inside of this function. For
 example, you could separate the plugins into a separate function, if you think
 that will look cleaner:</p>
-<pre><code class="language-rust"><span class="boring">mod duat_catppuccin {
+<pre><code class="language-rust"><span class="boring">mod duat_hop {
 </span><span class="boring">    use duat::prelude::*;
 </span><span class="boring">    #[derive(Default)]
-</span><span class="boring">    pub struct Catppuccin;
-</span><span class="boring">    impl Plugin for Catppuccin {
+</span><span class="boring">    pub struct Hop;
+</span><span class="boring">    impl Plugin for Hop {
 </span><span class="boring">        fn plug(self, _: &amp;Plugins) { todo!() }
 </span><span class="boring">    }
 </span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     add_plugins();
 }
 
 fn add_plugins() {
-    plug(duat_catppuccin::Catppuccin::default());
+    plug(duat_hop::Hop::default());
 }</code></pre>
 <p>You can add <code>Plugin</code>s to duat by calling the <code>plug</code> function. By default, the
 <code>Treesitter</code> <code>MatchPairs</code>  plugins are added, providing syntax highlighting,

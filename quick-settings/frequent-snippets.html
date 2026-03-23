@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-361da70c.js";
+            window.path_to_searchindex_js = "../searchindex-36010e7a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -192,7 +192,7 @@ plugin for one:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
 }</code></pre>
 <p>This won’t print anything to the screen while you’re typing, making it seem
@@ -201,14 +201,14 @@ use this:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
 }</code></pre>
 <p>Additionally, if you want to write to the file on <code>jk</code> as well, you can do this:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
 }</code></pre>
 <p>If you want to, you can also have this behavioron the <code>PromptLine</code>, i.e., while
@@ -216,7 +216,7 @@ writing commands and searches:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     map::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
 }</code></pre>
 <h2 id="statusline-on-each-buffer"><a class="header" href="#statusline-on-each-buffer"><code>StatusLine</code> on each <code>Buffer</code></a></h2>
@@ -224,7 +224,7 @@ fn setup() {
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         status!("{name_txt}{Spacer}{main_txt}")
             .above()
@@ -238,21 +238,19 @@ following snippet is enough:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
-    opts::set(|opts| {
-        opts.one_line_footer = true;
-    });
+fn setup(opts: &amp;mut Opts) {
+    opts.one_line_footer = true;
 }</code></pre>
 <p>This will call <code>FooterWidgets::one_line</code> on the window’s <code>FooterWidgets</code>.</p>
 <p>If you want one of these on each <code>Buffer</code>, you can do this instead:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::remove("FooterWidgets");
 
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
-        FooterWidgets::default().one_line().push_on(pa, handle);
+        widgets::FooterWidgets::default().one_line().push_on(pa, handle);
     });
 }</code></pre>
 <h2 id="common-statusline-parts"><a class="header" href="#common-statusline-parts">Common StatusLine parts</a></h2>
@@ -305,9 +303,9 @@ all evaluated at compile time. For more information about them, see the
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     // Default options for the StatusLine widget
-    opts::fmt_status(|pa| {
+    opts.fmt_status(|pa| {
         // If on one line footer mode:
         let mode = mode_txt();
         let param = duat_param_txt();
@@ -322,8 +320,8 @@ fn setup() {
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
-    opts::fmt_status(|_| {
+fn setup(opts: &amp;mut Opts) {
+    opts.fmt_status(|_| {
         status!(
             "{name_txt}{Spacer}{} {sels_txt} [coord]c{} l{}[separator]|[coord]{}",
             mode_txt(),
@@ -337,8 +335,8 @@ fn setup() {
 <pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
-fn setup() {
-    opts::fmt_status(|_| {
+fn setup(opts: &amp;mut Opts) {
+    opts.fmt_status(|_| {
         status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt()) 
     });
 }
@@ -368,7 +366,7 @@ following  snippet:</p>
 <pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         let buffer = handle.write(pa);
         buffer.opts.tabstop = match buffer.filetype() {
@@ -382,7 +380,7 @@ should be a part of words. In this case, I’m adding <code>'-'</code> to the li
 <pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         let buffer = handle.write(pa);
         match buffer.filetype() {
@@ -430,7 +428,7 @@ fn name_txt(buffer: &amp;Buffer) -&gt; Text {
 <pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         status!("{name_txt}{Spacer}{main_txt}").above().push_on(pa, handle);
     });
@@ -441,7 +439,7 @@ depending on the <code>Buffer</code>?</p>
 <pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         let status = if let Ok(crate_dir) = duat::utils::crate_dir()
             &amp;&amp; handle.read(pa).path().starts_with(crate_dir) {

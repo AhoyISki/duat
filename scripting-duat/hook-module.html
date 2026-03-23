@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-361da70c.js";
+            window.path_to_searchindex_js = "../searchindex-36010e7a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -188,17 +188,18 @@ is the fact that they present you with arguments whose type is inferred at
 compile time:</p>
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
+use widgets::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     // Note the Pass, so you have mutable global state access.
     // The type of the second argument is inferred, it is only
     // included here for example's sake.
-    hook::add::&lt;ModeSwitched&gt;(|pa, (old, new): (&amp;str, &amp;str)| {
-        if old == "Insert" &amp;&amp; new == "Normal" {
+    hook::add::&lt;ModeSwitched&gt;(|pa, switch| {
+        if switch.old.name == "Insert" &amp;&amp; switch.new.name == "Normal" {
             _ = context::current_buffer(pa).save(pa);
         }
     });
-    
+
     hook::add::&lt;BufferOpened&gt;(|pa, handle: &amp;Handle| {
         let buf = handle.write(pa);
         match buf.filetype() {
@@ -210,18 +211,18 @@ fn setup() {
                 buf.opts.tabstop = 2;
                 buf.opts.extra_word_chars = &amp;['-'];
             }
-            Some("lua" | "javascript") =&gt; buf.opts.tabstop = 2, 
+            Some("lua" | "javascript") =&gt; buf.opts.tabstop = 2,
             _ =&gt; {}
         };
     });
-    
+
     // You can call hooks for many things...
     hook::add::&lt;WidgetOpened&lt;LineNumbers&gt;&gt;(|pa, handle| {
         // This will put a vertical ruler on the left of the `LineNumbers`
         // making for a "stylish" column of numbers.
         VertRule::builder().push_on(pa, handle);
     });
-    
+
     let key_count = RwData::new(0);
     hook::add::&lt;KeyTyped&gt;({
         let key_count = key_count.clone();
@@ -229,8 +230,8 @@ fn setup() {
             *key_count.write(pa) += 1;
         }
     });
-    
-    opts::fmt_status(move |_| {
+
+    opts.fmt_status(move |_| {
         let mode_txt = mode_txt();
         let key_count = key_count.clone();
         status!("{name_txt} {mode_txt}{Spacer}{sels_txt} {main_txt} {key_count}")
@@ -306,7 +307,7 @@ fn setup_hook() {
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     // This would be called from a `Plugin::plug` function
     setup_hook();
 
@@ -334,7 +335,7 @@ a function like this:</p>
 <pre><code class="language-rust"><span class="boring">struct FooHook;
 </span><span class="boring">impl Hookable for FooHook {
 </span><span class="boring">    type Input&lt;'h&gt; = (i32, bool);
-</span><span class="boring">    
+</span><span class="boring">
 </span><span class="boring">    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
 </span><span class="boring">        (0, true)
 </span><span class="boring">    }
@@ -342,7 +343,7 @@ a function like this:</p>
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;FooHook&gt;(|pa, (arg1, arg2): (i32, bool)| {
         // ...
     });
@@ -356,16 +357,14 @@ buffer-wise configuration options:</p>
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     // Options set initially for all `Buffer`s
-    opts::set(|opts| {
-        opts.tabstop = 4;
-    });
-    
+    opts.tabstop = 4;
+
     // Changing those options on a buffer by buffer basis.
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         let buf = handle.write(pa);
-        
+
         match buf.filetype() {
             Some("haskell" | "commonlisp") =&gt; buf.opts.tabstop = 2,
             Some("txt" | "markdown" | "asciidoc") =&gt; {

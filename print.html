@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-361da70c.js";
+            window.path_to_searchindex_js = "searchindex-36010e7a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-74f781a9.js"></script>
@@ -521,7 +521,7 @@ later on to help you better understand duat.</p>
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {}</code></pre>
+fn setup(opts: &amp;mut Opts) {}</code></pre>
 <p>That’s because Duat will call the <code>setup</code> function (after some initial setup,
 and before some final setup) in order configure Duat. For all intents and
 purposes, treat the <code>setup</code> function as if it were the <code>init.lua</code> on a neovim
@@ -529,23 +529,23 @@ configuration.</p>
 <p>Of course, not everything needs to be placed inside of this function. For
 example, you could separate the plugins into a separate function, if you think
 that will look cleaner:</p>
-<pre><code class="language-rust"><span class="boring">mod duat_catppuccin {
+<pre><code class="language-rust"><span class="boring">mod duat_hop {
 </span><span class="boring">    use duat::prelude::*;
 </span><span class="boring">    #[derive(Default)]
-</span><span class="boring">    pub struct Catppuccin;
-</span><span class="boring">    impl Plugin for Catppuccin {
+</span><span class="boring">    pub struct Hop;
+</span><span class="boring">    impl Plugin for Hop {
 </span><span class="boring">        fn plug(self, _: &amp;Plugins) { todo!() }
 </span><span class="boring">    }
 </span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     add_plugins();
 }
 
 fn add_plugins() {
-    plug(duat_catppuccin::Catppuccin::default());
+    plug(duat_hop::Hop::default());
 }</code></pre>
 <p>You can add <code>Plugin</code>s to duat by calling the <code>plug</code> function. By default, the
 <code>Treesitter</code> <code>MatchPairs</code>  plugins are added, providing syntax highlighting,
@@ -557,7 +557,7 @@ automatic indentation, and matching parenthesis highlighting. There is also the
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     // The stuff inside your setup...
 }</code></pre>
 <p>This will import everything in the <code>prelude</code> module of <code>duat</code>. This should have
@@ -577,18 +577,16 @@ something like this:</p>
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
-    opts::set(|opts| {
-        opts.wrap_lines = true;
-        opts.wrapping_cap = Some(80);
-    });
+fn setup(opts: &amp;mut Opts) {
+    opts.wrap_lines = true;
+    opts.wrapping_cap = Some(80);
 
     form::set("caret.main", Form::new().yellow());
 
     cmd::add("set-rel-lines", |pa: &amp;mut Pass| {
         let handles: Vec&lt;_&gt; = context::windows()
             .handles(pa)
-            .filter_map(|handle| handle.try_downcast::&lt;LineNumbers&gt;())
+            .filter_map(|handle| handle.try_downcast::&lt;widgets::LineNumbers&gt;())
             .collect();
 
         for handle in handles {
@@ -613,100 +611,99 @@ values.</p>
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     // Default options for the Buffer widget
-    opts::set(|opts| {
-        // Buffer options:
-        opts.wrap_lines = false;
-        opts.wrap_on_word = false;
-        // Where to wrap, as opposed to at the rightmost edge.
-        opts.wrapping_cap = None::&lt;u32&gt;;
-        // Indent wrapped lines.
-        opts.indent_wraps = true;
-        opts.tabstop = 4;
-        // Minimum cursor distance from the top and bottom edges.
-        opts.scrolloff.x = 3;
-        // Minimum cursor distance from the left and right edges.
-        opts.scrolloff.y = 3;
-        opts.extra_word_chars = &amp;[];
-        // Forces scrolloff at the end of a line.
-        opts.force_scrolloff = false;
-        
-        // General settings:
-        // Place the bottom widgets on the top of the screen.
-        opts.footer_on_top = false;
-        // Make the bottom widgets take up only one line of space.
-        opts.one_line_footer = false;
-        // Shows available keybindings
-        opts.help_key = Some(KeyEvent::new(KeyCode::Char('?'), mode::KeyMod::CONTROL));
-        
-        // duatmode settings:
-        // Inserts a \t instead of spaces when pressing Tab
-        opts.duatmode.insert_tabs = false;
-        // How to handle the Tab key
-        opts.duatmode.tab_mode = opts::TabMode::VerySmart;
-        // Auto indent new lines on tree-sitter Buffers
-        opts.duatmode.auto_indent = true;
-        // Characters that trigger a reindentation
-        opts.duatmode.indent_chars = &amp;['\n', '(', ')', '{', '}', '[', ']'];
-        // Reindent when pressing 'I' in normal mode
-        opts.duatmode.indent_on_capital_i = true;
-        // Makes the 'f' and 't' keys set the search pattern
-        opts.duatmode.f_and_t_set_search = true;
-        // Bracket pairs to be considered by keys like 'm' and the 'u' object
-        opts.duatmode.set_brackets([["(", ")"], ["{", "}"], ["[", "]"]]);
-        
-        // LineNumbers options:
-        opts.line_numbers.relative = false;
-        // Where to align the numbers
-        opts.line_numbers.align = std::fmt::Alignment::Left;
-        // Where to align the main line number
-        opts.line_numbers.main_align = std::fmt::Alignment::Right;
-        // Wether to show wrapped line's numbers
-        opts.line_numbers.show_wraps = false;
-        // Place the widget on the right, as opposed to on the left
-        opts.line_numbers.on_the_right = false;
-        
-        // Notifications options:
-        // Reformat the notifications messages
-        opts.notifications.fmt(|rec| todo!("default fmt function"));
-        // Which mask to use to show the messages
-        opts.notifications.set_mask(|rec| todo!("error for error, info for info, etc"));
-        // Which log levels will actually show up on the notifications
-        opts.notifications.set_allowed_levels([
-            context::Level::Error,
-            context::Level::Warn,
-            context::Level::Info
-        ]);
-        
-        // WhichKey options:
-        // How to format each keybinding entry on the widget
-        opts.whichkey.fmt(|desc| todo!("default fmt function"));
-        // Disable the widget for the given Mode
-        // opts.whichkey.disable_for::&lt;{Mode in question}&gt;();
-        // Always show the widget for the given Mode
-        opts.whichkey.always_show::&lt;User&gt;();
-        // Removes the Mode from the disable_for and always_show lists
-        // opts.whichkey.show_normally::&lt;{Mode in question}&gt;();
-        
-        // LogBook options:
-        // How to format each message
-        opts.logs.fmt(|rec| todo!("default log fmt"));
-        opts.logs.close_on_unfocus = true;
-        // It can be shown via the "logs" command
-        opts.logs.hidden = false;
-        // Where to place it
-        opts.logs.side = ui::Side::Below;
-        // Is ignored when the side is Left or Right
-        opts.logs.height = 8.0;
-        // Is ignored when the side is Above or Below
-        opts.logs.width = 50.0;
-        // Wether to show the source of the message (on the default fmt)
-        opts.logs.show_source = true;
-    });
+
+    // Buffer options:
+    opts.wrap_lines = false;
+    opts.wrap_on_word = false;
+    // Where to wrap, as opposed to at the rightmost edge.
+    opts.wrapping_cap = None::&lt;u32&gt;;
+    // Indent wrapped lines.
+    opts.indent_wraps = true;
+    opts.tabstop = 4;
+    // Minimum cursor distance from the top and bottom edges.
+    opts.scrolloff.x = 3;
+    // Minimum cursor distance from the left and right edges.
+    opts.scrolloff.y = 3;
+    opts.extra_word_chars = &amp;[];
+    // Forces scrolloff at the end of a line.
+    opts.force_scrolloff = false;
+
+    // General settings:
+    // Place the bottom widgets on the top of the screen.
+    opts.footer_on_top = false;
+    // Make the bottom widgets take up only one line of space.
+    opts.one_line_footer = false;
+    // Shows available keybindings
+    opts.help_key = Some(KeyEvent::new(KeyCode::Char('?'), mode::KeyMod::CONTROL));
+
+    // duatmode settings:
+    // Inserts a \t instead of spaces when pressing Tab
+    opts.duatmode.insert_tabs = false;
+    // How to handle the Tab key
+    opts.duatmode.tab_mode = TabMode::VerySmart;
+    // Auto indent new lines on tree-sitter Buffers
+    opts.duatmode.auto_indent = true;
+    // Characters that trigger a reindentation
+    opts.duatmode.indent_chars = &amp;['\n', '(', ')', '{', '}', '[', ']'];
+    // Reindent when pressing 'I' in normal mode
+    opts.duatmode.indent_on_capital_i = true;
+    // Makes the 'f' and 't' keys set the search pattern
+    opts.duatmode.f_and_t_set_search = true;
+    // Bracket pairs to be considered by keys like 'm' and the 'u' object
+    opts.duatmode.set_brackets([["(", ")"], ["{", "}"], ["[", "]"]]);
+
+    // LineNumbers options:
+    opts.line_numbers.relative = false;
+    // Where to align the numbers
+    opts.line_numbers.align = std::fmt::Alignment::Left;
+    // Where to align the main line number
+    opts.line_numbers.main_align = std::fmt::Alignment::Right;
+    // Wether to show wrapped line's numbers
+    opts.line_numbers.show_wraps = false;
+    // Place the widget on the right, as opposed to on the left
+    opts.line_numbers.on_the_right = false;
+
+    // Notifications options:
+    // Reformat the notifications messages
+    opts.notifications.fmt(|rec| todo!("default fmt function"));
+    // Which mask to use to show the messages
+    opts.notifications.set_mask(|rec| todo!("error for error, info for info, etc"));
+    // Which log levels will actually show up on the notifications
+    opts.notifications.set_allowed_levels([
+        context::Level::Error,
+        context::Level::Warn,
+        context::Level::Info
+    ]);
+
+    // WhichKey options:
+    // How to format each keybinding entry on the widget
+    opts.whichkey.fmt(|desc| todo!("default fmt function"));
+    // Disable the widget for the given Mode
+    // opts.whichkey.disable_for::&lt;{Mode in question}&gt;();
+    // Always show the widget for the given Mode
+    opts.whichkey.always_show::&lt;User&gt;();
+    // Removes the Mode from the disable_for and always_show lists
+    // opts.whichkey.show_normally::&lt;{Mode in question}&gt;();
+
+    // LogBook options:
+    // How to format each message
+    opts.logs.fmt(|rec| todo!("default log fmt"));
+    opts.logs.close_on_unfocus = true;
+    // It can be shown via the "logs" command
+    opts.logs.hidden = false;
+    // Where to place it
+    opts.logs.side = ui::Side::Below;
+    // Is ignored when the side is Left or Right
+    opts.logs.height = 8.0;
+    // Is ignored when the side is Above or Below
+    opts.logs.width = 50.0;
+    // Wether to show the source of the message (on the default fmt)
+    opts.logs.show_source = true;
 
     // Default options for the StatusLine widget
-    opts::fmt_status(|pa| {
+    opts.fmt_status(|pa| {
         // If on one line footer mode:
         let mode = mode_txt();
         let param = duat_param_txt();
@@ -726,7 +723,7 @@ alongside the <code>form</code> module, are imported by the prelude:</p>
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     // Setting by Form
     form::set("punctuation.bracket", Form::new().red());
     form::set("default", Form::new().with("#575279").on("#faf4ed"));
@@ -756,21 +753,10 @@ like <code>default.StatusLine</code>, which will change the <code>default</code>
 <p>The other main function that you will use from this module is the
 <code>form::set_colorscheme</code> function. This function will change the colorscheme to
 a previously named one:</p>
-<pre><code class="language-rust"><span class="boring">mod duat_catppuccin {
-</span><span class="boring">    use duat::prelude::*;
-</span><span class="boring">    #[derive(Default)]
-</span><span class="boring">    pub struct Catppuccin;
-</span><span class="boring">    impl Plugin for Catppuccin {
-</span><span class="boring">        fn plug(self, _: &amp;Plugins) { todo!() }
-</span><span class="boring">    }
-</span><span class="boring">}
-</span>setup_duat!(setup);
+<pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
-    // Adds four colorschemes, "catppuccin-latte" among them.
-    plug(duat_catppuccin::Catppuccin::default());
-
+fn setup(opts: &amp;mut Opts) {
     colorscheme::set("catppuccin-latte");
 }</code></pre>
 <h3 id="form-inheritance"><a class="header" href="#form-inheritance"><code>Form</code> inheritance</a></h3>
@@ -1028,7 +1014,7 @@ works:</p>
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     map::&lt;User&gt;("f", "&lt;Esc&gt;&lt;A-j&gt;|fold -s -w 80&lt;Enter&gt;");
     alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
     alias::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
@@ -1047,33 +1033,31 @@ as ““text”“, but when you press <code>k</code>, you will immediately exi
 <code>Mode</code>.</p>
 <p><code>User</code> is a standard <code>Mode</code> in Duat. It is meant to be a “hub” for Plugin
 writers to put default mappings on. Sort of like the leader key in Vim/Neovim.
-On <code>Normal</code> mode, by default, this mode is entered by pressing the space bar.
-While you <em>can</em> change that like this:</p>
+On <code>Normal</code> mode, by default, this mode is entered by pressing the space bar.</p>
+<p>If you wanted to, say, change the <code>User</code> key to <code>\</code> like in neovim, you could
+do this:</p>
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     map::&lt;Normal&gt;(" ", "");
     // In rust, you have to escap a backslash
     map::&lt;Normal&gt;(r"\", " ");
 }</code></pre>
-<p>You <em>should</em> prefer doing this:</p>
+<p>Or, you could <em>also</em> do this:</p>
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     map::&lt;Normal&gt;(" ", "");
-    map::&lt;Normal&gt;("\\", User);
+    map::&lt;Normal&gt;("\\", |_: &amp;mut Pass| mode::set(User));
 }</code></pre>
 <p>In this case, instead of putting a sequence of keys to replace the mapped ones,
-I placed the mode directly.</p>
-<p>This is allowed in order to support custom <code>Mode</code>s. That way, you can just
-place the <code>Mode</code> as the second argument, and the mapping will switch modes
-instead of sending keys. This also works with <code>alias</code>es.</p>
+I’m passing in a function that will be called when this mapping is triggered.</p>
 <blockquote class="blockquote-tag blockquote-tag-note">
 <p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
 <p>In this case, since <code>User</code> is a struct with no fields, I could just put
-<code>User</code> as the second argument, which acts as a constructor. But in most other
+<code>User</code> as the argument, which acts as a constructor. But in most other
 <code>Mode</code>s, you’re gonna have to write something like <code>Insert::new()</code> as the
 argument instead.</p>
 </blockquote>
@@ -1144,7 +1128,7 @@ plugin for one:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
 }</code></pre>
 <p>This won’t print anything to the screen while you’re typing, making it seem
@@ -1153,14 +1137,14 @@ use this:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
 }</code></pre>
 <p>Additionally, if you want to write to the file on <code>jk</code> as well, you can do this:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
 }</code></pre>
 <p>If you want to, you can also have this behavioron the <code>PromptLine</code>, i.e., while
@@ -1168,7 +1152,7 @@ writing commands and searches:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     map::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
 }</code></pre>
 <h2 id="statusline-on-each-buffer"><a class="header" href="#statusline-on-each-buffer"><code>StatusLine</code> on each <code>Buffer</code></a></h2>
@@ -1176,7 +1160,7 @@ fn setup() {
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         status!("{name_txt}{Spacer}{main_txt}")
             .above()
@@ -1190,21 +1174,19 @@ following snippet is enough:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
-    opts::set(|opts| {
-        opts.one_line_footer = true;
-    });
+fn setup(opts: &amp;mut Opts) {
+    opts.one_line_footer = true;
 }</code></pre>
 <p>This will call <code>FooterWidgets::one_line</code> on the window’s <code>FooterWidgets</code>.</p>
 <p>If you want one of these on each <code>Buffer</code>, you can do this instead:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::remove("FooterWidgets");
 
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
-        FooterWidgets::default().one_line().push_on(pa, handle);
+        widgets::FooterWidgets::default().one_line().push_on(pa, handle);
     });
 }</code></pre>
 <h2 id="common-statusline-parts"><a class="header" href="#common-statusline-parts">Common StatusLine parts</a></h2>
@@ -1257,9 +1239,9 @@ all evaluated at compile time. For more information about them, see the
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     // Default options for the StatusLine widget
-    opts::fmt_status(|pa| {
+    opts.fmt_status(|pa| {
         // If on one line footer mode:
         let mode = mode_txt();
         let param = duat_param_txt();
@@ -1274,8 +1256,8 @@ fn setup() {
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
-    opts::fmt_status(|_| {
+fn setup(opts: &amp;mut Opts) {
+    opts.fmt_status(|_| {
         status!(
             "{name_txt}{Spacer}{} {sels_txt} [coord]c{} l{}[separator]|[coord]{}",
             mode_txt(),
@@ -1289,8 +1271,8 @@ fn setup() {
 <pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
-fn setup() {
-    opts::fmt_status(|_| {
+fn setup(opts: &amp;mut Opts) {
+    opts.fmt_status(|_| {
         status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt()) 
     });
 }
@@ -1320,7 +1302,7 @@ following  snippet:</p>
 <pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         let buffer = handle.write(pa);
         buffer.opts.tabstop = match buffer.filetype() {
@@ -1334,7 +1316,7 @@ should be a part of words. In this case, I’m adding <code>'-'</code> to the li
 <pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         let buffer = handle.write(pa);
         match buffer.filetype() {
@@ -1382,7 +1364,7 @@ fn name_txt(buffer: &amp;Buffer) -&gt; Text {
 <pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         status!("{name_txt}{Spacer}{main_txt}").above().push_on(pa, handle);
     });
@@ -1393,7 +1375,7 @@ depending on the <code>Buffer</code>?</p>
 <pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         let status = if let Ok(crate_dir) = duat::utils::crate_dir()
             &amp;&amp; handle.read(pa).path().starts_with(crate_dir) {
@@ -1432,7 +1414,7 @@ and whenever you borrow it normally, you get non mutable access to said state:</
 // You don't need to write the types of `pa` and `handle`, they're
 // just here for tutorial reasons.
 hook::add::&lt;BufferOpened&gt;(|pa: &amp;mut Pass, handle: &amp;Handle&lt;Buffer&gt;| {
-    // This function will mutably borrow the `Pass`, preventing other 
+    // This function will mutably borrow the `Pass`, preventing other
     // uses of it, thus following Rust's mutability XOR aliasing rule.
     let buf_mut: &amp;mut Buffer = handle.write(pa);
 
@@ -1472,7 +1454,7 @@ mutable borrow, which can’t be reused after acquiring other references, and th
 second one is the immutable borrow, which can coexist with any number of other
 immutable references.</p>
 <p>These two borrows govern all of the configuration of duat, and they can only
-bedone on the main thread, given the non <code>Send</code> nature of <code>&amp;Pass</code> and <code>&amp;mut  Pass</code>. Additionally, you won’t always have a <code>&amp;mut Pass</code>. In some APIs, you
+bedone on the main thread, given the non <code>Send</code> nature of <code>&amp;Pass</code> and <code>&amp;mut Pass</code>. Additionally, you won’t always have a <code>&amp;mut Pass</code>. In some APIs, you
 only get access to a <code>&amp;Pass</code>, which grants only reading access to global state,
 making for APIs that are harder to mess up.</p>
 <blockquote class="blockquote-tag blockquote-tag-tip">
@@ -1500,11 +1482,11 @@ global access will eventually go through an <code>RwData</code>.</p>
 <code>StatusLine</code> wether a value has changed:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     let value = RwData::new(0);
     let value_clone = value.clone();
-   
-    opts::fmt_status(move |_| {
+
+    opts.fmt_status(move |_| {
         let value_changed = {
             // One copy for this function
             let value = value_clone.clone();
@@ -1516,13 +1498,13 @@ fn setup() {
                 }
             }
         };
-        
+
         // And one copy for the `StatusLine`.
         // This is done so the `StatusLine` updates automatically.
         let value = value_clone.clone();
         status!("{name_txt} {value_changed}{value}{Spacer}{main_txt}")
     });
-    
+
     cmd::add("change-value", move |pa: &amp;mut Pass, new: usize| {
         *value.write(pa) = new;
         Ok(None)
@@ -1538,38 +1520,38 @@ function was called in any other copy of the same <code>RwData</code>:</p>
 fn test(pa: &amp;mut Pass) {
     let value = RwData::new("hello");
     let value_clone = value.clone();
-    
+
     // Since `RwData::read` hasn't been called, both are considered
     // to have changed.
     assert!(value.has_changed() == true);
     assert!(value_clone.has_changed() == true);
-    
+
     // Further calls to `RwData::has_changed` will return `true` until
     // you call `RwData::read`
     assert!(value.has_changed() == true);
-    
+
     _ = value_clone.read(pa);
-    
+
     *value.write(pa) = "bye";
-    
+
     // Since `value` was written to, copies of `value` will be notified
     // that the data within has changed.
     assert!(value_clone.has_changed() == true);
-    
+
     // An `RwData::write` also assumes that you have read the value, so
     // `value.has_changed()` will return `false`.
     assert!(value.has_changed() == false);
-    
+
     // If you don't have a Pass available (rare), you can also say that
     // you don't care if the data has changed by calling this function.
     value_clone.declare_as_read();
-    
+
     assert!(value_clone.has_changed() == false);
-    
+
     // Without a Pass, you can also tell other copies that a value has
     // been changed, even if nothing changed at all
     value_clone.declare_written();
-    
+
     assert!(value.has_changed() == true);
 }</code></pre>
 <h3 id="widget-handles"><a class="header" href="#widget-handles">Widget <code>Handle</code>s</a></h3>
@@ -1590,7 +1572,7 @@ fn setup() {
     cmd::add("dedup-selections", |pa: &amp;mut Pass| {
         let buf: Handle&lt;Buffer&gt; = context::current_buffer(pa);
         let mut dupes = Vec::new();
-        
+
         // Handle::edit_all will apply an editing function to all cursors
         // Because it edits the cursors of the `Buffer`, it needs
         // mutable access to it, hence the `&amp;mut Pass`.
@@ -1601,17 +1583,18 @@ fn setup() {
                 dupes.push(c.selection().to_string());
             }
         });
-    
+
         Ok(None)
     })
     .doc(txt!("Removes selections with duplicate text content"), None);
 }</code></pre>
 <p>The <code>raison d'être</code> of <code>Handle</code>s is to keep both the <code>RwArea</code> and <code>RwData&lt;W&gt;</code>
 in the same struct, so you can use methods that require reading from both:</p>
-<pre><code class="language-rust">use duat::prelude::*;
+<pre><code class="language-rust">setup_duat!(setup);
+use duat::prelude::*;
 
-fn setup() {
-    opts::fmt_status(|_| {
+fn setup(opts: &amp;mut Opts) {
+    opts.fmt_status(|_| {
         status!("{name_txt} {}{Spacer}{main_txt}{cursors_on_screen}", mode_txt())
     });
 }
@@ -1620,9 +1603,9 @@ fn cursors_on_screen(pa: &amp;Pass, handle: &amp;Handle) -&gt; Text {
     /// In order to get the range of the `Text` that is on screen,
     /// you need both the `Buffer` and the `RwArea` at the same time.
     let range = handle.full_printed_range(pa);
-    
+
     let total = handle.selections(pa).iter_within(range).count();
-    
+
     txt!("On screen[separator]:[] [coord]{total}")
 }</code></pre>
 <h3 id="the-type-erased-rwarea"><a class="header" href="#the-type-erased-rwarea">The type erased <code>RwArea</code></a></h3>
@@ -1638,15 +1621,15 @@ the need for a <code>Pass</code>.</p>
 fn test&lt;W: Widget&gt;(pa: &amp;mut Pass, handle: &amp;Handle&lt;W&gt;) {
     let rw_area: &amp;RwArea = handle.area();
     let area: &amp;mut Area = rw_area.write(pa);
-    
+
     area.set_width(5.0).unwrap();
-    
+
     // Normally, calling `Handle::write` returns only `W`, for
     // convenience reasons and because you mostly don't need to
     // access the `Area` value.
     // You can do this if you need mutable access to both.
     let (widget, area): (&amp;mut W, &amp;mut Area) = handle.write_with_area(pa);
-    
+
     area.set_height(10.0).unwrap();
     widget.text_mut().replace_range(.., "lmao");
 }</code></pre>
@@ -1661,11 +1644,11 @@ on the <code>StatusLine</code> just to get it to update properly.</p>
 <p>Well, there is actually an existing solution to that, which can be achieved by calling the <code>RwData::map</code> function:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     let value = RwData::new(0);
     let value_clone = value.clone();
-   
-    opts::fmt_status(move |_| {
+
+    opts.fmt_status(move |_| {
         // Clone to check if it has changed from within the function,
         // you never really need to do this.
         let clone = value_clone.clone();
@@ -1677,10 +1660,10 @@ fn setup() {
                 format!("{value}")
             }
         });
-        
+
         status!("{name_txt} {show_value}{Spacer}{main_txt}")
     });
-    
+
     cmd::add("change-value", move |pa: &amp;mut Pass, new: usize| {
         *value.write(pa) = new;
         Ok(None)
@@ -1714,7 +1697,7 @@ use std::{sync::atomic::{AtomicBool, Ordering}, time::Duration};
 static DATA: BulkDataWriter&lt;Duration&gt; = BulkDataWriter::new();
 static QUITTING: AtomicBool = AtomicBool::new(false);
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     std::thread::spawn(|| {
         let one_sec = Duration::from_secs(1);
         while !QUITTING.load(Ordering::Relaxed) {
@@ -1754,17 +1737,17 @@ fn test(pa: &amp;mut Pass, lhs: [&amp;RwData&lt;u32&gt;; 2], rhs: &amp;RwData&lt
     // of `RwData`-like structures and this function will give you a
     // mutable reference to all of them.
     let ([l0, l1], r): ([&amp;mut u32; 2], &amp;mut u32) = pa.write_many((lhs, rhs));
-    
+
     let trouble = [lhs[0], lhs[0]];
     // Note here that I'm writing to the same variable twice.
     // Instead of returning two mutable references to the same value, this
     // call will just panic, returning control to Duat and cancelling
     // whatever you were doing.
     let [oops0, oops1] = pa.write_many(trouble);
-    
+
     // If you think this might happen, you can call this instead.
     let handled = pa.try_write_many(trouble);
-    
+
     // This function will return an `Err(text)` in the case of failure.
     assert!(handled.is_err());
 }</code></pre>
@@ -1777,17 +1760,18 @@ is the fact that they present you with arguments whose type is inferred at
 compile time:</p>
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
+use widgets::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     // Note the Pass, so you have mutable global state access.
     // The type of the second argument is inferred, it is only
     // included here for example's sake.
-    hook::add::&lt;ModeSwitched&gt;(|pa, (old, new): (&amp;str, &amp;str)| {
-        if old == "Insert" &amp;&amp; new == "Normal" {
+    hook::add::&lt;ModeSwitched&gt;(|pa, switch| {
+        if switch.old.name == "Insert" &amp;&amp; switch.new.name == "Normal" {
             _ = context::current_buffer(pa).save(pa);
         }
     });
-    
+
     hook::add::&lt;BufferOpened&gt;(|pa, handle: &amp;Handle| {
         let buf = handle.write(pa);
         match buf.filetype() {
@@ -1799,18 +1783,18 @@ fn setup() {
                 buf.opts.tabstop = 2;
                 buf.opts.extra_word_chars = &amp;['-'];
             }
-            Some("lua" | "javascript") =&gt; buf.opts.tabstop = 2, 
+            Some("lua" | "javascript") =&gt; buf.opts.tabstop = 2,
             _ =&gt; {}
         };
     });
-    
+
     // You can call hooks for many things...
     hook::add::&lt;WidgetOpened&lt;LineNumbers&gt;&gt;(|pa, handle| {
         // This will put a vertical ruler on the left of the `LineNumbers`
         // making for a "stylish" column of numbers.
         VertRule::builder().push_on(pa, handle);
     });
-    
+
     let key_count = RwData::new(0);
     hook::add::&lt;KeyTyped&gt;({
         let key_count = key_count.clone();
@@ -1818,8 +1802,8 @@ fn setup() {
             *key_count.write(pa) += 1;
         }
     });
-    
-    opts::fmt_status(move |_| {
+
+    opts.fmt_status(move |_| {
         let mode_txt = mode_txt();
         let key_count = key_count.clone();
         status!("{name_txt} {mode_txt}{Spacer}{sels_txt} {main_txt} {key_count}")
@@ -1895,7 +1879,7 @@ fn setup_hook() {
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     // This would be called from a `Plugin::plug` function
     setup_hook();
 
@@ -1923,7 +1907,7 @@ a function like this:</p>
 <pre><code class="language-rust"><span class="boring">struct FooHook;
 </span><span class="boring">impl Hookable for FooHook {
 </span><span class="boring">    type Input&lt;'h&gt; = (i32, bool);
-</span><span class="boring">    
+</span><span class="boring">
 </span><span class="boring">    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
 </span><span class="boring">        (0, true)
 </span><span class="boring">    }
@@ -1931,7 +1915,7 @@ a function like this:</p>
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;FooHook&gt;(|pa, (arg1, arg2): (i32, bool)| {
         // ...
     });
@@ -1945,16 +1929,14 @@ buffer-wise configuration options:</p>
 <pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &amp;mut Opts) {
     // Options set initially for all `Buffer`s
-    opts::set(|opts| {
-        opts.tabstop = 4;
-    });
-    
+    opts.tabstop = 4;
+
     // Changing those options on a buffer by buffer basis.
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         let buf = handle.write(pa);
-        
+
         match buf.filetype() {
             Some("haskell" | "commonlisp") =&gt; buf.opts.tabstop = 2,
             Some("txt" | "markdown" | "asciidoc") =&gt; {
