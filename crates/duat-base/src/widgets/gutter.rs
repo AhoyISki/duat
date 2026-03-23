@@ -55,7 +55,8 @@ impl Gutter {
                 };
 
                 gutter.write(pa).text = gutter.read(pa).form_text(pa, buffer);
-            });
+            })
+            .priority(100_000_000);
         });
 
         GutterOpts {

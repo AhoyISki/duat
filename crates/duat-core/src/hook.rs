@@ -258,6 +258,7 @@ mod global {
         callback: Option<Callback<H>>,
         group: Option<InnerGroupId>,
         filter: Option<Box<dyn Fn(&H) -> bool + Send>>,
+        priority: usize,
     }
 
     impl<H: Hookable> HookBuilder<H> {
@@ -296,6 +297,45 @@ mod global {
             self.filter = Some(Box::new(move |hookable| *hookable == filter));
             self
         }
+
+        /// Set the priority of this [`hook`]
+        ///
+        /// Much like with [`Tag`]s, the priority of `hook`s
+        /// determines how "lately" they are applied. The logic here
+        /// is that, the later a `hook` is applied, the more "context"
+        /// is taken into account.
+        ///
+        /// An example of where this is useful is with hooks that need
+        /// to know which lines were printed. For example, if I print
+        /// the line numbers, and then in a later hook in the same
+        /// [`BufferUpdated`] trigger, an edit is made, the printed
+        /// line numbers may now be wrong.
+        ///
+        /// The general wisdom is that, in order to not break things,
+        /// if your hook relies on meta `Tag`s ([`Ghost`], [`Conceal`]
+        /// or [`Spacer`]) or [edits the `Text`], you should make use
+        /// of a lower priority.
+        ///
+        /// If it only makes use of "light" `Tag`s (like [`FormTag`])
+        /// or relies on no future changes on the same `BufferUpdated`
+        /// trigger (by e.g. getting the [printed lines]), then it
+        /// should have a higher priority.
+        ///
+        /// By default, every hook has a priority of 100.
+        ///
+        /// [`hook`]: super
+        /// [`Tag`]: crate::text::Tag
+        /// [`BufferUpdated`]: super::BufferUpdated
+        /// [`Ghost`]: crate::text::Ghost
+        /// [`Conceal`]: crate::text::Conceal
+        /// [`Spacer`]: crate::text::Spacer
+        /// [`FormTag`]: crate::text::FormTag
+        /// [edits the `Text`]: crate::text::Text::replace_range
+        /// [printed lines]: crate::context::Handle::printed_lines
+        pub fn priority(mut self, priority: usize) -> Self {
+            self.priority = priority;
+            self
+        }
     }
 
     impl<H: Hookable> Drop for HookBuilder<H> {
@@ -304,6 +344,7 @@ mod global {
                 self.callback.take().unwrap(),
                 self.group.take(),
                 self.filter.take(),
+                self.priority,
             )
         }
     }
@@ -338,6 +379,7 @@ mod global {
             callback: Some(Callback::FnMut(Box::new(f))),
             group: None,
             filter: None,
+            priority: 100,
         }
     }
 
@@ -375,6 +417,7 @@ mod global {
             callback: Some(Callback::FnOnce(Some(Box::new(f)))),
             group: None,
             filter: None,
+            priority: 100,
         }
     }
 
@@ -1218,6 +1261,7 @@ impl InnerHooks {
         callback: Callback<H>,
         group: Option<InnerGroupId>,
         filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
+        priority: usize,
     ) {
         let mut map = self.types.lock().unwrap();
 
@@ -1228,6 +1272,8 @@ impl InnerHooks {
             }
         }
 
+        let new_hook = Hook { callback, group, filter, priority };
+
         if let Some(holder) = map.get(&TypeId::of::<H>()) {
             let hooks_of = unsafe {
                 let ptr = (&**holder as *const dyn HookHolder).cast::<HooksOf<H>>();
@@ -1235,11 +1281,16 @@ impl InnerHooks {
             };
 
             let mut hooks = hooks_of.0.borrow_mut();
-            hooks.push(Hook { callback, group, filter });
+            if let Some(i) = hooks.iter().position(|hook| hook.priority >= priority) {
+                hooks.insert(i, new_hook);
+            } else {
+                hooks.push(new_hook)
+            }
         } else {
-            let hooks_of = HooksOf::<H>(RefCell::new(vec![Hook { callback, group, filter }]));
-
-            map.insert(TypeId::of::<H>(), Box::new(hooks_of));
+            map.insert(
+                TypeId::of::<H>(),
+                Box::new(HooksOf::<H>(RefCell::new(vec![new_hook]))),
+            );
         }
     }
 
@@ -1356,6 +1407,7 @@ struct Hook<H: Hookable> {
     callback: Callback<H>,
     group: Option<InnerGroupId>,
     filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
+    priority: usize,
 }
 
 enum Callback<H: Hookable> {

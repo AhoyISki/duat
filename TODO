@@ -16,7 +16,7 @@ FOR NEXT UPDATE:
 [ ] Remove Widget argument from Modes.
 [ ] Add registers possibly.
 [x] ReplaceChar Tags!
-[x] Inlay tags!
+[x] Overlay tags!
 [x] BufferOpts.
   [x] BufferOptsParser.
     [x] Indent lines.
@@ -31,11 +31,12 @@ FOR NEXT UPDATE:
 [x] Get rid of Lender entirely.
 [x] Lean up the dependency tree.
 [x] Make Bytes private 🤯.
-[ ] Make Inlay text much more powerful.
+[x] Make Overlay text much more powerful.
 [x] File watching.
 [x] File tracking.
 [x] Persistent process spawning.
 [x] Turn the config into a separate process I guess...
+[ ] High priority hooks.
 
 KNOWN BUGS:
  HIGH PRIORITY:
@@ -46,12 +47,10 @@ KNOWN BUGS:
  LOW PRIORITY:
   [ ] Selections struct that holds a reference to the Bytes.
     [ ] Also make the Bytes-less version inaccessible.
-  [ ] statics remain as the program reloads.
   [ ] Perfect print iterators.
     [ ] Perfect words iterator.
   [ ] tree-sitter-duat-text is not being used.
   [ ] For now, on Windows, duat can only reload if there is only one instance open.
-  [ ] Locking a Mutex on every Change is surely slow.
 
 FUTURE UPDATES:
 [ ] Cleanup of cache API.

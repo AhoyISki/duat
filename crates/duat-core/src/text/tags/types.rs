@@ -536,7 +536,7 @@ impl RawTag {
     pub fn is_meta(&self) -> bool {
         matches!(
             self,
-            Self::StartConceal(_) | Self::EndConceal(_) | Self::Overlay(..)
+            Self::StartConceal(_) | Self::EndConceal(_) | Self::Overlay(..) | Self::Inlay(..)
         )
     }
 
