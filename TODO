@@ -3,7 +3,7 @@ FOR NEXT UPDATE:
   [x] Start process comunications.
   [x] Send messages back and forth.
   [x] Send changes.
-  [ ] Receive and process semantic tokens.
+  [x] Receive and process semantic tokens.
   [ ] Highlight references.
 [ ] `z` and `q` keys for duatmode.
 [x] Make the 'e' and 'v' traverse words and spaces.
@@ -36,7 +36,8 @@ FOR NEXT UPDATE:
 [x] File tracking.
 [x] Persistent process spawning.
 [x] Turn the config into a separate process I guess...
-[ ] High priority hooks.
+[x] High priority hooks.
+[ ] Opts should be given as argument.
 
 KNOWN BUGS:
  HIGH PRIORITY:

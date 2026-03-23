@@ -1,8 +1,15 @@
+use std::{
+    collections::HashSet,
+    path::PathBuf,
+    sync::{LazyLock, Mutex, OnceLock},
+};
+
 use duat_core::{
     buffer::{Buffer, BufferTracker, PerBuffer},
     context::{self, Handle},
     data::Pass,
     hook::{self, BufferClosed, BufferOpened, BufferUpdated},
+    storage,
 };
 use duat_filetype::PassFileType;
 use lsp_types::{
@@ -46,21 +53,30 @@ static PARSERS: PerBuffer<Parser> = PerBuffer::new();
 static TRACKER: BufferTracker = BufferTracker::new();
 
 pub fn setup_hooks() {
+    #[derive(Default, storage::bincode::Decode, storage::bincode::Encode)]
+    #[bincode(crate = "duat_core::storage::bincode")]
+    struct OpenedBuffers(Mutex<HashSet<PathBuf>>);
+
+    static OPENED_BUFFERS: LazyLock<OpenedBuffers> =
+        LazyLock::new(|| storage::get_if(|_| true).unwrap_or_default());
+
     hook::add::<BufferOpened>(|pa, handle| {
-        if let Some(filetype) = handle.filetype(pa)
-            && let Some(path) = handle.read(pa).path_kind().as_path()
-        {
-            let Some(uri) = path_to_uri(&path) else {
-                context::warn!("File path is not valid UTF8, won't connect to language servers");
+        if let Some(filetype) = handle.filetype(pa) {
+            let path = handle.read(pa).path();
+
+            let Some(servers) = server::get_servers_for(&path) else {
                 return;
             };
-            let Some(servers) = server::get_servers_for(&path) else {
+
+            let Some(uri) = path_to_uri(&path) else {
+                context::warn!("File path is not valid UTF8, won't connect to language servers");
                 return;
             };
 
             let text = handle.text(pa);
 
-            if !handle.read(pa).was_reloaded() {
+			let mut opened_buffers = OPENED_BUFFERS.0.lock().unwrap();
+            if opened_buffers.insert(path) {
                 server::on_all_servers(|server| {
                     server.send_notification::<DidOpenTextDocument>(DidOpenTextDocumentParams {
                         text_document: TextDocumentItem {
@@ -134,14 +150,14 @@ pub fn setup_hooks() {
     });
 
     hook::add::<BufferClosed>(|pa, handle| {
-        if let Some(path) = handle.read(pa).path_kind().as_path()
-            && let Some(uri) = path_to_uri(&path)
-        {
+        let path = handle.read(pa).path();
+        if let Some(uri) = path_to_uri(&path) {
             server::on_all_servers(|server| {
                 server.send_notification::<DidCloseTextDocument>(DidCloseTextDocumentParams {
                     text_document: TextDocumentIdentifier { uri: uri.clone() },
                 });
             });
+            OPENED_BUFFERS.0.lock().unwrap().remove(&path);
         }
     });
 }
