@@ -126,9 +126,6 @@ fn replace_chars(
     let opts = parts.opts;
 
     let space_overlay = opts.space_char.map(|char| overlay!(char, "replace.space"));
-    let space_overlay_trailing = opts
-        .space_char_trailing
-        .map(|char| overlay!(char, "replace.space.trailing"));
 
     let nl_overlay =
         (opts.new_line_char != ' ').then(|| overlay!(opts.new_line_char, "replace.new_line"));
@@ -164,20 +161,6 @@ fn replace_chars(
 
                     if let Some(overlay) = overlay {
                         parts.tags.insert(nl_tagger, byte, overlay);
-                    }
-
-                    if let Some(start) = space_start.take()
-                        && start != line_start
-                        && let Some(char) = opts.space_char_trailing
-                        && char != ' '
-                        && let Some(overlay) = &space_overlay_trailing
-                    {
-                        for (b, char) in parts.strs[start..=byte].char_indices() {
-                            let b = start + b;
-                            if char == ' ' {
-                                parts.tags.insert(space_tagger, b, overlay.clone());
-                            }
-                        }
                     }
                 }
                 ' ' => _ = space_start.get_or_insert(byte),

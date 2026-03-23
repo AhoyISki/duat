@@ -1287,10 +1287,10 @@ impl Painter {
     #[inline(always)]
     pub fn apply_main_selection(&mut self, is_caret: bool, start_range: bool) {
         if is_caret {
-            self.apply(M_CAR_ID, 100);
+            self.apply(M_CAR_ID, 150);
         }
         if start_range {
-            self.apply(M_SEL_ID, 95);
+            self.apply(M_SEL_ID, 145);
         }
     }
 
@@ -1309,10 +1309,10 @@ impl Painter {
     #[inline(always)]
     pub fn apply_extra_selection(&mut self, is_caret: bool, start_range: bool) {
         if is_caret {
-            self.apply(E_CAR_ID, 100);
+            self.apply(E_CAR_ID, 149);
         }
         if start_range {
-            self.apply(E_SEL_ID, 95);
+            self.apply(E_SEL_ID, 144);
         }
     }
 

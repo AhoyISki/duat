@@ -117,8 +117,9 @@ pub fn setup_completions() {
             Completions::update_text_and_position(pa, &completions, 0);
             let completions_master = completions.master(pa).unwrap();
             completions.write(pa).last_caret = completions_master.selections(pa).main().caret();
-
-            Completions::set_frame(pa, &completions);
+            if !completions.is_closed(pa) {
+                Completions::set_frame(pa, &completions);
+            }
         })
         .grouped(group);
     });
@@ -509,9 +510,10 @@ impl Completions {
         main_replacement
     }
 
-    fn set_frame(pa: &mut Pass, handle: &Handle<Self>) {
-        let sidebar = handle.read(pa).sidebar.clone();
-        if let Some(area) = handle.area().write_as::<duat_term::Area>(pa) {
+    #[track_caller]
+    fn set_frame(pa: &mut Pass, completions: &Handle<Self>) {
+        let sidebar = completions.read(pa).sidebar.clone();
+        if let Some(area) = completions.area().write_as::<duat_term::Area>(pa) {
             let mut frame = Frame {
                 left: true,
                 right: true,
@@ -525,7 +527,7 @@ impl Completions {
             area.set_frame(frame);
         }
 
-        let (comp, area) = handle.write_with_area(pa);
+        let (comp, area) = completions.write_with_area(pa);
         area.set_width(
             area.size_of_text(comp.print_opts(), &comp.text)
                 .unwrap()

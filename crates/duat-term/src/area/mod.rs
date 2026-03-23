@@ -850,7 +850,7 @@ pub fn print_text(
 
         for (x, point, overlay) in overlays.drain(..) {
             let coords = Coords::new(Coord::new(coords.tl.x + x, 0), Coord::new(coords.br.x, 1));
-            write!(lines, "\x1b[{}G", coords.tl.x + x + 1).unwrap();
+            write!(lines, "\x1b[{}G", coords.tl.x + 1).unwrap();
 
             painter.prepare_for_overlay();
             if let Some((overlay, obs_spawns)) = print_overlay(
@@ -869,6 +869,8 @@ pub fn print_text(
             }
             painter.return_from_overlay();
         }
+
+        write!(lines, "\x1b[{}G", coords.br.x + 1).unwrap();
 
         lines.flush().unwrap();
         observed_spawns
@@ -1060,24 +1062,27 @@ pub fn print_overlay(
                 last_found = Some(sel)
             }
 
-            match last_found {
-                Some(CursorParts { is_main: true, is_caret, is_start, .. }) => {
+            if let Some(parts) = last_found {
+                let print_caret =
+                    parts.is_caret && parts.point.char() == real.char() + point.char();
+
+                if parts.is_main {
                     if let Some(shape) = painter.main_cursor()
                         && is_active
                     {
                         lines.show_real_cursor();
                         queue!(lines, shape, cursor::SavePosition).unwrap();
+                    } else {
+                        lines.hide_real_cursor();
+                        painter.apply_main_selection(print_caret, parts.is_start == Some(true));
                     }
-
-                    lines.hide_real_cursor();
-                    painter.apply_main_selection(is_caret, is_start == Some(true));
-                    Some(Cursor::Main(is_caret, is_start == Some(false)))
+                    Some(Cursor::Main(print_caret, parts.is_start == Some(false)))
+                } else {
+                    painter.apply_extra_selection(print_caret, parts.is_start == Some(true));
+                    Some(Cursor::Extra(print_caret, parts.is_start == Some(false)))
                 }
-                Some(CursorParts { is_main: false, is_caret, is_start, .. }) => {
-                    painter.apply_extra_selection(is_caret, is_start == Some(true));
-                    Some(Cursor::Extra(is_caret, is_start == Some(false)))
-                }
-                None => None,
+            } else {
+                None
             }
         };
 
