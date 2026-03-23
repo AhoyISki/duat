@@ -38,7 +38,6 @@
 //! [`LogBook`]: crate::widgets::LogBook
 //! [`FooterWidgets`]: crate::widgets::FooterWidgets
 //! [`WhichKey`]: crate::widgets::WhichKey
-//! [`opts::set`]: set
 //! [`PromptLineBuilder::push_on`]: crate::widgets::PromptLineBuilder::push_on
 use std::{
     any::TypeId,
@@ -285,7 +284,7 @@ pub struct Opts {
     /// With this option set to `true`, they will all occupy one
     /// line, the same way Kakoune does it.
     ///
-    /// If you don't call [`opts::fmt_status`], this will also
+    /// If you don't call [`Opts::fmt_status`], this will also
     /// reformat the [`StatusLine`] to this:
     ///
     /// ```rust
@@ -302,7 +301,7 @@ pub struct Opts {
     /// [`PromptLine`]: crate::widgets::PromptLine
     /// [`Notifications`]: crate::widgets::Notifications
     /// [`Widget`]: crate::widgets::Widget
-    /// [`opts::fmt_status`]: fmt_status
+    /// [`Opts::fmt_status`]: Opts::fmt_status
     pub one_line_footer: bool,
     /// Place the [`FooterWidgets`]s on top of the screen.
     ///
@@ -341,31 +340,28 @@ pub struct Opts {
     ///
     /// ```rust
     /// setup_duat!(setup);
+    /// use context::Level::*;
     /// use duat::prelude::*;
     ///
-    /// fn setup() {
-    ///     opts::set(|opts| {
-    ///         use context::Level::*;
+    /// fn setup(opts: &mut Opts) {
+    ///     opts.notifications.fmt(|rec| {
+    ///         let mut builder = Text::builder();
     ///
-    ///         opts.notifications.fmt(|rec| {
-    ///             let mut builder = Text::builder();
+    ///         match rec.level() {
+    ///             Error => builder.push(txt!("[log_book.error]  ")),
+    ///             Warn => builder.push(txt!("[log_book.warn]  ")),
+    ///             Info => builder.push(txt!("[log_book.info]  ")),
+    ///             Debug => builder.push(txt!("[log_book.debug]  ")),
+    ///             Trace => unreachable!(""),
+    ///         };
     ///
-    ///             match rec.level() {
-    ///                 Error => builder.push(txt!("[log_book.error]  ")),
-    ///                 Warn => builder.push(txt!("[log_book.warn]  ")),
-    ///                 Info => builder.push(txt!("[log_book.info]  ")),
-    ///                 Debug => builder.push(txt!("[log_book.debug]  ")),
-    ///                 Trace => unreachable!(""),
-    ///             };
+    ///         builder.push(rec.text().clone());
     ///
-    ///             builder.push(rec.text().clone());
-    ///
-    ///             builder.build()
-    ///         });
-    ///
-    ///         opts.notifications
-    ///             .set_allowed_levels([Error, Warn, Info, Debug]);
+    ///         builder.build()
     ///     });
+    ///
+    ///     opts.notifications
+    ///         .set_allowed_levels([Error, Warn, Info, Debug]);
     /// }
     /// ```
     ///
@@ -405,20 +401,18 @@ pub struct Opts {
     /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///
-    /// fn setup() {
-    ///     opts::set(|opts| {
-    ///         let opts = &mut opts.logs;
+    /// fn setup(opts: &mut Opts) {
+    ///     let logs = &mut opts.logs;
     ///
-    ///         opts.fmt(|rec| match rec.level() {
-    ///             context::Level::Error => Some(txt!("[log_book.error]  {}", rec.text())),
-    ///             _ => None,
-    ///         });
-    ///
-    ///         opts.hidden = false;
-    ///         opts.close_on_unfocus = false;
-    ///         opts.side = ui::Side::Right;
-    ///         opts.width = 75.0;
+    ///     logs.fmt(|rec| match rec.level() {
+    ///         context::Level::Error => Some(txt!("[log_book.error]  {}", rec.text())),
+    ///         _ => None,
     ///     });
+    ///
+    ///     logs.hidden = false;
+    ///     logs.close_on_unfocus = false;
+    ///     logs.side = ui::Side::Right;
+    ///     logs.width = 75.0;
     /// }
     /// ```
     ///
@@ -596,7 +590,7 @@ impl Opts {
     ///     txt!("[coord]{}%", (100 * caret.line()) / text.end_point().line())
     /// }
     ///
-    /// fn setup() {
+    /// fn setup(opts: &mut Opts) {
     ///     hook::add::<BufferOpened>(|pa, handle| {
     ///         status!("{name_txt}{Spacer}{buf_percent}")
     ///             .above()
@@ -642,7 +636,6 @@ impl Opts {
     /// [`PromptLine`]: crate::widgets::PromptLine
     /// [`Notifications`]: crate::widgets::Notifications
     /// [`FooterWidgets`]: crate::widgets::FooterWidgets
-    /// [`opts::set`]: set
     pub fn fmt_status(&mut self, fmt: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'static) {
         self.status_fmt_fn = Some(Box::new(fmt));
     }

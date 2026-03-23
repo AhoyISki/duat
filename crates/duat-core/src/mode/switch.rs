@@ -16,7 +16,7 @@ use crate::{
     buffer::Buffer,
     context::{self, Handle},
     data::{Pass, RwData},
-    hook::{self, FocusChanged, KeySent, OnModeSwitch},
+    hook::{self, FocusChanged, KeySent, ModeSwitched},
     ui::{Node, Widget},
     utils::{catch_panic, duat_name},
 };
@@ -59,23 +59,9 @@ pub fn set_default<M: Mode + Clone>(mode: M) {
 
 /// Sets the [`Mode`], switching to the appropriate [`Widget`]
 ///
-/// If you call this within a [`Mode::send_key`] function, the rest of
-/// the function will proceed normally. However, if there were any
-/// remaining keys to be processed, they will be sent to the new
-/// `Mode` with its new [`Widget`], not to the `Mode` of the
-/// `send_key` function in use.
-///
-/// One other thing to note about this function is the
-/// [`Mode::before_exit`] function. If you call `mode::set` from the
-/// `Mode::send_key` function, then `Mode::before_exit` will be called
-/// _after_ the end of the function's call. If you call `mode::set`
-/// from anywhere else, then `Mode::before_exit` will be called
-/// immediately.
-///
-/// This is done because [`Mode::before_exit`] requires a mutable
-/// reference to the `Mode`, and if you call it from
-/// [`Mode::send_key`], the `send_key` function is making use of that
-/// mutable reference.
+/// This is done through a [`context::queue`] call, so the `Mode` will
+/// be set remotely and asynchronously. If setting the `Mode` fails
+/// for some reason, it won't switch and an error will be logged.
 ///
 /// [`Widget`]: Mode::Widget
 pub fn set<M: Mode>(mode: M) {
@@ -114,7 +100,7 @@ pub fn set<M: Mode>(mode: M) {
         let mode = if let Some(old_mode) = MODE.write(pa).take() {
             let new = (new_name, Box::new(mode) as Box<dyn Any>);
             let old = (old_name, old_mode);
-            let ms = hook::trigger(pa, OnModeSwitch { old, new });
+            let ms = hook::trigger(pa, ModeSwitched { old, new });
             ms.new.1
         } else {
             Box::new(mode)

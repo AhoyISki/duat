@@ -9,32 +9,29 @@
 setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     // Disables the cursor's shape.
     cursor::unset();
 
     //// Setting some options.
 
-    opts::set(|opts| {
-        opts.wrap_lines = true;
-        opts.scrolloff.y = 5;
-        opts.line_numbers.align = std::fmt::Alignment::Right;
-        opts.line_numbers.main_align = std::fmt::Alignment::Left;
-    });
-
-    opts::fmt_status(|_| {
+    opts.wrap_lines = true;
+    opts.scrolloff.y = 5;
+    opts.line_numbers.align = std::fmt::Alignment::Right;
+    opts.line_numbers.main_align = std::fmt::Alignment::Left;
+    opts.fmt_status(|_| {
         let upper_mode = mode_name().map(|m| m.to_uppercase());
-
         status!("[mode]{upper_mode}{Spacer}{custom_name_txt} {sels_txt} {main_txt}")
     });
 
     //// Remapping
 
-    // A command from Vim, derived from one from duatmode.
-    map::<Normal>("gg", "gk");
-    map::<Normal>("G", "gj");
     // Aliases show up on the screen as if they were text.
     alias::<Insert>("jk", "<Esc>");
+    // You can also map to functions directly.
+    map::<Normal>("<c-s>", |pa: &mut Pass| {
+        _ = context::current_buffer(pa).save(pa);
+    });
 
     colorscheme::set("catppuccin-mocha");
 }

@@ -270,7 +270,7 @@ pub fn sels_txt(buffer: &Buffer) -> Text {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [keys]: duat_core::mode::KeyEvent
-pub fn cur_seq_txt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
+pub fn mapped_txt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
     mode::current_sequence().map(|(keys, is_alias)| {
         if is_alias {
             Text::default()

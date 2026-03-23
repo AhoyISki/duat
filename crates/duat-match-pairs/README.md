@@ -4,9 +4,8 @@ A simple [`Plugin`][__link0] to match pairs of parentheses
 
 ## Installation
 
-This [`Plugin`][__link1] is added on the config crate by default, there is
-no need to install it. However, if you have uninstalled it and
-need to reinstall, you can do the following:
+This is a default plugin, but you can add it manually in order to
+configure it:
 
 ```bash
 cargo add duat-match-pairs@"*" --rename match-pairs
@@ -28,7 +27,7 @@ setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug!(match_pairs::MatchPairs::new());
+    plug(duat_match_pairs::MatchPairs::new());
 }
 ```
 
@@ -61,10 +60,10 @@ setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug!(
-        match_pairs::MatchPairs::new()
+    plug(
+        duat_match_pairs::MatchPairs::new()
             .match_pairs([["\\(", "\\)"], ["\\{", "\\}"], ["\\[", "\\]"]])
-            .match_ts_pairs([["<", ">"], ["|", "|"]])
+            .match_ts_pairs([["<", ">"], ["|", "|"]]),
     );
 }
 ```
@@ -76,6 +75,5 @@ Two things to note here:
   strings.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG5IFD9Dp0aybG0CIypfJDuTrGy6VSX0sNlwoG5XT_8M01LcjYWSBgmlkdWF0X2NvcmVlMC43LjA
- [__link0]: https://docs.rs/duat_core/0.7.0/duat_core/?search=Plugin
- [__link1]: https://docs.rs/duat_core/0.7.0/duat_core/?search=Plugin
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG1jJQ1zHF8YOG8cEV0BAqGFNG-TlhhO9k421G0QI7YJXEPPOYWSBgmlkdWF0X2NvcmVlMC45LjA
+ [__link0]: https://docs.rs/duat_core/0.9.0/duat_core/?search=Plugin

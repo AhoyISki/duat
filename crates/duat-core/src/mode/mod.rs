@@ -82,7 +82,9 @@ mod switch;
 /// impl Plugin for MyPlugin {
 ///     fn plug(self, plugins: &Plugins) {
 ///         //..
-///         map::<User>("fb", mode::RunCommands::new_with("frobnificate "));
+///         map::<User>("fb", |pa: &mut Pass| {
+///             mode::set(mode::RunCommands::new_with("frobnificate "));
+///         });
 ///
 ///         cmd::add("frobnificate", |pa: &mut Pass, buf: Handle| {
 ///             // Do stuff
@@ -304,12 +306,6 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// use duat::prelude::*;
 ///
 /// impl Widget for Menu {
-///     fn update(_: &mut Pass, handle: &Handle<Self>) {}
-///
-///     fn needs_update(&self, _: &Pass) -> bool {
-///         false
-///     }
-///
 ///     fn text(&self) -> &Text {
 ///         &self.text
 ///     }
@@ -320,14 +316,8 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// }
 /// ```
 ///
-/// One thing that you'll notice is the definition of
-/// [`Widget::needs_update`]. It can always return `false` because the
-/// `Menu` only needs to update after keys are sent, and sent keys
-/// automatically trigger [`Widget::update`].
-///
 /// Now, let's take a look at some [`Widget`] methods that are used
-/// when the [`Widget`] is supposed to be handled by [`Mode`]s. Those
-/// are the [`on_focus`] and [`on_unfocus`] methods:
+/// when the [`Widget`] is supposed to be handled by [`Mode`]s.
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
@@ -338,20 +328,14 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// #     selected_entry: usize,
 /// #     active_entry: Option<usize>,
 /// # }
-/// impl Widget for Menu {
+/// fn add_menu_hooks() {
+///     hook::add::<FocusedOn<Menu>>(|_, (_, menu)| _ = menu.set_mask("active"));
+///     hook::add::<UnfocusedFrom<Menu>>(|_, (menu, _)| _ = menu.set_mask("inactive"));
+/// }
+/// # impl Widget for Menu {
 /// #     fn text(&self) -> &Text { todo!() }
 /// #     fn text_mut(&mut self) -> TextMut<'_> { todo!() }
-/// #     fn update(_: &mut Pass, _: &Handle<Self>) {}
-/// #     fn needs_update(&self, _: &Pass) -> bool { todo!(); }
-///     // ...
-///     fn on_focus(_: &mut Pass, handle: &Handle<Self>) {
-///         handle.set_mask("inactive");
-///     }
-///
-///     fn on_unfocus(_: &mut Pass, handle: &Handle<Self>) {
-///         handle.set_mask("inactive");
-///     }
-/// }
+/// # }
 /// ```
 ///
 /// These methods can do work when the wiget is focused or unfocused.
@@ -360,10 +344,6 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// variants, by applying the `inactive` [mask]. This makes it so, for
 /// example, the form `"menu"` gets mapped to `"menu.inactive"`, if
 /// that form exists.
-///
-/// Do also note that [`on_focus`] and [`on_unfocus`] are optional
-/// methods, since a [`Widget`] doesn't necessarily need to change on
-/// focus/unfocus.
 ///
 /// Now, all that is left to do is the `MenuMode` [`Mode`]. We just
 /// need to create an empty struct and call the methods of the `Menu`:
@@ -384,8 +364,6 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// # impl Widget for Menu {
 /// #     fn text(&self) -> &Text { todo!() }
 /// #     fn text_mut(&mut self) -> TextMut<'_> { todo!() }
-/// #     fn update(_: &mut Pass, _: &Handle<Self>) {}
-/// #     fn needs_update(&self, _: &Pass) -> bool { todo!(); }
 /// # }
 /// use duat::prelude::*;
 ///
@@ -403,7 +381,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///             event!(Down) => menu.shift_selection(1),
 ///             event!(Up) => menu.shift_selection(-1),
 ///             event!(Enter | Tab | Char(' ')) => menu.toggle(),
-///             event!(Esc) => _ = mode::reset::<Buffer>(pa),
+///             event!(Esc) => mode::reset::<Buffer>(),
 ///             _ => {}
 ///         }
 ///     }
@@ -416,8 +394,6 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// be used for succinctly matching patterns.
 ///
 /// [`Cursor`]: crate::mode::Cursor
-/// [`on_focus`]: Widget::on_focus
-/// [`on_unfocus`]: Widget::on_unfocus
 /// [resizing]: crate::ui::Area::set_height
 /// [`Form`]: crate::form::Form
 /// [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak/index.html

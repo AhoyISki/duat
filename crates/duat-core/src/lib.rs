@@ -629,6 +629,8 @@ pub mod process {
     ///
     /// This reader is _already buffered_, don't wrap it in a
     /// [`BufReader`], or else you _will lose bytes on reloads_.
+    ///
+    /// [`BufReader`]: std::io::BufReader
     pub struct PersistentReader {
         pair: Option<ReaderPair>,
         pair_tx: mpsc::Sender<ReaderPair>,
@@ -673,6 +675,8 @@ pub mod process {
         ///
         /// Note that if the [`PersistentChild`] was already [killed],
         /// this won't do anything.
+        ///
+        /// [killed]: PersistentChild::kill
         pub fn give_back(self) {
             drop(self)
         }

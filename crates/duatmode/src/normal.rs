@@ -7,7 +7,7 @@ use duat_core::{
     buffer::Buffer,
     context::{self, Handle},
     data::Pass,
-    hook::{self, KeyTyped, OnModeSwitch},
+    hook::{self, KeyTyped, ModeSwitched},
     mode::{self, Bindings, KeyEvent, KeyMod, Mode, VPoint, alt, ctrl, event, shift},
     opts::PrintOpts,
     text::{Strs, txt},
@@ -25,7 +25,7 @@ use crate::{
 };
 
 pub fn add_normal_hook() {
-    hook::add::<OnModeSwitch>(|pa, switch| {
+    hook::add::<ModeSwitched>(|pa, switch| {
         if switch.new.is::<Normal>() {
             let buffer = context::current_buffer(pa);
             buffer.set_mask("Normal");

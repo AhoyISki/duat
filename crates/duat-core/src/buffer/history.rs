@@ -790,7 +790,7 @@ pub struct BufferParts<'b> {
     pub ranges_to_update: RangesToUpdate<'b>,
     /// The [`BufferOpts`] of the `Buffer` in question.
     pub opts: &'b BufferOpts,
-    /// The [`PathKind`] of the `Buffer in question.
+    /// The [`PathKind`] of the `Buffer` in question.
     path: &'b PathKind,
 }
 
@@ -806,6 +806,8 @@ impl<'b> BufferParts<'b> {
     /// This _does_ also include things like undoing and redoing. This
     /// is done to keep track of all changes that took place, even to
     /// previously extant states of the text.
+    ///
+    /// [`Tag`]: crate::text::Tag
     pub fn version(&self) -> TextVersion {
         let (tags, meta_tags) = self.tags.versions();
 

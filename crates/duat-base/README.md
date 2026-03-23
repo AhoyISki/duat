@@ -10,7 +10,7 @@ all of these extra things, it is nice to separate them out.
 
 The crate has the following elements:
 
-* 5 [`widgets`][__link0]:
+* 8 [`widgets`][__link0]:
   
   * [`LineNumbers`][__link1] shows the numbers on a [`Buffer`][__link2] (for now),
     and you can configure their alignment, relativeness, etc.
@@ -25,48 +25,60 @@ The crate has the following elements:
     [`Logs`][__link9] of Duat, through the [`error!`][__link10], [`warn!`][__link11] and
     [`info!`][__link12] macros.
   * [`LogBook`][__link13] is a log of everything that has been notified to
-    Duat. It is usually more admissive than [`Notifications`][__link14], and
-    is most commonly scrolled by the [`Pager`][__link15] [`Mode`][__link16].
-* 3 [`modes`][__link17]:
+    Duat. It is usually more admissive than `Notifications`, and
+    is most commonly scrolled by the [`Pager`][__link14] [`Mode`][__link15].
+  * [`Completions`][__link16] is Duat’s completion widget, it provides an
+    extensible completions list, which allows you to format the
+    entries and add new providers via the [`CompletionsProvider`][__link17]
+    trait. Right now, the only `CompletionsProvider` is the words
+    provider.
+  * [`Gutter`][__link18] Sits on the side of each `Buffer`, showing
+    diagnostic information about each line of the `Buffer`.
+  * [`WhichKey`][__link19] shows what each key will do. It shows up
+    automatically as you are typing and multi key sequences are
+    expected (e.g. Vim’s `c`, `d`, `f` and others).
+  * [`Info`][__link20] just shows static information, resizing itself to
+    properly show as much of it as possible.
+* 2 [`modes`][__link21]:
   
-  * [`Prompt`][__link18] is a multitool that can serve many purposes,
-    through the [`PromptMode`][__link19] trait, which allows one to act on
-    the [`PromptLine`][__link20] while abstracting over less important
-    elements of the [`Widget`][__link21].
-  * [`Pager`][__link22] is a simple, read only [`Mode`][__link23], designed for
-    scrolling and searching through [`Widget`][__link24]s, most commonly the
-    [`LogBook`][__link25].
-* For the [`PromptLine`][__link26], there are 4 [`PromptMode`][__link27]s:
+  * [`Prompt`][__link22] is a multitool that can serve many purposes,
+    through the [`PromptMode`][__link23] trait, which allows one to act on
+    the `PromptLine` while abstracting over less important
+    elements of the `Widget`.
+  * [`Pager`][__link24] is a simple, read only `Mode`, designed for
+    scrolling and searching through `Widget`s, most commonly the
+    `LogBook`.
+* For the [`PromptLine`][__link25], there are 4 [`PromptMode`][__link26]s:
   
-  * [`RunCommands`][__link28] will interpret and run Duat commands, with
+  * [`RunCommands`][__link27] will interpret and run Duat commands, with
     syntax highlighting for correctness, defined by the
-    [`Parameter`][__link29] trait.
-  * [`PipeSelections`][__link30] will pipe each selection on the current
-    [`Buffer`][__link31], replacing them with the return value from a shell
+    [`Parameter`][__link28] trait.
+  * [`PipeSelections`][__link29] will pipe each selection on the current
+    `Buffer`, replacing them with the return value from a shell
     command.
-  * [`IncSearch`][__link32] is a specialized mode used for incremental
+  * [`IncSearch`][__link30] is a specialized mode used for incremental
     search, which can abstract over what the search actually does
-    with the [`IncSearcher`][__link33] trait.
-* For [`IncSearch`][__link34], there are 4 [`IncSearcher`][__link35]s:
+    with the [`IncSearcher`][__link31] trait.
+* For [`IncSearch`][__link32], there are 4 `IncSearcher`s:
   
-  * [`SearchFwd`][__link36] will move each [`Cursor`][__link37] to the next match.
-  * [`SearchRev`][__link38] will move each [`Cursor`][__link39] to the previous match.
-  * [`ExtendFwd`][__link40] will extend each [`Cursor`][__link41]’s selections to the
+  * [`SearchFwd`][__link33] will move each [`Cursor`][__link34] to the next match.
+  * [`SearchRev`][__link35] will move each `Cursor` to the previous match.
+  * [`ExtendFwd`][__link36] will extend each `Cursor`’s selections to the
     next match.
-  * [`ExtendRev`][__link42] will extend each [`Cursor`][__link43]’s selections to the
+  * [`ExtendRev`][__link37] will extend each `Cursor`’s selections to the
     previous match.
 
-Note that the [`IncSearcher`][__link44] trait can be used for many more
-interesting things, like in [`duat-kak`][__link45] for example, where its
+Note that the [`IncSearcher`][__link38] trait can be used for many more
+interesting things, like in [`duat-kak`][__link39] for example, where its
 implementors allow for splitting selections, selecting everything
 within a range, and many more such things in the future.
 
-* There are also two [`hooks`][__link46]:
-  * [`SearchUpdated`][__link47] for when an [`IncSearch`][__link48] is updated.
-  * [`SearchPerformed`][__link49] for when an [`IncSearch`][__link50] is finished.
+* There are also two [`hooks`][__link40]:
+  * [`SearchUpdated`][__link41] for when an `IncSearch` is updated.
+  * [`SearchPerformed`][__link42] for when an `IncSearch` is finished.
 
-And finally, there is the [`state`][__link51] module, which contains a bunch
-of [`StatusLine`][__link52] parts for you to customize the [`StatusLine`][__link53]
+And finally, there is the [`state`][__link43] module, which contains a bunch
+of [`StatusLine`][__link44] parts for you to customize the `StatusLine`
 with.
 
 I would consider this crate essential for all `config`s of Duat
@@ -75,58 +87,49 @@ replace, but might also be very extensible by plugins in the
 ecosystem.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG97msBIz5InVG_00XP7-_bP0GwJdnHzdQAOxG8ktLnaMqZyrYWSCg2lkdWF0LWJhc2VlMC43LjBpZHVhdF9iYXNlgmlkdWF0X2NvcmVlMC43LjA
- [__link0]: https://docs.rs/duat-base/0.7.0/duat_base/widgets/index.html
- [__link1]: https://docs.rs/duat-base/0.7.0/duat_base/?search=widgets::LineNumbers
- [__link10]: https://docs.rs/duat_core/0.7.0/duat_core/?search=context::error
- [__link11]: https://docs.rs/duat_core/0.7.0/duat_core/?search=context::warn
- [__link12]: https://docs.rs/duat_core/0.7.0/duat_core/?search=context::info
- [__link13]: https://docs.rs/duat-base/0.7.0/duat_base/?search=widgets::LogBook
- [__link14]: https://docs.rs/duat-base/0.7.0/duat_base/?search=widgets::Notifications
- [__link15]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::Pager
- [__link16]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Mode
- [__link17]: https://docs.rs/duat-base/0.7.0/duat_base/modes/index.html
- [__link18]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::Prompt
- [__link19]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::PromptMode
- [__link2]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Buffer
- [__link20]: https://docs.rs/duat-base/0.7.0/duat_base/?search=widgets::PromptLine
- [__link21]: https://docs.rs/duat_core/0.7.0/duat_core/?search=ui::Widget
- [__link22]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::Pager
- [__link23]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Mode
- [__link24]: https://docs.rs/duat_core/0.7.0/duat_core/?search=ui::Widget
- [__link25]: https://docs.rs/duat-base/0.7.0/duat_base/?search=widgets::LogBook
- [__link26]: https://docs.rs/duat-base/0.7.0/duat_base/?search=widgets::PromptLine
- [__link27]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::PromptMode
- [__link28]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::RunCommands
- [__link29]: https://docs.rs/duat_core/0.7.0/duat_core/?search=cmd::Parameter
- [__link3]: https://docs.rs/duat-base/0.7.0/duat_base/?search=widgets::PromptLine
- [__link30]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::PipeSelections
- [__link31]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Buffer
- [__link32]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::IncSearch
- [__link33]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::IncSearcher
- [__link34]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::IncSearch
- [__link35]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::IncSearcher
- [__link36]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::SearchFwd
- [__link37]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
- [__link38]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::SearchRev
- [__link39]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
- [__link4]: https://docs.rs/duat-base/0.7.0/duat_base/?search=widgets::StatusLine
- [__link40]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::ExtendFwd
- [__link41]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
- [__link42]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::ExtendRev
- [__link43]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
- [__link44]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::IncSearcher
- [__link45]: https://docs.rs/duat-kak/latest/duat_kak
- [__link46]: https://docs.rs/duat-base/0.7.0/duat_base/hooks/index.html
- [__link47]: https://docs.rs/duat-base/0.7.0/duat_base/?search=hooks::SearchUpdated
- [__link48]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::IncSearch
- [__link49]: https://docs.rs/duat-base/0.7.0/duat_base/?search=hooks::SearchPerformed
- [__link5]: https://docs.rs/duat_core/0.7.0/duat_core/?search=data::RwData
- [__link50]: https://docs.rs/duat-base/0.7.0/duat_base/?search=modes::IncSearch
- [__link51]: https://docs.rs/duat-base/0.7.0/duat_base/state/index.html
- [__link52]: https://docs.rs/duat-base/0.7.0/duat_base/?search=widgets::StatusLine
- [__link53]: https://docs.rs/duat-base/0.7.0/duat_base/?search=widgets::StatusLine
- [__link6]: https://docs.rs/duat-base/0.7.0/duat_base/?search=widgets::status
- [__link7]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::txt
- [__link8]: https://docs.rs/duat-base/0.7.0/duat_base/?search=widgets::Notifications
- [__link9]: https://docs.rs/duat_core/0.7.0/duat_core/?search=context::Logs
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG9jDgQBMKFFRG_1r2JJ7ItOlG8pI2-ZQxwnVGxhoFYcMO5tsYWSCg2lkdWF0LWJhc2VlMC45LjBpZHVhdF9iYXNlgmlkdWF0X2NvcmVlMC45LjA
+ [__link0]: https://docs.rs/duat-base/0.9.0/duat_base/widgets/index.html
+ [__link1]: https://docs.rs/duat-base/0.9.0/duat_base/?search=widgets::LineNumbers
+ [__link10]: https://docs.rs/duat_core/0.9.0/duat_core/?search=context::error
+ [__link11]: https://docs.rs/duat_core/0.9.0/duat_core/?search=context::warn
+ [__link12]: https://docs.rs/duat_core/0.9.0/duat_core/?search=context::info
+ [__link13]: https://docs.rs/duat-base/0.9.0/duat_base/?search=widgets::LogBook
+ [__link14]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::Pager
+ [__link15]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::Mode
+ [__link16]: https://docs.rs/duat-base/0.9.0/duat_base/?search=widgets::Completions
+ [__link17]: https://docs.rs/duat-base/0.9.0/duat_base/?search=widgets::CompletionsProvider
+ [__link18]: https://docs.rs/duat-base/0.9.0/duat_base/?search=widgets::Gutter
+ [__link19]: https://docs.rs/duat-base/0.9.0/duat_base/?search=widgets::WhichKey
+ [__link2]: https://docs.rs/duat_core/0.9.0/duat_core/?search=buffer::Buffer
+ [__link20]: https://docs.rs/duat-base/0.9.0/duat_base/?search=widgets::Info
+ [__link21]: https://docs.rs/duat-base/0.9.0/duat_base/modes/index.html
+ [__link22]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::Prompt
+ [__link23]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::PromptMode
+ [__link24]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::Pager
+ [__link25]: https://docs.rs/duat-base/0.9.0/duat_base/?search=widgets::PromptLine
+ [__link26]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::PromptMode
+ [__link27]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::RunCommands
+ [__link28]: https://docs.rs/duat_core/0.9.0/duat_core/?search=cmd::Parameter
+ [__link29]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::PipeSelections
+ [__link3]: https://docs.rs/duat-base/0.9.0/duat_base/?search=widgets::PromptLine
+ [__link30]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::IncSearch
+ [__link31]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::IncSearcher
+ [__link32]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::IncSearch
+ [__link33]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::SearchFwd
+ [__link34]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::Cursor
+ [__link35]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::SearchRev
+ [__link36]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::ExtendFwd
+ [__link37]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::ExtendRev
+ [__link38]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::IncSearcher
+ [__link39]: https://docs.rs/duat-kak/latest/duat_kak
+ [__link4]: https://docs.rs/duat-base/0.9.0/duat_base/?search=widgets::StatusLine
+ [__link40]: https://docs.rs/duat-base/0.9.0/duat_base/hooks/index.html
+ [__link41]: https://docs.rs/duat-base/0.9.0/duat_base/?search=hooks::SearchUpdated
+ [__link42]: https://docs.rs/duat-base/0.9.0/duat_base/?search=hooks::SearchPerformed
+ [__link43]: https://docs.rs/duat-base/0.9.0/duat_base/state/index.html
+ [__link44]: https://docs.rs/duat-base/0.9.0/duat_base/?search=widgets::StatusLine
+ [__link5]: https://docs.rs/duat_core/0.9.0/duat_core/?search=data::RwData
+ [__link6]: https://docs.rs/duat-base/0.9.0/duat_base/?search=widgets::status
+ [__link7]: https://docs.rs/duat_core/0.9.0/duat_core/?search=text::txt
+ [__link8]: https://docs.rs/duat-base/0.9.0/duat_base/?search=widgets::Notifications
+ [__link9]: https://docs.rs/duat_core/0.9.0/duat_core/?search=context::Logs

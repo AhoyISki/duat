@@ -73,22 +73,19 @@
 //! setup_duat!(setup);
 //! use duat::prelude::*;
 //!
-//! fn setup() {
+//! fn setup(opts: &mut Opts) {
 //!     map::<Insert>("jk", "<Esc>");
 //!
-//!     opts::set(|opts| {
-//!         opts.wrap_lines = true;
-//!         opts.scrolloff.y = 5;
-//!         opts.line_numbers.align = std::fmt::Alignment::Right;
-//!     });
-//!
-//!     opts::fmt_status(|pa| {
+//!     opts.wrap_lines = true;
+//!     opts.scrolloff.y = 5;
+//!     opts.line_numbers.align = std::fmt::Alignment::Right;
+//!     opts.fmt_status(|pa| {
 //!         let upper_mode = mode_name().map(|m| m.to_uppercase());
 //!
 //!         status!("[mode]{upper_mode}{Spacer}{name_txt} {sels_txt} {main_txt}")
 //!     });
 //!
-//!     hook::add::<ModeSwitched>(|_, (_, new)| match new {
+//!     hook::add::<ModeSwitched>(|_, switch| match switch.new.name {
 //!         "Insert" => cursor::set_main(CursorShape::SteadyBar),
 //!         _ => cursor::unset(),
 //!     });
@@ -342,17 +339,16 @@ pub mod hook {
     //!
     //! ```rust
     //! setup_duat!(setup);
-    //! use std::fmt::Alignment;
-    //!
     //! use duat::prelude::*;
+    //! use widgets::*;
     //!
-    //! fn setup() {
-    //!     hook::add::<WidgetOpened<LineNumbers>>(|pa, handle| {
-    //!         if let Ok(buf) = handle.buffer()
+    //! fn setup(opts: &mut Opts) {
+    //!     hook::add::<WidgetOpened<LineNumbers>>(|pa, linenumbers| {
+    //!         if let Some(buf) = linenumbers.buffer(pa)
     //!             && let Some("markdown") = buf.filetype(pa)
     //!         {
-    //!             let ln = handle.write(pa);
-    //!             ln.align = Alignment::Left;
+    //!             let ln = linenumbers.write(pa);
+    //!             ln.align = std::fmt::Alignment::Left;
     //!             ln.relative = false;
     //!         }
     //!     });
@@ -367,7 +363,7 @@ pub mod hook {
     //! setup_duat!(setup);
     //! use duat::prelude::*;
     //!
-    //! fn setup() {
+    //! fn setup(opts: &mut Opts) {
     //!     hook::add::<BufferOpened>(|pa, handle| {
     //!         status!("{name_txt}{Spacer}{main_txt}")
     //!             .above()
@@ -392,27 +388,27 @@ pub mod hook {
     //!
     //! - [`BufferOpened`] is an alias for [`WidgetOpened<Buffer>`].
     //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
-    //! - [`BufferClosed`] triggers when closing a `Buffer`.
-    //! - [`BufferUnloaded`] triggers on all buffers upon reloading.
+    //! - [`BufferClosed`] triggers on buffers upon closing Duat.
+    //! - [`BufferUnloaded`] triggers on buffers when unloading Duat.
     //! - [`BufferUpdated`] triggers whenever a buffer changes.
     //! - [`BufferPrinted`] triggers after a buffer has been printed.
     //! - [`BufferSwitched`] triggers when switching buffers.
-    //! - [`ConfigLoaded`] triggers after loading the config.
+    //! - [`ConfigLoaded`] triggers after loading the config crate.
     //! - [`ConfigUnloaded`] triggers after unloading the config.
-    //! - [`ExitedDuat`] triggers after Duat has exited.
     //! - [`FocusedOnDuat`] triggers when Duat gains focus.
     //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
     //! - [`WidgetOpened`] triggers when a [`Widget`] is opened.
     //! - [`WindowOpened`] triggers when a [`Window`] is created.
-    //! - [`FocusedOn`] triggers when a widget is focused.
-    //! - [`UnfocusedFrom`] triggers when a widget is unfocused.
-    //! - [`FocusChanged`] is a generic version of [`FocusedOn`].
+    //! - [`FocusedOn`] triggers when a [widget] is focused.
+    //! - [`UnfocusedFrom`] triggers when a [widget] is unfocused.
+    //! - [`FocusChanged`], like [`FocusedOn`] but on [dyn `Widget`]s.
+    //! - [`ModeSwitched`] triggers when you change [`Mode`].
     //! - [`KeySent`] triggers when a keys are sent.
-    //! - [`KeySentTo`] same, but on a specific widget.
     //! - [`KeyTyped`] triggers when keys are _typed_, not _sent_.
     //! - [`OnMouseEvent`] triggers with mouse events.
     //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
-    //! - [`ModeSwitched`] triggers when you change [`Mode`].
+    //! - [`ColorschemeSet`] triggers whenever a [colorscheme is set].
+    //! - [`MsgLogged`] triggers after logging macros like [`debug!`].
     //! - [`SearchPerformed`] triggers after a search is performed.
     //! - [`SearchUpdated`]  triggers after a search updates.
     //!
@@ -431,7 +427,7 @@ pub mod hook {
     //!
     //! use duat::{data::RwData, prelude::*};
     //!
-    //! fn setup() {
+    //! fn setup(opts: &mut Opts) {
     //!     let key_count = RwData::new(0);
     //!
     //!     hook::add::<KeySent>({
@@ -441,7 +437,7 @@ pub mod hook {
     //!     .grouped("CountKeys");
     //!
     //!     // Shows the key count on the StatusLine
-    //!     opts::fmt_status(move |pa| {
+    //!     opts.fmt_status(move |pa| {
     //!         let mode_txt = mode_txt();
     //!         let key_count = key_count.clone();
     //!         status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt} keys={key_count}")
@@ -464,17 +460,17 @@ pub mod hook {
     //!
     //! [hook above]: WidgetOpened
     //! [That hook]: crate::prelude::WidgetOpened
-    //! [`StatusLine`]: crate::prelude::StatusLine
+    //! [`StatusLine`]: crate::widgets::StatusLine
     //! [buffer's name]: crate::prelude::name_txt
     //! [main `Selection`]: crate::prelude::main_txt
-    //! [`VertRule`]: crate::prelude::VertRule
-    //! [`PromptLine`]: crate::prelude::PromptLine
-    //! [`Notifications`]: crate::prelude::Notifications
+    //! [`VertRule`]: crate::widgets::VertRule
+    //! [`PromptLine`]: crate::widgets::PromptLine
+    //! [`Notifications`]: crate::widgets::Notifications
     //! [`WindowOpened`]: crate::prelude::WindowOpened
-    //! [`LogBook`]: crate::prelude::LogBook
+    //! [`LogBook`]: crate::widgets::LogBook
     //! [`Buffer`]: crate::prelude::Buffer
-    //! [`LineNumbers`]: crate::prelude::LineNumbers
-    //! [`dyn Widget`]: crate::prelude::Widget
+    //! [`LineNumbers`]: crate::widgets::LineNumbers
+    //! [`dyn Widget`]: crate::widgets::Widget
     //! [`Widget`]: crate::prelude::Widget
     //! [`Form`]: crate::prelude::Form
     //! [key press]: crate::mode::KeyEvent
@@ -485,6 +481,8 @@ pub mod hook {
     //! [`Window`]: crate::ui::Window
     //! [widget]: crate::widgets::Widget
     //! [dyn `Widget`]: crate::widgets::Widget
+    //! [`debug!`]: crate::context::debug
+    //! [colorscheme is set]: crate::colorscheme::set
     pub use duat_base::hooks::*;
     pub use duat_core::hook::*;
 }
@@ -524,6 +522,8 @@ pub mod state {
 pub mod widgets {
     pub use duat_base::widgets::*;
     pub use duat_core::{buffer::Buffer, ui::Widget};
+    #[cfg(feature = "term-ui")]
+    pub use duat_term::VertRule;
 }
 
 #[doc(hidden)]
@@ -560,7 +560,7 @@ pub mod prelude {
 
     pub use duat_filetype::*;
     #[cfg(feature = "term-ui")]
-    pub use duat_term::{self as term, VertRule};
+    pub use duat_term::{self as term};
 
     use crate::setup::ALREADY_PLUGGED;
     pub use crate::{
@@ -573,15 +573,15 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hook::{
             self, BufferClosed, BufferOpened, BufferPrinted, BufferSaved, BufferUnloaded,
-            BufferUpdated, ColorschemeSet, ConfigLoaded, ConfigUnloaded, FocusChanged,
-            FocusedOnDuat, FormSet, Hookable, KeySent, KeyTyped, OnModeSwitch, SearchPerformed,
+            BufferUpdated, ColorschemeSet, ConfigLoaded, ConfigUnloaded, FocusChanged, FocusedOn,
+            FocusedOnDuat, FormSet, Hookable, KeySent, KeyTyped, ModeSwitched, SearchPerformed,
             SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetOpened, WindowOpened,
         },
         mode::{
             self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,
             User, alias, alt, ctrl, event, map, shift,
         },
-        opts::{Opts, ScrollOff},
+        opts::{Opts, ScrollOff, TabMode},
         setup_duat,
         state::*,
         text::{

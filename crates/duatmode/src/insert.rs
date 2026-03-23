@@ -5,7 +5,7 @@ use duat_core::{
     buffer::Buffer,
     context::{self, Handle},
     data::Pass,
-    hook::{self, OnModeSwitch},
+    hook::{self, ModeSwitched},
     mode::{self, Cursor, KeyEvent, KeyMod, Mode, alt, ctrl, event, shift},
 };
 use duat_filetype::AutoPrefix;
@@ -13,7 +13,7 @@ use duat_filetype::AutoPrefix;
 use crate::{Normal, opts::INSERT_TABS, set_anchor_if_needed};
 
 pub fn add_insert_hook() {
-    hook::add::<OnModeSwitch>(|pa, switch| {
+    hook::add::<ModeSwitched>(|pa, switch| {
         if switch.new.is::<Insert>() {
             INSERT_EVENTS.lock().unwrap().clear();
             Completions::open_default(pa);

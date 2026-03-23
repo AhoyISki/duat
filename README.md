@@ -83,22 +83,19 @@ config it is just `kak`.
 setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     map::<Insert>("jk", "<Esc>");
 
-    opts::set(|opts| {
-        opts.wrap_lines = true;
-        opts.scrolloff.y = 5;
-        opts.line_numbers.align = std::fmt::Alignment::Right;
-    });
-
-    opts::fmt_status(|pa| {
+    opts.wrap_lines = true;
+    opts.scrolloff.y = 5;
+    opts.line_numbers.align = std::fmt::Alignment::Right;
+    opts.fmt_status(|pa| {
         let upper_mode = mode_name().map(|m| m.to_uppercase());
 
         status!("[mode]{upper_mode}{Spacer}{name_txt} {sels_txt} {main_txt}")
     });
 
-    hook::add::<ModeSwitched>(|_, (_, new)| match new {
+    hook::add::<ModeSwitched>(|_, switch| match switch.new.name {
         "Insert" => cursor::set_main(CursorShape::SteadyBar),
         _ => cursor::unset(),
     });
@@ -274,26 +271,26 @@ That’s why I decided to create Duat.
 idk, cool sounding word that I got from Spelunky 2.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG8VXne41ysKwGxnSqiIWE16QG4svijMFpMbFG4hM3eH0mx7uYWSGgmRkdWF0ZTAuOC4zgmlkdWF0X2Jhc2VlMC44LjGCaWR1YXRfY29yZWUwLjguMYJwZHVhdF9tYXRjaF9wYWlyc2UwLjMuMIJvZHVhdF90cmVlc2l0dGVyZTAuNC4wgmhkdWF0bW9kZWUwLjguMQ
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEGxS0JFFd24_cG3ngxwrXgOqZG7CkAVpAdob9G9-B23Ci0pFtYWSGgmRkdWF0ZTAuOS4xgmlkdWF0X2Jhc2VlMC45LjCCaWR1YXRfY29yZWUwLjkuMIJwZHVhdF9tYXRjaF9wYWlyc2UwLjQuMIJvZHVhdF90cmVlc2l0dGVyZTAuNS4wgmhkdWF0bW9kZWUwLjkuMA
  [__link0]: https://www.rust-lang.org/tools/install
- [__link1]: https://docs.rs/duat/0.8.3/duat/?search=mode::map
- [__link10]: https://docs.rs/duat_core/0.8.1/duat_core/?search=buffer::BufferTracker
- [__link11]: https://docs.rs/duat/0.8.3/duat/?search=prelude::Buffer
- [__link12]: https://docs.rs/duat_core/0.8.1/duat_core/?search=text::txt
- [__link13]: https://docs.rs/duat/0.8.3/duat/?search=prelude::Form
- [__link14]: https://docs.rs/duat_core/0.8.1/duat_core/?search=text::Spacer
+ [__link1]: https://docs.rs/duat/0.9.1/duat/?search=mode::map
+ [__link10]: https://docs.rs/duat_core/0.9.0/duat_core/?search=buffer::BufferTracker
+ [__link11]: https://docs.rs/duat/0.9.1/duat/?search=prelude::Buffer
+ [__link12]: https://docs.rs/duat_core/0.9.0/duat_core/?search=text::txt
+ [__link13]: https://docs.rs/duat/0.9.1/duat/?search=prelude::Form
+ [__link14]: https://docs.rs/duat_core/0.9.0/duat_core/?search=text::Spacer
  [__link15]: https://doc.rust-lang.org/stable/std/macro.format.html
- [__link16]: https://crates.io/crates/duatmode/0.8.1
- [__link17]: https://crates.io/crates/duat_treesitter/0.4.0
+ [__link16]: https://crates.io/crates/duatmode/0.9.0
+ [__link17]: https://crates.io/crates/duat_treesitter/0.5.0
  [__link18]: https://tree-sitter.github.io/tree-sitter
- [__link19]: https://crates.io/crates/duat_match_pairs/0.3.0
- [__link2]: https://docs.rs/duat/0.8.3/duat/opts/index.html
- [__link20]: https://crates.io/crates/duat_base/0.8.1
+ [__link19]: https://crates.io/crates/duat_match_pairs/0.4.0
+ [__link2]: https://docs.rs/duat/0.9.1/duat/opts/index.html
+ [__link20]: https://crates.io/crates/duat_base/0.9.0
  [__link21]: ./TODO
- [__link3]: https://docs.rs/duat/0.8.3/duat/?search=hook::add
- [__link4]: https://docs.rs/duat/0.8.3/duat/?search=hook::ModeSwitched
- [__link5]: https://docs.rs/duat/0.8.3/duat/?search=form::set
- [__link6]: https://docs.rs/duat/0.8.3/duat/?search=form::Form
- [__link7]: https://docs.rs/duat/0.8.3/duat/?search=prelude::cmd
- [__link8]: https://docs.rs/duat/0.8.3/duat/?search=widgets::Widget
- [__link9]: https://docs.rs/duat/0.8.3/duat/?search=hook::WindowOpened
+ [__link3]: https://docs.rs/duat/0.9.1/duat/?search=hook::add
+ [__link4]: https://docs.rs/duat/0.9.1/duat/?search=hook::ModeSwitched
+ [__link5]: https://docs.rs/duat/0.9.1/duat/?search=form::set
+ [__link6]: https://docs.rs/duat/0.9.1/duat/?search=form::Form
+ [__link7]: https://docs.rs/duat/0.9.1/duat/?search=prelude::cmd
+ [__link8]: https://docs.rs/duat/0.9.1/duat/?search=widgets::Widget
+ [__link9]: https://docs.rs/duat/0.9.1/duat/?search=hook::WindowOpened

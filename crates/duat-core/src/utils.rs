@@ -475,10 +475,10 @@ macro_rules! doc_duat {
                     data::{self, Pass},
                     form::{self, CursorShape, Form},
                     hook::{
-                        self, BufferOpened, BufferSaved, BufferUpdated, ColorSchemeSet,
-                        ConfigLoaded, ConfigUnloaded, FocusChanged, FocusedOnDuat, FormSet,
-                        Hookable, KeySent, KeySentTo, ModeSwitched, UnfocusedFrom,
-                        UnfocusedFromDuat, WidgetOpened, WindowOpened,
+                        self, BufferOpened, BufferSaved, BufferUpdated, ColorschemeSet,
+                        ConfigLoaded, ConfigUnloaded, FocusChanged, FocusedOn, FocusedOnDuat,
+                        FormSet, Hookable, KeySent, ModeSwitched, UnfocusedFrom, UnfocusedFromDuat,
+                        WidgetOpened, WindowOpened,
                     },
                     text::{
                         self, Builder, Conceal, Ghost, Spacer, SpawnTag, Strs, Tagger, Text, txt,
@@ -521,8 +521,6 @@ macro_rules! doc_duat {
                     }}
                 }
                 impl Widget for LineNumbers {
-                    fn update(pa: &mut Pass, handle: &Handle<Self>) {}
-                    fn needs_update(&self, pa: &Pass) -> bool { false }
                     fn text(&self) -> &Text { &self.text }
                     fn text_mut(&mut self) -> TextMut<'_> { self.text.as_mut() }
                 }

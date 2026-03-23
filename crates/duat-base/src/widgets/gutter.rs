@@ -371,7 +371,7 @@ pub struct GutteredBuffer<'g> {
 }
 
 impl<'g> GutteredBuffer<'g> {
-    /// Remove all [`GutterEntry`]s from a given [`Gutterer`].
+    /// Remove all entries from a given [`Gutterer`].
     pub fn remove_entries(&mut self, gutterer: Gutterer) {
         self.gutter.write(self.pa).entries.remove(&gutterer);
         self.buffer

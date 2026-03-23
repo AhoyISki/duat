@@ -13,47 +13,22 @@ utility of duat. It adds the two following traits:
   [`filetype`][__link9] method, but it requires a
   [`Pass`][__link10], bypassing the need to, for example, [`read`][__link11] a
   [`Handle<Buffer>`][__link12]. Its implementors are [`RwData<Buffer>`][__link13],
-  [`Handle<Buffer>`][__link14],
-
-Both of these traits are included by default in Duat’s
-[`prelude`][__link15], but if you want to use them in a plugin, first, add
-`duat-filetype` to the dependencies:
-
-```bash
-cargo add duat-filetype
-```
-
-Or, for latest git version:
-
-```bash
-cargo add --git https://github.com/AhoyISki/duat-filetype
-```
-
-Then, just `use` it in the file:
-
-```rust
-use duat_filetype::FileType;
-
-fn is_toml(file_name: &str) -> bool {
-    file_name.filetype() == Some("toml")
-}
-```
+  [`Handle<Buffer>`][__link14].
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG_dXbWWMdunoG-L51_uPL3c2G1FjR9myYfsiGwMrwgmKPMrhYWSCg21kdWF0LWZpbGV0eXBlZTAuMy4xbWR1YXRfZmlsZXR5cGWCaWR1YXRfY29yZWUwLjcuMA
- [__link0]: https://docs.rs/duat_core/0.7.0/duat_core/?search=Plugin
- [__link1]: https://docs.rs/duat-filetype/0.3.1/duat_filetype/?search=FileType::filetype
- [__link10]: https://docs.rs/duat_core/0.7.0/duat_core/?search=data::Pass
- [__link11]: https://docs.rs/duat_core/0.7.0/duat_core/?search=context::Handle::read
- [__link12]: https://docs.rs/duat_core/0.7.0/duat_core/?search=context::Handle
- [__link13]: https://docs.rs/duat_core/0.7.0/duat_core/?search=data::RwData
- [__link14]: https://docs.rs/duat_core/0.7.0/duat_core/?search=context::Handle
- [__link15]: https://docs.rs/duat/latest/duat/prelude
- [__link2]: https://docs.rs/duat-filetype/0.3.1/duat_filetype/?search=FileType::filetype
- [__link3]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Buffer
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGyZYCbGMbRVrGylbI7YdKLV0G_9mtCxU4OZwGwnWpImGdR09YWSCg21kdWF0LWZpbGV0eXBlZTAuNC4wbWR1YXRfZmlsZXR5cGWCaWR1YXRfY29yZWUwLjkuMA
+ [__link0]: https://docs.rs/duat_core/0.9.0/duat_core/?search=Plugin
+ [__link1]: https://docs.rs/duat-filetype/0.4.0/duat_filetype/?search=FileType::filetype
+ [__link10]: https://docs.rs/duat_core/0.9.0/duat_core/?search=data::Pass
+ [__link11]: https://docs.rs/duat_core/0.9.0/duat_core/?search=context::Handle::read
+ [__link12]: https://docs.rs/duat_core/0.9.0/duat_core/?search=context::Handle
+ [__link13]: https://docs.rs/duat_core/0.9.0/duat_core/?search=data::RwData
+ [__link14]: https://docs.rs/duat_core/0.9.0/duat_core/?search=context::Handle
+ [__link2]: https://docs.rs/duat-filetype/0.4.0/duat_filetype/?search=FileType::filetype
+ [__link3]: https://docs.rs/duat_core/0.9.0/duat_core/?search=buffer::Buffer
  [__link4]: https://doc.rust-lang.org/stable/std/string/struct.String.html
  [__link5]: https://doc.rust-lang.org/stable/std/primitive.str.html
  [__link6]: https://doc.rust-lang.org/stable/std/?search=path::PathBuf
  [__link7]: https://doc.rust-lang.org/stable/std/?search=path::Path
- [__link8]: https://docs.rs/duat-filetype/0.3.1/duat_filetype/trait.PassFileType.html
- [__link9]: https://docs.rs/duat-filetype/0.3.1/duat_filetype/?search=PassFileType::filetype
+ [__link8]: https://docs.rs/duat-filetype/0.4.0/duat_filetype/trait.PassFileType.html
+ [__link9]: https://docs.rs/duat-filetype/0.4.0/duat_filetype/?search=PassFileType::filetype

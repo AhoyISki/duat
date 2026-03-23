@@ -62,6 +62,8 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     /// want. (Note, you should call something like
     /// `std::env::args().skip(7)`, since the first argument will be
     /// the path of the executed config).
+    ///
+    /// [`Command`]: std::process::Command
     fn open() -> Vec<OsString>;
 
     /// A function to be executed when closing Duat.

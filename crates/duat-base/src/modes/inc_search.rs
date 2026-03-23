@@ -44,7 +44,7 @@ static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 ///
 ///     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) {
 ///         match event {
-///             ctrl!('s') => _ = mode::set(pa, IncSearch::new(SearchFwd)),
+///             ctrl!('s') => _ = mode::set(IncSearch::new(SearchFwd)),
 ///             other_keys_oh_god => todo!(),
 ///         }
 ///     }
@@ -192,8 +192,8 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 /// struct SearchAround;
 ///
 /// impl IncSearcher for SearchAround {
-///     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
-///         handle.edit_all(pa, |mut c| {
+///     fn search(&mut self, pa: &mut Pass, pat: &str, buffer: Handle<Buffer>) {
+///         buffer.edit_all(pa, |mut c| {
 ///             c.set_caret_on_end();
 ///             let Some(e_range) = c.search(pat).from_caret().next() else {
 ///                 return;

@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     path::PathBuf,
-    sync::{LazyLock, Mutex, OnceLock},
+    sync::{LazyLock, Mutex},
 };
 
 use duat_core::{
@@ -75,7 +75,7 @@ pub fn setup_hooks() {
 
             let text = handle.text(pa);
 
-			let mut opened_buffers = OPENED_BUFFERS.0.lock().unwrap();
+            let mut opened_buffers = OPENED_BUFFERS.0.lock().unwrap();
             if opened_buffers.insert(path) {
                 server::on_all_servers(|server| {
                     server.send_notification::<DidOpenTextDocument>(DidOpenTextDocumentParams {

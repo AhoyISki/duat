@@ -1,25 +1,26 @@
 # The hook module
 
-Hooks in duat are functions that are called automatically whenever some 
-specific event happens. They are very similar to kakoune's hooks or neovim's 
-autocmds. However, one thing that distinguishes the versatility of duat's hooks 
-is the fact that they present you with arguments whose type is inferred at 
+Hooks in duat are functions that are called automatically whenever some
+specific event happens. They are very similar to kakoune's hooks or neovim's
+autocmds. However, one thing that distinguishes the versatility of duat's hooks
+is the fact that they present you with arguments whose type is inferred at
 compile time:
 
 ```rust
 setup_duat!(setup);
 use duat::prelude::*;
+use widgets::*;
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     // Note the Pass, so you have mutable global state access.
     // The type of the second argument is inferred, it is only
     // included here for example's sake.
-    hook::add::<ModeSwitched>(|pa, (old, new): (&str, &str)| {
-        if old == "Insert" && new == "Normal" {
+    hook::add::<ModeSwitched>(|pa, switch| {
+        if switch.old.name == "Insert" && switch.new.name == "Normal" {
             _ = context::current_buffer(pa).save(pa);
         }
     });
-    
+
     hook::add::<BufferOpened>(|pa, handle: &Handle| {
         let buf = handle.write(pa);
         match buf.filetype() {
@@ -31,18 +32,18 @@ fn setup() {
                 buf.opts.tabstop = 2;
                 buf.opts.extra_word_chars = &['-'];
             }
-            Some("lua" | "javascript") => buf.opts.tabstop = 2, 
+            Some("lua" | "javascript") => buf.opts.tabstop = 2,
             _ => {}
         };
     });
-    
+
     // You can call hooks for many things...
     hook::add::<WidgetOpened<LineNumbers>>(|pa, handle| {
         // This will put a vertical ruler on the left of the `LineNumbers`
         // making for a "stylish" column of numbers.
         VertRule::builder().push_on(pa, handle);
     });
-    
+
     let key_count = RwData::new(0);
     hook::add::<KeyTyped>({
         let key_count = key_count.clone();
@@ -50,8 +51,8 @@ fn setup() {
             *key_count.write(pa) += 1;
         }
     });
-    
-    opts::fmt_status(move |_| {
+
+    opts.fmt_status(move |_| {
         let mode_txt = mode_txt();
         let key_count = key_count.clone();
         status!("{name_txt} {mode_txt}{Spacer}{sels_txt} {main_txt} {key_count}")
@@ -61,7 +62,7 @@ fn setup() {
 
 ## Creating new hooks
 
-Another interesting thing about hooks in duat is that you can create your own. 
+Another interesting thing about hooks in duat is that you can create your own.
 You do that by implementing the `Hookable` trait on a type:
 
 ```rust
@@ -140,7 +141,7 @@ Then, the user can just add their own hooks, which will be called accordingly:
 setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     // This would be called from a `Plugin::plug` function
     setup_hook();
 
@@ -162,11 +163,11 @@ fn setup() {
 
 ## List of hooks
 
-Here's the list of currently available hooks, more will be added in the future. 
-For the list of arguments of each hook, remember that there will always be 
+Here's the list of currently available hooks, more will be added in the future.
+For the list of arguments of each hook, remember that there will always be
 `&mut Pass` argument, and that the other arguments will come in a tuple.
 
-For example, if a hook has two arguments, `i32` and `bool`, they will actually 
+For example, if a hook has two arguments, `i32` and `bool`, they will actually
 come in as `(i32, bool)` in the second argument of the hook. So you should pass
 a function like this:
 
@@ -174,7 +175,7 @@ a function like this:
 # struct FooHook;
 # impl Hookable for FooHook {
 #     type Input<'h> = (i32, bool);
-#     
+#
 #     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
 #         (0, true)
 #     }
@@ -182,36 +183,34 @@ a function like this:
 setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     hook::add::<FooHook>(|pa, (arg1, arg2): (i32, bool)| {
         // ...
     });
 }
 ```
 
-Also, when a hook says that it has no arguments, what this actually means is 
+Also, when a hook says that it has no arguments, what this actually means is
 that the second argument is of type `()`, so the function argument still needs
 to have two arguments in it.
 
 ### `BufferOpened`
 
-Triggers after opening a `Buffer`. You will want to use this hook to set 
+Triggers after opening a `Buffer`. You will want to use this hook to set
 buffer-wise configuration options:
 
 ```rust
 setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     // Options set initially for all `Buffer`s
-    opts::set(|opts| {
-        opts.tabstop = 4;
-    });
-    
+    opts.tabstop = 4;
+
     // Changing those options on a buffer by buffer basis.
     hook::add::<BufferOpened>(|pa, handle| {
         let buf = handle.write(pa);
-        
+
         match buf.filetype() {
             Some("haskell" | "commonlisp") => buf.opts.tabstop = 2,
             Some("txt" | "markdown" | "asciidoc") => {
@@ -227,25 +226,25 @@ fn setup() {
 
 *Arguments*
 
-- The `Handle<Buffer>` of the `Buffer` that was 
+- The `Handle<Buffer>` of the `Buffer` that was
   opened.
 
 ### `BufferSaved`
 
-Triggers right after saving a `Buffer`. This will happen whenever you call any 
-of the `write` family of commands, or if `Handle::<Buffer>::save` is called. 
+Triggers right after saving a `Buffer`. This will happen whenever you call any
+of the `write` family of commands, or if `Handle::<Buffer>::save` is called.
 
 *Arguments*
 
 - The `Handle<Buffer>` that was saved.
-- A `bool`, which is `true` if the `Buffer` is being closed, through commands 
+- A `bool`, which is `true` if the `Buffer` is being closed, through commands
   like `wq`.
 
 ### `BufferClosed`
 
-Triggers as a `Buffer` is being closed, after `BufferSaved`. This will happen 
-when you run a command like `q` or `wq`, or after calling 
-`Handle::<Buffer>::close`. It will also happen after quitting Duat, after 
+Triggers as a `Buffer` is being closed, after `BufferSaved`. This will happen
+when you run a command like `q` or `wq`, or after calling
+`Handle::<Buffer>::close`. It will also happen after quitting Duat, after
 `ConfigUnloaded` but before `ExitedDuat`.
 
 *Arguments*
@@ -254,8 +253,8 @@ when you run a command like `q` or `wq`, or after calling
 
 ### `BufferReloaded`
 
-Triggers on every `Buffer` after the config gets reloaded. This _won't_ happen 
-on the first config that was loaded. 
+Triggers on every `Buffer` after the config gets reloaded. This _won't_ happen
+on the first config that was loaded.
 
 *Arguments*
 
@@ -263,7 +262,7 @@ on the first config that was loaded.
 
 ### `ConfigLoaded`
 
-Will trigger right after initially loading the config crate on 
+Will trigger right after initially loading the config crate on
 `~/.config/duat/` or wherever you're loading the config from.
 
 *Arguments*
@@ -272,7 +271,7 @@ Will trigger right after initially loading the config crate on
 
 ### `ConfigUnloaded`
 
-Will trigger right before unloading the config crate on 
+Will trigger right before unloading the config crate on
 `~/.config/duat/` or wherever you're loading the config from.
 This will also trigger upon exiting Duat.
 
@@ -282,7 +281,7 @@ This will also trigger upon exiting Duat.
 
 ### `ExitedDuat`
 
-Triggers after quitting Duat, after `ConfigUnloaded` and after triggering 
+Triggers after quitting Duat, after `ConfigUnloaded` and after triggering
 `BufferClosed` on each `Buffer`.
 
 *Arguments*

@@ -6,7 +6,7 @@ use std::{
     time::SystemTime,
 };
 
-use duat::private_exports::{post_setup, pre_setup, start};
+use duat::private_exports::{full_setup, start};
 #[cfg(feature = "term-ui")]
 use duat::ui::traits::RawUi;
 use duat_core::{
@@ -82,11 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(crate_dir) = std::env::args().nth(4)
         && crate_dir == "--"
     {
-        return Ok(start(|| {
-            let ui = pre_setup();
-            let (already_plugged, opts) = post_setup();
-            (ui, already_plugged, opts)
-        })?);
+        return Ok(start(|| full_setup(|_| {}))?);
     }
 
     std::panic::set_hook(Box::new(|panic_info| {

@@ -36,13 +36,13 @@
 //! [written to]: RwData::write
 //! [`Widget`]: crate::ui::Widget
 //! [`Buffer`]: crate::buffer::Buffer
-//! [updated]: crate::ui::Widget::update
 //! [`Text`]: crate::text::Text
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
 //! [`context`]: crate::context
 //! [`Mutex`]: std::sync::Mutex
 //! [`read`]: RwData::read
 //! [`write`]: RwData::write
+//! [updated]: crate::hook::BufferUpdated
 use std::{
     self,
     any::TypeId,
@@ -292,17 +292,20 @@ impl<T: ?Sized> RwData<T> {
     ///     buf: Handle,
     /// }
     ///
-    /// impl Widget for MyWidget {
-    ///     fn update(pa: &mut Pass, handle: &Handle<Self>) {
-    ///         let (wid, buf) = handle.write_then(pa, |wid| &wid.buf);
+    /// fn add_mywidget_hooks() {
+    ///     hook::add::<KeySent>(|pa, _| {
+    ///         let Some(mywidget) = context::handle_of::<MyWidget>(pa) else {
+    ///             return;
+    ///         };
+    ///         let (wid, buf) = mywidget.write_then(pa, |wid| &wid.buf);
     ///         // Updating the widget and reading/writing from the Buffer at the same time.
     ///         // ...
-    ///     }
-    ///     // ..
-    ///     # fn text(&self) -> &Text { &self.text }
-    ///     # fn text_mut(&mut self) -> TextMut { self.text.as_mut() }
-    ///     # fn needs_update(&self, pa: &Pass) -> bool { false }
+    ///     });
     /// }
+    /// # impl Widget for MyWidget {
+    /// #     fn text(&self) -> &Text { &self.text }
+    /// #     fn text_mut(&mut self) -> TextMut { self.text.as_mut() }
+    /// # }
     /// ```
     ///
     /// You can also return tuples from the function, allowing for
@@ -318,16 +321,19 @@ impl<T: ?Sized> RwData<T> {
     ///     buf2: Handle,
     /// }
     ///
-    /// impl Widget for MyWidget {
-    ///     fn update(pa: &mut Pass, handle: &Handle<Self>) {
-    ///         let (wid, (b1, b2)) = handle.write_then(pa, |wid| (&wid.buf1, &wid.buf2));
+    /// fn add_mywidget_hooks() {
+    ///     hook::add::<KeySent>(|pa, _| {
+    ///         let Some(mywidget) = context::handle_of::<MyWidget>(pa) else {
+    ///             return;
+    ///         };
+    ///         let (wid, (b1, b2)) = mywidget.write_then(pa, |wid| (&wid.buf1, &wid.buf2));
     ///         // ...
-    ///     }
-    ///     // ..
-    ///     # fn text(&self) -> &Text { &self.text }
-    ///     # fn text_mut(&mut self) -> TextMut { self.text.as_mut() }
-    ///     # fn needs_update(&self, pa: &Pass) -> bool { false }
+    ///     });
     /// }
+    /// # impl Widget for MyWidget {
+    /// #     fn text(&self) -> &Text { &self.text }
+    /// #     fn text_mut(&mut self) -> TextMut { self.text.as_mut() }
+    /// # }
     /// ```
     ///
     /// # Panics
@@ -474,18 +480,10 @@ impl<T: ?Sized> RwData<T> {
     /// actually been changed, it just means a mutable reference was
     /// acquired after the last call to [`has_changed`].
     ///
-    /// Some types like [`Text`], and traits like [`Widget`] offer
-    /// [`has_changed`](crate::ui::Widget::needs_update) methods,
-    /// you should try to determine what parts to look for changes.
-    ///
-    /// Generally though, you can use this method to gauge that.
-    ///
     /// [`write`]: Self::write
     /// [`write_as`]: Self::write_as
     /// [`read`]: Self::read
     /// [`has_changed`]: Self::has_changed
-    /// [`Text`]: crate::text::Text
-    /// [`Widget`]: crate::ui::Widget
     pub fn has_changed(&self) -> bool {
         self.read_state.load(Ordering::Relaxed) < self.cur_state.load(Ordering::Relaxed)
     }
@@ -636,19 +634,12 @@ impl<I: ?Sized, O> MutDataMap<I, O> {
     /// actually been changed, it just means a mutable reference was
     /// acquired after the last call to [`has_changed`].
     ///
-    /// Some types like [`Text`], and traits like [`Widget`] offer
-    /// [`needs_update`] methods, you should try to determine what
-    /// parts to look for changes.
-    ///
-    /// Generally though, you can use this method to gauge that.
-    ///
     /// [`write`]: RwData::write
     /// [`write_as`]: RwData::write_as
     /// [`read`]: RwData::read
     /// [`has_changed`]: RwData::has_changed
     /// [`Text`]: crate::text::Text
     /// [`Widget`]: crate::ui::Widget
-    /// [`needs_update`]: crate::ui::Widget::needs_update
     pub fn has_changed(&self) -> bool {
         self.data.has_changed()
     }

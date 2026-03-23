@@ -9,7 +9,7 @@ It works by recording the [`Selections`][__link1] and can retrieve previous
 account.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGwffGPguufHCGy8I2_kmw-dsGxwNyvVWIpXWG68aFALnDo2vYWSBgmlkdWF0X2NvcmVlMC43LjA
- [__link0]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Selections
- [__link1]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Selections
- [__link2]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::Change
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG-oNMAq8FMnxG4zgxHQbYObQG30cRYBQQQdlG1pvcYTbIe9BYWSBgmlkdWF0X2NvcmVlMC45LjA
+ [__link0]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::Selections
+ [__link1]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::Selections
+ [__link2]: https://docs.rs/duat_core/0.9.0/duat_core/?search=buffer::Change

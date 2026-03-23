@@ -16,7 +16,7 @@ plugin for one:
 use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     map::<Insert>("jk", "<Esc>");
 }
 ```
@@ -29,7 +29,7 @@ use this:
 use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     map::<Insert>("jk", "<Esc>");
 }
 ```
@@ -40,7 +40,7 @@ Additionally, if you want to write to the file on `jk` as well, you can do this:
 use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     map::<Insert>("jk", "<Esc>:w<Enter>");
 }
 ```
@@ -52,7 +52,7 @@ writing commands and searches:
 use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     map::<Prompt>("jk", "<Esc>");
 }
 ```
@@ -65,7 +65,7 @@ If you want one `StatusLine` on every `Buffer`, you can do that via hooks:
 setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     hook::add::<BufferOpened>(|pa, handle| {
         status!("{name_txt}{Spacer}{main_txt}")
             .above()
@@ -84,10 +84,8 @@ following snippet is enough:
 use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
-    opts::set(|opts| {
-        opts.one_line_footer = true;
-    });
+fn setup(opts: &mut Opts) {
+    opts.one_line_footer = true;
 }
 ```
 
@@ -99,11 +97,11 @@ If you want one of these on each `Buffer`, you can do this instead:
 use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     hook::remove("FooterWidgets");
 
     hook::add::<BufferOpened>(|pa, handle| {
-        FooterWidgets::default().one_line().push_on(pa, handle);
+        widgets::FooterWidgets::default().one_line().push_on(pa, handle);
     });
 }
 ```
@@ -150,9 +148,9 @@ This is the default:
 use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     // Default options for the StatusLine widget
-    opts::fmt_status(|pa| {
+    opts.fmt_status(|pa| {
         // If on one line footer mode:
         let mode = mode_txt();
         let param = duat_param_txt();
@@ -171,8 +169,8 @@ Customized `main_txt`:
 use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
-    opts::fmt_status(|_| {
+fn setup(opts: &mut Opts) {
+    opts.fmt_status(|_| {
         status!(
             "{name_txt}{Spacer}{} {sels_txt} [coord]c{} l{}[separator]|[coord]{}",
             mode_txt(),
@@ -190,8 +188,8 @@ Customized `name_txt`:
 # use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
-    opts::fmt_status(|_| {
+fn setup(opts: &mut Opts) {
+    opts.fmt_status(|_| {
         status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt()) 
     });
 }
@@ -226,7 +224,7 @@ following  snippet:
 # use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     hook::add::<BufferOpened>(|pa, handle| {
         let buffer = handle.write(pa);
         buffer.opts.tabstop = match buffer.filetype() {
@@ -244,7 +242,7 @@ should be a part of words. In this case, I'm adding `'-'` to the list:
 # use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     hook::add::<BufferOpened>(|pa, handle| {
         let buffer = handle.write(pa);
         match buffer.filetype() {
@@ -302,7 +300,7 @@ If you want to have a `StatusLine` per `Buffer`, you can add the following:
 # use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     hook::add::<BufferOpened>(|pa, handle| {
         status!("{name_txt}{Spacer}{main_txt}").above().push_on(pa, handle);
     });
@@ -318,7 +316,7 @@ depending on the `Buffer`?
 # use duat::prelude::*;
 setup_duat!(setup);
 
-fn setup() {
+fn setup(opts: &mut Opts) {
     hook::add::<BufferOpened>(|pa, handle| {
         let status = if let Ok(crate_dir) = duat::utils::crate_dir()
             && handle.read(pa).path().starts_with(crate_dir) {

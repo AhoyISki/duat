@@ -18,7 +18,7 @@ use duat_core::{
     buffer::{BufferOpts, History},
     context::{self, cache},
     data::Pass,
-    hook::{BufferOpened, KeyTyped, OnModeSwitch},
+    hook::{BufferOpened, KeyTyped, ModeSwitched},
     notify::{FromDuat, Watcher},
     text::txt,
     ui::{DynSpawnSpecs, Orientation, Ui},
@@ -241,7 +241,7 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, Vec<TypeId>, BufferOpts) {
         }
     })
     .grouped("WhichKey");
-    hook::add::<OnModeSwitch>(move |pa, _| {
+    hook::add::<ModeSwitched>(move |pa, _| {
         let opts = OPTS.lock().unwrap();
         if opts
             .whichkey

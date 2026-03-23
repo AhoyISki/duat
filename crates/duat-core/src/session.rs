@@ -2,7 +2,7 @@
 //!
 //! **FOR USE IN THE DUAT EXECUTABLE ONLY**
 //!
-//! This module defines the [`Session`] struct, which is used to run
+//! This module defines the [`start`] function, which is used to run
 //! the whole session of duat, controling everything that is not
 //! related to printing or receiving input. This includes interpreting
 //! input, updating every widget, updating parsers, mapping keys, etc.

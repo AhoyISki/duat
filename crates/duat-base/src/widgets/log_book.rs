@@ -68,6 +68,8 @@ pub fn add_logbook_hooks() {
 static GLOBAL_FMT: Mutex<Option<Box<dyn FnMut(Record) -> Option<Text> + Send>>> = Mutex::new(None);
 
 /// A [`Widget`] to display [`Logs`] sent to Duat
+///
+/// [`Logs`]: duat_core::context::Logs
 pub struct LogBook {
     text: Text,
     fmt: Option<Box<dyn FnMut(Record) -> Option<Text> + Send>>,

@@ -47,7 +47,7 @@
 //! - [`FocusedOn`] triggers when a [widget] is focused.
 //! - [`UnfocusedFrom`] triggers when a [widget] is unfocused.
 //! - [`FocusChanged`] is like [`FocusedOn`], but on [dyn `Widget`]s.
-//! - [`OnModeSwitch`] triggers when you change [`Mode`].
+//! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`KeySent`] triggers when a keys are sent.
 //! - [`KeyTyped`] triggers when keys are _typed_, not _sent_.
 //! - [`OnMouseEvent`] triggers with mouse events.
@@ -650,8 +650,6 @@ impl Hookable for WindowOpened {
 /// reopened in a reloaded config.
 ///
 /// If you want to handle that scenario, check out [`BufferUnloaded`].
-///
-/// [`context::will_quit`]: crate::context::will_quit
 pub struct BufferClosed(pub(crate) Handle);
 
 impl Hookable for BufferClosed {
@@ -992,12 +990,14 @@ impl Hookable for FocusChanged {
 ///
 /// - The previous mode.
 /// - The current mode.
-pub struct OnModeSwitch {
+///
+/// [`Mode`]: crate::mode::Mode
+pub struct ModeSwitched {
     pub(crate) old: (&'static str, Box<dyn Any>),
     pub(crate) new: (&'static str, Box<dyn Any>),
 }
 
-impl Hookable for OnModeSwitch {
+impl Hookable for ModeSwitched {
     type Input<'h> = ModeSwitch<'h>;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
@@ -1018,18 +1018,26 @@ impl Hookable for OnModeSwitch {
 /// [`ModeSwitched`] [`hook`].
 ///
 /// [`hook`]: self
+/// [`Mode`]: crate::mode::Mode
 pub struct ModeSwitch<'h> {
     /// The name of the previous [`Mode`].
+    ///
+    /// [`Mode`]: crate::mode::Mode
     pub old: ModeParts<'h>,
     /// The name of the current [`Mode`].
+    ///
+    /// [`Mode`]: crate::mode::Mode
     pub new: ModeParts<'h>,
 }
 
 /// Parts of a [`Mode`], used on the [`ModeSwitched`] [`hook`].
 ///
 /// [`hook`]: self
+/// [`Mode`]: crate::mode::Mode
 pub struct ModeParts<'h> {
     /// The name of this [`Mode`].
+    ///
+    /// [`Mode`]: crate::mode::Mode
     pub name: &'static str,
     pub(crate) mode: &'h mut dyn Any,
 }
@@ -1038,6 +1046,8 @@ impl ModeParts<'_> {
     /// Try to downcast the [`Mode`].
     ///
     /// Returns [`Some`] if the mode is of the correct type.
+    ///
+    /// [`Mode`]: crate::mode::Mode
     pub fn get_as<M: 'static>(&mut self) -> Option<&mut M> {
         self.mode.downcast_mut()
     }

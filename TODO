@@ -45,6 +45,8 @@ KNOWN BUGS:
   [ ] Modification of Text in BufferUpdated hook should be disallowed.
   [ ] Indentation is inefficient.
   [ ] Some strange slowdowns on Buffer switching and reindentation.
+  [ ] Notifications aren't being cleared.
+  [ ] PromptLine Ghost is cleared on Prompt mode.
  LOW PRIORITY:
   [ ] Selections struct that holds a reference to the Bytes.
     [ ] Also make the Bytes-less version inaccessible.

@@ -36,7 +36,7 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     form::{self, Form},
-    hook::{self, OnModeSwitch},
+    hook::{self, ModeSwitched},
     mode::{self, KeyEvent, event, shift},
     text::{Ghost, Tagger, Text, txt},
     ui::{RwArea, Widget},
@@ -51,7 +51,7 @@ static PREVIEW_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 
 /// Add the [`Prompt`] hook.
 pub fn add_prompt_hook() {
-    hook::add::<OnModeSwitch>(|pa, mut switch| {
+    hook::add::<ModeSwitched>(|pa, mut switch| {
         if let Some(prompt) = switch.new.get_as::<Prompt>() {
 
             let Some(promptline) = context::handle_of::<PromptLine>(pa) else {
