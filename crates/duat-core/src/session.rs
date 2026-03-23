@@ -152,7 +152,6 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
     let mut reload_requested = false;
     let mut reprint_screen = false;
     let mut chain_events_instant = Instant::now();
-    let mut instant = Instant::now();
 
     ui.flush_layout();
 
@@ -286,8 +285,6 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
         }
 
         print_screen(pa, reprint_screen);
-        crate::log_to_file!("Reprinting too {:?}", instant.elapsed());
-        instant = Instant::now();
         reprint_screen = false;
     }
 }
