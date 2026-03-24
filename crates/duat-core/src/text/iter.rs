@@ -18,7 +18,7 @@ use std::{
 };
 
 use super::{
-    Point, SpawnId, Text, ToggleId,
+    Point, SpawnId, Text,
     tags::{self, RawTag},
 };
 use crate::text::{TwoPoints, tags::InnerTags};
@@ -507,10 +507,6 @@ pub enum TextPart<'t> {
     ///
     /// [`Spacer`]: super::Spacer
     Spacer,
-    /// Starts a toggleable region for the given [`ToggleId`].
-    ToggleStart(ToggleId),
-    /// Ends a toggleable region for the given [`ToggleId`].
-    ToggleEnd(ToggleId),
     /// A spawned [`Widget`].
     ///
     /// [`Widget`]: crate::ui::Widget
@@ -542,8 +538,6 @@ impl<'t> TextPart<'t> {
             RawTag::PushForm(_, id, prio) => Self::PushForm(id, prio),
             RawTag::PopForm(_, id) => Self::PopForm(id),
             RawTag::Spacer(_) => Self::Spacer,
-            RawTag::StartToggle(_, id) => Self::ToggleStart(id),
-            RawTag::EndToggle(_, id) => Self::ToggleEnd(id),
             RawTag::ConcealUntil(_) => Self::ResetState,
             RawTag::SpawnedWidget(_, id) => Self::SpawnedWidget(id),
             RawTag::Overlay(_, id) => Self::Overlay(tags.get_ghost(id).unwrap()),

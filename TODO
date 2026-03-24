@@ -37,7 +37,7 @@ FOR NEXT UPDATE:
 [x] Persistent process spawning.
 [x] Turn the config into a separate process I guess...
 [x] High priority hooks.
-[ ] Opts should be given as argument.
+[x] Opts should be given as argument.
 
 KNOWN BUGS:
  HIGH PRIORITY:

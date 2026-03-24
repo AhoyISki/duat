@@ -590,6 +590,7 @@ pub mod ipc {
         // The i32 will become an `std::io::RawOsError` once that feature is stabilized.
         KillResult(Result<(), i32>),
         ChildIoError(usize, String, i32),
+        ChildBrokenPipe(usize, String),
     }
 
     /// A message sent from the child process.
@@ -721,10 +722,12 @@ pub mod ipc {
                     MsgFromParent::SpawnResult(result) => SPAWN_CHANNEL.tx.send(result).unwrap(),
                     MsgFromParent::KillResult(result) => KILL_CHANNEL.tx.send(result).unwrap(),
                     MsgFromParent::ChildIoError(id, caller, err) => {
-                        context::error!(
-                            "[a]proc{id} ({caller})[]: {}",
-                            std::io::Error::from_raw_os_error(err)
-                        );
+                        let err = std::io::Error::from_raw_os_error(err);
+                        context::error!("[a]proc{id} ({caller})[]: {err}",);
+                    }
+                    MsgFromParent::ChildBrokenPipe(id, caller) => {
+                        let err = std::io::Error::from(std::io::ErrorKind::BrokenPipe);
+                        context::error!("[a]proc{id} ({caller})[]: {err}",);
                     }
                 }
             }

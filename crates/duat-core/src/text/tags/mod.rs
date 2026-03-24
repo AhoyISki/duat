@@ -14,7 +14,7 @@ use std::{
 
 use RawTag::*;
 
-use self::{bounds::Bounds, taggers::TaggerExtents, types::Toggle};
+use self::{bounds::Bounds, taggers::TaggerExtents};
 pub use self::{
     ids::*,
     taggers::Tagger,
@@ -191,7 +191,6 @@ impl std::fmt::Debug for Tags<'_> {
 pub struct InnerTags {
     list: ShiftList<(i32, RawTag)>,
     ghosts: Vec<(GhostId, Arc<Text>)>,
-    toggles: Vec<(ToggleId, Toggle)>,
     spawns: Vec<SpawnCell>,
     pub(super) spawn_fns: SpawnFns,
     bounds: Bounds,
@@ -211,7 +210,6 @@ impl InnerTags {
         Self {
             list: ShiftList::new(max as i32),
             ghosts: Vec::new(),
-            toggles: Vec::new(),
             spawns: Vec::new(),
             spawn_fns: SpawnFns(Vec::new()),
             bounds: Bounds::new(max),
@@ -331,7 +329,6 @@ impl InnerTags {
                         .extend(other.ghosts.iter().find(|(l, _)| l == &id).cloned());
                     self.insert_raw((b, tag), None, false);
                 }
-                StartToggle(..) | EndToggle(..) => todo!(),
                 RawTag::Spacer(_) | SpawnedWidget(..) => _ = self.insert_raw((b, tag), None, false),
             };
         }
@@ -341,7 +338,6 @@ impl InnerTags {
     pub fn extend(&mut self, other: InnerTags) {
         self.list.extend(other.list);
         self.ghosts.extend(other.ghosts);
-        self.toggles.extend(other.toggles);
         self.bounds.extend(other.bounds);
         self.extents.extend(other.extents);
     }
@@ -683,7 +679,6 @@ impl Clone for InnerTags {
         Self {
             list: self.list.clone(),
             ghosts: self.ghosts.clone(),
-            toggles: self.toggles.clone(),
             spawns: Vec::new(),
             spawn_fns: SpawnFns(Vec::new()),
             bounds: self.bounds.clone(),
@@ -757,9 +752,7 @@ impl PartialEq for InnerTags {
                 }
                 (Spacer(_), Spacer(_))
                 | (StartConceal(_), StartConceal(_))
-                | (EndConceal(_), EndConceal(_))
-                | (StartToggle(..), StartToggle(..))
-                | (EndToggle(..), EndToggle(..)) => l_b == r_b,
+                | (EndConceal(_), EndConceal(_)) => l_b == r_b,
                 _ => false,
             },
         )
@@ -875,25 +868,6 @@ mod ids {
     impl std::fmt::Debug for GhostId {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "GhostId({})", self.0)
-        }
-    }
-
-    /// The id of a toggleable
-    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    #[doc(hidden)]
-    pub struct ToggleId(u16);
-
-    impl ToggleId {
-        /// Creates a new [`ToggleId`]
-        pub(super) fn _new() -> Self {
-            static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
-            Self(TOGGLE_COUNT.fetch_add(1, Ordering::Relaxed))
-        }
-    }
-
-    impl std::fmt::Debug for ToggleId {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "ToggleId({})", self.0)
         }
     }
 }

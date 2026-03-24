@@ -192,14 +192,7 @@ fn spawn_persistent(socket_dir: &'static Path, request: PersistentSpawnRequest) 
                 let mut stream = stream.lock().unwrap();
                 // This being None means the Listener failed to connect.
                 let Some(stream) = stream.as_mut() else {
-                    send(MsgFromParent::ChildIoError(
-                        id,
-                        caller.clone(),
-                        std::io::Error::from(ErrorKind::BrokenPipe)
-                            .raw_os_error()
-                            .unwrap(),
-                    ))
-                    .unwrap();
+                    send(MsgFromParent::ChildBrokenPipe(id, caller.clone())).unwrap();
                     break;
                 };
 

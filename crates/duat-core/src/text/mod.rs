@@ -100,9 +100,7 @@ pub use crate::{
         iter::{FwdIter, RevIter, TextPart, TextPlace},
         search::{Matches, RegexHaystack, RegexPattern},
         strs::{Lines, Strs},
-        tags::{
-            Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, Tag, Tagger, Tags, ToggleId,
-        },
+        tags::{Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, Tag, Tagger, Tags},
         utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     },
     txt,

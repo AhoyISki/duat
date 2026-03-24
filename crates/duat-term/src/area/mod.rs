@@ -1011,7 +1011,6 @@ pub fn print_text(
             TextPart::ResetState => print_style(lines, painter.reset()),
             TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
             TextPart::Overlay(overlay) => overlays.push((x, real, overlay)),
-            TextPart::ToggleStart(_) | TextPart::ToggleEnd(_) => {}
         }
     }
 
@@ -1206,7 +1205,6 @@ pub fn print_overlay(
             TextPart::ResetState => print_style(lines, painter.reset()),
             TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
             TextPart::Overlay(_) => unreachable!(),
-            TextPart::ToggleStart(_) | TextPart::ToggleEnd(_) => {}
         }
     }
 
