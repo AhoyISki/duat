@@ -16,7 +16,7 @@ use std::{
 pub use log::{Level, Metadata};
 
 pub use self::macros::*;
-use crate::text::Text;
+use crate::{hook, text::Text};
 
 mod macros {
     #[doc(inline)]
@@ -375,6 +375,11 @@ impl Logs {
             location: Location::from_panic_location(std::panic::Location::caller()),
         };
 
+        crate::context::queue({
+            let rec = rec.clone();
+            |pa| _ = hook::trigger(pa, hook::MsgLogged(rec))
+        });
+
         self.list.lock().unwrap().push(rec)
     }
 
@@ -382,7 +387,6 @@ impl Logs {
     #[doc(hidden)]
     pub fn push_record(&self, rec: Record) {
         crate::context::queue({
-            use crate::hook;
             let rec = rec.clone();
             |pa| _ = hook::trigger(pa, hook::MsgLogged(rec))
         });
@@ -548,9 +552,17 @@ pub fn log_panic(panic_info: &PanicHookInfo) {
     let (Some(msg), Some(location)) = (panic_info.payload_as_str(), panic_info.location()) else {
         return;
     };
-    LOGS.list.lock().unwrap().push(Record {
+
+    let rec = Record {
         text: Box::leak(Box::new(Text::from(msg))),
         metadata: Metadata::builder().level(Level::Error).build(),
         location: Location::from_panic_location(location),
-    })
+    };
+
+    crate::context::queue({
+        let rec = rec.clone();
+        |pa| _ = hook::trigger(pa, hook::MsgLogged(rec))
+    });
+
+    LOGS.list.lock().unwrap().push(rec)
 }

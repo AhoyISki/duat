@@ -320,7 +320,7 @@ pub(crate) fn add_default() {
                 ("selection.extra", Form::new().on(c.surface0)),
                 ("cloak", Form::new().with(c.overlay1).on(c.base)),
                 ("character.control", Form::new().with(c.overlay1)),
-                ("replace", Form::new().with(c.overlay0)),
+                ("replace", Form::new().with(c.surface0)),
                 (
                     "replace.new_line.trailing",
                     Form::new().with(c.red).on(c.surface1),
