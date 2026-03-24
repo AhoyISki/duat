@@ -1016,13 +1016,15 @@ pub mod storage {
         } else {
             let mut encoded = encoded(&values.encoded);
             let iter = std::iter::from_fn(|| {
-                loop {
+                while encoded.get_ref().len() - encoded.position() as usize > 0 {
                     if let Ok(value) =
                         bincode::decode_from_std_read(&mut *encoded, config::standard())
                     {
-                        break Some(value);
+                        return Some(value);
                     }
                 }
+
+                None
             });
 
             for value in iter {

@@ -7,15 +7,12 @@
 //!
 //! [`PromptLine`]: super::PromptLine
 //! [hook]: hooks
-use std::sync::{
-    Mutex, Once,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::Mutex;
 
 use duat_core::{
     context::{self, Handle, Level, Record},
     data::Pass,
-    hook::{self, KeySent, MsgLogged},
+    hook::{self, KeyTyped, MsgLogged},
     text::{Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
@@ -26,55 +23,62 @@ pub fn add_notifications_hook() {
             return;
         };
 
-        let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
         let notifs = notifications.write(pa);
 
-        if notifs.levels.contains(&rec.level()) {
-            let mut global_fmt = GLOBAL_FMT.lock().unwrap();
-            let mut global_get_mask = GLOBAL_GET_MASK.lock().unwrap();
+        if !notifs.levels.contains(&rec.level()) {
+            return;
+        }
 
-            notifications.set_mask(if let Some(get_mask) = notifs.get_mask.as_mut() {
-                get_mask(rec.clone())
-            } else if let Some(get_mask) = global_get_mask.as_mut() {
-                get_mask(rec.clone())
-            } else {
-                default_get_mask(rec.clone())
-            });
+        let mut global_fmt = GLOBAL_FMT.lock().unwrap();
+        let mut global_get_mask = GLOBAL_GET_MASK.lock().unwrap();
 
-            notifs.text = if let Some(fmt) = notifs.fmt.as_mut() {
-                fmt(rec)
-            } else if let Some(fmt) = global_fmt.as_mut() {
-                fmt(rec)
-            } else {
-                default_fmt(rec)
-            };
+        notifications.set_mask(if let Some(get_mask) = notifs.get_mask.as_mut() {
+            get_mask(rec.clone())
+        } else if let Some(get_mask) = global_get_mask.as_mut() {
+            get_mask(rec.clone())
+        } else {
+            default_get_mask(rec.clone())
+        });
 
-            if notifs.request_width {
-                let notifs = notifications.read(pa);
-                let size = notifications
-                    .area()
-                    .size_of_text(pa, notifs.print_opts(), &notifs.text)
-                    .unwrap();
-                notifications.area().set_width(pa, size.x).unwrap();
-                notifications.area().set_height(pa, size.y).unwrap();
-            }
-        } else if clear_notifs {
+        notifs.text = if let Some(fmt) = notifs.fmt.as_mut() {
+            fmt(rec)
+        } else if let Some(fmt) = global_fmt.as_mut() {
+            fmt(rec)
+        } else {
+            default_fmt(rec)
+        };
+
+        if notifs.request_width {
+            let notifs = notifications.read(pa);
+            let size = notifications
+                .area()
+                .size_of_text(pa, notifs.print_opts(), &notifs.text)
+                .unwrap();
+            notifications.area().set_width(pa, size.x).unwrap();
+            notifications.area().set_height(pa, size.y).unwrap();
+        }
+    });
+
+    hook::add::<KeyTyped>(|pa, _| {
+        for notifications in context::windows().handles_of::<Notifications>(pa) {
             notifications.set_mask("");
+
+            let (notifs, area) = notifications.write_with_area(pa);
+
             if !notifs.text.is_empty_empty() {
                 notifs.text = Text::new();
 
                 if notifs.request_width {
-                    let notifs = notifications.read(pa);
-                    let size = notifications
-                        .area()
-                        .size_of_text(pa, notifs.print_opts(), &notifs.text)
+                    let size = area
+                        .size_of_text(notifs.print_opts(), &notifs.text)
                         .unwrap();
-                    notifications.area().set_width(pa, size.x).unwrap();
-                    notifications.area().set_height(pa, size.y).unwrap();
+                    area.set_width(size.x).unwrap();
+                    area.set_height(size.y).unwrap();
                 }
             }
         }
-    });
+    })
+    .priority(0);
 }
 
 /// A [`Widget`] to show notifications
@@ -117,7 +121,6 @@ pub struct Notifications {
     request_width: bool,
 }
 
-static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
 #[allow(clippy::type_complexity)]
 static GLOBAL_FMT: Mutex<Option<Box<dyn FnMut(Record) -> Text + Send>>> = Mutex::new(None);
 #[allow(clippy::type_complexity)]
@@ -128,10 +131,6 @@ impl Notifications {
     /// Returns a [`NotificationsOpts`], which can be used to push
     /// `Notifications` around
     pub fn builder() -> NotificationsOpts {
-        static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            hook::add::<KeySent>(|_, _| CLEAR_NOTIFS.store(true, Ordering::Relaxed));
-        });
         NotificationsOpts::default()
     }
 }
