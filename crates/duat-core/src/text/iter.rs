@@ -137,9 +137,7 @@ impl<'t> FwdIter<'t> {
                 self.ghost = Some((total_ghost, total_ghost.byte()));
                 self.main_iter = Some(MainIter { point, init_point, chars, tags });
             }
-            RawTag::StartConceal(_) => {
-                self.conceals += 1;
-            }
+            RawTag::StartConceal(_) => self.conceals += 1,
             RawTag::EndConceal(_) => {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
@@ -169,13 +167,10 @@ impl<'t> Iterator for FwdIter<'t> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let tag = self.tags.peek();
-
-        if let Some(&(b, tag)) = tag
-            && (b <= self.point.byte() || self.conceals > 0)
+        if let Some((b, tag)) = self
+            .tags
+            .next_if(|(b, _)| *b <= self.point.byte() || self.conceals > 0)
         {
-            self.tags.next();
-
             if self.handle_meta_tag(&tag, b) {
                 self.next()
             } else {
@@ -342,8 +337,6 @@ impl<'t> Iterator for RevIter<'t> {
             .tags
             .next_if(|(b, _)| *b >= self.point.byte() || self.conceals > 0)
         {
-            self.tags.next();
-
             if self.handled_meta_tag(&tag, b) {
                 self.next()
             } else {
