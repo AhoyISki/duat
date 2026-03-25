@@ -189,10 +189,10 @@ impl RawArea for Area {
         &self,
         _: UiPass,
         specs: PushSpecs,
-        on_files: bool,
+        on_buffers: bool,
         cache: PrintInfo,
     ) -> Option<(Area, Option<Area>)> {
-        let (child, parent) = self.layouts.push(self.id, specs, on_files, cache)?;
+        let (child, parent) = self.layouts.push(self.id, specs, on_buffers, cache)?;
 
         Some((
             Self::new(child, self.layouts.clone()),

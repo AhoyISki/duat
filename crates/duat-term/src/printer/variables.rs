@@ -17,24 +17,19 @@ use crate::{BorderStyle, area::Coord};
 pub struct Variables {
     list: HashMap<Variable, (u32, usize)>,
     edges: Vec<(Variable, Edge)>,
-    variable_fn: fn() -> Variable,
 }
 
 impl Variables {
     /// Returns a new instance of [`Variables`]
     pub fn new() -> Self {
-        Self {
-            list: HashMap::new(),
-            edges: Vec::new(),
-            variable_fn: Variable::new,
-        }
+        Self { list: HashMap::new(), edges: Vec::new() }
     }
 
     ////////// Area setup functions
 
     /// Returns a new [`Variable`]
     pub fn new_var(&mut self) -> Variable {
-        let var = (self.variable_fn)();
+        let var = Variable::new();
         self.list.insert(var, (0, 0));
         var
     }
@@ -45,8 +40,10 @@ impl Variables {
     }
 
     /// Returns a new [`Variable`] for an [`Edge`]
-    pub fn set_edge(&mut self, [lhs, rhs]: [VarPoint; 2], axis: Axis, fr: Border) -> Variable {
-        let var = (self.variable_fn)();
+    #[track_caller]
+    pub fn add_edge(&mut self, [lhs, rhs]: [VarPoint; 2], axis: Axis, fr: Border) -> Variable {
+        duat_core::debug!("added edge");
+        let var = Variable::new();
         self.edges.push((var, Edge::new(lhs, rhs, axis.perp(), fr)));
         var
     }
@@ -64,7 +61,9 @@ impl Variables {
     }
 
     /// Removes an [`Edge`]
+    #[track_caller]
     pub fn remove_edge(&mut self, var: Variable) {
+        duat_core::debug!("removed edge");
         self.edges.retain(|(v, _)| v != &var);
     }
 
@@ -82,6 +81,11 @@ impl Variables {
             let new = new.round() as u32;
             *changes += (*value != new) as usize;
             *value = new;
+        }
+
+        for i in 0..self.edges.len() {
+            let edge = self.edges[i].1.clone();
+            duat_core::debug!("{:?}", edge.coords(self));
         }
     }
 

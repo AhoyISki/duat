@@ -7,30 +7,30 @@ mod combinations;
 
 pub use combinations::*;
 
-/// What type of line should separate widgets
+/// What type of line should separate widgets.
 #[derive(Default, Clone, Copy, Debug)]
 pub enum BorderStyle {
-    /// Uses `─`, `│`, `┐`
+    /// Uses `─`, `│`, `┐`.
     #[default]
     Regular,
     /// Uses `━`, `┃`, `┓`
     Thick,
-    /// Uses `╌`, `╎`, `┐`
+    /// Uses `╌`, `╎`, `┐`.
     Dashed,
-    /// Uses `╍`, `╏`, `┓`
+    /// Uses `╍`, `╏`, `┓`.
     ThickDashed,
-    /// Uses `═`, `║`, `╗`
+    /// Uses `═`, `║`, `╗`.
     Double,
-    /// Uses `─`, `│`, `╮`
+    /// Uses `─`, `│`, `╮`.
     Rounded,
-    /// Uses `-`, `|`, `+`
+    /// Uses `-`, `|`, `+`.
     Ascii,
-    /// Uses `char` for all positions
+    /// Uses `char` for all positions.
     Custom(char),
 }
 
-/// Details of the right/bottom edge of a widget
-#[derive(Debug)]
+/// Details of the right/bottom edge of a widget.
+#[derive(Debug, Clone)]
 pub struct Edge {
     lhs: VarPoint,
     rhs: VarPoint,
@@ -44,7 +44,7 @@ impl Edge {
         Self { lhs, rhs, axis, fr }
     }
 
-    /// The [`Coords`] that will be used to draw the line.
+    /// The [`EdgeCoords`] that will be used to draw the line.
     pub fn coords(&self, vars: &mut Variables) -> Option<EdgeCoords> {
         let (lhs, _) = vars.coord(self.lhs, false);
         let (rhs, _) = vars.coord(self.rhs, false);
@@ -65,7 +65,7 @@ impl Edge {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct EdgeCoords {
     pub tl: Coord,
     pub br: Coord,
@@ -153,19 +153,21 @@ impl EdgeCoords {
 /// [`HorBorder`]: Border::HorBorder
 #[derive(Clone, Copy, Debug)]
 pub enum Border {
-    /// No frame
+    /// No border.
     Empty,
-    /// Border the window's edges and borders between widgets
+    /// Border on the window's edges and between buffer clusters.
     Surround(BorderStyle),
-    /// Border borders between widgets
+    /// Border between widgets.
     Border(BorderStyle),
-    /// Border vertical window edges and borders between widgets
+    /// Border on vertical window edges and borders between buffer
+    /// clusters.
     Vertical(BorderStyle),
-    /// Border vertical borders between widgets
+    /// Border on vertical borders between buffer clusters.
     VerBorder(BorderStyle),
-    /// Border horizontal window edges and borders between widgets
+    /// Border on horizontal window edges and borders between buffer
+    /// clusters.
     Horizontal(BorderStyle),
-    /// Border horizontal borders between widgets
+    /// Border on horizontal borders between buffer clusters.
     HorBorder(BorderStyle),
 }
 
@@ -176,29 +178,26 @@ impl Default for Border {
 }
 
 impl Border {
-    /// Same as [`files_edges`], but on only one [`Axis`]
-    ///
-    /// [`files_edges`]: Self::files_edges
-    pub(crate) fn files_edge_on(&self, axis: Axis) -> f64 {
-        let (hor_fr, ver_fr) = self.files_edges();
+    /// The length of a border separating a buffer cluster from the
+    /// edges on a given [`Axis`].
+    pub(crate) fn buffers_len_on(&self, axis: Axis) -> f64 {
+        let (hor_len, ver_len) = self.buffers_edges();
         match axis {
-            Axis::Horizontal => hor_fr,
-            Axis::Vertical => ver_fr,
+            Axis::Horizontal => hor_len,
+            Axis::Vertical => ver_len,
         }
     }
 
-    /// Same as [`border_edges`], but on only one [`Axis`]
-    ///
-    /// [`border_edges`]: Self::border_edges
-    pub(crate) fn border_edge_on(&self, axis: Axis) -> f64 {
-        let (hor_border, ver_border) = self.border_edges();
+    /// The length of a border on a given [`Axis`].
+    pub(crate) fn len_on(&self, axis: Axis) -> f64 {
+        let (hor_len, ver_len) = self.border_edges();
         match axis {
-            Axis::Horizontal => hor_border,
-            Axis::Vertical => ver_border,
+            Axis::Horizontal => hor_len,
+            Axis::Vertical => ver_len,
         }
     }
 
-    /// The [`BorderStyle`] in use, [`None`] for [`Border::Empty`]
+    /// The [`BorderStyle`] in use, [`None`] for [`Border::Empty`].
     fn style(&self) -> Option<BorderStyle> {
         match self {
             Self::Empty => None,
@@ -211,10 +210,10 @@ impl Border {
         }
     }
 
-    /// The edges below and to the right of [`File`] regions
+    /// The edges below and to the right of [`Buffer`] regions.
     ///
-    /// [`File`]: duat_core::widgets::File
-    fn files_edges(&self) -> (f64, f64) {
+    /// [`Buffer`]: duat_core::buffer::Buffer
+    fn buffers_edges(&self) -> (f64, f64) {
         match self {
             Self::Surround(_) => (1.0, 1.0),
             Self::Vertical(_) => (1.0, 0.0),
@@ -223,9 +222,9 @@ impl Border {
         }
     }
 
-    /// The edges below and to the right of the [`File`]s region
+    /// The edges below and to the right of the [`Buffer`]s region.
     ///
-    /// [`File`]: duat_core::widgets::File
+    /// [`Buffer`]: duat_core::buffer::Buffer
     fn border_edges(&self) -> (f64, f64) {
         match self {
             Self::Surround(_) | Self::Border(_) => (1.0, 1.0),

@@ -66,14 +66,14 @@ impl Layouts {
         &self,
         target: AreaId,
         specs: PushSpecs,
-        on_files: bool,
+        on_buffers: bool,
         cache: PrintInfo,
     ) -> Option<(AreaId, Option<AreaId>)> {
         let mut layouts = self.0.borrow_mut();
         layouts
             .list
             .iter_mut()
-            .find_map(|l| l.push(target, specs, on_files, cache))
+            .find_map(|l| l.push(target, specs, on_buffers, cache))
     }
 
     /// Spawnss a new [`Area`] on an existing one, returning its
@@ -467,14 +467,14 @@ impl Layout {
         &mut self,
         target: AreaId,
         specs: PushSpecs,
-        on_files: bool,
+        on_buffers: bool,
         cache: PrintInfo,
     ) -> Option<(AreaId, Option<AreaId>)> {
         self.main
-            .push(&self.printer, specs, target, on_files, cache, None)
+            .push(&self.printer, specs, target, on_buffers, cache, None)
             .or_else(|| {
                 self.spawned.iter_mut().find_map(|(info, rect)| {
-                    rect.push(&self.printer, specs, target, on_files, cache, Some(info))
+                    rect.push(&self.printer, specs, target, on_buffers, cache, Some(info))
                 })
             })
     }

@@ -96,16 +96,18 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, Vec<TypeId>, BufferOpts) {
     mode::set_default(Pager::<LogBook>::new());
 
     // Layout hooks
-    hook::add::<BufferOpened>(|pa, handle| {
+    hook::add::<BufferOpened>(|pa, buffer| {
+        context::debug!("called it");
         #[cfg(feature = "term-ui")]
-        VertRule::builder().push_on(pa, handle);
-        OPTS.lock().unwrap().line_numbers.push_on(pa, handle);
-        VertRule::builder().push_on(pa, handle);
-        Gutter::builder().push_on(pa, handle);
+        VertRule::builder().push_on(pa, buffer);
+        OPTS.lock().unwrap().line_numbers.push_on(pa, buffer);
+        #[cfg(feature = "term-ui")]
+        VertRule::builder().push_on(pa, buffer);
+        Gutter::builder().push_on(pa, buffer);
     })
     .grouped("BufferWidgets");
 
-    hook::add::<WindowOpened>(|pa, handle| {
+    hook::add::<WindowOpened>(|pa, window| {
         use crate::{state::*, text::Spacer};
 
         let mut opts = OPTS.lock().unwrap();
@@ -136,7 +138,7 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, Vec<TypeId>, BufferOpts) {
         }
 
         drop(opts);
-        footer.push_on(pa, handle);
+        footer.push_on(pa, window);
     })
     .grouped("FooterWidgets");
 

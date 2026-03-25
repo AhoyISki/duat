@@ -327,9 +327,9 @@ impl RwArea {
         pa: &mut Pass,
         file_path: Option<&Path>,
         specs: PushSpecs,
-        on_files: bool,
+        on_buffers: bool,
     ) -> Option<(Self, Option<Self>)> {
-        (self.0.read(pa).fns.push)(self.0.read(pa), file_path, specs, on_files)
+        (self.0.read(pa).fns.push)(self.0.read(pa), file_path, specs, on_buffers)
     }
 
     /// Spawns a [`Widget`] on this [`Area`]
@@ -853,10 +853,10 @@ struct AreaFunctions {
 impl AreaFunctions {
     const fn new<U: RawUi>() -> &'static Self {
         &Self {
-            push: |area, file_path, specs, on_files| {
+            push: |area, file_path, specs, on_buffers| {
                 let cache = get_cache::<U>(file_path);
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                let (child, parent) = area.push(UiPass::new(), specs, on_files, cache)?;
+                let (child, parent) = area.push(UiPass::new(), specs, on_buffers, cache)?;
 
                 Some((RwArea::new::<U>(child), parent.map(RwArea::new::<U>)))
             },

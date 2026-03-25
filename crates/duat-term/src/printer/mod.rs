@@ -154,8 +154,9 @@ impl Printer {
     ///
     /// This function will return the [`Variable`] representing the
     /// `width` of that edge. It can only have a value of `1` or `0`.
+    #[track_caller]
     pub fn set_edge(&self, lhs: VarPoint, rhs: VarPoint, axis: Axis, fr: Border) -> Variable {
-        self.vars.lock().unwrap().set_edge([lhs, rhs], axis, fr)
+        self.vars.lock().unwrap().add_edge([lhs, rhs], axis, fr)
     }
 
     /// Adds [`Equality`]s to the solver
@@ -172,6 +173,7 @@ impl Printer {
     }
 
     /// Removes an edge from the list of edges
+    #[track_caller]
     pub fn remove_edge(&self, edge: Variable) {
         self.vars.lock().unwrap().remove_edge(edge);
     }

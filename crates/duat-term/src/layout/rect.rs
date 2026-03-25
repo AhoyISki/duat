@@ -185,7 +185,7 @@ impl Rect {
         target_id: AreaId,
         axis: Axis,
         do_cluster: bool,
-        on_files: bool,
+        on_buffers: bool,
         spawn_info: &mut Option<&mut SpawnInfo>,
     ) -> bool {
         let border = self.border;
@@ -193,8 +193,9 @@ impl Rect {
 
         let spawn_id = self.spawn_id;
         if let Some((i, orig_parent)) = self.get_parent_mut(target_id) {
+            duat_core::debug!("{on_buffers}");
             let kind = Kind::middle(axis, do_cluster);
-            let mut parent = Rect::new(p, on_files, kind, spawn_id, border);
+            let mut parent = Rect::new(p, on_buffers, kind, spawn_id, border);
 
             let axis = orig_parent.kind.axis().unwrap();
             let (mut target, mut cons) = orig_parent.children_mut().unwrap().remove(i);
@@ -222,8 +223,9 @@ impl Rect {
                 orig_parent.children_mut().unwrap().insert(i - 1, entry);
             }
         } else if target_id == self.id {
+            duat_core::debug!("on same target {on_buffers}");
             let kind = Kind::middle(axis, do_cluster);
-            let mut parent = Rect::new(p, on_files, kind, spawn_id, border);
+            let mut parent = Rect::new(p, on_buffers, kind, spawn_id, border);
 
             let (mut target, cons) = if let Some(info) = spawn_info {
                 let mut cons = std::mem::take(&mut info.cons);
@@ -291,7 +293,7 @@ impl Rect {
         p: &Printer,
         specs: PushSpecs,
         id: AreaId,
-        on_files: bool,
+        on_buffers: bool,
         info: PrintInfo,
         mut spawn_info: Option<&mut SpawnInfo>,
     ) -> Option<(AreaId, Option<AreaId>)> {
@@ -339,7 +341,7 @@ impl Rect {
         // If all else fails, create a new parent to hold both `self`
         // and the new area.
         } else {
-            self.new_parent_for(p, id, axis, specs.cluster, on_files, &mut spawn_info);
+            self.new_parent_for(p, id, axis, specs.cluster, on_buffers, &mut spawn_info);
             let (_, parent) = self.get_parent(id).unwrap();
 
             (id, Some(parent.id()))
@@ -349,7 +351,7 @@ impl Rect {
 
         let (i, mut rect, parent, cons, axis) = {
             let (i, parent) = self.get_parent(id)?;
-            let rect = Rect::new(p, on_files, Kind::end(info), parent.spawn_id, self.border);
+            let rect = Rect::new(p, on_buffers, Kind::end(info), parent.spawn_id, self.border);
 
             let dims = [specs.width, specs.height];
             let cons = Constraints::new(p, dims, specs.hidden, &rect, Some(parent));
@@ -628,12 +630,13 @@ impl Rect {
     /// These equalities guarantee that the [`Rect`]s will not go over
     /// the terminal size, and also won't intersect with any other
     /// [`Rect`]s.
+    #[track_caller]
     pub fn set_pushed_eqs(
         &mut self,
         i: usize,
         parent: &Rect,
         p: &Printer,
-        fr: Border,
+        border: Border,
         is_resizable: bool,
         mut to_constrain: Option<Vec<AreaId>>,
     ) -> Option<Vec<AreaId>> {
@@ -643,9 +646,12 @@ impl Rect {
         let axis = parent.kind.axis().unwrap();
 
         p.remove_eqs(self.drain_eqs());
-        if let Some(edge) = self.edge.take() {
+        let removed = if let Some(edge) = self.edge.take() {
             p.remove_edge(edge);
-        }
+            true
+        } else {
+            false
+        };
 
         self.eqs.extend([
             self.br.x() | GE(EDGE_PRIO) | self.tl.x(),
@@ -679,25 +685,28 @@ impl Rect {
         }
 
         if let Some((next, _)) = children.get(i) {
-            let edge = match (self.on_files, next.on_files) {
-                (true, true) => fr.border_edge_on(axis),
-                (true, false) | (false, true) => fr.files_edge_on(axis),
+            if removed {
+                duat_core::debug!("{self.on_files}, {next.on_files}");
+            }
+            let border_len = match (self.on_files, next.on_files) {
+                (true, true) => border.len_on(axis),
+                (true, false) | (false, true) => border.buffers_len_on(axis),
                 (false, false) => 0.0,
             };
 
-            if edge == 1.0 && !*clustered {
-                let width = p.set_edge(self.br, next.tl, axis, fr);
+            if border_len == 1.0 && !*clustered {
+                let len = p.set_edge(self.br, next.tl, axis, border);
                 self.eqs.extend([
-                    width | EQ(BORDER_PRIO) | 1.0,
-                    (self.end(axis) + width) | EQ(EDGE_PRIO) | next.start(axis),
+                    len | EQ(BORDER_PRIO) | 1.0,
+                    (self.end(axis) + len) | EQ(EDGE_PRIO) | next.start(axis),
                     // Makes the border have len = 0 when either of its
                     // side widgets have len == 0.
-                    width | GE(EDGE_PRIO) | 0.0,
-                    width | LE(EDGE_PRIO) | 1.0,
-                    self.len(axis) | GE(EDGE_PRIO) | width,
-                    next.len(axis) | GE(EDGE_PRIO) | width,
+                    len | GE(EDGE_PRIO) | 0.0,
+                    len | LE(EDGE_PRIO) | 1.0,
+                    self.len(axis) | GE(EDGE_PRIO) | len,
+                    next.len(axis) | GE(EDGE_PRIO) | len,
                 ]);
-                self.edge = Some(width);
+                self.edge = Some(len);
             } else {
                 self.eqs
                     .push(self.end(axis) | EQ(EDGE_PRIO) | next.start(axis));
@@ -715,7 +724,7 @@ impl Rect {
                 // question wasn't in yet.
                 let (mut child, cons) = self.children_mut().unwrap().remove(i);
                 let is_resizable = child.is_resizable_on(axis, &cons);
-                to_constrain = child.set_pushed_eqs(i, self, p, fr, is_resizable, to_constrain);
+                to_constrain = child.set_pushed_eqs(i, self, p, border, is_resizable, to_constrain);
                 self.children_mut().unwrap().insert(i, (child, cons));
             }
         }

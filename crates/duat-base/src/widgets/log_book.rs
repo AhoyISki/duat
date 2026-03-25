@@ -225,12 +225,14 @@ impl LogBookOpts {
                 side: self.side,
                 width: Some(self.width),
                 hidden: self.hidden,
+                cluster: false,
                 ..Default::default()
             },
             Side::Above | Side::Below => PushSpecs {
                 side: self.side,
                 height: Some(self.height),
                 hidden: self.hidden,
+                cluster: false,
                 ..Default::default()
             },
         };

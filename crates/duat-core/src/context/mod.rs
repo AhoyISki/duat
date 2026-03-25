@@ -37,7 +37,6 @@ mod global {
         context::{DuatReceiver, DuatSender, Handle},
         data::{Pass, RwData},
         session::DuatEvent,
-        text::Text,
         ui::{Widget, Window, Windows},
     };
 

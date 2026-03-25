@@ -4,8 +4,6 @@ FOR NEXT UPDATE:
   [x] Send messages back and forth.
   [x] Send changes.
   [x] Receive and process semantic tokens.
-  [ ] Highlight references.
-[ ] `z` and `q` keys for duatmode.
 [x] Make the 'e' and 'v' traverse words and spaces.
 [x] Add autocommenting.
 [x] Augment forms.
@@ -45,6 +43,7 @@ KNOWN BUGS:
   [ ] Modification of Text in BufferUpdated hook should be disallowed.
   [ ] Indentation is inefficient.
   [ ] Some strange slowdowns on Buffer switching and reindentation.
+  [ ] For whatever reason no frames exist.
  LOW PRIORITY:
   [ ] Selections struct that holds a reference to the Bytes.
     [ ] Also make the Bytes-less version inaccessible.
@@ -54,6 +53,7 @@ KNOWN BUGS:
   [ ] For now, on Windows, duat can only reload if there is only one instance open.
 
 FUTURE UPDATES:
+[ ] `z` and `q` keys for duatmode.
 [ ] Non Ui specific PrintInfo.
 [ ] Cleanup of cache API.
 [ ] An API like search but for chars.

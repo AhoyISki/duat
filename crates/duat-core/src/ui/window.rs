@@ -71,11 +71,11 @@ impl Windows {
             ui,
         });
 
+        hook::trigger(pa, WindowOpened(window));
         hook::trigger(
             pa,
             WidgetOpened(node.handle().try_downcast::<Buffer>().unwrap()),
         );
-        hook::trigger(pa, WindowOpened(window));
     }
 
     ////////// Functions for new Widgets
@@ -90,6 +90,7 @@ impl Windows {
         let inner = self.inner.write(pa);
         inner.list.push(window);
 
+        crate::debug!("triggered on new window");
         hook::trigger(pa, WindowOpened(self.inner.read(pa).list[win].clone()));
         hook::trigger(
             pa,
@@ -166,6 +167,7 @@ impl Windows {
         window.add(pa, node.clone(), None, Location::Spawned(id));
         self.inner.write(pa).list.insert(win, window);
 
+        crate::debug!("triggered on spawn");
         hook::trigger(pa, WidgetOpened(node.handle().try_downcast::<W>().unwrap()));
 
         callback(pa, node.handle().clone());
@@ -196,6 +198,7 @@ impl Windows {
         window.add(pa, node.clone(), None, Location::Spawned(id));
         self.inner.write(pa).list.insert(win, window);
 
+        crate::debug!("triggered on spawn");
         hook::trigger(pa, WidgetOpened(node.handle().try_downcast::<W>().unwrap()));
 
         node.handle().try_downcast().unwrap()
@@ -223,6 +226,7 @@ impl Windows {
         window.add(pa, node.clone(), None, Location::Spawned(id));
         self.inner.write(pa).list.insert(win, window);
 
+        crate::debug!("triggered on spawn");
         hook::trigger(pa, WidgetOpened(node.handle().try_downcast::<W>().unwrap()));
 
         node.handle().try_downcast()
@@ -277,6 +281,7 @@ impl Windows {
         let target_is_on_buffers = inner_window.buffers_area.is_master_of(pa, target);
 
         let on_buffers = on_buffers.unwrap_or(target_is_on_buffers) && target_is_on_buffers;
+        context::debug!("for {}: {on_buffers}", std::any::type_name::<W>(),);
 
         if target_is_on_buffers && !on_buffers {
             specs.cluster = false;
@@ -312,6 +317,7 @@ impl Windows {
         window.add(pa, node.clone(), parent, location);
         self.inner.write(pa).list.insert(win, window);
 
+        crate::debug!("triggered on push of {}", std::any::type_name::<W>());
         hook::trigger(pa, WidgetOpened(node.handle().try_downcast::<W>().unwrap()));
 
         Some(node)
