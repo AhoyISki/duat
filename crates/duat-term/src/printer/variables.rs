@@ -101,7 +101,7 @@ impl Variables {
                 };
                 let line = char
                     .to_string()
-                    .repeat((coords.br.x - coords.tl.x + 1) as usize);
+                    .repeat((coords.br.x - coords.tl.x) as usize);
                 queue!(
                     stdout,
                     cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16),

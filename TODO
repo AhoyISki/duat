@@ -43,7 +43,6 @@ KNOWN BUGS:
   [ ] Modification of Text in BufferUpdated hook should be disallowed.
   [ ] Indentation is inefficient.
   [ ] Some strange slowdowns on Buffer switching and reindentation.
-  [ ] For whatever reason no frames exist.
  LOW PRIORITY:
   [ ] Selections struct that holds a reference to the Bytes.
     [ ] Also make the Bytes-less version inaccessible.

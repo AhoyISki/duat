@@ -131,9 +131,18 @@ impl Area {
             return;
         };
 
-        let max = self
+        let (has_edge_ahead, max) = self
             .layouts
-            .inspect(self.id, |_, layout| layout.max_value())
+            .inspect(self.id, |_, layout| {
+                let master_id = layout.get_cluster_master(self.id).unwrap();
+                let master_coords = self.layouts.coords_of(master_id, true).unwrap();
+                let master_has_edge = layout.get(master_id).unwrap().edge().is_some();
+                
+                (
+                    master_has_edge && master_coords.br.x == coords.br.x,
+                    layout.max_value(),
+                )
+            })
             .unwrap();
 
         if coords.width() == 0 || coords.height() == 0 {
@@ -152,7 +161,7 @@ impl Area {
 
         let Some((lines, observed_spawns)) = print_text(
             (text, opts, &mut painter),
-            (coords, max),
+            (coords, max, has_edge_ahead),
             (is_active, s_points, x_shift),
             |lines, len| lines.write_all(&SPACES[..len as usize]).unwrap(),
             |lines, len, max_x| {
@@ -774,7 +783,7 @@ impl RawArea for Area {
 #[allow(clippy::type_complexity)]
 pub fn print_text(
     (text, opts, painter): (&Text, PrintOpts, &mut Painter),
-    (coords, max): (Coords, Coord),
+    (coords, max, has_edge_ahead): (Coords, Coord, bool),
     (is_active, s_points, x_shift): (bool, TwoPoints, u32),
     start_line: impl Fn(&mut Lines, u32),
     end_line: impl Fn(&mut Lines, u32, u32),
@@ -790,7 +799,7 @@ pub fn print_text(
     }
 
     let (mut lines, iter, mut next_cursor_end) = {
-        let lines = Lines::new(coords);
+        let lines = Lines::new(coords, has_edge_ahead);
         let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
         let iter = print_iter(text, s_points, width, opts);
         let mut selections = iter_selections(text, s_points.real).peekable();
@@ -1046,7 +1055,9 @@ pub fn print_overlay(
     }
 
     let (mut lines, iter, mut next_cursor_end) = {
-        let lines = Lines::new(coords);
+        // has_edge_ahead doesn't matter, since this is just going to be added
+        // to an existing Lines anyways.
+        let lines = Lines::new(coords, false);
         let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
         let iter = print_iter(text, s_points, width, opts);
         let mut selections = iter_selections(parent_text, point).peekable();

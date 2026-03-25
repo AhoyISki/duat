@@ -795,7 +795,7 @@ impl Layout {
             .find_map(|rect| rect.get_parent(id))
     }
 
-    /// Gets the cluster master [`AreaId`] of another, if found
+    /// Gets the cluster master [`AreaId`] of another, if found.
     pub fn get_cluster_master(&self, id: AreaId) -> Option<AreaId> {
         [&self.main]
             .into_iter()
@@ -1131,14 +1131,14 @@ impl Frame {
             let painter = &mut duat_core::form::painter_with_mask("title");
             if let Some((lines, ..)) = print_text(
                 (&text, opts, painter),
-                (coords, max),
+                (coords, max, false),
                 (false, TwoPoints::default(), 0),
                 move_fwd,
                 |_, _, _| {},
                 move_fwd,
             ) {
                 for y in coords.tl.y..coords.br.y {
-                    let (line, _) = lines.on(y).unwrap();
+                    let (line, ..) = lines.on(y).unwrap();
                     queue!(stdout, MoveTo(coords.tl.x as u16, y as u16)).unwrap();
                     stdout.write_all(line).unwrap();
                 }

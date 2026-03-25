@@ -154,7 +154,6 @@ impl Printer {
     ///
     /// This function will return the [`Variable`] representing the
     /// `width` of that edge. It can only have a value of `1` or `0`.
-    #[track_caller]
     pub fn set_edge(&self, lhs: VarPoint, rhs: VarPoint, axis: Axis, fr: Border) -> Variable {
         self.vars.lock().unwrap().add_edge([lhs, rhs], axis, fr)
     }
@@ -173,7 +172,6 @@ impl Printer {
     }
 
     /// Removes an edge from the list of edges
-    #[track_caller]
     pub fn remove_edge(&self, edge: Variable) {
         self.vars.lock().unwrap().remove_edge(edge);
     }
@@ -326,12 +324,15 @@ impl Printer {
 
             let mut old_iter = old_lines.iter().filter_map(|lines| lines.on(y));
             let mut new_iter = new_lines.iter().filter_map(|lines| lines.on(y)).peekable();
+            let mut had_edge_ahead = false;
 
-            while let Some((bytes, [start, end])) = new_iter
-                .next_if(|(_, [start, _])| !print_old_lines || *start == x)
+            while let Some((bytes, [start, end], has_edge_ahead)) = new_iter
+                .next_if(|(_, [start, _], _)| {
+                    !print_old_lines || *start == x + had_edge_ahead as u32
+                })
                 .or_else(|| {
                     if print_old_lines {
-                        old_iter.find(|(_, [start, _])| *start >= x)
+                        old_iter.find(|(_, [start, _], _)| *start >= x)
                     } else {
                         None
                     }
@@ -344,6 +345,7 @@ impl Printer {
                 stdout.write_all(bytes).unwrap();
 
                 x = end;
+                had_edge_ahead = has_edge_ahead;
             }
         }
 
@@ -504,12 +506,13 @@ pub struct Lines {
     offsets: Vec<usize>,
     coords: Coords,
     real_cursor: Option<bool>,
+    has_edge_ahead: bool,
 }
 
 impl Lines {
     /// Returns a new `Lines`, which is used to send stuff to be
     /// printed on screen
-    pub fn new(coords: Coords) -> Self {
+    pub fn new(coords: Coords, has_edge_ahead: bool) -> Self {
         let mut offsets = Vec::with_capacity(coords.height() as usize);
         offsets.push(0);
         Self {
@@ -517,6 +520,7 @@ impl Lines {
             offsets,
             coords,
             real_cursor: None,
+            has_edge_ahead,
         }
     }
 
@@ -543,13 +547,13 @@ impl Lines {
     ///
     /// Returns [`None`] if these [`Lines`] don't intersect with the
     /// given `y`.
-    pub fn on(&self, y: u32) -> Option<(&'_ [u8], [u32; 2])> {
+    pub fn on(&self, y: u32) -> Option<(&'_ [u8], [u32; 2], bool)> {
         let (tl, br) = (self.coords.tl, self.coords.br);
         let y = y.checked_sub(tl.y)? as usize;
 
         self.offsets.get(y).and_then(|offset| {
             let end = *self.offsets.get(y + 1)?;
-            Some((&self.bytes[*offset..end], [tl.x, br.x]))
+            Some((&self.bytes[*offset..end], [tl.x, br.x], self.has_edge_ahead))
         })
     }
 
