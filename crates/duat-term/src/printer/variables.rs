@@ -42,7 +42,6 @@ impl Variables {
     /// Returns a new [`Variable`] for an [`Edge`]
     #[track_caller]
     pub fn add_edge(&mut self, [lhs, rhs]: [VarPoint; 2], axis: Axis, fr: Border) -> Variable {
-        duat_core::debug!("added edge");
         let var = Variable::new();
         self.edges.push((var, Edge::new(lhs, rhs, axis.perp(), fr)));
         var
@@ -63,7 +62,6 @@ impl Variables {
     /// Removes an [`Edge`]
     #[track_caller]
     pub fn remove_edge(&mut self, var: Variable) {
-        duat_core::debug!("removed edge");
         self.edges.retain(|(v, _)| v != &var);
     }
 
@@ -81,11 +79,6 @@ impl Variables {
             let new = new.round() as u32;
             *changes += (*value != new) as usize;
             *value = new;
-        }
-
-        for i in 0..self.edges.len() {
-            let edge = self.edges[i].1.clone();
-            duat_core::debug!("{:?}", edge.coords(self));
         }
     }
 

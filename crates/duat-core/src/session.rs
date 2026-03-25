@@ -494,7 +494,6 @@ fn setup_buffers(
         let (buffer, is_active) = window_buffers.next().unwrap().into_buffer(opts, 0);
 
         if let Some(layout) = layout.take() {
-            crate::debug!("initialized windows");
             Windows::initialize(pa, buffer, layout, ui);
         } else {
             let node = context::windows().new_window(pa, buffer);

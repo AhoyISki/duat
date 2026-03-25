@@ -97,7 +97,6 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, Vec<TypeId>, BufferOpts) {
 
     // Layout hooks
     hook::add::<BufferOpened>(|pa, buffer| {
-        context::debug!("called it");
         #[cfg(feature = "term-ui")]
         VertRule::builder().push_on(pa, buffer);
         OPTS.lock().unwrap().line_numbers.push_on(pa, buffer);

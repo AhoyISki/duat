@@ -37,7 +37,7 @@ pub struct Rect {
     eqs: Vec<Equality>,
     spawn_id: Option<SpawnId>,
     kind: Kind,
-    on_files: bool,
+    on_buffers: bool,
     edge: Option<Variable>,
     border: Border,
 }
@@ -193,7 +193,6 @@ impl Rect {
 
         let spawn_id = self.spawn_id;
         if let Some((i, orig_parent)) = self.get_parent_mut(target_id) {
-            duat_core::debug!("{on_buffers}");
             let kind = Kind::middle(axis, do_cluster);
             let mut parent = Rect::new(p, on_buffers, kind, spawn_id, border);
 
@@ -223,7 +222,6 @@ impl Rect {
                 orig_parent.children_mut().unwrap().insert(i - 1, entry);
             }
         } else if target_id == self.id {
-            duat_core::debug!("on same target {on_buffers}");
             let kind = Kind::middle(axis, do_cluster);
             let mut parent = Rect::new(p, on_buffers, kind, spawn_id, border);
 
@@ -275,7 +273,7 @@ impl Rect {
             eqs: Vec::new(),
             spawn_id,
             kind,
-            on_files,
+            on_buffers: on_files,
             edge: None,
             border,
         }
@@ -300,23 +298,30 @@ impl Rect {
         let axis = specs.axis();
 
         let (can_be_sibling, can_be_child) = {
-            let parent_is_cluster = if let Some((_, parent)) = self.get_parent(id) {
-                parent.is_clustered()
+            let parent = if let Some((_, parent)) = self.get_parent(id) {
+                parent
             } else if id == self.id {
-                specs.cluster
+                self as &Self
             } else {
                 return None;
             };
 
-            let target_is_cluster = self.get(id).is_some_and(Rect::is_clustered);
+            let target = self.get(id).unwrap();
 
             // Clustering is what determines if a new rect can be a child or not.
-            // In order to simplify, for example, swapping files around, it would
-            // be helpful to keep only the stuff that is clustered to that file on
-            // the same parent, even if other Areas could reasonable be placed
-            // alognside it.
-            let can_be_sibling = parent_is_cluster == specs.cluster;
-            let can_be_child = target_is_cluster == specs.cluster;
+            // In order to simplify, for example, swapping buffers around, it
+            // would be helpful to keep only the stuff that is clustered to that
+            // buffer on the same parent, even if other Areas could reasonable be
+            // placed alognside it.
+            // Another thing to note is that `on_buffers` is a viral property.
+            // That is, if a rect is `on_buffers`, all its children _must_ be
+            // `on_buffers`, and the opposite is also true. Therefore, for parents
+            // that have both kinds of children, a new child will need to be
+            // created in order to fit new matching entries.
+            let can_be_sibling =
+                parent.is_clustered() == specs.cluster && parent.on_buffers == on_buffers;
+            let can_be_child =
+                target.is_clustered() == specs.cluster && target.on_buffers == on_buffers;
             (can_be_sibling, can_be_child)
         };
 
@@ -685,10 +690,7 @@ impl Rect {
         }
 
         if let Some((next, _)) = children.get(i) {
-            if removed {
-                duat_core::debug!("{self.on_files}, {next.on_files}");
-            }
-            let border_len = match (self.on_files, next.on_files) {
+            let border_len = match (self.on_buffers, next.on_buffers) {
                 (true, true) => border.len_on(axis),
                 (true, false) | (false, true) => border.buffers_len_on(axis),
                 (false, false) => 0.0,
