@@ -50,7 +50,7 @@ use crate::{
 /// previously opened `Buffer`s on the same window.
 ///
 /// [`Buffer`]: crate::buffer::Buffer
-pub trait Layout: Send + Sync {
+pub trait Layout: Send {
     /// Opens a new [`Buffer`]
     ///
     /// The returned `(Handle<Buffer>, PushSpecs)` value

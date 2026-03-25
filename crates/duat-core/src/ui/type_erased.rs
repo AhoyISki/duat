@@ -815,6 +815,11 @@ impl Area {
     }
 }
 
+// SAFETY: The Area struct is only ever created and accessed on the
+// main thread, unlike other RwData structs which might be created and
+// sent in from other threads.
+unsafe impl Send for Area {}
+
 #[derive(Clone, Copy)]
 struct AreaFunctions {
     push: fn(&Area, Option<&Path>, PushSpecs, bool) -> Option<(RwArea, Option<RwArea>)>,

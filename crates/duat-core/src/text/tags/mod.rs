@@ -9,7 +9,10 @@ use std::{
     self,
     iter::Chain,
     ops::{Range, RangeBounds},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use RawTag::*;
@@ -891,10 +894,11 @@ impl Shift for i32 {
 }
 
 /// A destructor for spawned `Widget`s
-struct SpawnCell(SpawnId);
+struct SpawnCell(SpawnId, Arc<AtomicBool>);
 
 impl Drop for SpawnCell {
     fn drop(&mut self) {
+        self.1.store(true, Ordering::Relaxed);
         crate::context::windows().queue_close_spawned(self.0);
     }
 }

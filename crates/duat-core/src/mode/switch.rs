@@ -22,7 +22,7 @@ use crate::{
 };
 
 static MODE_NAME: Mutex<&str> = Mutex::new("");
-static MODE: LazyLock<RwData<Option<Box<dyn Any>>>> = LazyLock::new(RwData::default);
+static MODE: LazyLock<RwData<Option<Box<dyn Any + Send>>>> = LazyLock::new(RwData::default);
 static SEND_KEY: LazyLock<RwData<Option<KeyFn>>> = LazyLock::new(RwData::default);
 static RESET_MODES: LazyLock<Mutex<HashMap<TypeId, ResetFn>>> = LazyLock::new(Mutex::default);
 
@@ -98,7 +98,7 @@ pub fn set<M: Mode>(mode: M) {
         let old_name = std::mem::replace(context::mode_name().write(pa), new_name);
 
         let mode = if let Some(old_mode) = MODE.write(pa).take() {
-            let new = (new_name, Box::new(mode) as Box<dyn Any>);
+            let new = (new_name, Box::new(mode) as Box<dyn Any + Send>);
             let old = (old_name, old_mode);
             let ms = hook::trigger(pa, ModeSwitched { old, new });
             ms.new.1

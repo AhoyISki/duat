@@ -6,7 +6,7 @@
 //! meant to be as small as possible in order not to waste memory, as
 //! they will be stored in the [`Text`]. As such, they have as little
 //! information as possible, occupying only 8 bytes.
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicBool};
 
 use RawTag::*;
 
@@ -356,10 +356,11 @@ impl<I: TextRange> Tag<I> for Conceal {
 /// The [`Widget`] will be placed according to the [`DynSpawnSpecs`],
 /// and should move automatically as the `SpawnTag` moves around the
 /// screen.
-pub struct SpawnTag(
-    SpawnId,
-    Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>,
-);
+pub struct SpawnTag {
+    id: SpawnId,
+    spawn_fn: Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>,
+    is_closed: Arc<AtomicBool>,
+}
 
 impl SpawnTag {
     /// Returns a new instance of `SpawnTag`
@@ -386,12 +387,24 @@ impl SpawnTag {
     /// [`Tags::insert`]: super::Tags::insert
     pub fn new(widget: impl Widget, specs: DynSpawnSpecs) -> Self {
         let id = SpawnId::new();
-        Self(
+        let is_closed = Arc::new(AtomicBool::new(false));
+        Self {
             id,
-            Box::new(move |pa, win, master| {
-                context::windows().spawn_on_text(pa, (id, specs), widget, win, master);
+            spawn_fn: Box::new({
+                let is_closed = is_closed.clone();
+                move |pa, win, master| {
+                    context::windows().spawn_on_text(
+                        pa,
+                        (id, specs),
+                        widget,
+                        win,
+                        master,
+                        is_closed,
+                    );
+                }
             }),
-        )
+            is_closed,
+        }
     }
 }
 
@@ -406,14 +419,17 @@ impl Tag<Point> for SpawnTag {
         tagger: Tagger,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         (
-            (index.byte().min(max), RawTag::SpawnedWidget(tagger, self.0)),
+            (
+                index.byte().min(max),
+                RawTag::SpawnedWidget(tagger, self.id),
+            ),
             None,
         )
     }
 
     fn on_insertion(self, tags: &mut super::InnerTags) {
-        tags.spawns.push(super::SpawnCell(self.0));
-        tags.spawn_fns.0.push((self.0, self.1));
+        tags.spawns.push(super::SpawnCell(self.id, self.is_closed));
+        tags.spawn_fns.0.push((self.id, self.spawn_fn));
     }
 }
 
@@ -428,14 +444,14 @@ impl Tag<usize> for SpawnTag {
         tagger: Tagger,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         (
-            (index.min(max), RawTag::SpawnedWidget(tagger, self.0)),
+            (index.min(max), RawTag::SpawnedWidget(tagger, self.id)),
             None,
         )
     }
 
     fn on_insertion(self, tags: &mut super::InnerTags) {
-        tags.spawns.push(super::SpawnCell(self.0));
-        tags.spawn_fns.0.push((self.0, self.1));
+        tags.spawns.push(super::SpawnCell(self.id, self.is_closed));
+        tags.spawn_fns.0.push((self.id, self.spawn_fn));
     }
 }
 

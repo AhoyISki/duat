@@ -993,8 +993,8 @@ impl Hookable for FocusChanged {
 ///
 /// [`Mode`]: crate::mode::Mode
 pub struct ModeSwitched {
-    pub(crate) old: (&'static str, Box<dyn Any>),
-    pub(crate) new: (&'static str, Box<dyn Any>),
+    pub(crate) old: (&'static str, Box<dyn Any + Send>),
+    pub(crate) new: (&'static str, Box<dyn Any + Send>),
 }
 
 impl Hookable for ModeSwitched {

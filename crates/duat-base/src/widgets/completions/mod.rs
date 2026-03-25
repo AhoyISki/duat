@@ -109,7 +109,7 @@ pub fn setup_completions() {
         let group = hook::GroupId::new();
 
         hook::add::<KeySent>(move |pa, _| {
-            if completions.is_closed(pa) {
+            if completions.is_closed() {
                 hook::remove(group);
                 return;
             }
@@ -117,7 +117,7 @@ pub fn setup_completions() {
             Completions::update_text_and_position(pa, &completions, 0);
             let completions_master = completions.master(pa).unwrap();
             completions.write(pa).last_caret = completions_master.selections(pa).main().caret();
-            if !completions.is_closed(pa) {
+            if !completions.is_closed() {
                 Completions::set_frame(pa, &completions);
             }
         })
@@ -702,7 +702,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         Option<((Text, Text), Option<(String, Option<(Text, Orientation)>)>)>,
     ) {
         let Some(caret) = text.get_main_sel().map(|sel| sel.caret()) else {
-            panic!("Tried to spawn completions on a Text with no main selection");
+            panic!("Tried to update completions on a Text with no main selection");
         };
 
         let start = self.provider.get_start(text, caret).unwrap_or(caret.byte());

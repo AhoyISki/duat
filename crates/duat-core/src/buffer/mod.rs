@@ -17,7 +17,7 @@ use std::{
     fs,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{LazyLock, Mutex, MutexGuard, Once},
+    sync::{LazyLock, Mutex, MutexGuard},
 };
 
 use crossterm::event::{MouseButton, MouseEventKind};

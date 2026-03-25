@@ -155,7 +155,7 @@ pub struct Handle<W: ?Sized = crate::buffer::Buffer> {
     pub(crate) area: RwArea,
     mask: Arc<Mutex<&'static str>>,
     related: RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>>,
-    is_closed: RwData<bool>,
+    is_closed: Arc<AtomicBool>,
     pub(crate) update_requested: Arc<AtomicBool>,
 }
 
@@ -166,6 +166,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         area: RwArea,
         mask: Arc<Mutex<&'static str>>,
         main: Option<Handle<dyn Widget>>,
+        is_closed: Arc<AtomicBool>,
     ) -> Self {
         Self {
             widget,
@@ -176,7 +177,7 @@ impl<W: Widget + ?Sized> Handle<W> {
                     .into_iter()
                     .collect(),
             ),
-            is_closed: RwData::new(false),
+            is_closed,
             update_requested: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -425,13 +426,13 @@ impl<W: 'static + ?Sized> Handle<W> {
     ////////// Other methods
 
     /// Wether this `Handle` was already closed.
-    pub fn is_closed(&self, pa: &Pass) -> bool {
-        *self.is_closed.read(pa)
+    pub fn is_closed(&self) -> bool {
+        self.is_closed.load(Ordering::Relaxed)
     }
 
     /// Declares that this `Handle` has been closed.
-    pub(crate) fn declare_closed(&self, pa: &mut Pass) {
-        *self.is_closed.write(pa) = true;
+    pub(crate) fn declare_closed(&self) {
+        self.is_closed.store(true, Ordering::Relaxed);
     }
 }
 

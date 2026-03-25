@@ -53,7 +53,6 @@ static PREVIEW_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 pub fn add_prompt_hook() {
     hook::add::<ModeSwitched>(|pa, mut switch| {
         if let Some(prompt) = switch.new.get_as::<Prompt>() {
-
             let Some(promptline) = context::handle_of::<PromptLine>(pa) else {
                 return;
             };
@@ -195,15 +194,15 @@ impl mode::Mode for Prompt {
         })
     }
 
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>) {
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, promptline: Handle<Self::Widget>) {
         use duat_core::mode::KeyCode::*;
 
         let ty_eq = |&&(ty, _): &&(TypeId, _)| ty == self.ty;
 
         let mut update = |pa: &mut Pass| {
-            let text = std::mem::take(&mut handle.write(pa).text);
-            let text = self.mode.update(pa, text, handle.area());
-            handle.write(pa).text = text;
+            let text = std::mem::take(&mut promptline.write(pa).text);
+            let text = self.mode.update(pa, text, promptline.area());
+            promptline.write(pa).text = text;
         };
 
         let reset = |pa: &mut Pass, prompt: &mut Self| {
@@ -214,11 +213,11 @@ impl mode::Mode for Prompt {
             }
         };
 
-        handle.text_mut(pa).remove_tags(*PREVIEW_TAGGER, ..);
+        promptline.text_mut(pa).remove_tags(*PREVIEW_TAGGER, ..);
 
         match key {
             event!(Char(char)) => {
-                handle.edit_main(pa, |mut c| {
+                promptline.edit_main(pa, |mut c| {
                     c.insert(char);
                     c.move_hor(1);
                 });
@@ -226,8 +225,8 @@ impl mode::Mode for Prompt {
             }
 
             event!(Backspace) => {
-                if handle.read(pa).text().is_empty() {
-                    handle.write(pa).text_mut().selections_mut().clear();
+                if promptline.read(pa).text().is_empty() {
+                    promptline.write(pa).text_mut().selections_mut().clear();
 
                     update(pa);
 
@@ -237,7 +236,7 @@ impl mode::Mode for Prompt {
                         (self.reset_fn)();
                     }
                 } else {
-                    handle.edit_main(pa, |mut c| {
+                    promptline.edit_main(pa, |mut c| {
                         c.move_hor(-1);
                         c.set_anchor_if_needed();
                         c.replace("");
@@ -247,7 +246,7 @@ impl mode::Mode for Prompt {
                 }
             }
             event!(Delete) => {
-                handle.edit_main(pa, |mut c| {
+                promptline.edit_main(pa, |mut c| {
                     c.set_anchor_if_needed();
                     c.replace("");
                 });
@@ -255,11 +254,11 @@ impl mode::Mode for Prompt {
             }
 
             event!(Left) => {
-                handle.edit_main(pa, |mut c| c.move_hor(-1));
+                promptline.edit_main(pa, |mut c| c.move_hor(-1));
                 update(pa);
             }
             event!(Right) => {
-                handle.edit_main(pa, |mut c| c.move_hor(1));
+                promptline.edit_main(pa, |mut c| c.move_hor(1));
                 update(pa);
             }
             event!(Up) => {
@@ -276,7 +275,7 @@ impl mode::Mode for Prompt {
                     ty_history.len() - 1
                 };
 
-                handle.edit_main(pa, |mut c| {
+                promptline.edit_main(pa, |mut c| {
                     c.move_to(..);
                     c.replace(ty_history[index].clone());
                     c.unset_anchor();
@@ -294,14 +293,14 @@ impl mode::Mode for Prompt {
                     if *index + 1 < ty_history.len() {
                         *index = (*index + 1).min(ty_history.len() - 1);
 
-                        handle.edit_main(pa, |mut c| {
+                        promptline.edit_main(pa, |mut c| {
                             c.move_to(..);
                             c.replace(ty_history[*index].clone());
                             c.unset_anchor();
                         })
                     } else {
                         self.history_index = None;
-                        handle.edit_main(pa, |mut c| {
+                        promptline.edit_main(pa, |mut c| {
                             c.move_to(..);
                             c.replace("");
                             c.unset_anchor();
@@ -322,22 +321,22 @@ impl mode::Mode for Prompt {
             }
 
             event!(Esc) => {
-                handle.edit_main(pa, |mut c| {
+                promptline.edit_main(pa, |mut c| {
                     c.move_to(..);
                     c.replace("");
                 });
-                handle.write(pa).text_mut().selections_mut().clear();
+                promptline.write(pa).text_mut().selections_mut().clear();
 
                 update(pa);
                 reset(pa, self);
             }
             event!(Enter) => {
-                handle.write(pa).text_mut().selections_mut().clear();
+                promptline.write(pa).text_mut().selections_mut().clear();
 
-                if handle.text(pa).is_empty() {
+                if promptline.text(pa).is_empty() {
                     let history = HISTORY.lock().unwrap();
                     if let Some((_, ty_history)) = history.iter().find(ty_eq) {
-                        handle.edit_main(pa, |mut c| {
+                        promptline.edit_main(pa, |mut c| {
                             c.move_to(..);
                             c.replace(ty_history.last().unwrap());
                         });
@@ -350,8 +349,8 @@ impl mode::Mode for Prompt {
             _ => {}
         }
 
-        self.mode.post_update(pa, &handle);
-        self.show_preview(pa, handle);
+        self.mode.post_update(pa, &promptline);
+        self.show_preview(pa, promptline);
     }
 }
 

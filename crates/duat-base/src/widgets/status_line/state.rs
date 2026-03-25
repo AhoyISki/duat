@@ -93,7 +93,7 @@ impl From<Text> for State<(), Text> {
     }
 }
 
-impl<D: Display + 'static> From<RwData<D>> for State<DataArg<D>, D, D, D> {
+impl<D: Display + Send + 'static> From<RwData<D>> for State<DataArg<D>, D, D, D> {
     fn from(value: RwData<D>) -> Self {
         let checker = value.checker();
         Self {

@@ -18,7 +18,6 @@
 use std::{any::TypeId, collections::HashMap};
 
 use duat_core::{
-    buffer::Buffer,
     context::Handle,
     data::Pass,
     hook::{self, FocusedOn, KeySent, UnfocusedFrom},

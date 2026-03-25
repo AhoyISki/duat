@@ -12,7 +12,7 @@
 use std::{
     iter::Chain,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::AtomicBool},
 };
 
 use super::{Node, Widget, layout::Layout};
@@ -160,7 +160,7 @@ impl Windows {
             specs,
         )?;
 
-        let node = Node::new(widget, spawned, master);
+        let node = Node::new(widget, spawned, master, Arc::new(AtomicBool::new(false)));
 
         let window = self.inner.write(pa).list.remove(win);
         window.add(pa, node.clone(), None, Location::Spawned(id));
@@ -181,6 +181,7 @@ impl Windows {
         widget: W,
         win: usize,
         master: Handle<dyn Widget>,
+        is_closed: Arc<AtomicBool>,
     ) -> Handle<W> {
         let widget = RwData::new(widget);
         let path = widget
@@ -190,7 +191,7 @@ impl Windows {
             .ui
             .new_dyn_spawned(path.as_ref().map(|p| p.as_ref()), id, specs, win);
 
-        let node = Node::new(widget, spawned, Some(master));
+        let node = Node::new(widget, spawned, Some(master), is_closed);
 
         let window = self.inner.write(pa).list.remove(win);
         window.add(pa, node.clone(), None, Location::Spawned(id));
@@ -217,7 +218,7 @@ impl Windows {
             .ui
             .new_static_spawned(path.as_ref().map(|p| p.as_ref()), id, specs, win);
 
-        let node = Node::new(widget, spawned, None);
+        let node = Node::new(widget, spawned, None, Arc::new(AtomicBool::new(false)));
 
         let window = self.inner.write(pa).list.remove(win);
         window.add(pa, node.clone(), None, Location::Spawned(id));
@@ -306,7 +307,7 @@ impl Windows {
                 .find_map(|(.., node)| node.area().is_eq(pa, area).then(|| node.handle().clone()))
         });
 
-        let node = Node::new(widget, pushed, master);
+        let node = Node::new(widget, pushed, master, Arc::new(AtomicBool::new(false)));
 
         let window = self.inner.write(pa).list.remove(win);
         window.add(pa, node.clone(), parent, location);
@@ -856,7 +857,7 @@ impl Window {
         };
 
         let area = ui.new_root(path.as_ref().map(|p| p.as_ref()));
-        let node = Node::new::<W>(widget, area.clone(), None);
+        let node = Node::new::<W>(widget, area.clone(), None, Arc::new(AtomicBool::new(false)));
 
         new_additions
             .lock()
@@ -1066,12 +1067,12 @@ impl Window {
             unreachable!("This isn't supposed to fail");
         };
 
-        node.handle().declare_closed(pa);
+        node.handle().declare_closed();
 
         let (do_rm_window, rm_areas) = node.area().delete(pa);
         if do_rm_window {
             for handle in self.handles(pa).cloned().collect::<Vec<_>>() {
-                handle.declare_closed(pa);
+                handle.declare_closed();
             }
             return true;
         }
@@ -1085,7 +1086,7 @@ impl Window {
 
         nodes.retain(|node| {
             if rm_areas.iter().any(|a| a.is_eq(pa, node.handle().area())) {
-                node.handle().declare_closed(pa);
+                node.handle().declare_closed();
                 false
             } else {
                 true
@@ -1093,7 +1094,7 @@ impl Window {
         });
         spawned.retain(|(_, node)| {
             if rm_areas.iter().any(|a| a.is_eq(pa, node.handle().area())) {
-                node.handle().declare_closed(pa);
+                node.handle().declare_closed();
                 false
             } else {
                 true
@@ -1118,7 +1119,7 @@ impl Window {
 
         if self.buffers(pa).is_empty() {
             for handle in self.handles(pa).cloned().collect::<Vec<_>>() {
-                handle.declare_closed(pa);
+                handle.declare_closed();
             }
             true
         } else {

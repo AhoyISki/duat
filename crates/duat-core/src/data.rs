@@ -520,8 +520,8 @@ impl<W: Widget> RwData<W> {
 // SAFETY: The only parts that are accessible from other threads are
 // the atomic counters from the Arcs. Everything else can only be
 // acquired when there is a Pass, i.e., on the main thread.
-unsafe impl<T: ?Sized> Send for RwData<T> {}
-unsafe impl<T: ?Sized> Sync for RwData<T> {}
+unsafe impl<T: ?Sized + Send> Send for RwData<T> {}
+unsafe impl<T: ?Sized + Send> Sync for RwData<T> {}
 
 impl<T: ?Sized> Clone for RwData<T> {
     fn clone(&self) -> Self {

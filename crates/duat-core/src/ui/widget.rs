@@ -35,7 +35,10 @@
 //! [`PushSpecs`]: super::PushSpecs
 //! [`DynSpawnSpecs`]: super::DynSpawnSpecs
 //! [`Area`]: super::Area
-use std::sync::{Arc, Mutex, atomic::Ordering};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crate::{
     buffer::Buffer,
@@ -94,8 +97,15 @@ impl Node {
         widget: RwData<W>,
         area: RwArea,
         master: Option<Handle<dyn Widget>>,
+        is_closed: Arc<AtomicBool>,
     ) -> Self {
-        Self::from_handle(Handle::new(widget, area, Arc::new(Mutex::new("")), master))
+        Self::from_handle(Handle::new(
+            widget,
+            area,
+            Arc::new(Mutex::new("")),
+            master,
+            is_closed,
+        ))
     }
 
     /// Returns a `Node` from an existing [`Handle`]
@@ -219,7 +229,7 @@ impl Node {
         self.handle.update_requested.store(false, Ordering::Relaxed);
 
         crate::context::windows().cleanup_despawned(pa);
-        if self.handle().is_closed(pa) {
+        if self.handle().is_closed() {
             return;
         }
 
