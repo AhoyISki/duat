@@ -77,6 +77,7 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) -> std::io::Result<()
     if catch_panic(|| {
         let InitialState { buffers, structs, clipb, reload_start } = ipc::recv_init();
 
+        crate::buffer::add_buffer_hooks();
         crate::storage::set_structs(structs);
         if let Some(clipboard) = clipb {
             crate::clipboard::set(clipboard);
