@@ -51,18 +51,18 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, Vec<TypeId>, BufferOpts) {
             {
                 context::queue(move |pa| {
                     for path in paths {
-                        if let Ok(handle) = context::get_buffer_by_path(pa, &path)
+                        if let Some(buffer) = context::get_buffer_by_path(pa, &path)
                             && let Ok(new_string) = std::fs::read_to_string(path)
                         {
-                            let old_string = handle.text(pa).to_string();
+                            let old_string = buffer.text(pa).to_string();
                             let diffs = dissimilar::diff(&old_string, &new_string);
                             if diffs.is_empty() {
                                 return;
                             }
 
-                            context::info!("{} reloaded", handle.read(pa).name_txt());
+                            context::info!("{} reloaded", buffer.read(pa).name_txt());
 
-                            let mut text = handle.text_mut(pa);
+                            let mut text = buffer.text_mut(pa);
                             text.new_moment();
 
                             let mut start_byte = 0;

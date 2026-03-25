@@ -7,16 +7,20 @@
 //! that you don't care about.
 //!
 //! [`Notifications`]: super::Notifications
-use std::sync::Mutex;
+use std::{path::Path, sync::Mutex};
 
 use duat_core::{
-    context::{self, Handle, Record},
+    cmd,
+    context::{self, Handle, Location, Record},
     data::Pass,
     hook::{self, FocusedOn, MsgLogged, OnMouseEvent, UnfocusedFrom},
+    mode::{self, MouseButton, TwoPointsPlace},
     opts::PrintOpts,
-    text::{Spacer, Text, TextMut, txt},
-    ui::{PushSpecs, PushTarget, Side, Widget},
+    text::{Point, SpawnTag, Tagger, Text, TextMut, txt},
+    ui::{DynSpawnSpecs, Orientation, PushSpecs, PushTarget, Side, Widget},
 };
+
+use crate::widgets::Info;
 
 pub fn add_logbook_hooks() {
     use duat_core::mode::MouseEventKind::*;
@@ -27,9 +31,11 @@ pub fn add_logbook_hooks() {
 
         let (lb, area) = logbook.write_with_area(pa);
 
-        let fmt_recs = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
-            if let Some(rec_text) = fmt(rec) {
+        let mut fmt_recs = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
+            if let Some(rec_text) = fmt(rec.clone()) {
                 lb.text.insert_text(lb.text.len(), &rec_text);
+                lb.location_ranges
+                    .push((lb.text.last_point(), rec.location()));
             }
         };
 
@@ -40,7 +46,7 @@ pub fn add_logbook_hooks() {
         } else if let Some(fmt) = global_fmt.as_mut() {
             fmt_recs(fmt);
         } else {
-            fmt_recs(&mut |rec| default_fmt(lb.show_source, rec));
+            fmt_recs(&mut default_fmt);
         }
 
         area.scroll_ver(&lb.text, i32::MAX, lb.print_opts());
@@ -54,13 +60,63 @@ pub fn add_logbook_hooks() {
         }
     });
 
-    hook::add::<OnMouseEvent<LogBook>>(|pa, (logbook, event)| match event.kind {
+    let location_tagger = Tagger::new();
+
+    hook::add::<OnMouseEvent<LogBook>>(move |pa, (logbook, event)| match event.kind {
         ScrollDown | ScrollUp => {
             let (lb, area) = logbook.write_with_area(pa);
             let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
             area.scroll_ver(&lb.text, scroll, lb.print_opts());
         }
+        Moved => {
+            let Some(TwoPointsPlace::Within(points)) = event.points else {
+                return;
+            };
+
+            let lb = logbook.write(pa);
+            let (Ok(i) | Err(i)) = lb
+                .location_ranges
+                .binary_search_by(|(end, _)| end.cmp(&points.real));
+
+            if let Some((_, location)) = lb.location_ranges.get(i) {
+                let spawn = SpawnTag::new(
+                    Info::new(txt!("[log_book.location]{location}")),
+                    DynSpawnSpecs {
+                        orientation: Orientation::VerLeftBelow,
+                        ..DynSpawnSpecs::default()
+                    },
+                );
+                lb.text.insert_tag(location_tagger, points.real, spawn);
+            }
+        }
+        Down(MouseButton::Left) => {
+            let Some(TwoPointsPlace::Within(points)) = event.points else {
+                return;
+            };
+
+            let lb = logbook.read(pa);
+            let (Ok(i) | Err(i)) = lb
+                .location_ranges
+                .binary_search_by(|(end, _)| end.cmp(&points.real));
+
+            if let Some((_, location)) = lb.location_ranges.get(i).cloned()
+                && cmd::call(pa, format!("edit {}", location.file())).is_ok()
+            {
+                let buffer = context::get_buffer_by_path(pa, Path::new(location.file())).unwrap();
+                mode::reset_to(pa, &buffer);
+                buffer.selections_mut(pa).remove_extras();
+                buffer.edit_main(pa, |mut c| {
+                    c.move_to_coords(location.line() - 1, location.column() - 1);
+                });
+            }
+        }
         _ => {}
+    });
+
+    hook::add::<OnMouseEvent>(move |pa, _| {
+        for logbook in context::windows().handles_of::<LogBook>(pa) {
+            logbook.text_mut(pa).remove_tags(location_tagger, ..);
+        }
     });
 }
 
@@ -72,17 +128,11 @@ static GLOBAL_FMT: Mutex<Option<Box<dyn FnMut(Record) -> Option<Text> + Send>>> 
 /// [`Logs`]: duat_core::context::Logs
 pub struct LogBook {
     text: Text,
+    location_ranges: Vec<(Point, Location)>,
     fmt: Option<Box<dyn FnMut(Record) -> Option<Text> + Send>>,
     /// Wether to close this [`Widget`] after unfocusing, `true` by
     /// default
     pub close_on_unfocus: bool,
-    /// Wether the source of a log should be shown
-    ///
-    /// Can be disabled for less noise. This option is ignored when
-    /// there is [custom formatting].
-    ///
-    /// [custom formatting]: LogBookOpts::fmt
-    pub show_source: bool,
 }
 
 impl LogBook {
@@ -142,29 +192,31 @@ impl LogBookOpts {
     /// Push a [`LogBook`] around the given [`PushTarget`]
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<LogBook> {
         let logs = context::logs();
-
-        let mut text = Text::new();
-
         let records = logs.get(..).unwrap();
 
+        let mut global_fmt = GLOBAL_FMT.lock().unwrap();
+        let mut text = Text::new();
+        let mut path_ranges = Vec::new();
+
         let fmt_recs = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
-            for rec_text in records.into_iter().filter_map(fmt) {
-                text.insert_text(text.len(), &rec_text);
+            for rec in records.into_iter() {
+                if let Some(rec_text) = fmt(rec.clone()) {
+                    text.insert_text(text.len(), &rec_text);
+                    path_ranges.push((text.last_point(), rec.location()));
+                }
             }
         };
-
-        let mut global_fmt = GLOBAL_FMT.lock().unwrap();
 
         if let Some(fmt) = global_fmt.as_mut() {
             fmt_recs(fmt);
         } else {
-            fmt_recs(&mut |rec| default_fmt(self.show_source, rec));
+            fmt_recs(&mut default_fmt);
         }
 
         let log_book = LogBook {
             text,
+            location_ranges: path_ranges,
             fmt: None,
-            show_source: self.show_source,
             close_on_unfocus: self.close_on_unfocus,
         };
 
@@ -211,7 +263,7 @@ impl Default for LogBookOpts {
     }
 }
 
-fn default_fmt(show_source: bool, rec: Record) -> Option<Text> {
+fn default_fmt(rec: Record) -> Option<Text> {
     use duat_core::context::Level::*;
     let mut builder = Text::builder();
 
@@ -223,14 +275,7 @@ fn default_fmt(show_source: bool, rec: Record) -> Option<Text> {
         Trace => unreachable!("Trace is not meant to be useable"),
     };
 
-    builder.push(txt!("[log_book.bracket][] {}", rec.text().clone(),));
-
-    if show_source && rec.level() != duat_core::context::Level::Info {
-        builder.push(txt!(
-            "{Spacer}([log_book.location]{}[log_book.bracket])",
-            rec.location()
-        ));
-    }
+    builder.push(txt!(" {}", rec.text().clone(),));
 
     builder.push('\n');
 

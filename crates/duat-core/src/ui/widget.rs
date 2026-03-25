@@ -160,6 +160,7 @@ impl Node {
                         modifiers: event.modifiers,
                     };
 
+                    hook::trigger(pa, OnMouseEvent((handle.to_dyn(), event)));
                     hook::trigger(pa, OnMouseEvent((handle.clone(), event)));
                 }
             }),

@@ -586,33 +586,21 @@ impl Windows {
     }
 
     /// An entry for a buffer with the given name.
-    pub(crate) fn named_buffer_entry(
-        &self,
-        pa: &Pass,
-        name: &str,
-    ) -> Result<(usize, Handle), Text> {
-        self.entries(pa)
-            .find_map(|(win, node)| {
-                (node.read_as(pa).filter(|f: &&Buffer| f.name() == name))
-                    .and_then(|_| node.try_downcast().map(|handle| (win, handle)))
-            })
-            .ok_or_else(|| txt!("Buffer [buffer]{name}[] not found"))
+    pub(crate) fn named_buffer_entry(&self, pa: &Pass, name: &str) -> Option<(usize, Handle)> {
+        self.entries(pa).find_map(|(win, node)| {
+            (node.read_as(pa).filter(|f: &&Buffer| f.name() == name))
+                .and_then(|_| node.try_downcast().map(|handle| (win, handle)))
+        })
     }
 
     /// An entry for a buffer with the given name.
-    pub(crate) fn path_buffer_entry(
-        &self,
-        pa: &Pass,
-        path: &Path,
-    ) -> Result<(usize, Handle), Text> {
-        self.entries(pa)
-            .find_map(|(win, node)| {
-                (node
-                    .read_as(pa)
-                    .filter(|f: &&Buffer| f.path_kind().as_path().is_some_and(|p| p == path)))
-                .and_then(|_| node.try_downcast().map(|handle| (win, handle)))
-            })
-            .ok_or_else(|| txt!("Buffer [buffer]{path}[] not found"))
+    pub(crate) fn path_buffer_entry(&self, pa: &Pass, path: &Path) -> Option<(usize, Handle)> {
+        self.entries(pa).find_map(|(win, node)| {
+            (node
+                .read_as(pa)
+                .filter(|f: &&Buffer| f.path_kind().as_path().is_some_and(|p| p == path)))
+            .and_then(|_| node.try_downcast().map(|handle| (win, handle)))
+        })
     }
 
     /// An entry for a widget of a specific type.

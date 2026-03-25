@@ -1120,9 +1120,9 @@ impl PartialEq<KeyEvent> for KeyTyped {
 ///
 /// # Arguments
 ///
-/// - The [`Handle<dyn Widget>`] under the mouse.
+/// - The [`Handle<W>`] under the mouse.
 /// - The [`MouseEvent`] itself.
-pub struct OnMouseEvent<W: ?Sized>(pub(crate) (Handle<W>, MouseEvent));
+pub struct OnMouseEvent<W: ?Sized = dyn Widget>(pub(crate) (Handle<W>, MouseEvent));
 
 impl<W: 'static + ?Sized> Hookable for OnMouseEvent<W> {
     type Input<'h> = (&'h Handle<W>, MouseEvent);

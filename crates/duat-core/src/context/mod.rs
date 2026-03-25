@@ -144,19 +144,17 @@ mod global {
     /// Returns a [`Handle`] for a [`Buffer`] with the given name.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn get_buffer(pa: &Pass, name: impl ToString) -> Result<Handle, Text> {
+    pub fn get_buffer(pa: &Pass, name: impl ToString) -> Option<Handle> {
         let (.., handle) = windows().named_buffer_entry(pa, &name.to_string())?;
-
-        Ok(handle)
+        Some(handle)
     }
 
     /// Returns a [`Handle`] for a [`Buffer`] with the given [`Path`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn get_buffer_by_path(pa: &Pass, path: &Path) -> Result<Handle, Text> {
+    pub fn get_buffer_by_path(pa: &Pass, path: &Path) -> Option<Handle> {
         let (.., handle) = windows().path_buffer_entry(pa, path)?;
-
-        Ok(handle)
+        Some(handle)
     }
 
     /// Get the "most appropriate" [`Handle`] for a given [`Widget`].

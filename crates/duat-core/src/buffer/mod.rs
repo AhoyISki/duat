@@ -31,9 +31,8 @@ use crate::{
     context::{self, Handle, cache},
     data::{Pass, RwData, WriteableTuple},
     hook::{self, BufferSaved, BufferUpdated, OnMouseEvent},
-    mode::{Cursor, Selections},
+    mode::{Cursor, Selections, TwoPointsPlace},
     opts::PrintOpts,
-    session::TwoPointsPlace,
     text::{Point, Strs, StrsBuf, Text, TextMut, TextVersion, txt},
     ui::{Area, Coord, PrintInfo, PrintedLine, Widget},
 };

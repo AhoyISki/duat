@@ -39,8 +39,8 @@ use crate::{
     buffer::Buffer,
     context::Handle,
     data::Pass,
-    session::{DuatEvent, TwoPointsPlace},
-    text::txt,
+    session::DuatEvent,
+    text::{TwoPoints, txt},
     ui::{Coord, Widget},
 };
 
@@ -490,6 +490,28 @@ pub struct MouseEvent {
     pub kind: MouseEventKind,
     /// Modifiers that were pressed during this mouse event.
     pub modifiers: KeyMod,
+}
+
+/// Where exactly did the [`TwoPoints`] for a given [`Coord`] match.
+///
+/// It can be either an exact match, that is, the mouse was in the
+/// position of the `TwoPoints`, or it can be on the same line as the
+/// `TwoPoints` at the end of the line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TwoPointsPlace {
+    /// The mouse was on top of the character that matched.
+    Within(TwoPoints),
+    /// The mouse was on the same line as the character.
+    AheadOf(TwoPoints),
+}
+
+impl TwoPointsPlace {
+    /// The [`TwoPoints`] that were interacted with.
+    pub fn points(&self) -> TwoPoints {
+        match self {
+            TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points) => *points,
+        }
+    }
 }
 
 /// Return the length of a strin in chars

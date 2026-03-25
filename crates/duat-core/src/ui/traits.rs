@@ -21,9 +21,8 @@ use bincode::{Decode, Encode};
 use crate::{
     context::DuatSender,
     form::Painter,
-    mode::VPoint,
+    mode::{TwoPointsPlace, VPoint},
     opts::PrintOpts,
-    session::TwoPointsPlace,
     text::{Point, Text, TwoPoints},
     ui::{Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs},
 };

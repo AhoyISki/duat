@@ -1,4 +1,4 @@
-//! Logging for Duat
+//! Logging for Duat.
 //!
 //! This module defines types and functions for logging in Duat. It
 //! defines the [`debug!`], [`info!`], [`warn!`] and [`error!`] macros
@@ -22,7 +22,7 @@ mod macros {
     #[doc(inline)]
     pub use crate::{debug, error, info, warn};
 
-    /// Logs an error to Duat
+    /// Logs an error to Duat.
     ///
     /// Use this, as opposed to [`warn!`], [`info!`] or [`debug!`],
     /// if you want to tell the user that something explicitely
@@ -83,7 +83,7 @@ mod macros {
         }
     }
 
-    /// Logs an warning to Duat
+    /// Logs an warning to Duat.
     ///
     /// Use this, as opposed to [`error!`], [`info!`] or [`debug!`],
     /// if you want to tell the user that something was partially
@@ -144,7 +144,7 @@ mod macros {
         }
     }
 
-    /// Logs an info to Duat
+    /// Logs an info to Duat.
     ///
     /// Use this, as opposed to [`error!`], [`warn!`] or [`debug!`],
     /// when you want to tell the user that something was
@@ -205,7 +205,7 @@ mod macros {
         }
     }
 
-    /// Logs an debug information to Duat
+    /// Logs an debug information to Duat.
     ///
     /// Use this, as opposed to [`error!`], [`warn!`] or [`info!`],
     /// when you want to tell the user that something was
@@ -276,7 +276,7 @@ static LOGS: Logs = {
     }
 };
 
-/// Notifications for duat
+/// Notifications for duat.
 ///
 /// This is a mutable, shareable, [`Send`]/[`Sync`] list of
 /// notifications in the form of [`Text`]s, you can read this,
@@ -313,7 +313,7 @@ impl Clone for Logs {
 }
 
 impl Logs {
-    /// Returns an owned valued of a [`SliceIndex`]
+    /// Returns an owned valued of a [`SliceIndex`].
     ///
     /// - `&'static Log` for `usize`;
     /// - [`Vec<&'static Log>`] for `impl RangeBounds<usize>`;
@@ -337,7 +337,7 @@ impl Logs {
         list.last().cloned().map(|last| (list.len() - 1, last))
     }
 
-    /// Gets the last [`Record`] with a level from a list
+    /// Gets the last [`Record`] with a level from a list.
     pub fn last_with_levels(&self, levels: &[Level]) -> Option<(usize, Record)> {
         self.read_state
             .store(self.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
@@ -350,12 +350,12 @@ impl Logs {
             .find_map(|(i, rec)| levels.contains(&rec.level()).then(|| (i, rec.clone())))
     }
 
-    /// Wether there are new notifications or not
+    /// Wether there are new notifications or not.
     pub fn has_changed(&self) -> bool {
         self.cur_state.load(Ordering::Relaxed) > self.read_state.load(Ordering::Relaxed)
     }
 
-    /// Pushes a [`CmdResult`]
+    /// Pushes a [`CmdResult`].
     ///
     /// [`CmdResult`]: crate::cmd::CmdResult
     #[track_caller]
@@ -383,7 +383,7 @@ impl Logs {
         self.list.lock().unwrap().push(rec)
     }
 
-    /// Pushes a new [`Record`] to Duat
+    /// Pushes a new [`Record`] to Duat.
     #[doc(hidden)]
     pub fn push_record(&self, rec: Record) {
         crate::context::queue({
@@ -395,14 +395,14 @@ impl Logs {
         self.list.lock().unwrap().push(rec)
     }
 
-    /// Returns the number of [`Record`]s in the [`Logs`]
+    /// Returns the number of [`Record`]s in the `Logs`.
     pub fn len(&self) -> usize {
         self.list.lock().unwrap().len()
     }
 
-    /// Wether there are any [`Record`]s in the [`Logs`]
+    /// Wether there are any [`Record`]s in the `Logs`.
     ///
-    /// It's pretty much never `true`
+    /// It's pretty much never `true`.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
@@ -432,7 +432,7 @@ impl log::Log for Logs {
     fn flush(&self) {}
 }
 
-/// A record of something that happened in Duat
+/// A record of something that happened in Duat.
 ///
 /// Differs from [`log::Record`] in that its argument isn't an
 /// [`std::fmt::Arguments`], but a [`Text`] instead.
@@ -444,7 +444,7 @@ pub struct Record {
 }
 
 impl Record {
-    /// Creates a new [`Record`]
+    /// Creates a new [`Record`].
     #[doc(hidden)]
     pub fn new(text: Text, level: Level, location: Location) -> Self {
         Self {
@@ -454,31 +454,31 @@ impl Record {
         }
     }
 
-    /// The [`Text`] of this [`Record`]
+    /// The [`Text`] of this [`Record`].
     #[inline]
     pub fn text(&self) -> &Text {
         self.text
     }
 
-    /// Metadata about the log directive
+    /// Metadata about the log directive.
     #[inline]
     pub fn metadata(&self) -> log::Metadata<'static> {
         self.metadata.clone()
     }
 
-    /// The verbosity level of the message
+    /// The verbosity level of the message.
     #[inline]
     pub fn level(&self) -> Level {
         self.metadata.level()
     }
 
-    /// The name of the target of the directive
+    /// The name of the target of the directive.
     #[inline]
     pub fn target(&self) -> &'static str {
         self.metadata.target()
     }
 
-    /// The [`Location`] where the message was sent from
+    /// The [`Location`] where the message was sent from.
     #[inline]
     pub fn location(&self) -> Location {
         self.location
@@ -520,19 +520,19 @@ impl Location {
         }
     }
 
-    /// Returns the name of the source file
+    /// Returns the name of the source file.
     #[must_use]
     pub const fn file(&self) -> &'static str {
         self.filename
     }
 
-    /// The line where the message originated from
+    /// The line where the message originated from. 1 indexed.
     #[must_use]
     pub const fn line(&self) -> usize {
         self.line as usize
     }
 
-    /// The column where the message originated from
+    /// The column where the message originated from. 1 indexed.
     #[must_use]
     pub const fn column(&self) -> usize {
         self.col as usize
@@ -546,7 +546,7 @@ impl std::fmt::Display for Location {
     }
 }
 
-/// Log information about a panic that took place
+/// Log information about a panic that took place.
 #[doc(hidden)]
 pub fn log_panic(panic_info: &PanicHookInfo) {
     let (Some(msg), Some(location)) = (panic_info.payload_as_str(), panic_info.location()) else {

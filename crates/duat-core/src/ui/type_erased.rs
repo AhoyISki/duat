@@ -26,9 +26,8 @@ use crate::{
     context::{self, cache},
     data::{Pass, RwData},
     form::Painter,
-    mode::VPoint,
+    mode::{TwoPointsPlace, VPoint},
     opts::PrintOpts,
-    session::TwoPointsPlace,
     text::{Point, Text, TwoPoints},
     ui::{
         Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs,

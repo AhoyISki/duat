@@ -13,9 +13,8 @@ use duat_core::{
         cache::{Decode, Encode},
     },
     form::{CONTROL_CHAR_ID, Painter},
-    mode::VPoint,
+    mode::{TwoPointsPlace, VPoint},
     opts::PrintOpts,
-    session::TwoPointsPlace,
     text::{Point, Text, TextPart, TextPlace, TwoPoints, txt},
     ui::{
         self, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId,
@@ -285,15 +284,18 @@ impl RawArea for Area {
         let mut max_x = 0;
         let mut max_y = 0;
         let mut width = 0;
+        let mut is_first = true;
 
         for (place, item) in iter {
-            if place.wrap {
+            if place.wrap && !is_first {
                 if max_y == max.y {
                     break;
                 }
                 max_x = width.max(max_x);
                 max_y += 1;
                 width = 0;
+            } else {
+                is_first = false;
             }
             if item.part.is_char() {
                 width += place.len;

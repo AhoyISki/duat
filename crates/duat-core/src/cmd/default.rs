@@ -329,9 +329,17 @@ pub fn add_defalt_commands() {
                 }
             };
 
-            let buffer = Buffer::new(pk.as_path(), *session::BUFFER_OPTS.get().unwrap());
-            let node = windows.new_buffer(pa, buffer);
-            mode::reset_to(pa, node.handle());
+            let buffer = if let Some(buffer) = context::buffers(pa)
+                .into_iter()
+                .find(|buffer| buffer.read(pa).path_kind() == pk)
+            {
+                buffer.to_dyn()
+            } else {
+                let buffer = Buffer::new(pk.as_path(), *session::BUFFER_OPTS.get().unwrap());
+                windows.new_buffer(pa, buffer).handle().clone()
+            };
+
+            mode::reset_to(pa, &buffer);
 
             Ok(Some(txt!("Opened {pk}")))
         },
