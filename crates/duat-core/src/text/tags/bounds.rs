@@ -285,7 +285,7 @@ impl Bounds {
         self.list
             .iter_fwd(..)
             .take_while(move |(_, ([_, b], ..))| *b <= byte)
-            .filter_map(move |(i, ([_, b], tag, range_id))| {
+            .filter_map(move |(i, ([_, sb], tag, range_id))| {
                 if let RawTag::StartToggle(_, toggle_id) = tag {
                     let (_, ([_, eb], ..)) = self
                         .list
@@ -293,7 +293,7 @@ impl Bounds {
                         .find(|(_, (.., other))| *other == range_id)
                         .unwrap();
 
-                    (eb > byte).then_some((b as usize..eb as usize, toggle_id))
+                    (eb > byte).then_some((sb as usize..eb as usize, toggle_id))
                 } else {
                     None
                 }

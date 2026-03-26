@@ -137,7 +137,7 @@ impl Area {
                 let master_id = layout.get_cluster_master(self.id).unwrap();
                 let master_coords = self.layouts.coords_of(master_id, true).unwrap();
                 let master_has_edge = layout.get(master_id).unwrap().edge().is_some();
-                
+
                 (
                     master_has_edge && master_coords.br.x == coords.br.x,
                     layout.max_value(),
@@ -723,20 +723,26 @@ impl RawArea for Area {
             (s_points, info.x_shift())
         };
 
+        let mut is_first = true;
         let mut row = coords.tl.y;
         let mut backup = None;
         for (place, item) in print_iter(text, s_points, coords.width(), opts) {
-            row += place.wrap as u32;
+            if is_first {
+                is_first = false;
+            } else {
+                row += place.wrap as u32;
+            }
 
-            if row > coord.y as u32 + 1 {
+            if row > coord.y as u32 {
                 return backup;
-            } else if row == coord.y as u32 + 1
+            } else if row == coord.y as u32
+                && place.len > 0
                 && let Some(col) = place.x.checked_sub(x_shift)
             {
                 if (coords.tl.x + col..coords.tl.x + col + place.len).contains(&(coord.x as u32)) {
                     return Some(TwoPointsPlace::Within(item.points()));
                 } else if coords.tl.x + col >= coord.x as u32 {
-                    return backup;
+                    break;
                 }
             }
 

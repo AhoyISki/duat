@@ -695,26 +695,26 @@ impl InnerTags {
         let (Ok(i) | Err(i)) = self.list.find_by_key(byte, |(byte, _)| byte);
         let not_on_bounds = self
             .list
-            .iter_fwd(i.saturating_sub(self.bounds.min_len())..i)
+            .iter_fwd(i.saturating_sub(self.bounds.min_len())..self.list.len().min(i + 1))
             .take_while(move |(_, (b, _))| *b <= byte)
-            .filter_map(|(i, (byte, tag))| {
+            .filter_map(move |(i, (sb, tag))| {
                 let RawTag::StartToggle(_, sid) = tag else {
                     return None;
                 };
                 let eb = self
                     .list
                     .iter_fwd(i + 1..i + self.bounds.min_len())
-                    .find_map(|(_, (byte, tag))| {
+                    .find_map(|(_, (eb, tag))| {
                         if let RawTag::EndToggle(_, eid) = tag
-                            && eid == sid
+                            && (eid == sid && eb > byte)
                         {
-                            Some(byte)
+                            Some(eb)
                         } else {
                             None
                         }
                     })?;
 
-                Some((byte as usize..eb as usize, sid))
+                Some((sb as usize..eb as usize, sid))
             });
 
         on_bounds.chain(not_on_bounds).map(|(range, toggle_id)| {
