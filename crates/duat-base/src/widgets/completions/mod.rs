@@ -126,7 +126,7 @@ pub fn setup_completions() {
 
     hook::add::<FocusChanged>(move |pa, (prev, _)| prev.text_mut(pa).remove_tags(*TAGGER, ..));
 
-    hook::add::<OnMouseEvent<Completions>>(|pa, (_, event)| match event.kind {
+    hook::add::<OnMouseEvent<Completions>>(|pa, event| match event.kind {
         MouseEventKind::ScrollDown => _ = Completions::scroll(pa, 1),
         MouseEventKind::ScrollUp => _ = Completions::scroll(pa, -1),
         _ => {}

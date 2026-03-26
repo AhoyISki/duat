@@ -330,7 +330,7 @@ fn stdout_loop(server_bridge: ServerBridge, stdout: &mut impl BufRead) -> std::i
 
                 match content {
                     JsonRpc::Request(request) => handle_request(&server_bridge, request),
-                    JsonRpc::Notification(notif) => {
+                    JsonRpc::Notification(_notif) => {
                         // if !notif.method.ends_with("progress") {
                         //     context::debug!("Server notified:
                         // {notif:#?}"); }

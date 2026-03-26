@@ -191,7 +191,7 @@ impl LineNumbersOpts {
             })
             .priority(usize::MAX);
 
-            hook::add::<OnMouseEvent<LineNumbers>>(|pa, (linenumbers, event)| {
+            hook::add::<OnMouseEvent<LineNumbers>>(|pa, event| {
                 let line = |pa, handle: &Handle| {
                     let lines = handle.printed_line_numbers(pa);
                     event
@@ -201,7 +201,7 @@ impl LineNumbersOpts {
                         .unwrap_or(handle.text(pa).end_point().line())
                 };
 
-                let (buffer, _) = linenumbers.get_related::<Buffer>(pa).remove(0);
+                let (buffer, _) = event.handle.get_related::<Buffer>(pa).remove(0);
 
                 match event.kind {
                     MouseEventKind::Down(MouseButton::Left) => {

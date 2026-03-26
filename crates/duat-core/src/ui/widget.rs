@@ -46,7 +46,7 @@ use crate::{
     data::{Pass, RwData},
     form,
     hook::{self, BufferPrinted, FocusedOn, OnMouseEvent, UnfocusedFrom},
-    mode::MouseEvent,
+    mode::{ToggleEvent, TwoPointsPlace},
     opts::PrintOpts,
     session::UiMouseEvent,
     text::{Text, TextMut},
@@ -160,18 +160,44 @@ impl Node {
             }),
             on_mouse_event: Arc::new({
                 let handle = handle.clone();
+                let dyn_handle = handle.to_dyn();
                 move |pa, event| {
                     let opts = handle.opts(pa);
                     let text = handle.text(pa);
-                    let event = MouseEvent {
-                        points: handle.area().points_at_coord(pa, text, event.coord, opts),
+
+                    let points = handle.area().points_at_coord(pa, text, event.coord, opts);
+
+                    hook::trigger(pa, OnMouseEvent {
+                        handle: dyn_handle.clone(),
+                        points,
                         coord: event.coord,
                         kind: event.kind,
                         modifiers: event.modifiers,
-                    };
+                    });
+                    hook::trigger(pa, OnMouseEvent {
+                        handle: handle.clone(),
+                        points,
+                        coord: event.coord,
+                        kind: event.kind,
+                        modifiers: event.modifiers,
+                    });
 
-                    hook::trigger(pa, OnMouseEvent((handle.to_dyn(), event)));
-                    hook::trigger(pa, OnMouseEvent((handle.clone(), event)));
+                    if let Some(TwoPointsPlace::Within(points)) = points {
+                        let event = ToggleEvent {
+                            handle: &dyn_handle,
+                            points,
+                            coord: event.coord,
+                            kind: event.kind,
+                            modifiers: event.modifiers,
+                        };
+                        let toggles = handle.text(pa).toggles_surrounding(points.real);
+
+                        crate::utils::catch_panic(|| {
+                            for (range, toggle_fn) in toggles {
+                                toggle_fn.lock().unwrap()(pa, event, range);
+                            }
+                        });
+                    }
                 }
             }),
         }

@@ -82,7 +82,9 @@
 //! [`Widget`]: crate::ui::Widget
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
 //! [`Mode`]: crate::mode::Mode
-pub(crate) use crate::text::strs::StrsBuf;
+use std::ops::Range;
+
+pub(crate) use crate::text::{strs::StrsBuf, tags::ToggleFn};
 use crate::{
     buffer::{Change, History},
     context::Handle,
@@ -100,7 +102,9 @@ pub use crate::{
         iter::{FwdIter, RevIter, TextPart, TextPlace},
         search::{Matches, RegexHaystack, RegexPattern},
         strs::{Lines, Strs},
-        tags::{Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, Tag, Tagger, Tags},
+        tags::{
+            Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, Tag, Tagger, Tags, Toggle,
+        },
         utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     },
     txt,
@@ -158,7 +162,7 @@ impl Text {
             [Some(sel.caret()), sel.anchor()]
                 .into_iter()
                 .flatten()
-                .any(|point| point >= buf.end_point())
+                .any(|point| point.char() >= buf.end_point().char())
         }) {
             Selections::new(Selection::default())
         } else {
@@ -519,15 +523,6 @@ impl Text {
         self.0.tags = InnerTags::new(self.0.buf.len());
     }
 
-    /////////// Internal synchronization functions
-
-    /// Prepares the `Text` for reloading, to be used on [`Buffer`]s.
-    ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    pub(crate) fn prepare_for_reloading(&mut self) {
-        self.clear_tags();
-    }
-
     /////////// Iterator methods
 
     /// A forward iterator of the [chars and tags] of the [`Text`].
@@ -671,12 +666,35 @@ impl Text {
         }
     }
 
+    /////////// Internal functions
+
+    /// Prepares the `Text` for reloading, to be used on [`Buffer`]s.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub(crate) fn prepare_for_reloading(&mut self) {
+        self.clear_tags();
+    }
+
     /// Take the reloaded parts off of this `Text`.
     pub(crate) fn take_reload_parts(&mut self) -> (StrsBuf, Selections) {
         (
             std::mem::take(&mut self.0.buf),
             std::mem::replace(&mut self.0.selections, Selections::new_empty()),
         )
+    }
+
+	/// Returns all toggle functions that surround a byte.
+    pub(crate) fn toggles_surrounding(&self, point: Point) -> Vec<(Range<Point>, ToggleFn)> {
+        self.0
+            .tags
+            .toggles_surrounding(point.byte())
+            .map(|(range, toggle_fn)| {
+                (
+                    self.point_at_byte(range.start)..self.point_at_byte(range.end),
+                    toggle_fn,
+                )
+            })
+            .collect()
     }
 }
 

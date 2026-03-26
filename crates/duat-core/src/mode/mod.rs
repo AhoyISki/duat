@@ -477,13 +477,34 @@ pub trait Mode: Sized + Send + 'static {
     }
 }
 
-/// A mouse event, representing a click, drag, hover, etc
+/// A mouse event, representing a click, drag, hover, etc.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MouseEvent {
+pub struct MouseEvent<'h, W: ?Sized = dyn Widget> {
+    /// The [`Handle`] where the event took place.
+    pub handle: &'h Handle<W>,
     /// The position on the [`Text`] where the mouse was.
     ///
     /// [`Text`]: crate::text::Text
     pub points: Option<TwoPointsPlace>,
+    /// Thee coordinate on screen where the mouse was.
+    pub coord: Coord,
+    /// What the mouse did.
+    pub kind: MouseEventKind,
+    /// Modifiers that were pressed during this mouse event.
+    pub modifiers: KeyMod,
+}
+
+/// An event representing a [`MouseEvent`] over a [`Toggle`] region.
+///
+/// [`Toggle`]: crate::text::Toggle
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ToggleEvent<'h> {
+    /// The [`Handle`] where the event took place.
+    pub handle: &'h Handle<dyn Widget>,
+    /// The position on the [`Text`] where the mouse was.
+    ///
+    /// [`Text`]: crate::text::Text
+    pub points: TwoPoints,
     /// Thee coordinate on screen where the mouse was.
     pub coord: Coord,
     /// What the mouse did.

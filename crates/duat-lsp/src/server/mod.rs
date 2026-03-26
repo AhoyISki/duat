@@ -73,7 +73,7 @@ impl Server {
     }
 
     /// Sends a request alongside its parameters.
-    pub fn send_request<R: Request + 'static>(
+    pub fn _send_request<R: Request + 'static>(
         &self,
         params: R::Params,
         callback: impl FnOnce(&mut Pass, R::Result) + Send + 'static,

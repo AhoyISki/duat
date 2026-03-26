@@ -22,11 +22,11 @@ use crate::{
     data::Pass,
     hook::{
         self, BufferClosed, BufferUnloaded, ConfigLoaded, ConfigUnloaded, FocusedOnDuat,
-        UnfocusedFromDuat,
+        OnMouseEvent, UnfocusedFromDuat,
     },
     mode::{self, Selection, Selections},
     session::ipc::{InitialState, MsgFromChild},
-    text::StrsBuf,
+    text::{StrsBuf, Tagger},
     ui::{
         Coord, Ui, Windows,
         layout::{Layout, MasterOnLeft},
@@ -76,6 +76,14 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) -> std::io::Result<()
 
     if catch_panic(|| {
         let InitialState { buffers, structs, clipb, reload_start } = ipc::recv_init();
+
+        hook::add::<OnMouseEvent>(|pa, event| {
+            event
+                .handle
+                .text_mut(pa)
+                .remove_tags(Tagger::for_toggle(), ..);
+        })
+        .priority(0);
 
         crate::buffer::add_buffer_hooks();
         crate::storage::set_structs(structs);

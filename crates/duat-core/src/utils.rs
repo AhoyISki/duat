@@ -329,6 +329,7 @@ pub fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug,
 /// In Duat, this is used for searching in ordered lists where the
 /// elements after a certain index are shifted by some amount, while
 /// those behind that point aren't shifted at all.
+#[inline(always)]
 pub fn binary_search_by_key_and_index<T, K>(
     container: &(impl std::ops::Index<usize, Output = T> + ?Sized),
     len: usize,

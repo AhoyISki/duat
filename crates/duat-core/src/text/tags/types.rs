@@ -1,4 +1,4 @@
-//! Types for convenience and efficiency
+//! Types for convenience and efficiency.
 //!
 //! There are two "types" of tag: [`Tag`]s and [`RawTag`]s. [`Tag`]s
 //! are what is show to the end user, being convenient in the way they
@@ -6,59 +6,25 @@
 //! meant to be as small as possible in order not to waste memory, as
 //! they will be stored in the [`Text`]. As such, they have as little
 //! information as possible, occupying only 8 bytes.
-use std::sync::{Arc, atomic::AtomicBool};
+use std::{
+    ops::Range,
+    sync::{Arc, Mutex, atomic::AtomicBool},
+};
 
 use RawTag::*;
+use crossterm::event::{MouseButton, MouseEventKind};
 
 use super::{GhostId, SpawnId, Tagger};
 use crate::{
     context::{self, Handle},
     data::Pass,
-    form::FormId,
-    text::{Point, Text, TextRange},
+    form::{self, FormId},
+    mode::ToggleEvent,
+    text::{Point, Text, TextRange, tags::ToggleId},
     ui::{DynSpawnSpecs, Widget},
 };
 
-macro_rules! simple_impl_Tag {
-    ($self:ident : $tag:ty, $tagger:ident, $raw_tag:expr, $is_meta:literal) => {
-        impl Tag<usize> for $tag {
-            const IS_META: bool = $is_meta;
-
-            #[allow(unused_variables)]
-            fn get_raw(
-                &mut self,
-                _: &super::InnerTags,
-                byte: usize,
-                max: usize,
-                $tagger: Tagger,
-            ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
-                let $self = self;
-                assert!(
-                    byte <= max,
-                    "byte out of bounds: the len is {max}, but the byte is {byte}",
-                );
-                ((byte, $raw_tag), None)
-            }
-        }
-
-        impl Tag<Point> for $tag {
-            const IS_META: bool = $is_meta;
-
-            fn get_raw(
-                &mut self,
-                tags: &super::InnerTags,
-                point: Point,
-                max: usize,
-                tagger: Tagger,
-            ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
-                let byte = point.byte();
-                self.get_raw(tags, byte, max, tagger)
-            }
-        }
-    };
-}
-
-/// [`Tag`]s are used for every visual modification to [`Text`]
+/// [`Tag`]s are used for every visual modification to [`Text`].
 ///
 /// `Tag`s allow for all sorts of configuration on the `Text`, like
 /// changing colors throug [`Form`]s, or text alignment, or
@@ -81,6 +47,8 @@ macro_rules! simple_impl_Tag {
 ///     indent lines.
 /// - [`Conceal`]: Hides a range in the `Text`, mostly only useful in
 ///   the [`Buffer`] [`Widget`].
+/// - [`Toggle`]: Creates a region that can be interacted with through
+///   the mouse pointer.
 /// - [`SpawnTag`]: Spawns a floating `Widget` on a position in
 ///   `Text`. Said floating widget will move around as the position
 ///   does the same.
@@ -91,12 +59,13 @@ macro_rules! simple_impl_Tag {
 /// [`Widget`]: crate::ui::Widget
 pub trait Tag<Index>: Sized {
     /// A meta `Tag` is one that changes the layout of the [`Text`]
-    /// itself
+    /// itself.
     ///
-    /// The only meta `Tag`s are [`Ghost`], [`Conceal`] and [`Spacer`]
+    /// The only meta `Tag`s are [`Ghost`], [`Conceal`] and
+    /// [`Spacer`].
     const IS_META: bool;
 
-    /// Gets the [`RawTag`]s and a possible return id from the `Tag`
+    /// Gets the [`RawTag`]s and a possible return id from the `Tag`.
     #[doc(hidden)]
     fn get_raw(
         &mut self,
@@ -107,7 +76,7 @@ pub trait Tag<Index>: Sized {
     ) -> ((usize, RawTag), Option<(usize, RawTag)>);
 
     /// An action to take place if the [`RawTag`]s are successfully
-    /// added
+    /// added.
     #[doc(hidden)]
     #[allow(unused_variables)]
     fn on_insertion(self, tags: &mut super::InnerTags) {}
@@ -115,7 +84,7 @@ pub trait Tag<Index>: Sized {
 
 ////////// Form-like InnerTags
 
-/// [`Tag`]: Applies a [`Form`] to a given [range] in the [`Text`]
+/// [`Tag`]: Applies a [`Form`] to a given [range] in the [`Text`].
 ///
 /// This struct can be created from the [`FormId::to_tag`] method,
 /// granting it a priority that is used to properly order the
@@ -166,7 +135,7 @@ impl<I: TextRange> Tag<I> for FormTag {
 
 ////////// Meta Tags
 
-/// [`Tag`]: A spacer for more advanced alignment
+/// [`Tag`]: A spacer for more advanced alignment.
 ///
 /// When printing this screen line (one row on screen, i.e. until
 /// it wraps), Instead of following the current alignment, will
@@ -201,9 +170,41 @@ impl<I: TextRange> Tag<I> for FormTag {
 /// [`Builder`]: crate::text::Builder
 #[derive(Debug, Clone, Copy)]
 pub struct Spacer;
-simple_impl_Tag!(tag: Spacer, tagger, RawTag::Spacer(tagger), false);
+impl Tag<usize> for Spacer {
+    const IS_META: bool = true;
 
-/// [`Builder`] part and [`Tag`]: Places ghost text
+    #[track_caller]
+    fn get_raw(
+        &mut self,
+        _: &super::InnerTags,
+        byte: usize,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        assert!(
+            byte <= max,
+            "byte out of bounds: the len is {max}, but the byte is {byte}",
+        );
+        ((byte, RawTag::Spacer(tagger)), None)
+    }
+}
+
+impl Tag<Point> for Spacer {
+    const IS_META: bool = true;
+
+    fn get_raw(
+        &mut self,
+        tags: &super::InnerTags,
+        point: Point,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        let byte = point.byte();
+        self.get_raw(tags, byte, max, tagger)
+    }
+}
+
+/// [`Builder`] part and [`Tag`]: Places ghost text.
 ///
 /// This is useful when, for example, creating command line prompts,
 /// since the text is non interactable.
@@ -218,7 +219,7 @@ pub struct Ghost {
 }
 
 impl Ghost {
-    /// Returns a new `Ghost`, which can be inserted on [`Text`]
+    /// Returns a new `Ghost`, which can be inserted on [`Text`].
     #[track_caller]
     pub fn inlay(value: impl Into<Text>) -> Self {
         let text = value.into();
@@ -236,7 +237,7 @@ impl Ghost {
         }
     }
 
-    /// Returns a new "inlay" type `Ghost`
+    /// Returns a new "inlay" type `Ghost`.
     ///
     /// This `Ghost` type, instead of being printed in the same byte
     /// that it was placed, will instead be printed at the end of the
@@ -263,6 +264,7 @@ impl Ghost {
 impl Tag<usize> for Ghost {
     const IS_META: bool = true;
 
+    #[track_caller]
     fn get_raw(
         &mut self,
         tags: &super::InnerTags,
@@ -304,6 +306,7 @@ impl Tag<usize> for Ghost {
 impl Tag<Point> for Ghost {
     const IS_META: bool = true;
 
+    #[track_caller]
     fn get_raw(
         &mut self,
         tags: &super::InnerTags,
@@ -322,7 +325,7 @@ impl Tag<Point> for Ghost {
     }
 }
 
-/// [`Tag`]: Conceals a [range] in the [`Text`]
+/// [`Tag`]: Conceals a [range] in the [`Text`].
 ///
 /// This range is completely arbitrary, being able to partially
 /// contain lines, as long as it is contained within the length of the
@@ -334,6 +337,7 @@ pub struct Conceal;
 impl<I: TextRange> Tag<I> for Conceal {
     const IS_META: bool = true;
 
+    #[track_caller]
     fn get_raw(
         &mut self,
         _: &super::InnerTags,
@@ -349,9 +353,152 @@ impl<I: TextRange> Tag<I> for Conceal {
     }
 }
 
+/// [`Tag`]: Adds a toggleable region to the [`Text`].
+///
+/// This region can be interacted with through the mouse pointer via
+/// [`ToggleEvent`]s, which allow for clicks, hovers, drags, things of
+/// that nature.
+#[derive(Clone)]
+pub struct Toggle {
+    toggle_fn: ToggleFn,
+    id: Option<ToggleId>,
+    is_new: bool,
+}
+
+impl Toggle {
+    /// Returns a new `Toggle` with added feedback.
+    ///
+    /// This function will take the following arguments:
+    ///
+    /// - A [`&mut Pass`], used to access duat's global state.
+    /// - A [`ToggleEvent`] containing all the information about the
+    ///   interaction.
+    /// - A [`Range<Point>`], which is the range of the [`Text`] that
+    ///   this `Toggle` was placed in.
+    ///
+    /// With these arguments, you should be able to do anything to
+    /// duat from this toggle call.
+    ///
+    /// # Visual feedback
+    ///
+    /// This function comes with added feedback that you don't have to
+    /// implement yourself:
+    ///
+    /// - If hovered, applies the `toggle.hovered` [`Form`].
+    /// - If clicked, briefly applies the `toggle.clicked` [`Form`].
+    ///   - It has three inherited variants `toggle.clicked.left`,
+    ///     `toggle.clicked.right` and `toggle.clicked.middle`, which
+    ///     are all initially the same.
+    ///
+    /// If you want a toggleable region with no visual feedback, check
+    /// out [`Toggle::new_raw`].
+    ///
+    /// [`&mut Pass`]: Pass
+    /// [`Form`]: crate::form::Form
+    pub fn new(
+        mut func: impl FnMut(&mut Pass, ToggleEvent, Range<Point>) + Send + 'static,
+    ) -> Self {
+        Self {
+            toggle_fn: Arc::new(Mutex::new(
+                move |pa: &mut Pass, event: ToggleEvent<'_>, range: Range<Point>| {
+                    let tagger = Tagger::for_toggle();
+                    let mut parts = event.handle.text_parts(pa);
+
+                    match event.kind {
+                        MouseEventKind::Down(button) => {
+                            let form = match button {
+                                MouseButton::Left => form::id_of!("toggle.click.left"),
+                                MouseButton::Right => form::id_of!("toggle.click.right"),
+                                MouseButton::Middle => form::id_of!("toggle.click.middle"),
+                            };
+                            parts.tags.remove(tagger, ..);
+                            parts.tags.insert(tagger, range.clone(), form.to_tag(140))
+                        }
+                        MouseEventKind::Up(_) | MouseEventKind::Moved => {
+                            let form = form::id_of!("toggle.hover");
+                            parts.tags.remove(tagger, ..);
+                            parts.tags.insert(tagger, range.clone(), form.to_tag(140))
+                        }
+                        _ => {}
+                    }
+
+                    func(pa, event, range)
+                },
+            )),
+            id: None,
+            is_new: false,
+        }
+    }
+
+    /// Returns a new `Toggle` with no visual feedback.
+    ///
+    /// This function will take the following arguments:
+    ///
+    /// - A [`&mut Pass`], used to access duat's global state.
+    /// - A [`ToggleEvent`] containing all the information about the
+    ///   interaction.
+    /// - A [`Range<Point>`], which is the range of the [`Text`] that
+    ///   this `Toggle` was placed in.
+    ///
+    /// With these arguments, you should be able to do anything to
+    /// duat from this toggle call.
+    ///
+    /// If you want a toggleable region with visual feedback, check
+    /// out [`Toggle::new`].
+    ///
+    /// [`&mut Pass`]: Pass
+    /// [`Form`]: crate::form::Form
+    pub fn new_raw(
+        func: impl FnMut(&mut Pass, ToggleEvent, Range<Point>) + Send + 'static,
+    ) -> Self {
+        Self {
+            toggle_fn: Arc::new(Mutex::new(func)),
+            id: None,
+            is_new: false,
+        }
+    }
+}
+
+impl<I: TextRange> Tag<I> for Toggle {
+    const IS_META: bool = false;
+
+    fn get_raw(
+        &mut self,
+        tags: &super::InnerTags,
+        index: I,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        let range = index.to_range(max);
+        let id = if let Some((id, _)) = tags
+            .toggles
+            .iter()
+            .find(|(_, arc)| Arc::ptr_eq(arc, &self.toggle_fn))
+        {
+            self.is_new = false;
+            *id
+        } else {
+            self.is_new = true;
+            ToggleId::new()
+        };
+
+        self.id = Some(id);
+        (
+            (range.start, RawTag::StartToggle(tagger, id)),
+            Some((range.end, RawTag::EndToggle(tagger, id))),
+        )
+    }
+
+    fn on_insertion(self, tags: &mut super::InnerTags) {
+        if self.is_new {
+            tags.toggles.push((self.id.unwrap(), self.toggle_fn))
+        }
+    }
+}
+
 ////////// Layout modification Tags
 
-/// [`Tag`]: Spawns a [`Widget`] in the [`Text`]
+/// [`Tag`]: Spawns a [`Widget`] in the [`Text`].
 ///
 /// The [`Widget`] will be placed according to the [`DynSpawnSpecs`],
 /// and should move automatically as the `SpawnTag` moves around the
@@ -363,7 +510,7 @@ pub struct SpawnTag {
 }
 
 impl SpawnTag {
-    /// Returns a new instance of `SpawnTag`
+    /// Returns a new instance of `SpawnTag`.
     ///
     /// You can then place this [`Tag`] inside of the [`Text`] via
     /// [`Text::insert_tag`] or [`Tags::insert`], and the [`Widget`]
@@ -455,7 +602,7 @@ impl Tag<usize> for SpawnTag {
     }
 }
 
-/// An internal representation of [`Tag`]s
+/// An internal representation of [`Tag`]s.
 ///
 /// Unlike [`Tag`]s, however, each variant here is only placed in a
 /// single position, and [`Tag`]s that occupy a range are replaced by
@@ -472,6 +619,11 @@ pub enum RawTag {
     /// A spacer for the current screen line, replaces alignment.
     Spacer(Tagger),
 
+    /// Text that shows up on screen, but is ignored otherwise.
+    Overlay(Tagger, GhostId),
+    /// Text that shows up on screen, after the end of the line.
+    Inlay(Tagger, GhostId),
+
     /// Starts concealing the [`Text`], skipping all [`Tag`]s and
     /// [`char`]s until the [`EndConceal`] tag shows up.
     ///
@@ -483,8 +635,6 @@ pub enum RawTag {
     ///
     /// [`Text`]: super::Text
     EndConceal(Tagger),
-
-    // TODO: Deal with the consequences of changing this from a usize.
     /// More direct skipping method, allowing for full skips without
     /// the iteration, which could be slow.
     ///
@@ -492,50 +642,62 @@ pub enum RawTag {
     /// created when iterating.
     ConcealUntil(u32),
 
-    /// Text that shows up on screen, but is ignored otherwise.
-    Overlay(Tagger, GhostId),
-    /// Text that shows up on screen, after the end of the line.
-    Inlay(Tagger, GhostId),
+    /// Starts a toggleable region of the [`Text`], that can be
+    /// interacted with through a mouse pointer.
+    StartToggle(Tagger, ToggleId),
+    /// Ends a toggleable region of the [`Text`].
+    EndToggle(Tagger, ToggleId),
 
     /// A spawned floating [`Widget`]
     SpawnedWidget(Tagger, SpawnId),
 }
 
 impl RawTag {
-    /// Inverts a [`RawTag`] that occupies a range
+    /// Inverts a [`RawTag`] that occupies a range.
     pub fn inverse(&self) -> Option<Self> {
         match self {
             Self::PushForm(tagger, id, _) => Some(Self::PopForm(*tagger, *id)),
             Self::PopForm(tagger, id) => Some(Self::PushForm(*tagger, *id, 0)),
             Self::StartConceal(tagger) => Some(Self::EndConceal(*tagger)),
             Self::EndConceal(tagger) => Some(Self::StartConceal(*tagger)),
+            Self::StartToggle(tagger, id) => Some(Self::EndToggle(*tagger, *id)),
+            Self::EndToggle(tagger, id) => Some(Self::StartToggle(*tagger, *id)),
             _ => None,
         }
     }
 
-    /// Wether this [`RawTag`] ends with another
+    /// Wether this [`RawTag`] ends with another.
     pub fn ends_with(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::PushForm(l_tagger, l_id, _), Self::PopForm(r_tagger, r_id)) => {
                 l_id == r_id && l_tagger == r_tagger
             }
             (Self::StartConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
+            (Self::StartToggle(l_tagger, l_id), Self::EndToggle(r_tagger, r_id)) => {
+                l_id == r_id && l_tagger == r_tagger
+            }
             _ => false,
         }
     }
 
-    /// Wether this [`RawTag`] is the start of a range
+    /// Wether this [`RawTag`] is the start of a range.
     pub fn is_start(&self) -> bool {
-        matches!(self, Self::PushForm(..) | Self::StartConceal(_))
+        matches!(
+            self,
+            Self::PushForm(..) | Self::StartConceal(_) | Self::StartToggle(..)
+        )
     }
 
-    /// Wether this [`RawTag`] is the end of a range
+    /// Wether this [`RawTag`] is the end of a range.
     pub fn is_end(&self) -> bool {
-        matches!(self, Self::PopForm(..) | Self::EndConceal(_))
+        matches!(
+            self,
+            Self::PopForm(..) | Self::EndConceal(_) | Self::EndToggle(..)
+        )
     }
 
     /// Wether this is a "meta" tag, that is, wether it alters the
-    /// structure of the text itself
+    /// structure of the text itself.
     pub fn is_meta(&self) -> bool {
         matches!(
             self,
@@ -543,7 +705,7 @@ impl RawTag {
         )
     }
 
-    /// The [`Tagger`] of this [`RawTag`]
+    /// The [`Tagger`] of this [`RawTag`].
     pub(in crate::text) fn tagger(&self) -> Tagger {
         match self.get_tagger() {
             Some(tagger) => tagger,
@@ -555,7 +717,7 @@ impl RawTag {
 
     /// Gets the [`Tagger`] of this [`RawTag`], if it is not
     /// [`ConcealUntil`], since that one is never actually stored in
-    /// [`InnerTags`]
+    /// [`InnerTags`].
     ///
     /// [`InnerTags`]: super::InnerTags
     fn get_tagger(&self) -> Option<Tagger> {
@@ -563,24 +725,26 @@ impl RawTag {
             Self::PushForm(tagger, ..)
             | Self::PopForm(tagger, _)
             | Self::Spacer(tagger)
-            | Self::StartConceal(tagger)
-            | Self::EndConceal(tagger)
             | Self::Overlay(tagger, _)
             | Self::Inlay(tagger, _)
+            | Self::StartConceal(tagger)
+            | Self::EndConceal(tagger)
+            | Self::StartToggle(tagger, _)
+            | Self::EndToggle(tagger, _)
             | Self::SpawnedWidget(tagger, _) => Some(*tagger),
             Self::ConcealUntil(_) => None,
         }
     }
 
     /// The prioriy of this [`RawTag`], only varies with [`Form`]
-    /// [`RawTag`]s
+    /// [`RawTag`]s.
     ///
     /// [`Form`]: crate::form::Form
     pub(super) fn priority(&self) -> u8 {
         match self {
             Self::PushForm(.., priority) => *priority + 5,
-            Self::PopForm(..) | Self::Inlay(..) => 1,
-            Self::StartConceal(..) | Self::SpawnedWidget(..) => 3,
+            Self::PopForm(..) | Self::Inlay(..) | Self::EndToggle(..) => 1,
+            Self::StartConceal(..) | Self::StartToggle(..) | Self::SpawnedWidget(..) => 3,
             Self::Spacer(..) | Self::EndConceal(..) => 0,
             Self::Overlay(..) => 2,
             Self::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
@@ -597,11 +761,20 @@ impl PartialEq for RawTag {
             (Self::PopForm(l_tagger, l_id), Self::PopForm(r_tagger, r_id)) => {
                 l_tagger == r_tagger && l_id == r_id
             }
+            (Self::Inlay(l_tagger, l_id), Self::Inlay(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
+            }
+            (Self::Overlay(l_tagger, l_id), Self::Overlay(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
+            }
             (Self::Spacer(l_tagger), Self::Spacer(r_tagger)) => l_tagger == r_tagger,
             (Self::StartConceal(l_tagger), Self::StartConceal(r_tagger)) => l_tagger == r_tagger,
             (Self::EndConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
             (Self::ConcealUntil(l_tagger), Self::ConcealUntil(r_tagger)) => l_tagger == r_tagger,
-            (Self::Overlay(l_tagger, l_id), Self::Overlay(r_tagger, r_id)) => {
+            (Self::StartToggle(l_tagger, l_id), Self::StartToggle(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
+            }
+            (Self::EndToggle(l_tagger, l_id), Self::EndToggle(r_tagger, r_id)) => {
                 l_tagger == r_tagger && l_id == r_id
             }
             _ => false,
@@ -620,11 +793,16 @@ impl PartialOrd for RawTag {
             (PopForm(l_tagger, l_id), PopForm(r_tagger, r_id)) => {
                 l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
             }
+            (Inlay(l_tagger, l_id), Inlay(r_tagger, r_id))
+            | (Overlay(l_tagger, l_id), Overlay(r_tagger, r_id)) => {
+                l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
+            }
             (RawTag::Spacer(l_tagger), RawTag::Spacer(r_tagger))
             | (StartConceal(l_tagger), StartConceal(r_tagger))
             | (EndConceal(l_tagger), EndConceal(r_tagger)) => l_tagger.cmp(r_tagger),
             (ConcealUntil(l_byte), ConcealUntil(r_byte)) => l_byte.cmp(r_byte),
-            (RawTag::Overlay(l_tagger, l_id), RawTag::Overlay(r_tagger, r_id)) => {
+            (StartToggle(l_tagger, l_id), StartToggle(r_tagger, r_id))
+            | (EndToggle(l_tagger, l_id), EndToggle(r_tagger, r_id)) => {
                 l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
             }
             _ => self.priority().cmp(&other.priority()),
@@ -646,12 +824,16 @@ impl std::fmt::Debug for RawTag {
             }
             Self::PopForm(tagger, id) => write!(f, "PopForm({tagger:?}, {})", id.name()),
             Self::Spacer(tagger) => write!(f, "Spacer({tagger:?})"),
+            Self::Inlay(tagger, id) => write!(f, "Inlay({tagger:?}, {id:?})"),
+            Self::Overlay(tagger, id) => write!(f, "Overlay({tagger:?}, {id:?})"),
             Self::StartConceal(tagger) => write!(f, "StartConceal({tagger:?})"),
             Self::EndConceal(tagger) => write!(f, "EndConceal({tagger:?})"),
             Self::ConcealUntil(tagger) => write!(f, "ConcealUntil({tagger:?})"),
-            Self::Overlay(tagger, id) => write!(f, "Ghost({tagger:?}, {id:?})"),
-            Self::Inlay(tagger, id) => write!(f, "Inlay({tagger:?}, {id:?})"),
+            Self::StartToggle(tagger, id) => write!(f, "StartToggle({tagger:?}, {id:?}"),
+            Self::EndToggle(tagger, id) => write!(f, "EndToggle({tagger:?}, {id:?}"),
             Self::SpawnedWidget(tagger, id) => write!(f, "SpawnedWidget({tagger:?}, {id:?}"),
         }
     }
 }
+
+pub type ToggleFn = Arc<Mutex<dyn FnMut(&mut Pass, ToggleEvent, Range<Point>) + Send>>;

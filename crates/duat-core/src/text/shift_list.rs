@@ -218,10 +218,11 @@ impl<S: Shiftable> ShiftList<S> {
 
     /// Will find the _first_ element in the buffer that equals
     /// the key, if it exists
+    #[inline(always)]
     pub(super) fn find_by_key<K: Copy + Eq + Ord>(
         &self,
         key: K,
-        f: fn(S) -> K,
+        f: impl Fn(S) -> K,
     ) -> Result<usize, usize> {
         let sh = |i: usize, s: &S| {
             f(if i >= self.from {
@@ -249,6 +250,7 @@ impl<S: Shiftable> ShiftList<S> {
     ///
     /// Use this instead of `list.buf().get()`, since this takes the
     /// shifting into account, while that won't.
+    #[inline]
     pub(super) fn get(&self, i: usize) -> Option<S> {
         if i >= self.from {
             self.buf.get(i).map(|s| s.shift(self.shift))
@@ -258,16 +260,19 @@ impl<S: Shiftable> ShiftList<S> {
     }
 
     /// The maximum value allowed in the list
+    #[inline]
     pub(super) fn max(&self) -> S::Shift {
         self.max
     }
 
     /// The length of the inner [`GapBuffer`]
+    #[inline]
     pub(super) fn len(&self) -> usize {
         self.buf.len()
     }
 
     /// Wether there are any elements in the inner [`GapBuffer`]
+    #[inline]
     pub(super) fn is_empty(&self) -> bool {
         self.buf.is_empty()
     }

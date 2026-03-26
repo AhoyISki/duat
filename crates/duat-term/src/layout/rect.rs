@@ -635,7 +635,6 @@ impl Rect {
     /// These equalities guarantee that the [`Rect`]s will not go over
     /// the terminal size, and also won't intersect with any other
     /// [`Rect`]s.
-    #[track_caller]
     pub fn set_pushed_eqs(
         &mut self,
         i: usize,
@@ -651,12 +650,9 @@ impl Rect {
         let axis = parent.kind.axis().unwrap();
 
         p.remove_eqs(self.drain_eqs());
-        let removed = if let Some(edge) = self.edge.take() {
+        if let Some(edge) = self.edge.take() {
             p.remove_edge(edge);
-            true
-        } else {
-            false
-        };
+        }
 
         self.eqs.extend([
             self.br.x() | GE(EDGE_PRIO) | self.tl.x(),

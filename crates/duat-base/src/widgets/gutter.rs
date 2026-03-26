@@ -15,7 +15,7 @@ use duat_core::{
     data::Pass,
     form::{self, Form, FormId},
     hook::{self, BufferUpdated},
-    text::{Ghost, Tagger, Text, TextParts, TextRange},
+    text::{Ghost, Tagger, Text, TextParts, TextRange, Toggle},
     txt,
     ui::{PushSpecs, Side, Widget},
 };
@@ -104,7 +104,7 @@ impl Gutter {
                         (self.opts.warning.symbol, form::id_of!("gutter.warning"))
                     }
                     EntryKind::Error => (self.opts.error.symbol, form::id_of!("gutter.error")),
-                    EntryKind::Custom(symbol, symbol_form, _) => (symbol, symbol_form),
+                    EntryKind::_Custom(symbol, symbol_form, _) => (symbol, symbol_form),
                 };
 
                 builder.push(symbol_form);
@@ -231,7 +231,7 @@ enum EntryKind {
     Hint,
     Warning,
     Error,
-    Custom(char, FormId, FormId),
+    _Custom(char, FormId, FormId),
 }
 
 /// How to display the accompanying [`Text`] message to a [`Gutter`]
@@ -483,7 +483,7 @@ pub fn default_renderer(entries: &GutterEntries, gutterer: Gutterer, mut parts: 
             EntryKind::Hint => form::id_of!("buffer.hint").to_tag(190),
             EntryKind::Warning => form::id_of!("buffer.warning").to_tag(191),
             EntryKind::Error => form::id_of!("buffer.error").to_tag(192),
-            EntryKind::Custom(.., text_form) => text_form.to_tag(193),
+            EntryKind::_Custom(.., text_form) => text_form.to_tag(193),
         };
 
         parts.tags.insert(tagger, entry.range.clone(), form_tag);
@@ -500,6 +500,10 @@ pub fn default_renderer(entries: &GutterEntries, gutterer: Gutterer, mut parts: 
                 parts
                     .tags
                     .insert(tagger, msg_start, Ghost::inlay(txt!("{entry.msg}\n")));
+
+                parts
+                    .tags
+                    .insert(tagger, entry.range.clone(), Toggle::new(|_, _, _| {}));
             }
         }
     }

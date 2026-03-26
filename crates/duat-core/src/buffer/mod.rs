@@ -41,17 +41,17 @@ mod history;
 mod opts;
 
 pub(crate) fn add_buffer_hooks() {
-    hook::add::<OnMouseEvent<Buffer>>(|pa, (buffer, event)| match event.kind {
+    hook::add::<OnMouseEvent<Buffer>>(|pa, event| match event.kind {
         MouseEventKind::Down(MouseButton::Left) => {
             let point = match event.points {
                 Some(TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points)) => {
                     points.real
                 }
-                _ => buffer.text(pa).last_point(),
+                _ => event.handle.text(pa).last_point(),
             };
 
-            buffer.selections_mut(pa).remove_extras();
-            buffer.edit_main(pa, |mut c| {
+            event.handle.selections_mut(pa).remove_extras();
+            event.handle.edit_main(pa, |mut c| {
                 c.unset_anchor();
                 c.move_to(point)
             })
@@ -63,11 +63,11 @@ pub(crate) fn add_buffer_hooks() {
                 Some(TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points)) => {
                     points.real
                 }
-                _ => buffer.text(pa).last_point(),
+                _ => event.handle.text(pa).last_point(),
             };
 
-            buffer.selections_mut(pa).remove_extras();
-            buffer.edit_main(pa, |mut c| {
+            event.handle.selections_mut(pa).remove_extras();
+            event.handle.edit_main(pa, |mut c| {
                 c.set_anchor_if_needed();
                 c.move_to(point);
             })
@@ -75,13 +75,13 @@ pub(crate) fn add_buffer_hooks() {
         MouseEventKind::Drag(_) => {}
         MouseEventKind::Moved => {}
         MouseEventKind::ScrollDown => {
-            let opts = buffer.opts(pa);
-            let (widget, area) = buffer.write_with_area(pa);
+            let opts = event.handle.opts(pa);
+            let (widget, area) = event.handle.write_with_area(pa);
             area.scroll_ver(widget.text(), 3, opts);
         }
         MouseEventKind::ScrollUp => {
-            let opts = buffer.opts(pa);
-            let (widget, area) = buffer.write_with_area(pa);
+            let opts = event.handle.opts(pa);
+            let (widget, area) = event.handle.write_with_area(pa);
             area.scroll_ver(widget.text(), -3, opts);
         }
         MouseEventKind::ScrollLeft => {}

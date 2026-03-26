@@ -155,6 +155,7 @@ impl<'t> FwdIter<'t> {
             }
             RawTag::Spacer(_) | RawTag::SpawnedWidget(..) | RawTag::Overlay(..)
                 if b < self.init_point.byte() => {}
+            RawTag::StartToggle(..) | RawTag::EndToggle(..) => {}
             _ => return false,
         }
 
@@ -321,6 +322,7 @@ impl<'t> RevIter<'t> {
             }
             RawTag::Spacer(_) | RawTag::SpawnedWidget(..) | RawTag::Overlay(..)
                 if b > self.init_point.byte() => {}
+            RawTag::StartToggle(..) | RawTag::EndToggle(..) => {}
             _ => return false,
         }
 
@@ -541,7 +543,11 @@ impl<'t> TextPart<'t> {
             RawTag::ConcealUntil(_) => Self::ResetState,
             RawTag::SpawnedWidget(_, id) => Self::SpawnedWidget(id),
             RawTag::Overlay(_, id) => Self::Overlay(tags.get_ghost(id).unwrap()),
-            RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::Inlay(..) => {
+            RawTag::StartConceal(_)
+            | RawTag::EndConceal(_)
+            | RawTag::Inlay(..)
+            | RawTag::StartToggle(..)
+            | RawTag::EndToggle(..) => {
                 unreachable!("These tags are automatically processed elsewhere.")
             }
         }

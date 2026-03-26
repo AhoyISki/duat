@@ -325,6 +325,8 @@ pub(crate) fn add_default() {
                     "replace.new_line.trailing",
                     Form::new().with(c.red).on(c.surface1),
                 ),
+                ("toggle.hover", Form::new().on(c.surface0)),
+                ("toggle.click", Form::new().on(c.surface1)),
                 // duat-base forms
                 ("linenum.main", Form::new().with(c.yellow)),
                 ("linenum.wrapped", Form::new().with(c.teal)),
@@ -505,6 +507,8 @@ pub(crate) fn add_default() {
                     "replace.new_line.trailing",
                     Form::new().with(c.red).on(c.terminal_black),
                 ),
+                ("toggle.hover", Form::new().on(c.bg_highlight)),
+                ("toggle.click", Form::new().on(c.terminal_black)),
                 // duat-base forms
                 ("linenum.main", Form::new().with(c.yellow)),
                 ("linenum.wrapped", Form::new().with(c.teal)),
@@ -661,6 +665,8 @@ pub(crate) fn add_default() {
                     "replace.new_line.trailing",
                     Form::new().with(c.red).on(c.bg_subtle),
                 ),
+                ("toggle.hover", Form::new().on(c.bg_overlay)),
+                ("toggle.click", Form::new().on(c.bg_subtle)),
                 // duat-base forms
                 ("linenum.main", Form::new().with(c.yellow)),
                 ("linenum.wrapped", Form::new().with(c.teal)),
@@ -795,6 +801,8 @@ pub(crate) fn add_default() {
                     "replace.new_line.trailing",
                     Form::new().with(c.red).on(c.current_line),
                 ),
+                ("toggle.hover", Form::new().on(c.current_line)),
+                ("toggle.click", Form::new().on(c.comment)),
                 // duat-base forms
                 ("linenum.main", Form::new().with(c.purple)),
                 ("linenum.wrapped", Form::new().with(c.cyan)),

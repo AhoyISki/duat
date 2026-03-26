@@ -21,7 +21,7 @@ use self::{bounds::Bounds, taggers::TaggerExtents};
 pub use self::{
     ids::*,
     taggers::Tagger,
-    types::{Conceal, FormTag, Ghost, RawTag, Spacer, SpawnTag, Tag},
+    types::{Conceal, FormTag, Ghost, RawTag, Spacer, SpawnTag, Tag, Toggle, ToggleFn},
 };
 use crate::{
     context::Handle,
@@ -194,6 +194,7 @@ impl std::fmt::Debug for Tags<'_> {
 pub struct InnerTags {
     list: ShiftList<(i32, RawTag)>,
     ghosts: Vec<(GhostId, Arc<Text>)>,
+    toggles: Vec<(ToggleId, ToggleFn)>,
     spawns: Vec<SpawnCell>,
     pub(super) spawn_fns: SpawnFns,
     bounds: Bounds,
@@ -213,6 +214,7 @@ impl InnerTags {
         Self {
             list: ShiftList::new(max as i32),
             ghosts: Vec::new(),
+            toggles: Vec::new(),
             spawns: Vec::new(),
             spawn_fns: SpawnFns(Vec::new()),
             bounds: Bounds::new(max),
@@ -332,7 +334,14 @@ impl InnerTags {
                         .extend(other.ghosts.iter().find(|(l, _)| l == &id).cloned());
                     self.insert_raw((b, tag), None, false);
                 }
-                RawTag::Spacer(_) | SpawnedWidget(..) => _ = self.insert_raw((b, tag), None, false),
+                RawTag::StartToggle(_, id) => {
+                    self.toggles
+                        .extend(other.toggles.iter().find(|(l, _)| l == &id).cloned());
+                    self.insert_raw((b, tag), None, false);
+                }
+                RawTag::Spacer(_) | SpawnedWidget(..) | RawTag::EndToggle(..) => {
+                    _ = self.insert_raw((b, tag), None, false)
+                }
             };
         }
     }
@@ -675,6 +684,48 @@ impl InnerTags {
     pub(crate) fn get_spawned_ids(&self) -> impl Iterator<Item = SpawnId> {
         self.spawns.iter().map(|spawn_cell| spawn_cell.0)
     }
+
+    /// a list of all [`ToggleFn`]s surrouding a byte index.
+    pub(crate) fn toggles_surrounding(
+        &self,
+        byte: usize,
+    ) -> impl Iterator<Item = (Range<usize>, ToggleFn)> {
+        let byte = byte as i32;
+        let on_bounds = self.bounds.toggles_surrounding(byte);
+        let (Ok(i) | Err(i)) = self.list.find_by_key(byte, |(byte, _)| byte);
+        let not_on_bounds = self
+            .list
+            .iter_fwd(i.saturating_sub(self.bounds.min_len())..i)
+            .take_while(move |(_, (b, _))| *b <= byte)
+            .filter_map(|(i, (byte, tag))| {
+                let RawTag::StartToggle(_, sid) = tag else {
+                    return None;
+                };
+                let eb = self
+                    .list
+                    .iter_fwd(i + 1..i + self.bounds.min_len())
+                    .find_map(|(_, (byte, tag))| {
+                        if let RawTag::EndToggle(_, eid) = tag
+                            && eid == sid
+                        {
+                            Some(byte)
+                        } else {
+                            None
+                        }
+                    })?;
+
+                Some((byte as usize..eb as usize, sid))
+            });
+
+        on_bounds.chain(not_on_bounds).map(|(range, toggle_id)| {
+            let (_, func) = self
+                .toggles
+                .iter()
+                .find(|(id, _)| *id == toggle_id)
+                .unwrap();
+            (range, func.clone())
+        })
+    }
 }
 
 impl Clone for InnerTags {
@@ -682,6 +733,7 @@ impl Clone for InnerTags {
         Self {
             list: self.list.clone(),
             ghosts: self.ghosts.clone(),
+            toggles: self.toggles.clone(),
             spawns: Vec::new(),
             spawn_fns: SpawnFns(Vec::new()),
             bounds: self.bounds.clone(),
@@ -871,6 +923,26 @@ mod ids {
     impl std::fmt::Debug for GhostId {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "GhostId({})", self.0)
+        }
+    }
+
+    /// The id of a toggleable region of the [`Text`]
+    ///
+    /// [`Text`]: super::Text
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct ToggleId(u16);
+
+    impl ToggleId {
+        /// Creates a new [`ToggleId`]
+        pub(super) fn new() -> Self {
+            static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
+            Self(TOGGLE_COUNT.fetch_add(1, Ordering::Relaxed))
+        }
+    }
+
+    impl std::fmt::Debug for ToggleId {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "ToggleId({})", self.0)
         }
     }
 }

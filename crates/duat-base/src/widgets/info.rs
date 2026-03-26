@@ -19,9 +19,9 @@ use duat_core::{
 pub fn add_info_hooks() {
     use MouseEventKind::{ScrollDown, ScrollUp};
 
-    hook::add::<OnMouseEvent<Info>>(|pa, (info, event)| match event.kind {
+    hook::add::<OnMouseEvent<Info>>(|pa, event| match event.kind {
         ScrollDown | ScrollUp => {
-            let (info, area) = info.write_with_area(pa);
+            let (info, area) = event.handle.write_with_area(pa);
             let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
             area.scroll_ver(&info.text, scroll, info.print_opts());
         }

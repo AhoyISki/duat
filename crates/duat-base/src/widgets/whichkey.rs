@@ -18,11 +18,11 @@ use duat_term::Frame;
 
 /// Add the hooks for the [`WhichKey`].
 pub fn add_whichkey_hooks() {
-    hook::add::<OnMouseEvent<WhichKey>>(move |pa, (whichkey, event)| {
+    hook::add::<OnMouseEvent<WhichKey>>(move |pa, event| {
         use MouseEventKind::{ScrollDown, ScrollUp};
         match event.kind {
             ScrollDown | ScrollUp => {
-                let (wk, area) = whichkey.write_with_area(pa);
+                let (wk, area) = event.handle.write_with_area(pa);
                 let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
                 area.scroll_ver(&wk.0, scroll, wk.print_opts());
 
@@ -34,11 +34,11 @@ pub fn add_whichkey_hooks() {
         }
     });
 
-    hook::add::<OnMouseEvent<WhichKeyDescriptions>>(move |pa, (whichkey_desc, event)| {
+    hook::add::<OnMouseEvent<WhichKeyDescriptions>>(move |pa, event| {
         use MouseEventKind::{ScrollDown, ScrollUp};
         match event.kind {
             ScrollDown | ScrollUp => {
-                let (wkd, area) = whichkey_desc.write_with_area(pa);
+                let (wkd, area) = event.handle.write_with_area(pa);
                 let scroll = if let MouseEventKind::ScrollDown = event.kind {
                     3
                 } else {

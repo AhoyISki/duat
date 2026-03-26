@@ -62,9 +62,9 @@ pub fn add_logbook_hooks() {
 
     let location_tagger = Tagger::new();
 
-    hook::add::<OnMouseEvent<LogBook>>(move |pa, (logbook, event)| match event.kind {
+    hook::add::<OnMouseEvent<LogBook>>(move |pa, event| match event.kind {
         ScrollDown | ScrollUp => {
-            let (lb, area) = logbook.write_with_area(pa);
+            let (lb, area) = event.handle.write_with_area(pa);
             let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
             area.scroll_ver(&lb.text, scroll, lb.print_opts());
         }
@@ -73,7 +73,7 @@ pub fn add_logbook_hooks() {
                 return;
             };
 
-            let lb = logbook.write(pa);
+            let lb = event.handle.write(pa);
             let (Ok(i) | Err(i)) = lb
                 .location_ranges
                 .binary_search_by(|(end, _)| end.cmp(&points.real));
@@ -94,7 +94,7 @@ pub fn add_logbook_hooks() {
                 return;
             };
 
-            let lb = logbook.read(pa);
+            let lb = event.handle.read(pa);
             let (Ok(i) | Err(i)) = lb
                 .location_ranges
                 .binary_search_by(|(end, _)| end.cmp(&points.real));

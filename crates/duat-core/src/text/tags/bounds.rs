@@ -6,6 +6,7 @@ use crate::{
     text::{
         RawTag,
         shift_list::{ShiftList, Shiftable},
+        tags::ToggleId,
     },
 };
 
@@ -277,6 +278,26 @@ impl Bounds {
         } else {
             self.list.iter_rev(..i).find_map(is_matching).unwrap()
         })
+    }
+
+    /// Get all the toggle ranges that surround a byte.
+    pub fn toggles_surrounding(&self, byte: i32) -> impl Iterator<Item = (Range<usize>, ToggleId)> {
+        self.list
+            .iter_fwd(..)
+            .take_while(move |(_, ([_, b], ..))| *b <= byte)
+            .filter_map(move |(i, ([_, b], tag, range_id))| {
+                if let RawTag::StartToggle(_, toggle_id) = tag {
+                    let (_, ([_, eb], ..)) = self
+                        .list
+                        .iter_rev(i + 1..)
+                        .find(|(_, (.., other))| *other == range_id)
+                        .unwrap();
+
+                    (eb > byte).then_some((b as usize..eb as usize, toggle_id))
+                } else {
+                    None
+                }
+            })
     }
 }
 

@@ -139,7 +139,7 @@ pub fn handle_request(bridge: &ServerBridge, request: jsonrpc_lite::Request) {
             })
         }
         method if method.contains("workDoneProgress") => {}
-        method => {} // context::warn!("[a]{method}[] request not yet handled"),
+        _ => {} // context::warn!("[a]{method}[] request not yet handled"),
     }
 }
 

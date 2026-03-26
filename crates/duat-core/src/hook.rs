@@ -190,8 +190,8 @@ use crate::{
     context::Handle,
     data::Pass,
     form::{Form, FormId},
-    mode::{KeyEvent, MouseEvent},
-    ui::{Widget, Window},
+    mode::{KeyEvent, KeyMod, MouseEvent, TwoPointsPlace},
+    ui::{Coord, Widget, Window},
     utils::catch_panic,
 };
 
@@ -1122,31 +1122,46 @@ impl PartialEq<KeyEvent> for KeyTyped {
 ///
 /// - The [`Handle<W>`] under the mouse.
 /// - The [`MouseEvent`] itself.
-pub struct OnMouseEvent<W: ?Sized = dyn Widget>(pub(crate) (Handle<W>, MouseEvent));
+pub struct OnMouseEvent<W: ?Sized = dyn Widget> {
+    pub(crate) handle: Handle<W>,
+    pub(crate) points: Option<TwoPointsPlace>,
+    pub(crate) coord: Coord,
+    pub(crate) kind: MouseEventKind,
+    pub(crate) modifiers: KeyMod,
+}
 
 impl<W: 'static + ?Sized> Hookable for OnMouseEvent<W> {
-    type Input<'h> = (&'h Handle<W>, MouseEvent);
+    type Input<'h> = MouseEvent<'h, W>;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        (&self.0.0, self.0.1)
+        MouseEvent {
+            handle: &self.handle,
+            points: self.points,
+            coord: self.coord,
+            kind: self.kind,
+            modifiers: self.modifiers,
+        }
     }
 }
 
-impl<W: 'static + ?Sized> PartialEq<MouseEvent> for OnMouseEvent<W> {
-    fn eq(&self, other: &MouseEvent) -> bool {
-        self.0.1 == *other
+impl<W: 'static + ?Sized> PartialEq<MouseEvent<'_, W>> for OnMouseEvent<W> {
+    fn eq(&self, other: &MouseEvent<W>) -> bool {
+        self.points == other.points
+            && self.coord == other.coord
+            && self.kind == other.kind
+            && self.modifiers == other.modifiers
     }
 }
 
 impl<W: 'static + ?Sized> PartialEq<MouseEventKind> for OnMouseEvent<W> {
     fn eq(&self, other: &MouseEventKind) -> bool {
-        self.0.1.kind == *other
+        self.kind == *other
     }
 }
 
 impl<W: 'static + ?Sized> PartialEq<Handle<W>> for OnMouseEvent<W> {
     fn eq(&self, other: &Handle<W>) -> bool {
-        self.0.0.ptr_eq(other.widget())
+        self.handle.ptr_eq(other.widget())
     }
 }
 
