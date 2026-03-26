@@ -14,8 +14,9 @@ use std::{
 use RawTag::*;
 use crossterm::event::{MouseButton, MouseEventKind};
 
-use super::{GhostId, SpawnId, Tagger};
+use super::{GhostId, SpawnId};
 use crate::{
+    Ns,
     context::{self, Handle},
     data::Pass,
     form::{self, FormId},
@@ -72,7 +73,7 @@ pub trait Tag<Index>: Sized {
         tags: &super::InnerTags,
         index: Index,
         max: usize,
-        tagger: Tagger,
+        ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>);
 
     /// An action to take place if the [`RawTag`]s are successfully
@@ -121,13 +122,13 @@ impl<I: TextRange> Tag<I> for FormTag {
         _: &super::InnerTags,
         index: I,
         max: usize,
-        tagger: Tagger,
+        ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         let FormTag { id, priority } = *self;
         let range = index.to_range(max);
         {
-            let s_tag = PushForm(tagger, id, priority);
-            let e_tag = PopForm(tagger, id);
+            let s_tag = PushForm(ns, id, priority);
+            let e_tag = PopForm(ns, id);
             ((range.start, s_tag), Some((range.end, e_tag)))
         }
     }
@@ -179,13 +180,13 @@ impl Tag<usize> for Spacer {
         _: &super::InnerTags,
         byte: usize,
         max: usize,
-        tagger: Tagger,
+        ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         assert!(
             byte <= max,
             "byte out of bounds: the len is {max}, but the byte is {byte}",
         );
-        ((byte, RawTag::Spacer(tagger)), None)
+        ((byte, RawTag::Spacer(ns)), None)
     }
 }
 
@@ -197,10 +198,10 @@ impl Tag<Point> for Spacer {
         tags: &super::InnerTags,
         point: Point,
         max: usize,
-        tagger: Tagger,
+        ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         let byte = point.byte();
-        self.get_raw(tags, byte, max, tagger)
+        self.get_raw(tags, byte, max, ns)
     }
 }
 
@@ -270,7 +271,7 @@ impl Tag<usize> for Ghost {
         tags: &super::InnerTags,
         byte: usize,
         max: usize,
-        tagger: Tagger,
+        ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         assert!(
             byte <= max,
@@ -290,9 +291,9 @@ impl Tag<usize> for Ghost {
 
         self.id = Some(id);
         if self.is_overlay {
-            ((byte, RawTag::Overlay(tagger, id)), None)
+            ((byte, RawTag::Overlay(ns, id)), None)
         } else {
-            ((byte, RawTag::Inlay(tagger, id)), None)
+            ((byte, RawTag::Inlay(ns, id)), None)
         }
     }
 
@@ -312,10 +313,10 @@ impl Tag<Point> for Ghost {
         tags: &super::InnerTags,
         point: Point,
         max: usize,
-        tagger: Tagger,
+        ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         let byte = point.byte();
-        self.get_raw(tags, byte, max, tagger)
+        self.get_raw(tags, byte, max, ns)
     }
 
     fn on_insertion(self, tags: &mut super::InnerTags) {
@@ -343,12 +344,12 @@ impl<I: TextRange> Tag<I> for Conceal {
         _: &super::InnerTags,
         index: I,
         max: usize,
-        tagger: Tagger,
+        ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         let range = index.to_range(max);
         (
-            (range.start, (RawTag::StartConceal)(tagger)),
-            Some((range.end, (RawTag::EndConceal)(tagger))),
+            (range.start, (RawTag::StartConceal)(ns)),
+            Some((range.end, (RawTag::EndConceal)(ns))),
         )
     }
 }
@@ -401,7 +402,7 @@ impl Toggle {
         Self {
             toggle_fn: Arc::new(Mutex::new(
                 move |pa: &mut Pass, event: ToggleEvent<'_>, range: Range<Point>| {
-                    let tagger = Tagger::for_toggle();
+                    let ns = Ns::for_toggle();
                     let mut parts = event.handle.text_parts(pa);
 
                     match event.kind {
@@ -411,13 +412,13 @@ impl Toggle {
                                 MouseButton::Right => form::id_of!("toggle.click.right"),
                                 MouseButton::Middle => form::id_of!("toggle.click.middle"),
                             };
-                            parts.tags.remove(tagger, ..);
-                            parts.tags.insert(tagger, range.clone(), form.to_tag(140))
+                            parts.tags.remove(ns, ..);
+                            parts.tags.insert(ns, range.clone(), form.to_tag(140))
                         }
                         MouseEventKind::Up(_) | MouseEventKind::Moved => {
                             let form = form::id_of!("toggle.hover");
-                            parts.tags.remove(tagger, ..);
-                            parts.tags.insert(tagger, range.clone(), form.to_tag(140))
+                            parts.tags.remove(ns, ..);
+                            parts.tags.insert(ns, range.clone(), form.to_tag(140))
                         }
                         _ => {}
                     }
@@ -467,7 +468,7 @@ impl<I: TextRange> Tag<I> for Toggle {
         tags: &super::InnerTags,
         index: I,
         max: usize,
-        tagger: Tagger,
+        ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         let range = index.to_range(max);
         let id = if let Some((id, _)) = tags
@@ -484,8 +485,8 @@ impl<I: TextRange> Tag<I> for Toggle {
 
         self.id = Some(id);
         (
-            (range.start, RawTag::StartToggle(tagger, id)),
-            Some((range.end, RawTag::EndToggle(tagger, id))),
+            (range.start, RawTag::StartToggle(ns, id)),
+            Some((range.end, RawTag::EndToggle(ns, id))),
         )
     }
 
@@ -563,13 +564,10 @@ impl Tag<Point> for SpawnTag {
         _: &super::InnerTags,
         index: Point,
         max: usize,
-        tagger: Tagger,
+        ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         (
-            (
-                index.byte().min(max),
-                RawTag::SpawnedWidget(tagger, self.id),
-            ),
+            (index.byte().min(max), RawTag::SpawnedWidget(ns, self.id)),
             None,
         )
     }
@@ -588,12 +586,9 @@ impl Tag<usize> for SpawnTag {
         _: &super::InnerTags,
         index: usize,
         max: usize,
-        tagger: Tagger,
+        ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
-        (
-            (index.min(max), RawTag::SpawnedWidget(tagger, self.id)),
-            None,
-        )
+        ((index.min(max), RawTag::SpawnedWidget(ns, self.id)), None)
     }
 
     fn on_insertion(self, tags: &mut super::InnerTags) {
@@ -611,30 +606,30 @@ impl Tag<usize> for SpawnTag {
 pub enum RawTag {
     // Implemented:
     /// Appends a form to the stack.
-    PushForm(Tagger, FormId, u8),
+    PushForm(Ns, FormId, u8),
     /// Removes a form from the stack. It won't always be the last
     /// one.
-    PopForm(Tagger, FormId),
+    PopForm(Ns, FormId),
 
     /// A spacer for the current screen line, replaces alignment.
-    Spacer(Tagger),
+    Spacer(Ns),
 
     /// Text that shows up on screen, but is ignored otherwise.
-    Overlay(Tagger, GhostId),
+    Overlay(Ns, GhostId),
     /// Text that shows up on screen, after the end of the line.
-    Inlay(Tagger, GhostId),
+    Inlay(Ns, GhostId),
 
     /// Starts concealing the [`Text`], skipping all [`Tag`]s and
     /// [`char`]s until the [`EndConceal`] tag shows up.
     ///
     /// [`Text`]: super::Text
     /// [`EndConceal`]: RawTag::EndConceal
-    StartConceal(Tagger),
+    StartConceal(Ns),
     /// Stops concealing the [`Text`], returning the iteration process
     /// back to the regular [`Text`] iterator.
     ///
     /// [`Text`]: super::Text
-    EndConceal(Tagger),
+    EndConceal(Ns),
     /// More direct skipping method, allowing for full skips without
     /// the iteration, which could be slow.
     ///
@@ -644,24 +639,24 @@ pub enum RawTag {
 
     /// Starts a toggleable region of the [`Text`], that can be
     /// interacted with through a mouse pointer.
-    StartToggle(Tagger, ToggleId),
+    StartToggle(Ns, ToggleId),
     /// Ends a toggleable region of the [`Text`].
-    EndToggle(Tagger, ToggleId),
+    EndToggle(Ns, ToggleId),
 
     /// A spawned floating [`Widget`]
-    SpawnedWidget(Tagger, SpawnId),
+    SpawnedWidget(Ns, SpawnId),
 }
 
 impl RawTag {
     /// Inverts a [`RawTag`] that occupies a range.
     pub fn inverse(&self) -> Option<Self> {
         match self {
-            Self::PushForm(tagger, id, _) => Some(Self::PopForm(*tagger, *id)),
-            Self::PopForm(tagger, id) => Some(Self::PushForm(*tagger, *id, 0)),
-            Self::StartConceal(tagger) => Some(Self::EndConceal(*tagger)),
-            Self::EndConceal(tagger) => Some(Self::StartConceal(*tagger)),
-            Self::StartToggle(tagger, id) => Some(Self::EndToggle(*tagger, *id)),
-            Self::EndToggle(tagger, id) => Some(Self::StartToggle(*tagger, *id)),
+            Self::PushForm(ns, id, _) => Some(Self::PopForm(*ns, *id)),
+            Self::PopForm(ns, id) => Some(Self::PushForm(*ns, *id, 0)),
+            Self::StartConceal(ns) => Some(Self::EndConceal(*ns)),
+            Self::EndConceal(ns) => Some(Self::StartConceal(*ns)),
+            Self::StartToggle(ns, id) => Some(Self::EndToggle(*ns, *id)),
+            Self::EndToggle(ns, id) => Some(Self::StartToggle(*ns, *id)),
             _ => None,
         }
     }
@@ -669,12 +664,12 @@ impl RawTag {
     /// Wether this [`RawTag`] ends with another.
     pub fn ends_with(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::PushForm(l_tagger, l_id, _), Self::PopForm(r_tagger, r_id)) => {
-                l_id == r_id && l_tagger == r_tagger
+            (Self::PushForm(l_ns, l_id, _), Self::PopForm(r_ns, r_id)) => {
+                l_id == r_id && l_ns == r_ns
             }
-            (Self::StartConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
-            (Self::StartToggle(l_tagger, l_id), Self::EndToggle(r_tagger, r_id)) => {
-                l_id == r_id && l_tagger == r_tagger
+            (Self::StartConceal(l_ns), Self::EndConceal(r_ns)) => l_ns == r_ns,
+            (Self::StartToggle(l_ns, l_id), Self::EndToggle(r_ns, r_id)) => {
+                l_id == r_id && l_ns == r_ns
             }
             _ => false,
         }
@@ -705,33 +700,33 @@ impl RawTag {
         )
     }
 
-    /// The [`Tagger`] of this [`RawTag`].
-    pub(in crate::text) fn tagger(&self) -> Tagger {
-        match self.get_tagger() {
-            Some(tagger) => tagger,
+    /// The [`Ns`] of this [`RawTag`].
+    pub(in crate::text) fn ns(&self) -> Ns {
+        match self.get_ns() {
+            Some(ns) => ns,
             None => unreachable!(
                 "This method should only be used on stored tags, this not being one of them."
             ),
         }
     }
 
-    /// Gets the [`Tagger`] of this [`RawTag`], if it is not
+    /// Gets the [`Ns`] of this [`RawTag`], if it is not
     /// [`ConcealUntil`], since that one is never actually stored in
     /// [`InnerTags`].
     ///
     /// [`InnerTags`]: super::InnerTags
-    fn get_tagger(&self) -> Option<Tagger> {
+    fn get_ns(&self) -> Option<Ns> {
         match self {
-            Self::PushForm(tagger, ..)
-            | Self::PopForm(tagger, _)
-            | Self::Spacer(tagger)
-            | Self::Overlay(tagger, _)
-            | Self::Inlay(tagger, _)
-            | Self::StartConceal(tagger)
-            | Self::EndConceal(tagger)
-            | Self::StartToggle(tagger, _)
-            | Self::EndToggle(tagger, _)
-            | Self::SpawnedWidget(tagger, _) => Some(*tagger),
+            Self::PushForm(ns, ..)
+            | Self::PopForm(ns, _)
+            | Self::Spacer(ns)
+            | Self::Overlay(ns, _)
+            | Self::Inlay(ns, _)
+            | Self::StartConceal(ns)
+            | Self::EndConceal(ns)
+            | Self::StartToggle(ns, _)
+            | Self::EndToggle(ns, _)
+            | Self::SpawnedWidget(ns, _) => Some(*ns),
             Self::ConcealUntil(_) => None,
         }
     }
@@ -755,27 +750,21 @@ impl RawTag {
 impl PartialEq for RawTag {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::PushForm(l_tagger, l_id, _), Self::PushForm(r_tagger, r_id, _)) => {
-                l_tagger == r_tagger && l_id == r_id
+            (Self::PushForm(l_ns, l_id, _), Self::PushForm(r_ns, r_id, _)) => {
+                l_ns == r_ns && l_id == r_id
             }
-            (Self::PopForm(l_tagger, l_id), Self::PopForm(r_tagger, r_id)) => {
-                l_tagger == r_tagger && l_id == r_id
+            (Self::PopForm(l_ns, l_id), Self::PopForm(r_ns, r_id)) => l_ns == r_ns && l_id == r_id,
+            (Self::Inlay(l_ns, l_id), Self::Inlay(r_ns, r_id)) => l_ns == r_ns && l_id == r_id,
+            (Self::Overlay(l_ns, l_id), Self::Overlay(r_ns, r_id)) => l_ns == r_ns && l_id == r_id,
+            (Self::Spacer(l_ns), Self::Spacer(r_ns)) => l_ns == r_ns,
+            (Self::StartConceal(l_ns), Self::StartConceal(r_ns)) => l_ns == r_ns,
+            (Self::EndConceal(l_ns), Self::EndConceal(r_ns)) => l_ns == r_ns,
+            (Self::ConcealUntil(l_ns), Self::ConcealUntil(r_ns)) => l_ns == r_ns,
+            (Self::StartToggle(l_ns, l_id), Self::StartToggle(r_ns, r_id)) => {
+                l_ns == r_ns && l_id == r_id
             }
-            (Self::Inlay(l_tagger, l_id), Self::Inlay(r_tagger, r_id)) => {
-                l_tagger == r_tagger && l_id == r_id
-            }
-            (Self::Overlay(l_tagger, l_id), Self::Overlay(r_tagger, r_id)) => {
-                l_tagger == r_tagger && l_id == r_id
-            }
-            (Self::Spacer(l_tagger), Self::Spacer(r_tagger)) => l_tagger == r_tagger,
-            (Self::StartConceal(l_tagger), Self::StartConceal(r_tagger)) => l_tagger == r_tagger,
-            (Self::EndConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
-            (Self::ConcealUntil(l_tagger), Self::ConcealUntil(r_tagger)) => l_tagger == r_tagger,
-            (Self::StartToggle(l_tagger, l_id), Self::StartToggle(r_tagger, r_id)) => {
-                l_tagger == r_tagger && l_id == r_id
-            }
-            (Self::EndToggle(l_tagger, l_id), Self::EndToggle(r_tagger, r_id)) => {
-                l_tagger == r_tagger && l_id == r_id
+            (Self::EndToggle(l_ns, l_id), Self::EndToggle(r_ns, r_id)) => {
+                l_ns == r_ns && l_id == r_id
             }
             _ => false,
         }
@@ -786,25 +775,19 @@ impl PartialEq for RawTag {
 impl PartialOrd for RawTag {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(match (self, other) {
-            (PushForm(l_tagger, l_id, l_prio), PushForm(r_tagger, r_id, r_prio)) => l_prio
-                .cmp(r_prio)
-                .then(l_id.cmp(r_id))
-                .then(l_tagger.cmp(r_tagger)),
-            (PopForm(l_tagger, l_id), PopForm(r_tagger, r_id)) => {
-                l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
+            (PushForm(l_ns, l_id, l_prio), PushForm(r_ns, r_id, r_prio)) => {
+                l_prio.cmp(r_prio).then(l_id.cmp(r_id)).then(l_ns.cmp(r_ns))
             }
-            (Inlay(l_tagger, l_id), Inlay(r_tagger, r_id))
-            | (Overlay(l_tagger, l_id), Overlay(r_tagger, r_id)) => {
-                l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
+            (PopForm(l_ns, l_id), PopForm(r_ns, r_id)) => l_id.cmp(r_id).then(l_ns.cmp(r_ns)),
+            (Inlay(l_ns, l_id), Inlay(r_ns, r_id)) | (Overlay(l_ns, l_id), Overlay(r_ns, r_id)) => {
+                l_id.cmp(r_id).then(l_ns.cmp(r_ns))
             }
-            (RawTag::Spacer(l_tagger), RawTag::Spacer(r_tagger))
-            | (StartConceal(l_tagger), StartConceal(r_tagger))
-            | (EndConceal(l_tagger), EndConceal(r_tagger)) => l_tagger.cmp(r_tagger),
+            (RawTag::Spacer(l_ns), RawTag::Spacer(r_ns))
+            | (StartConceal(l_ns), StartConceal(r_ns))
+            | (EndConceal(l_ns), EndConceal(r_ns)) => l_ns.cmp(r_ns),
             (ConcealUntil(l_byte), ConcealUntil(r_byte)) => l_byte.cmp(r_byte),
-            (StartToggle(l_tagger, l_id), StartToggle(r_tagger, r_id))
-            | (EndToggle(l_tagger, l_id), EndToggle(r_tagger, r_id)) => {
-                l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
-            }
+            (StartToggle(l_ns, l_id), StartToggle(r_ns, r_id))
+            | (EndToggle(l_ns, l_id), EndToggle(r_ns, r_id)) => l_id.cmp(r_id).then(l_ns.cmp(r_ns)),
             _ => self.priority().cmp(&other.priority()),
         })
     }
@@ -819,19 +802,19 @@ impl Ord for RawTag {
 impl std::fmt::Debug for RawTag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::PushForm(tagger, id, prio) => {
-                write!(f, "PushForm({tagger:?}, {}, {prio})", id.name())
+            Self::PushForm(ns, id, prio) => {
+                write!(f, "PushForm({ns:?}, {}, {prio})", id.name())
             }
-            Self::PopForm(tagger, id) => write!(f, "PopForm({tagger:?}, {})", id.name()),
-            Self::Spacer(tagger) => write!(f, "Spacer({tagger:?})"),
-            Self::Inlay(tagger, id) => write!(f, "Inlay({tagger:?}, {id:?})"),
-            Self::Overlay(tagger, id) => write!(f, "Overlay({tagger:?}, {id:?})"),
-            Self::StartConceal(tagger) => write!(f, "StartConceal({tagger:?})"),
-            Self::EndConceal(tagger) => write!(f, "EndConceal({tagger:?})"),
-            Self::ConcealUntil(tagger) => write!(f, "ConcealUntil({tagger:?})"),
-            Self::StartToggle(tagger, id) => write!(f, "StartToggle({tagger:?}, {id:?}"),
-            Self::EndToggle(tagger, id) => write!(f, "EndToggle({tagger:?}, {id:?}"),
-            Self::SpawnedWidget(tagger, id) => write!(f, "SpawnedWidget({tagger:?}, {id:?}"),
+            Self::PopForm(ns, id) => write!(f, "PopForm({ns:?}, {})", id.name()),
+            Self::Spacer(ns) => write!(f, "Spacer({ns:?})"),
+            Self::Inlay(ns, id) => write!(f, "Inlay({ns:?}, {id:?})"),
+            Self::Overlay(ns, id) => write!(f, "Overlay({ns:?}, {id:?})"),
+            Self::StartConceal(ns) => write!(f, "StartConceal({ns:?})"),
+            Self::EndConceal(ns) => write!(f, "EndConceal({ns:?})"),
+            Self::ConcealUntil(ns) => write!(f, "ConcealUntil({ns:?})"),
+            Self::StartToggle(ns, id) => write!(f, "StartToggle({ns:?}, {id:?}"),
+            Self::EndToggle(ns, id) => write!(f, "EndToggle({ns:?}, {id:?}"),
+            Self::SpawnedWidget(ns, id) => write!(f, "SpawnedWidget({ns:?}, {id:?}"),
         }
     }
 }

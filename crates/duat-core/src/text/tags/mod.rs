@@ -17,13 +17,13 @@ use std::{
 
 use RawTag::*;
 
-use self::{bounds::Bounds, taggers::TaggerExtents};
+use self::{bounds::Bounds, extents::NsExtents};
 pub use self::{
     ids::*,
-    taggers::Tagger,
     types::{Conceal, FormTag, Ghost, RawTag, Spacer, SpawnTag, Tag, Toggle, ToggleFn},
 };
 use crate::{
+    Ns,
     context::Handle,
     data::Pass,
     text::{
@@ -35,7 +35,7 @@ use crate::{
 };
 
 mod bounds;
-mod taggers;
+mod extents;
 mod types;
 
 /// A public interface for mutating the [`Tag`]s of a [`Text`]
@@ -55,7 +55,7 @@ impl Tags<'_> {
     ///
     /// Insertion may fail if you try to push a `Tag` to a position or
     /// range which already has the exact same `Tag` with the exact
-    /// same `Tagger`.
+    /// same `Ns`.
     ///
     /// For some `Tag`s (like [`Ghost`]) can return an id (like
     /// [`GhostId`]). This id can then be used in order to insert the
@@ -67,8 +67,8 @@ impl Tags<'_> {
     /// When the `Tag` doesn't return an id, it will return `Some(())`
     /// if the `Tag` was successfully added, and `None` otherwise.
     #[track_caller]
-    pub fn insert<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
-        self.0.insert_inner(tagger, idx, tag, false)
+    pub fn insert<Idx>(&mut self, ns: Ns, idx: Idx, tag: impl Tag<Idx>) {
+        self.0.insert_inner(ns, idx, tag, false)
     }
 
     /// Same as [`insert`], but does it after other [`Tags`] of the
@@ -76,11 +76,11 @@ impl Tags<'_> {
     ///
     /// [`insert`]: Self::insert
     #[track_caller]
-    pub fn insert_after<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
-        self.0.insert_inner(tagger, idx, tag, true)
+    pub fn insert_after<Idx>(&mut self, ns: Ns, idx: Idx, tag: impl Tag<Idx>) {
+        self.0.insert_inner(ns, idx, tag, true)
     }
 
-    /// Removes the [`Tag`]s of a [tagger] from a region
+    /// Removes the [`Tag`]s of a [ns] from a region
     ///
     /// The input can either be a byte index, a [`Point`], or a
     /// [range] of byte indices/[`Point`]s. If you are implementing a
@@ -95,13 +95,13 @@ impl Tags<'_> {
     /// setup_duat!(setup);
     ///
     /// fn setup() {
-    ///     let tagger = Tagger::new();
+    ///     let ns = Ns::new();
     ///
     ///     hook::add::<BufferUpdated>(move |pa, handle| {
     ///         let buf = handle.write(pa);
     ///         // Removing on the whole Buffer
-    ///         buf.text_mut().remove_tags(tagger, ..);
-    ///         // Logic to add Tags with tagger...
+    ///         buf.text_mut().remove_tags(ns, ..);
+    ///         // Logic to add Tags with ns...
     ///     });
     /// }
     /// ```
@@ -109,10 +109,10 @@ impl Tags<'_> {
     /// [range]: RangeBounds
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`BufferUpdated`]: crate::hook::BufferUpdated
-    /// [tagger]: Tagger
-    pub fn remove(&mut self, tagger: Tagger, from: impl TextRangeOrIndex) {
+    /// [ns]: Ns
+    pub fn remove(&mut self, ns: Ns, from: impl TextRangeOrIndex) {
         let range = from.to_range(self.0.len_bytes() + 1);
-        self.0.remove_from(tagger, range)
+        self.0.remove_from(ns, range)
     }
 
     /// Just like [`Tags::remove`] but excludes ends on the start and
@@ -126,25 +126,25 @@ impl Tags<'_> {
     /// instead.
     ///
     /// [`remove`]: Self::remove
-    pub fn remove_excl(&mut self, tagger: Tagger, from: impl TextRangeOrIndex) {
+    pub fn remove_excl(&mut self, ns: Ns, from: impl TextRangeOrIndex) {
         let range = from.to_range(self.0.len_bytes() + 1);
-        self.0.remove_from_excl(tagger, range);
+        self.0.remove_from_excl(ns, range);
     }
 
     /// Like [`Tags::remove`], but removes base on a predicate
     ///
     /// If the function returns `true`, then the tag is removed. Note
     /// that every [`RawTag`] in here is guaranteed to have the same
-    /// [`Tagger`] as the one passed to the function, so you don't
+    /// [`Ns`] as the one passed to the function, so you don't
     /// need to chack for that.
     pub fn remove_if(
         &mut self,
-        tagger: Tagger,
+        ns: Ns,
         from: impl TextRangeOrIndex,
         filter: impl FnMut(usize, RawTag) -> bool,
     ) {
         let range = from.to_range(self.0.len_bytes() + 1);
-        self.0.remove_from_if(tagger, range, filter)
+        self.0.remove_from_if(ns, range, filter)
     }
 
     /// Removes all [`Tag`]s
@@ -198,7 +198,7 @@ pub struct InnerTags {
     spawns: Vec<SpawnCell>,
     pub(super) spawn_fns: SpawnFns,
     bounds: Bounds,
-    extents: TaggerExtents,
+    extents: NsExtents,
     tags_verssion: u64,
     meta_tags_version: u64,
 }
@@ -218,7 +218,7 @@ impl InnerTags {
             spawns: Vec::new(),
             spawn_fns: SpawnFns(Vec::new()),
             bounds: Bounds::new(max),
-            extents: TaggerExtents::new(max),
+            extents: NsExtents::new(max),
             tags_verssion: 0,
             meta_tags_version: 0,
         }
@@ -231,11 +231,11 @@ impl InnerTags {
     /// [`TextIndex`]: super::TextIndex
     /// [`TextRange`]: super::TextRange
     #[track_caller]
-    pub(crate) fn insert_inner<T, Idx>(&mut self, tagger: Tagger, idx: Idx, mut tag: T, after: bool)
+    pub(crate) fn insert_inner<T, Idx>(&mut self, ns: Ns, idx: Idx, mut tag: T, after: bool)
     where
         T: Tag<Idx>,
     {
-        let (start, end) = tag.get_raw(self, idx, self.len_bytes(), tagger);
+        let (start, end) = tag.get_raw(self, idx, self.len_bytes(), ns);
         let inserted = self.insert_raw(start, end, after);
 
         if inserted {
@@ -287,8 +287,8 @@ impl InnerTags {
             self.bounds
                 .insert([([s_i, s_b], s_tag), ([e_i, e_b], e_tag)]);
 
-            self.extents.insert(s_tag.tagger(), s_b);
-            self.extents.insert(s_tag.tagger(), e_b);
+            self.extents.insert(s_tag.ns(), s_b);
+            self.extents.insert(s_tag.ns(), e_b);
 
             true
         } else if end.is_none() {
@@ -306,7 +306,7 @@ impl InnerTags {
 
             self.bounds.shift_by(i, [1, 0]);
 
-            self.extents.insert(s_tag.tagger(), s_b);
+            self.extents.insert(s_tag.ns(), s_b);
             true
         } else {
             false
@@ -354,19 +354,19 @@ impl InnerTags {
         self.extents.extend(other.extents);
     }
 
-    /// Removes all [`RawTag`]s of a given [`Tagger`]
-    pub(super) fn remove_from(&mut self, tagger: Tagger, within: Range<usize>) {
-        for extent in self.extents.remove(within.clone(), |other| other == tagger) {
-            self.remove_inner(extent.clone(), |(_, tag)| tag.tagger() == tagger);
+    /// Removes all [`RawTag`]s of a given [`Ns`]
+    pub(super) fn remove_from(&mut self, ns: Ns, within: Range<usize>) {
+        for extent in self.extents.remove(within.clone(), |other| other == ns) {
+            self.remove_inner(extent.clone(), |(_, tag)| tag.ns() == ns);
         }
     }
 
-    pub(super) fn remove_from_excl(&mut self, tagger: Tagger, within: Range<usize>) {
+    pub(super) fn remove_from_excl(&mut self, ns: Ns, within: Range<usize>) {
         let mut remained_on = [false; 2];
 
-        for extent in self.extents.remove(within.clone(), |other| other == tagger) {
+        for extent in self.extents.remove(within.clone(), |other| other == ns) {
             self.remove_inner(extent.clone(), |(b, tag)| {
-                if tagger != tag.tagger() {
+                if ns != tag.ns() {
                     return false;
                 };
 
@@ -387,10 +387,10 @@ impl InnerTags {
         }
 
         if remained_on[0] {
-            self.extents.insert(tagger, within.start);
+            self.extents.insert(ns, within.start);
         }
         if remained_on[1] {
-            self.extents.insert(tagger, within.end);
+            self.extents.insert(ns, within.end);
         }
     }
 
@@ -398,11 +398,11 @@ impl InnerTags {
     /// predicate
     pub(super) fn remove_from_if(
         &mut self,
-        tagger: Tagger,
+        ns: Ns,
         within: Range<usize>,
         mut filter: impl FnMut(usize, RawTag) -> bool,
     ) {
-        for extent in self.extents.iter_over(within.clone(), tagger) {
+        for extent in self.extents.iter_over(within.clone(), ns) {
             self.remove_inner(extent.clone(), |(byte, tag)| filter(byte as usize, tag));
         }
     }
@@ -411,7 +411,7 @@ impl InnerTags {
     /// matches
     ///
     /// WILL remove every required [`RawTag`], WILL shift the indices
-    /// of the [`Bounds`], WILL NOT shift [`TaggerExtents`] since
+    /// of the [`Bounds`], WILL NOT shift [`NsExtents`] since
     /// there is no byte shifting, WILL NOT shift the bytes of the
     /// [`Bounds`]
     fn remove_inner(&mut self, range: Range<usize>, mut filter: impl FnMut((i32, RawTag)) -> bool) {
@@ -833,9 +833,9 @@ impl Iterator for FwdTagsMapper<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|(n, (b, tag))| match tag {
-            StartConceal(tagger) => match self.bounds.match_of(n) {
+            StartConceal(ns) => match self.bounds.match_of(n) {
                 Some(([_, e_b], _)) => (b as usize, ConcealUntil(e_b as u32)),
-                _ => (b as usize, StartConceal(tagger)),
+                _ => (b as usize, StartConceal(ns)),
             },
             tag => (b as usize, tag),
         })
@@ -877,9 +877,9 @@ impl Iterator for RevTagsMapper<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|(n, (b, tag))| match tag {
-            EndConceal(tagger) => match self.bounds.match_of(n) {
+            EndConceal(ns) => match self.bounds.match_of(n) {
                 Some(([_, s_b], _)) => (b as usize, ConcealUntil(s_b as u32)),
-                _ => (b as usize, EndConceal(tagger)),
+                _ => (b as usize, EndConceal(ns)),
             },
             tag => (b as usize, tag),
         })

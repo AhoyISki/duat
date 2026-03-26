@@ -6,14 +6,14 @@ use std::{
 };
 
 use duat_core::{
-    Ranges,
+    Ns, Ranges,
     buffer::{Buffer, BufferParts, BufferTracker, Change, PerBuffer},
     context::{self, Handle},
     data::Pass,
     form::{self, FormId},
     hook::{self, BufferUpdated},
     opts::PrintOpts,
-    text::{Point, Strs, Tagger},
+    text::{Point, Strs},
 };
 use duat_filetype::{FileType, PassFileType};
 use tree_sitter::{
@@ -69,11 +69,11 @@ pub(crate) fn add_parser_hook() {
                 .select_from(printed_lines.iter().cloned())
             {
                 let range = range.start..range.end + 1;
-                parts.tags.remove_excl(ts_tagger(), range.clone());
+                parts.tags.remove_excl(ts_ns(), range.clone());
                 parser.highlight(range.clone(), &mut parts);
                 parts.ranges_to_update.update_on([range]);
             }
-            
+
             true
         } else {
             false
@@ -257,7 +257,7 @@ impl Parser {
     fn highlight(&self, range: Range<usize>, parts: &mut BufferParts) {
         let buf = TsBuf(parts.strs);
 
-        let tagger = ts_tagger();
+        let ns = ts_ns();
         let (.., Queries { highlights, .. }) = &self.lang_parts;
 
         for (_, tree) in self.trees.intersecting(range.clone()) {
@@ -280,7 +280,7 @@ impl Parser {
                     // Cuz sometimes it be like that
                     let (form, priority) = self.forms[cap.index as usize];
                     let range = ts_range.start_byte..ts_range.end_byte;
-                    parts.tags.insert(tagger, range, form.to_tag(priority));
+                    parts.tags.insert(ns, range, form.to_tag(priority));
                 }
             }
         }
@@ -737,9 +737,9 @@ pub(crate) fn sync_parse<'p>(
 }
 
 /// The Key for tree-sitter
-fn ts_tagger() -> Tagger {
-    static TAGGER: LazyLock<Tagger> = Tagger::new_lazy();
-    *TAGGER
+fn ts_ns() -> Ns {
+    static NS: LazyLock<Ns> = Ns::new_lazy();
+    *NS
 }
 
 fn input_edit(change: Change<&str>, strs: &Strs) -> InputEdit {

@@ -12,13 +12,7 @@ use std::{
 };
 
 use duat_core::{
-    buffer::Buffer,
-    context::{self, Handle},
-    data::Pass,
-    form, hook,
-    mode::{self, KeyEvent, Mode, alt, event, shift},
-    text::{RegexHaystack, Tagger, Text, txt},
-    ui::{PrintInfo, RwArea, Widget},
+    Ns, buffer::Buffer, context::{self, Handle}, data::Pass, form, hook, mode::{self, KeyEvent, Mode, alt, event, shift}, text::{RegexHaystack, Text, txt}, ui::{PrintInfo, RwArea, Widget}
 };
 
 use crate::{
@@ -28,7 +22,7 @@ use crate::{
 };
 
 static SEARCH: Mutex<String> = Mutex::new(String::new());
-static PAGER_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
+static PAGER_NS: LazyLock<Ns> = LazyLock::new(Ns::new);
 
 /// A simple mode, meant for scrolling and searching through [`Text`]
 pub struct Pager<W: Widget = LogBook>(PhantomData<W>);
@@ -156,8 +150,8 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
     type ExitWidget = W;
 
     fn update(&mut self, pa: &mut Pass, mut text: Text, _: &RwArea) -> Text {
-        let tagger = *PAGER_TAGGER;
-        text.remove_tags(tagger, ..);
+        let ns = *PAGER_NS;
+        text.remove_tags(ns, ..);
 
         if text == self.prev.as_str() {
             return text;
@@ -173,18 +167,18 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
         match parts.strs.try_search(text.to_string()) {
             Ok(matches) => {
                 area.set_print_info(self.orig.clone());
-                parts.tags.remove(*PAGER_TAGGER, ..);
+                parts.tags.remove(*PAGER_NS, ..);
 
                 let ast = regex_syntax::ast::parse::Parser::new()
                     .parse(&text.to_string())
                     .unwrap();
 
-                crate::tag_from_ast(*PAGER_TAGGER, &mut text, &ast);
+                crate::tag_from_ast(*PAGER_NS, &mut text, &ast);
 
                 let id = form::id_of!("pager.search");
 
                 for range in matches {
-                    parts.tags.insert(*PAGER_TAGGER, range, id.to_tag(0));
+                    parts.tags.insert(*PAGER_NS, range, id.to_tag(0));
                 }
             }
             Err(err) => {
@@ -196,7 +190,7 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
                 let id = form::id_of!("regex.error");
 
                 text.insert_tag(
-                    *PAGER_TAGGER,
+                    *PAGER_NS,
                     span.start.offset..span.end.offset,
                     id.to_tag(0),
                 );

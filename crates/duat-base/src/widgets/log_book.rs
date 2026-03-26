@@ -10,13 +10,13 @@
 use std::{path::Path, sync::Mutex};
 
 use duat_core::{
-    cmd,
+    Ns, cmd,
     context::{self, Handle, Location, Record},
     data::Pass,
     hook::{self, FocusedOn, MsgLogged, OnMouseEvent, UnfocusedFrom},
     mode::{self, MouseButton, TwoPointsPlace},
     opts::PrintOpts,
-    text::{Point, SpawnTag, Tagger, Text, TextMut, txt},
+    text::{Point, SpawnTag, Text, TextMut, txt},
     ui::{DynSpawnSpecs, Orientation, PushSpecs, PushTarget, Side, Widget},
 };
 
@@ -60,7 +60,7 @@ pub fn add_logbook_hooks() {
         }
     });
 
-    let location_tagger = Tagger::new();
+    let location_ns = Ns::new();
 
     hook::add::<OnMouseEvent<LogBook>>(move |pa, event| match event.kind {
         ScrollDown | ScrollUp => {
@@ -86,7 +86,7 @@ pub fn add_logbook_hooks() {
                         ..DynSpawnSpecs::default()
                     },
                 );
-                lb.text.insert_tag(location_tagger, points.real, spawn);
+                lb.text.insert_tag(location_ns, points.real, spawn);
             }
         }
         Down(MouseButton::Left) => {
@@ -115,7 +115,7 @@ pub fn add_logbook_hooks() {
 
     hook::add::<OnMouseEvent>(move |pa, _| {
         for logbook in context::windows().handles_of::<LogBook>(pa) {
-            logbook.text_mut(pa).remove_tags(location_tagger, ..);
+            logbook.text_mut(pa).remove_tags(location_ns, ..);
         }
     });
 }

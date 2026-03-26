@@ -24,7 +24,7 @@ pub(crate) use self::{
 };
 pub use self::{
     completions::{CommandsCompletions, Completions, CompletionsBuilder, CompletionsProvider},
-    gutter::{GetGuttered, Gutter, GutterEntryBuilder, GutteredBuffer, Gutterer},
+    gutter::{GetGuttered, Gutter, GutterEntryBuilder, GutteredBuffer},
     info::Info,
     line_numbers::{LineNumbers, LineNumbersOpts},
     log_book::{LogBook, LogBookOpts},

@@ -16,7 +16,7 @@ use std::{
 use crossterm::event::{KeyEvent, KeyModifiers, MouseEventKind};
 
 use crate::{
-    Plugins,
+    Ns, Plugins,
     buffer::{Buffer, BufferOpts, History, PathKind},
     context::{self, cache},
     data::Pass,
@@ -26,7 +26,7 @@ use crate::{
     },
     mode::{self, Selection, Selections},
     session::ipc::{InitialState, MsgFromChild},
-    text::{StrsBuf, Tagger},
+    text::StrsBuf,
     ui::{
         Coord, Ui, Windows,
         layout::{Layout, MasterOnLeft},
@@ -78,10 +78,7 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) -> std::io::Result<()
         let InitialState { buffers, structs, clipb, reload_start } = ipc::recv_init();
 
         hook::add::<OnMouseEvent>(|pa, event| {
-            event
-                .handle
-                .text_mut(pa)
-                .remove_tags(Tagger::for_toggle(), ..);
+            event.handle.text_mut(pa).remove_tags(Ns::for_toggle(), ..);
         })
         .priority(0);
 

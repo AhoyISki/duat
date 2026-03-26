@@ -469,7 +469,7 @@ macro_rules! doc_duat {
                 pub use $crate::try_or_log_err;
                 
                 pub use $crate::{
-                    Plugin, Plugins,
+                    Ns, Plugin, Plugins,
                     buffer::{Buffer, BufferTracker},
                     cmd,
                     context::{self, Handle},
@@ -482,8 +482,8 @@ macro_rules! doc_duat {
                         WidgetOpened, WindowOpened,
                     },
                     text::{
-                        self, Builder, Conceal, Ghost, Spacer, SpawnTag, Strs, Tagger, Text, txt,
-                        Point, TextMut
+                        self, Builder, Conceal, Ghost, Spacer, SpawnTag, Strs, Text, txt, Point,
+                        TextMut
                     },
                     ui::{self, Area, Widget},
                 };

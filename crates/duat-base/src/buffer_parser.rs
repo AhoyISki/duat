@@ -12,10 +12,11 @@ use std::{
 };
 
 use duat_core::{
+    Ns,
     buffer::{BufferOpts, BufferParts, BufferTracker, PerBuffer},
     form::{self, FormId},
     hook::{self, BufferClosed, BufferOpened, BufferPrinted, BufferUpdated},
-    text::{Ghost, RegexHaystack, Spacer, Strs, Tagger, Tags, txt},
+    text::{Ghost, RegexHaystack, Spacer, Strs, Tags, txt},
     utils::Memoized,
 };
 
@@ -27,21 +28,20 @@ static REPLACEMENT_TRACKER: BufferTracker = BufferTracker::new();
 static INDENT_TRACKER: BufferTracker = BufferTracker::new();
 static PARSERS: PerBuffer<BufferOptsParser> = PerBuffer::new();
 
-pub fn enable_parser() {
+pub fn enable_parser(ns: Ns) {
     hook::add::<BufferOpened>(|pa, handle| {
         let opts_parser = BufferOptsParser { opts: handle.read(pa).opts };
         PARSERS.register(pa, handle, opts_parser);
         REPLACEMENT_TRACKER.register_buffer(handle.write(pa));
         INDENT_TRACKER.register_buffer(handle.write(pa));
     })
-    .grouped("DefaultOptsParser");
+    .grouped(ns);
 
-    hook::add::<BufferClosed>(|pa, handle| _ = PARSERS.unregister(pa, handle))
-        .grouped("DefaultOptsParser");
+    hook::add::<BufferClosed>(|pa, handle| _ = PARSERS.unregister(pa, handle)).grouped(ns);
 
-    let [nl_tagger, space_tagger] = [Tagger::new(), Tagger::new()];
-    let cur_line_tagger = Tagger::new();
-    let indent_tagger = Tagger::new();
+    let [nl_ns, space_ns] = [Ns::new(), Ns::new()];
+    let cur_line_ns = Ns::new();
+    let indent_ns = Ns::new();
 
     hook::add::<BufferUpdated>(move |pa, handle| {
         let printed_line_ranges = handle.printed_line_ranges(pa);
@@ -53,24 +53,24 @@ pub fn enable_parser() {
         let mut parts = REPLACEMENT_TRACKER.parts(buffer).unwrap();
 
         if parser.opts.highlight_current_line {
-            hightlight_current_line(&mut parts, cur_line_tagger);
+            hightlight_current_line(&mut parts, cur_line_ns);
         }
 
-        let taggers = [nl_tagger, space_tagger];
-        replace_chars(parts, &printed_line_ranges, taggers, opts_changed);
+        let nss = [nl_ns, space_ns];
+        replace_chars(parts, &printed_line_ranges, nss, opts_changed);
 
         let parts = INDENT_TRACKER.parts(buffer).unwrap();
-        show_indents(parts, &printed_line_ranges, indent_tagger, opts_changed);
+        show_indents(parts, &printed_line_ranges, indent_ns, opts_changed);
     })
-    .grouped("DefaultOptsParser");
+    .grouped(ns);
 
     hook::add::<BufferPrinted>(move |pa, handle| {
-        handle.text_mut(pa).remove_tags(cur_line_tagger, ..);
+        handle.text_mut(pa).remove_tags(cur_line_ns, ..);
     })
-    .grouped("DefaultOptsParser");
+    .grouped(ns);
 }
 
-fn hightlight_current_line(parts: &mut BufferParts, tagger: Tagger) {
+fn hightlight_current_line(parts: &mut BufferParts, ns: Ns) {
     static CUR_LINE_INLAY: LazyLock<Ghost> =
         LazyLock::new(|| Ghost::overlay(txt!("[current_line] {Spacer}")));
 
@@ -81,14 +81,14 @@ fn hightlight_current_line(parts: &mut BufferParts, tagger: Tagger) {
 
     parts
         .tags
-        .insert(tagger, line_range.start, CUR_LINE_INLAY.clone());
-    parts.tags.insert(tagger, line_range, cur_line_form);
+        .insert(ns, line_range.start, CUR_LINE_INLAY.clone());
+    parts.tags.insert(ns, line_range, cur_line_form);
 }
 
 fn replace_chars(
     mut parts: BufferParts,
     ranges: &[Range<usize>],
-    taggers: [Tagger; 2],
+    nss: [Ns; 2],
     opts_changed: bool,
 ) {
     static OVERLAYS: LazyLock<Mutex<HashMap<(char, FormId), Ghost>>> =
@@ -121,7 +121,7 @@ fn replace_chars(
         return;
     }
 
-    let [nl_tagger, space_tagger] = taggers;
+    let [nl_ns, space_ns] = nss;
 
     let opts = parts.opts;
 
@@ -137,8 +137,8 @@ fn replace_chars(
         .map(|char| overlay!(char, "replace.new_line.trailing"));
 
     for range in lines_to_update.iter().cloned() {
-        parts.tags.remove(space_tagger, range.start..range.end);
-        parts.tags.remove_excl(nl_tagger, range.start..range.end);
+        parts.tags.remove(space_ns, range.start..range.end);
+        parts.tags.remove_excl(nl_ns, range.start..range.end);
 
         let line = &parts.strs[range.clone()];
         let line_start = line.byte_range().start;
@@ -160,7 +160,7 @@ fn replace_chars(
                         .or_else(|| nl_overlay.clone());
 
                     if let Some(overlay) = overlay {
-                        parts.tags.insert(nl_tagger, byte, overlay);
+                        parts.tags.insert(nl_ns, byte, overlay);
                     }
                 }
                 ' ' => _ = space_start.get_or_insert(byte),
@@ -172,7 +172,7 @@ fn replace_chars(
                         && let Some(overlay) = &space_overlay
                     {
                         for byte in start..byte {
-                            parts.tags.insert(space_tagger, byte, overlay.clone());
+                            parts.tags.insert(space_ns, byte, overlay.clone());
                         }
                     }
                 }
@@ -183,12 +183,7 @@ fn replace_chars(
     parts.ranges_to_update.update_on(lines_to_update);
 }
 
-fn show_indents(
-    mut parts: BufferParts,
-    ranges: &[Range<usize>],
-    tagger: Tagger,
-    opts_changed: bool,
-) {
+fn show_indents(mut parts: BufferParts, ranges: &[Range<usize>], ns: Ns, opts_changed: bool) {
     if opts_changed {
         parts.ranges_to_update.add_ranges([..]);
     } else {
@@ -260,12 +255,12 @@ fn show_indents(
 
                 set_capped(&mut state, line, indent);
                 for line in empty_lines.drain(..) {
-                    state.indent_line(line, &mut parts.tags, tagger);
+                    state.indent_line(line, &mut parts.tags, ns);
                 }
                 state.capped = false;
 
                 state.increment(indent);
-                state.indent_line(line, &mut parts.tags, tagger)
+                state.indent_line(line, &mut parts.tags, ns)
             }
         }
 
@@ -309,11 +304,11 @@ impl IndentState {
         }
     }
 
-    fn indent_line(&self, line: &Strs, tags: &mut Tags, tagger: Tagger) {
+    fn indent_line(&self, line: &Strs, tags: &mut Tags, ns: Ns) {
         static OVERLAYS: Memoized<IndentState, Ghost> = Memoized::new();
 
         let range = line.byte_range();
-        tags.remove_excl(tagger, range.clone());
+        tags.remove_excl(ns, range.clone());
 
         if self.list.is_empty() && !self.capped {
             return;
@@ -337,6 +332,6 @@ impl IndentState {
             Ghost::overlay(txt!("{indent_form}{ghost}"))
         });
 
-        tags.insert(tagger, range.start, overlay);
+        tags.insert(ns, range.start, overlay);
     }
 }

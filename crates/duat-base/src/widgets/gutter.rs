@@ -11,11 +11,12 @@
 use std::{collections::HashMap, ops::Range, sync::Once};
 
 use duat_core::{
+    Ns,
     context::{Handle, WidgetRelation},
     data::Pass,
     form::{self, Form, FormId},
     hook::{self, BufferUpdated},
-    text::{Ghost, Tagger, Text, TextParts, TextRange, Toggle},
+    text::{Ghost, Text, TextParts, TextRange, Toggle},
     txt,
     ui::{PushSpecs, Side, Widget},
 };
@@ -29,7 +30,7 @@ use duat_core::{
 /// [`Buffer`]: duat_core::buffer::Buffer
 pub struct Gutter {
     text: Text,
-    entries: HashMap<Gutterer, HashMap<usize, Vec<GutterEntry>>>,
+    entries: HashMap<Ns, HashMap<usize, Vec<GutterEntry>>>,
     opts: GutterOpts,
 }
 
@@ -287,7 +288,7 @@ pub enum Corner {
 /// interlinked with this error, in order to show more cohesive
 /// diagnostics.
 pub struct GutterEntryBuilder<'p> {
-    gutterer: Gutterer,
+    ns: Ns,
     gbuf: &'p mut GutteredBuffer<'p>,
     entries: GutterEntries,
 }
@@ -345,10 +346,10 @@ impl<'g> Drop for GutterEntryBuilder<'g> {
             .write_many((self.gbuf.buffer, &self.gbuf.gutter));
 
         let mut renderer = gutter.opts.renderer.take().unwrap();
-        renderer(&self.entries, self.gutterer, buf.text_mut().parts());
+        renderer(&self.entries, self.ns, buf.text_mut().parts());
         gutter.opts.renderer = Some(renderer);
 
-        let map = gutter.entries.entry(self.gutterer).or_default();
+        let map = gutter.entries.entry(self.ns).or_default();
 
         for entry in std::mem::take(&mut self.entries.list) {
             let line = buf.text().point_at_byte(entry.range.start).line();
@@ -364,19 +365,17 @@ impl<'g> Drop for GutterEntryBuilder<'g> {
 ///
 /// [`Buffer`]: duat_core::buffer::Buffer
 pub struct GutteredBuffer<'g> {
-    gutterer: Gutterer,
+    ns: Ns,
     pa: &'g mut Pass,
     buffer: &'g Handle,
     gutter: Handle<Gutter>,
 }
 
 impl<'g> GutteredBuffer<'g> {
-    /// Remove all entries from a given [`Gutterer`].
-    pub fn remove_entries(&mut self, gutterer: Gutterer) {
-        self.gutter.write(self.pa).entries.remove(&gutterer);
-        self.buffer
-            .text_mut(self.pa)
-            .remove_tags(gutterer.tagger, ..);
+    /// Remove all entries from a given [`Ns`].
+    pub fn remove_entries(&mut self, ns: Ns) {
+        self.gutter.write(self.pa).entries.remove(&ns);
+        self.buffer.text_mut(self.pa).remove_tags(ns, ..);
     }
 
     /// Add a hint to the [`Gutter`].
@@ -390,7 +389,7 @@ impl<'g> GutteredBuffer<'g> {
         let display = self.gutter.read(self.pa).opts.hint.display;
 
         GutterEntryBuilder {
-            gutterer: self.gutterer,
+            ns: self.ns,
             gbuf: self,
             entries: GutterEntries {
                 list: vec![GutterEntry { range, msg, kind: EntryKind::Hint }],
@@ -410,7 +409,7 @@ impl<'g> GutteredBuffer<'g> {
         let display = self.gutter.read(self.pa).opts.warning.display;
 
         GutterEntryBuilder {
-            gutterer: self.gutterer,
+            ns: self.ns,
             gbuf: self,
             entries: GutterEntries {
                 list: vec![GutterEntry { range, msg, kind: EntryKind::Warning }],
@@ -429,7 +428,7 @@ impl<'g> GutteredBuffer<'g> {
         let display = self.gutter.read(self.pa).opts.error.display;
 
         GutterEntryBuilder {
-            gutterer: self.gutterer,
+            ns: self.ns,
             gbuf: self,
             entries: GutterEntries {
                 list: vec![GutterEntry { range, msg, kind: EntryKind::Error }],
@@ -448,23 +447,15 @@ trait Sealed {}
 pub trait GetGuttered: Sealed {
     /// Get a [`GutteredBuffer`] struct, letting you add new entries
     /// to the [`Gutter`].
-    fn get_guttered<'g>(
-        &'g self,
-        pa: &'g mut Pass,
-        gutterer: Gutterer,
-    ) -> Option<GutteredBuffer<'g>>;
+    fn get_guttered<'g>(&'g self, pa: &'g mut Pass, ns: Ns) -> Option<GutteredBuffer<'g>>;
 }
 
 impl Sealed for Handle {}
 impl GetGuttered for Handle {
-    fn get_guttered<'g>(
-        &'g self,
-        pa: &'g mut Pass,
-        gutterer: Gutterer,
-    ) -> Option<GutteredBuffer<'g>> {
+    fn get_guttered<'g>(&'g self, pa: &'g mut Pass, ns: Ns) -> Option<GutteredBuffer<'g>> {
         let gutter = self.get_related(pa).first().cloned();
         if let Some((gutter, WidgetRelation::Pushed)) = gutter {
-            Some(GutteredBuffer { gutterer, pa, buffer: self, gutter })
+            Some(GutteredBuffer { ns, pa, buffer: self, gutter })
         } else {
             None
         }
@@ -475,9 +466,7 @@ impl GetGuttered for Handle {
 ///
 /// You can use this if you want to render things differently in some
 /// situations, but not all.
-pub fn default_renderer(entries: &GutterEntries, gutterer: Gutterer, mut parts: TextParts<'_>) {
-    let tagger = gutterer.tagger;
-
+pub fn default_renderer(entries: &GutterEntries, ns: Ns, mut parts: TextParts<'_>) {
     for entry in &entries.list {
         let form_tag = match entry.kind {
             EntryKind::Hint => form::id_of!("buffer.hint").to_tag(190),
@@ -486,56 +475,31 @@ pub fn default_renderer(entries: &GutterEntries, gutterer: Gutterer, mut parts: 
             EntryKind::_Custom(.., text_form) => text_form.to_tag(193),
         };
 
-        parts.tags.insert(tagger, entry.range.clone(), form_tag);
+        parts.tags.insert(ns, entry.range.clone(), form_tag);
 
         match entries.display {
             GutterDisplay::Inline(_) => {}
             GutterDisplay::Spawn(_) => {}
             GutterDisplay::SpawnCorner(..) => {}
-            GutterDisplay::OwnLines(_) => {
+            GutterDisplay::OwnLines(always) => {
                 let msg_start = parts
                     .strs
                     .line(parts.strs.point_at_byte(entry.range.end).line())
                     .end_point();
-                parts
-                    .tags
-                    .insert(tagger, msg_start, Ghost::inlay(txt!("{entry.msg}\n")));
 
-                parts
-                    .tags
-                    .insert(tagger, entry.range.clone(), Toggle::new(|_, _, _| {}));
+                if always {
+                    let inlay = Ghost::inlay(txt!("{entry.msg}\n"));
+                    parts.tags.insert(ns, msg_start, inlay);
+                } else {
+                    parts
+                        .tags
+                        .insert(ns, entry.range.clone(), Toggle::new(|_, _, _| {}));
+                }
             }
         }
     }
 }
 
-type Renderer = dyn FnMut(&GutterEntries, Gutterer, TextParts<'_>) + 'static + Send;
+type Renderer = dyn FnMut(&GutterEntries, Ns, TextParts<'_>) + 'static + Send;
 type OnlyOnHover = bool;
 type OnWindow = bool;
-
-/// A namesapce for [`Gutter`] entries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Gutterer {
-    /// The [`Tagger`] of this `Gutterer`.
-    ///
-    /// Will be used when adding [`Ghost`]s or [`SpawnTag`]s to the
-    /// [`Buffer`].
-    ///
-    /// [`SpawnTag`]: duat_core::text::SpawnTag
-    /// [`Buffer`]: duat_core::buffer::Buffer
-    pub tagger: Tagger,
-}
-
-impl Gutterer {
-    /// Returns a new [`Gutterer`], a struct for adding/removing
-    /// [`Gutter`] entries.
-    pub fn new() -> Self {
-        Self { tagger: Tagger::new() }
-    }
-}
-
-impl Default for Gutterer {
-    fn default() -> Self {
-        Self::new()
-    }
-}

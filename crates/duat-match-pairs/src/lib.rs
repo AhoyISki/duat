@@ -86,12 +86,12 @@ use std::{
 };
 
 use duat_core::{
-    Plugin, Plugins,
+    Ns, Plugin, Plugins,
     context::Handle,
     data::Pass,
     form,
     hook::{self, BufferUpdated},
-    text::{Point, RegexHaystack, Tagger},
+    text::{Point, RegexHaystack},
 };
 use duat_filetype::FileType;
 use duat_treesitter::TsHandle;
@@ -217,7 +217,7 @@ impl MatchPairsRef<'_> {
 
         let buffer = handle.write(pa);
 
-        buffer.text_mut().remove_tags(*PAREN_TAGGER, ..);
+        buffer.text_mut().remove_tags(*NS, ..);
 
         let selections: Vec<_> = buffer
             .selections()
@@ -311,21 +311,19 @@ impl MatchPairsRef<'_> {
             };
             buffer
                 .text_mut()
-                .insert_tag(*PAREN_TAGGER, start_range, id.to_tag(99));
+                .insert_tag(*NS, start_range, id.to_tag(99));
 
             let id = if is_main {
                 form::id_of!("matched_pair.main.end")
             } else {
                 form::id_of!("matched_pair.extra.end")
             };
-            buffer
-                .text_mut()
-                .insert_tag(*PAREN_TAGGER, end_range, id.to_tag(99));
+            buffer.text_mut().insert_tag(*NS, end_range, id.to_tag(99));
         }
     }
 }
 
-static PAREN_TAGGER: LazyLock<Tagger> = Tagger::new_lazy();
+static NS: LazyLock<Ns> = Ns::new_lazy();
 
 /// Escapes regex pattern characters.
 fn escape(str: &'static [u8]) -> &'static str {

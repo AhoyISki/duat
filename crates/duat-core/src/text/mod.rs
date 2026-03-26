@@ -86,6 +86,7 @@ use std::ops::Range;
 
 pub(crate) use crate::text::{strs::StrsBuf, tags::ToggleFn};
 use crate::{
+    Ns,
     buffer::{Change, History},
     context::Handle,
     data::Pass,
@@ -102,9 +103,7 @@ pub use crate::{
         iter::{FwdIter, RevIter, TextPart, TextPlace},
         search::{Matches, RegexHaystack, RegexPattern},
         strs::{Lines, Strs},
-        tags::{
-            Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, Tag, Tagger, Tags, Toggle,
-        },
+        tags::{Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, Tag, Tags, Toggle},
         utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     },
     txt,
@@ -434,19 +433,19 @@ impl Text {
 
     /// Inserts a [`Tag`] at the given position.
     #[track_caller]
-    pub fn insert_tag<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
-        self.0.tags.insert_inner(tagger, idx, tag, false)
+    pub fn insert_tag<Idx>(&mut self, ns: Ns, idx: Idx, tag: impl Tag<Idx>) {
+        self.0.tags.insert_inner(ns, idx, tag, false)
     }
 
     /// Like [`insert_tag`], but does it after other [`Tag`]s with the
     /// same priority.
     ///
     /// [`insert_tag`]: Self::insert_tag
-    pub fn insert_tag_after<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
-        self.0.tags.insert_inner(tagger, idx, tag, true)
+    pub fn insert_tag_after<Idx>(&mut self, ns: Ns, idx: Idx, tag: impl Tag<Idx>) {
+        self.0.tags.insert_inner(ns, idx, tag, true)
     }
 
-    /// Removes the [`Tag`]s of a [`Tagger`] from a region.
+    /// Removes the [`Tag`]s of a [`Ns`] from a region.
     ///
     /// The input can either be a byte index, a [`Point`], or a
     /// [range] of byte indices/[`Point`]s. If you are implementing a
@@ -461,13 +460,13 @@ impl Text {
     /// setup_duat!(setup);
     ///
     /// fn setup() {
-    ///     let tagger = Tagger::new();
+    ///     let ns = Ns::new();
     ///
     ///     hook::add::<BufferUpdated>(move |pa, handle| {
     ///         let buf = handle.write(pa);
     ///         // Removing on the whole Buffer
-    ///         buf.text_mut().remove_tags(tagger, ..);
-    ///         // Logic to add Tags with tagger...
+    ///         buf.text_mut().remove_tags(ns, ..);
+    ///         // Logic to add Tags with ns...
     ///     });
     /// }
     /// ```
@@ -475,9 +474,9 @@ impl Text {
     /// [range]: std::ops::RangeBounds
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`BufferUpdated`]: crate::hook::BufferUpdated
-    pub fn remove_tags(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
+    pub fn remove_tags(&mut self, ns: Ns, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len() + 1);
-        self.0.tags.remove_from(tagger, range)
+        self.0.tags.remove_from(ns, range)
     }
 
     /// Just like [`Text::remove_tags`] but excludes ends on the start
@@ -491,25 +490,25 @@ impl Text {
     /// instead.
     ///
     /// [`remove_tags`]: Self::remove_tags
-    pub fn remove_tags_excl(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
+    pub fn remove_tags_excl(&mut self, ns: Ns, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len() + 1);
-        self.0.tags.remove_from_excl(tagger, range)
+        self.0.tags.remove_from_excl(ns, range)
     }
 
     /// Like [`Text::remove_tags`], but removes base on a predicate.
     ///
     /// If the function returns `true`, then the tag is removed. Note
     /// that every [`RawTag`] in here is guaranteed to have the same
-    /// [`Tagger`] as the one passed to the function, so you don't
+    /// [`Ns`] as the one passed to the function, so you don't
     /// need to chack for that.
     pub fn remove_tags_if(
         &mut self,
-        tagger: Tagger,
+        ns: Ns,
         from: impl TextRangeOrIndex,
         filter: impl FnMut(usize, RawTag) -> bool,
     ) {
         let range = from.to_range(self.len() + 1);
-        self.0.tags.remove_from_if(tagger, range, filter)
+        self.0.tags.remove_from_if(ns, range, filter)
     }
 
     /// Removes all [`Tag`]s.
@@ -683,7 +682,7 @@ impl Text {
         )
     }
 
-	/// Returns all toggle functions that surround a byte.
+    /// Returns all toggle functions that surround a byte.
     pub(crate) fn toggles_surrounding(&self, point: Point) -> Vec<(Range<Point>, ToggleFn)> {
         self.0
             .tags
@@ -774,19 +773,19 @@ impl<'t> TextMut<'t> {
     }
 
     /// Inserts a [`Tag`] at the given position.
-    pub fn insert_tag<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
-        self.text.insert_tag(tagger, idx, tag)
+    pub fn insert_tag<Idx>(&mut self, ns: Ns, idx: Idx, tag: impl Tag<Idx>) {
+        self.text.insert_tag(ns, idx, tag)
     }
 
     /// Like [`insert_tag`], but does it after other [`Tag`]s with the
     /// same priority.
     ///
     /// [`insert_tag`]: Self::insert_tag
-    pub fn insert_tag_after<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
-        self.text.insert_tag_after(tagger, idx, tag)
+    pub fn insert_tag_after<Idx>(&mut self, ns: Ns, idx: Idx, tag: impl Tag<Idx>) {
+        self.text.insert_tag_after(ns, idx, tag)
     }
 
-    /// Removes the [`Tag`]s of a [`Tagger`] from a region.
+    /// Removes the [`Tag`]s of a [`Ns`] from a region.
     ///
     /// The input can either be a byte index, a [`Point`], or a
     /// [range] of byte indices/[`Point`]s. If you are implementing a
@@ -801,13 +800,13 @@ impl<'t> TextMut<'t> {
     /// setup_duat!(setup);
     ///
     /// fn setup() {
-    ///     let tagger = Tagger::new();
+    ///     let ns = Ns::new();
     ///
     ///     hook::add::<BufferUpdated>(move |pa, handle| {
     ///         let buf = handle.write(pa);
     ///         // Removing on the whole Buffer
-    ///         buf.text_mut().remove_tags(tagger, ..);
-    ///         // Logic to add Tags with tagger...
+    ///         buf.text_mut().remove_tags(ns, ..);
+    ///         // Logic to add Tags with ns...
     ///     });
     /// }
     /// ```
@@ -815,9 +814,9 @@ impl<'t> TextMut<'t> {
     /// [range]: std::ops::RangeBounds
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`BufferUpdated`]: crate::hook::BufferUpdated
-    pub fn remove_tags(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
+    pub fn remove_tags(&mut self, ns: Ns, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len() + 1);
-        self.text.remove_tags(tagger, range)
+        self.text.remove_tags(ns, range)
     }
 
     /// Just like [`TextMut::remove_tags`] but excludes ends on the
@@ -831,9 +830,9 @@ impl<'t> TextMut<'t> {
     /// instead.
     ///
     /// [`remove_tags`]: Self::remove_tags
-    pub fn remove_tags_excl(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
+    pub fn remove_tags_excl(&mut self, ns: Ns, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len() + 1);
-        self.text.remove_tags_excl(tagger, range)
+        self.text.remove_tags_excl(ns, range)
     }
 
     /// Like [`TextMut::remove_tags`], but removes base on a
@@ -841,16 +840,16 @@ impl<'t> TextMut<'t> {
     ///
     /// If the function returns `true`, then the tag is removed. Note
     /// that every [`RawTag`] in here is guaranteed to have the same
-    /// [`Tagger`] as the one passed to the function, so you don't
+    /// [`Ns`] as the one passed to the function, so you don't
     /// need to chack for that.
     pub fn remove_tags_if(
         &mut self,
-        tagger: Tagger,
+        ns: Ns,
         from: impl TextRangeOrIndex,
         filter: impl FnMut(usize, RawTag) -> bool,
     ) {
         let range = from.to_range(self.len() + 1);
-        self.text.remove_tags_if(tagger, range, filter)
+        self.text.remove_tags_if(ns, range, filter)
     }
 
     /// Removes all [`Tag`]s.

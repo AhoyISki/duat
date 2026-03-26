@@ -1,6 +1,5 @@
 use std::{self, ops::Range};
 
-
 use crate::{
     Ns,
     text::shift_list::{ShiftList, Shiftable},
@@ -43,7 +42,7 @@ impl NsExtents {
         }
     }
 
-    /// Extends this [`TaggerExtents`] with another
+    /// Extends this [`NsExtents`] with another
     pub fn extend(&mut self, other: NsExtents) {
         for (ns, extent) in other.extents {
             let is_ns = |(t, _): &&mut (Ns, _)| *t == ns;

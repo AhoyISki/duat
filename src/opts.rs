@@ -5,40 +5,7 @@
 //! modify Duat's behavior. If you wish to apply them on a case by
 //! case basis, you should reach out for [hooks].
 //!
-//! If you want to remove the default `Buffer` widgets
-//! ([`LineNumbers`] and [`VertRule`]), you can add:
-//!
-//! ```rust
-//! # use duat::prelude::*;
-//! hook::remove("BufferWidgets");
-//! ```
-//!
-//! If you want to remove the [`FooterWidgets`] ([`StatusLine`],
-//! [`PromptLine`] and [`Notifications`]), you can add:
-//!
-//! ```rust
-//! # use duat::prelude::*;
-//! hook::remove("FooterWidgets");
-//! ```
-//!
-//! **WARNING**: If you do this, you'll lose access to a
-//! [`PromptLine`], so you'll be unable to run commands. You can
-//! manually readd it with [`PromptLineBuilder::push_on`]. Remember,
-//! you can recompile your config with `duat --reload`.
-//!
-//! [widgets]: crate::widgets
 //! [hooks]: crate::hook
-//! [`Widget`]: crate::widgets::Widget
-//! [`Buffer`]: crate::widgets::Buffer
-//! [`LineNumbers`]: crate::widgets::LineNumbers
-//! [`VertRule`]: duat_term::VertRule
-//! [`StatusLine`]: crate::widgets::StatusLine
-//! [`PromptLine`]: crate::widgets::PromptLine
-//! [`Notifications`]: crate::widgets::Notifications
-//! [`LogBook`]: crate::widgets::LogBook
-//! [`FooterWidgets`]: crate::widgets::FooterWidgets
-//! [`WhichKey`]: crate::widgets::WhichKey
-//! [`PromptLineBuilder::push_on`]: crate::widgets::PromptLineBuilder::push_on
 use std::{
     any::TypeId,
     sync::{LazyLock, Mutex},
@@ -435,7 +402,141 @@ pub struct Opts {
     /// [`Plugin`]: crate::Plugin
     /// [`LogBook`]: crate::widgets::LogBook
     pub logs: LogBookOpts,
+    /// Which default hooks should be enabled.
+    ///
+    /// This can optionally let you turn off various parts of Duat,
+    /// either because you don't want that funcionality or because you
+    /// wish to add your own replacement for it.
+    pub enabled_hooks: EnabledHooks,
     pub(crate) status_fmt_fn: Option<StatusLineFn>,
+}
+
+/// A struct that lets you optionally disable some of Duat's default
+/// hooks.
+///
+/// This lets you turn off a bunch of functionality in order to either
+/// not have it, or replace it with your own version.
+///
+/// Every item here is set to `true` by default, and by setting it to
+/// `false`, you will disable that functionality.
+pub struct EnabledHooks {
+    /// Enables the default [`BufferOpts`] parser.
+    ///
+    /// This parser is responsible for dynamically adding things like
+    /// indent lines, trailing newlines and other replacement
+    /// characters.
+    ///
+    /// You can disable this if you wish to replace it with your own
+    /// version.
+    ///
+    /// [`BufferOpts`]: crate::buffer::BufferOpts
+    pub default_opts_parser: bool,
+    /// Automatically reloads the configuration whenever you save a
+    /// file in the config crate.
+    ///
+    /// Instead of calling `:write` followed by a call to `:reload`,
+    /// by having this enabled, just by calling `:write` (or `:w` or
+    /// `wa`), you will automatically trigger a reload.
+    pub reload_on_save: bool,
+    /// Automatically reloads [`Buffer`]s whenever an external change
+    /// is detected.
+    ///
+    /// This feature is completely automatic, that is, there's no
+    /// prompt asking you if you want to do it. You may want to
+    /// disable this feature if you either don't want auto reloads, or
+    /// you don't want them to be completely automatic.
+    ///
+    /// [`Buffer`]: crate::widgets::Buffer
+    pub auto_reload_buffers: bool,
+    /// Automatically shows the [`WhichKey`] widget.
+    ///
+    /// The `WhichKey` widget tells you which keys are mapped in your
+    /// current situation. If you type a mapped sequence like `jk` or
+    /// `'w`, this widget will helpfully show you which keys you can
+    /// type next, and what each of them will do.
+    ///
+    /// If you want to configure the `WhichKey`, you can check out
+    /// [`opts.whichkey`].
+    ///
+    /// You can disable this if you don't like this functionality, or
+    /// if you want to replace it with your own version.
+    ///
+    /// [`WhichKey`]: crate::widgets::WhichKey
+    /// [`opts.whichkey`]: Opts::whichkey
+    pub show_whichkey: bool,
+    /// Adds the default buffer widgets to every [`Buffer`]
+    ///
+    /// These include mainly the [`LineNumbers`] and [`Gutter`], which
+    /// most people using a text editor would want to make use of.
+    ///
+    /// One reason you might want to disable this hook is if you want
+    /// to change their order, like this:
+    ///
+    /// ```rust
+    /// setup_duat!(setup);
+    /// use duat::prelude::*;
+    /// use widgets::*;
+    ///
+    /// fn setup(opts: &mut Opts) {
+    ///     opts.enabled_hooks.default_buffer_widgets = false;
+    ///
+    ///     let line_numbers = opts.line_numbers;
+    ///     hook::add::<BufferOpened>(move |pa, buffer| {
+    ///         VertRule::builder().push_on(pa, buffer);
+    ///         Gutter::builder().push_on(pa, buffer);
+    ///         VertRule::builder().push_on(pa, buffer);
+    ///         line_numbers.push_on(pa, buffer);
+    ///     });
+    /// }
+    /// ```
+    ///
+    /// Normally, the `Gutter` is to the left of the `LineNumbers`,
+    /// but with the snipped above, that will be the other way around.
+    /// The [`VertRule`]s in there only serve the purpose of adding
+    /// spacing to the widgets.
+    ///
+    /// [`Buffer`]: crate::widgets::Buffer
+    /// [`LineNumbers`]: crate::widgets::LineNumbers
+    /// [`Gutter`]: crate::widgets::Gutter
+    /// [`VertRule`]: crate::widgets::VertRule
+    pub default_buffer_widgets: bool,
+    /// Adds the default [`FooterWidgets`] to each window.
+    ///
+    /// This is a bundle of widgets that are necessary for some basic
+    /// Duat functionality. It includes:
+    ///
+    /// - The [`StatusLine`], which shows information about Duat and
+    ///   the current [`Buffer`]. It can be altered by calling
+    ///   [`opts.fmt_status`].
+    /// - The [`PromptLine`], which is where you type things like
+    ///   [commands] and search queries.
+    /// - [`Notifications`], which shows messages when things happen.
+    ///
+    /// By disabling this hook, you will remove all three widgets. One
+    /// reason you might want to do this is to customize one of these
+    /// three widgets, maybe make them floating or things like that.
+    ///
+    /// Do keep in mind however, that by disabling the
+    /// `FooterWidgets`, unless you add another [`PromptLine`], you
+    /// will _lose the ability to run commands_, which includes things
+    /// like quitting duat.
+    ///
+    /// [`FooterWidgets`]: crate::widgets::FooterWidgets
+    /// [`Buffer`]: crate::widgets::Buffer
+    /// [`StatusLine`]: crate::widgets::StatusLine
+    /// [`opts.fmt_status`]: Opts::fmt_status
+    /// [`PromptLine`]: crate::widgets::PromptLine
+    /// [commands]: crate::cmd
+    /// [`Notifications`]: crate::widgets::Notifications
+    pub default_footer_widgets: bool,
+    /// Save cursor positions when closing [`Buffer`]s.
+    ///
+    /// By having this enabled, whenever you close a `Buffer` and
+    /// reopen it in the future, your cursor position will be the same
+    /// as when you closed.
+    ///
+    /// [`Buffer`]: crate::widgets::Buffer
+    pub cache_cursor_position: bool,
 }
 
 impl Opts {
@@ -670,6 +771,15 @@ impl Default for Opts {
             whichkey: WhichKeyOpts::default(),
             logs: LogBookOpts::default(),
             status_fmt_fn: None,
+            enabled_hooks: EnabledHooks {
+                default_opts_parser: true,
+                reload_on_save: true,
+                auto_reload_buffers: true,
+                show_whichkey: true,
+                default_buffer_widgets: true,
+                default_footer_widgets: true,
+                cache_cursor_position: true,
+            },
         }
     }
 }

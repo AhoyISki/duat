@@ -120,10 +120,10 @@
 //! [`Info`]: widgets::Info
 //! [`Gutter`]: widgets::Gutter
 use duat_core::{
-    Plugin, cmd,
+    Ns, Plugin, cmd,
     form::{self, Form},
     mode,
-    text::{Tagger, Text, txt},
+    text::{Text, txt},
 };
 use regex_syntax::ast::Ast;
 
@@ -139,9 +139,11 @@ pub mod widgets;
 /// This plugin will setup forms, hooks, completions, and add a
 /// default parser for [`BufferOpts`].
 ///
+/// The provided [`Ns`] will be used for the `DefaultOptsParser`.
+///
 /// [`BufferOpts`]: duat_core::buffer::BufferOpts
 #[derive(Default)]
-pub struct DuatBase;
+pub struct DuatBase(pub Ns);
 
 impl Plugin for DuatBase {
     fn plug(self, _: &duat_core::Plugins) {
@@ -153,7 +155,7 @@ impl Plugin for DuatBase {
         widgets::setup_completions();
 
         modes::add_prompt_hook();
-        buffer_parser::enable_parser();
+        buffer_parser::enable_parser(self.0);
 
         // Setup for the LineNumbers
         form::set_weak("linenum.main", Form::new().yellow());
@@ -257,12 +259,12 @@ pub mod hooks {
     }
 }
 
-fn tag_from_ast(tagger: Tagger, text: &mut Text, ast: &Ast) {
+fn tag_from_ast(ns: Ns, text: &mut Text, ast: &Ast) {
     use duat_core::form::FormId;
     use regex_syntax::ast::{Ast::*, Span};
 
     let mut insert_form = |id: FormId, span: Span| {
-        text.insert_tag(tagger, span.start.offset..span.end.offset, id.to_tag(0));
+        text.insert_tag(ns, span.start.offset..span.end.offset, id.to_tag(0));
     };
 
     match ast {
@@ -298,9 +300,9 @@ fn tag_from_ast(tagger: Tagger, text: &mut Text, ast: &Ast) {
             insert_form(class_id, *class.kind.span());
 
             let range = class.span.start.offset..class.span.start.offset + 1;
-            text.insert_tag(tagger, range, bracket_id.to_tag(0));
+            text.insert_tag(ns, range, bracket_id.to_tag(0));
             let range = class.span.end.offset - 1..class.span.end.offset;
-            text.insert_tag(tagger, range, bracket_id.to_tag(0));
+            text.insert_tag(ns, range, bracket_id.to_tag(0));
         }
         Repetition(repetition) => {
             let id = form::id_of!("regex.operator.repetition");
@@ -313,11 +315,11 @@ fn tag_from_ast(tagger: Tagger, text: &mut Text, ast: &Ast) {
             insert_form(group_id, *group.ast.span());
 
             let range = group.span.start.offset..group.span.start.offset + 1;
-            text.insert_tag(tagger, range, bracket_id.to_tag(0));
+            text.insert_tag(ns, range, bracket_id.to_tag(0));
             let range = group.span.end.offset - 1..group.span.end.offset;
-            text.insert_tag(tagger, range, bracket_id.to_tag(0));
+            text.insert_tag(ns, range, bracket_id.to_tag(0));
 
-            tag_from_ast(tagger, text, &group.ast);
+            tag_from_ast(ns, text, &group.ast);
         }
         Alternation(alternation) => {
             let id = form::id_of!("regex.operator.alternation");
@@ -325,11 +327,11 @@ fn tag_from_ast(tagger: Tagger, text: &mut Text, ast: &Ast) {
             let mut prev_end = None;
 
             for ast in alternation.asts.iter() {
-                tag_from_ast(tagger, text, ast);
+                tag_from_ast(ns, text, ast);
 
                 if let Some(end) = prev_end {
                     let range = end..ast.span().start.offset;
-                    text.insert_tag(tagger, range, id.to_tag(0));
+                    text.insert_tag(ns, range, id.to_tag(0));
                 }
 
                 prev_end = Some(ast.span().end.offset);
@@ -337,7 +339,7 @@ fn tag_from_ast(tagger: Tagger, text: &mut Text, ast: &Ast) {
         }
         Concat(concat) => {
             for ast in concat.asts.iter() {
-                tag_from_ast(tagger, text, ast);
+                tag_from_ast(ns, text, ast);
             }
         }
     }

@@ -18,10 +18,10 @@ use crossterm::event::KeyEvent;
 pub use self::global::*;
 use super::Mode;
 use crate::{
-    context,
+    Ns, context,
     data::{BulkDataWriter, Pass, RwData},
     mode::{self, Binding, Bindings},
-    text::{Ghost, Tagger, Text, txt},
+    text::{Ghost, Text, txt},
     ui::Widget,
 };
 
@@ -701,7 +701,7 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
 
                     remove_alias_and(pa, |widget, main| {
                         widget.text_mut().insert_tag(
-                            Tagger::for_alias(),
+                            Ns::for_alias(),
                             main,
                             Ghost::inlay(txt!("[alias]{}", keys_to_string(&mapped_seq))),
                         );
@@ -1021,7 +1021,7 @@ fn remove_alias_and(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget, usize)) {
         let widget = handle.write(pa);
         if let Some(main) = widget.text().get_main_sel() {
             let byte = main.caret().byte();
-            widget.text_mut().remove_tags(Tagger::for_alias(), ..);
+            widget.text_mut().remove_tags(Ns::for_alias(), ..);
             f(&mut *widget, byte)
         }
     })

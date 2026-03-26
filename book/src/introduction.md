@@ -19,12 +19,12 @@ pub struct HighlightMatches;
 impl Plugin for HighlightMatches {
     fn plug(self, _: &Plugins) {
         form::set_weak("same_word", Form::new().underlined());
-        let tagger = Tagger::new();
+        let ns = Ns::new();
 
         hook::add::<BufferUpdated>(move |pa, handle| {
             let lines = handle.printed_line_ranges(pa);
 
-            handle.text_mut(pa).remove_tags(tagger, ..);
+            handle.text_mut(pa).remove_tags(ns, ..);
             let caret = handle.text(pa).main_sel().caret();
             let Some(range) = handle.text(pa).search(r"\A\w+").range(caret..).next() else {
                 return;
@@ -44,7 +44,7 @@ impl Plugin for HighlightMatches {
                 .flat_map(|r| parts.strs.search(r"\w+").range(r))
             {
                 if &parts.strs[range.clone()] == pat {
-                    parts.tags.insert(tagger, range, form_id.to_tag(50));
+                    parts.tags.insert(ns, range, form_id.to_tag(50));
                 }
             }
         });

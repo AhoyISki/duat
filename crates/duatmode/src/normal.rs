@@ -4,6 +4,7 @@ use duat_base::modes::{
     ExtendFwd, ExtendRev, IncSearch, PipeSelections, RunCommands, SearchFwd, SearchRev,
 };
 use duat_core::{
+    Ns,
     buffer::Buffer,
     context::{self, Handle},
     data::Pass,
@@ -244,7 +245,7 @@ impl Mode for Normal {
         static ALT_DOT: Mutex<Option<(OneKey, KeyEvent)>> = Mutex::new(None);
 
         static MACRO: Mutex<Option<Vec<KeyEvent>>> = Mutex::new(None);
-        static MACRO_GROUP: LazyLock<hook::GroupId> = LazyLock::new(hook::GroupId::new);
+        static MACRO_NS: LazyLock<Ns> = Ns::new_lazy();
 
         static U_ALT_U_ID: LazyLock<JumpListId> = LazyLock::new(JumpListId::new);
 
@@ -1136,7 +1137,7 @@ impl Mode for Normal {
             }
 
             ////////// Macro keys
-            alt!('q') if hook::group_exists(*MACRO_GROUP) => {
+            alt!('q') if hook::group_exists(*MACRO_NS) => {
                 context::warn!("Recursive macro calls are not permitted");
                 return;
             }
@@ -1148,9 +1149,9 @@ impl Mode for Normal {
                 }
             }
             alt!('Q') => {
-                if hook::group_exists(*MACRO_GROUP) {
+                if hook::group_exists(*MACRO_NS) {
                     context::info!("Stopped recording macro");
-                    hook::remove(*MACRO_GROUP);
+                    hook::remove(*MACRO_NS);
                 } else {
                     context::info!("Started recording macro");
                     *MACRO.lock().unwrap() = None;
@@ -1168,7 +1169,7 @@ impl Mode for Normal {
                             *macro_keys = Some(vec![key_event]);
                         }
                     })
-                    .grouped(*MACRO_GROUP);
+                    .grouped(*MACRO_NS);
                 }
             }
 
@@ -1282,6 +1283,7 @@ pub(crate) mod jump_list {
     use std::sync::{LazyLock, Mutex};
 
     use duat_core::{
+        Ns,
         buffer::BufferId,
         context::{self, Handle},
         data::Pass,
@@ -1292,7 +1294,7 @@ pub(crate) mod jump_list {
 
     static JUMP_LIST: Mutex<JumpList> = Mutex::new(JumpList::new());
     static JUMPS_ID: LazyLock<JumpListId> = LazyLock::new(JumpListId::new);
-    static JUMPS_HOOK_ID: LazyLock<hook::GroupId> = LazyLock::new(hook::GroupId::new);
+    static JUMPS_NS: LazyLock<Ns> = Ns::new_lazy();
 
     /// A list for jumping around [`Buffer`]s
     #[derive(Debug)]
@@ -1353,7 +1355,7 @@ pub(crate) mod jump_list {
                         .into_iter()
                         .find(|handle| handle.read(pa).buffer_id() == buffer_id)
                 } {
-                    hook::remove(*JUMPS_HOOK_ID);
+                    hook::remove(*JUMPS_NS);
                     mode::reset_to(pa, &handle);
                     add_jump_hook();
 
@@ -1390,6 +1392,6 @@ pub(crate) mod jump_list {
             }
             register(pa, current, 5);
         })
-        .grouped(*JUMPS_HOOK_ID);
+        .grouped(*JUMPS_NS);
     }
 }

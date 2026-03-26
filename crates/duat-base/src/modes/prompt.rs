@@ -31,6 +31,7 @@ use std::{
 };
 
 use duat_core::{
+    Ns,
     buffer::Buffer,
     cmd,
     context::{self, Handle},
@@ -38,16 +39,16 @@ use duat_core::{
     form::{self, Form},
     hook::{self, ModeSwitched},
     mode::{self, KeyEvent, event, shift},
-    text::{Ghost, Tagger, Text, txt},
+    text::{Ghost, Text, txt},
     ui::{RwArea, Widget},
 };
 
 use crate::widgets::{CommandsCompletions, Completions, PromptLine};
 
 static HISTORY: Mutex<Vec<(TypeId, Vec<String>)>> = Mutex::new(Vec::new());
-static PROMPT_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
-static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
-static PREVIEW_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
+static PROMPT_TAGGER: LazyLock<Ns> = LazyLock::new(Ns::new);
+static TAGGER: LazyLock<Ns> = LazyLock::new(Ns::new);
+static PREVIEW_TAGGER: LazyLock<Ns> = LazyLock::new(Ns::new);
 
 /// Add the [`Prompt`] hook.
 pub fn add_prompt_hook() {

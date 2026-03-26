@@ -18,6 +18,7 @@
 use std::{any::TypeId, collections::HashMap};
 
 use duat_core::{
+    Ns,
     context::Handle,
     data::Pass,
     hook::{self, FocusedOn, KeySent, UnfocusedFrom},
@@ -30,7 +31,7 @@ use crate::modes::PromptMode;
 
 /// Add the [`PromptLine`] hooks.
 pub fn add_promptline_hooks() {
-    let group = hook::GroupId::new();
+    let ns = Ns::new();
 
     hook::add::<FocusedOn<PromptLine>>(move |_, (_, promptline)| {
         let promptline = promptline.clone();
@@ -52,10 +53,10 @@ pub fn add_promptline_hooks() {
                 );
             }
         })
-        .grouped(group);
+        .grouped(ns);
     });
 
-    hook::add::<UnfocusedFrom<PromptLine>>(move |_, _| hook::remove(group));
+    hook::add::<UnfocusedFrom<PromptLine>>(move |_, _| hook::remove(ns));
 }
 
 /// A multi purpose text [`Widget`]

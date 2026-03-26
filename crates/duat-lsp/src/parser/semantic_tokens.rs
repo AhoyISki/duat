@@ -4,8 +4,8 @@ use std::{
 };
 
 use duat_core::{
-    form,
-    text::{FormTag, Tagger, TextParts},
+    Ns, form,
+    text::{FormTag, TextParts},
 };
 use gap_buf::GapBuffer;
 use lsp_types::{
@@ -37,7 +37,7 @@ pub struct BufferTokens {
 }
 
 struct ServerTokens {
-    tagger: Tagger,
+    ns: Ns,
     applied: GapBuffer<SemanticToken>,
     forms: Vec<FormTag>,
     result_id: Option<String>,
@@ -66,7 +66,7 @@ impl BufferTokens {
                 .collect();
 
             ServerTokens {
-                tagger: Tagger::new(),
+                ns: Ns::new(),
                 applied: GapBuffer::new(),
                 forms,
                 result_id: None,
@@ -78,18 +78,16 @@ impl BufferTokens {
         let mut line = 0;
         let mut byte = 0;
 
-        parts.tags.remove(server_tokens.tagger, ..);
+        parts.tags.remove(server_tokens.ns, ..);
 
         for token in &semantic_tokens {
             (line, byte) = fwd_pos(line, byte, token);
 
             let tag = server_tokens.forms[token.token_type as usize];
             let start = parts.strs.point_at_coords(line, 0).byte() + byte;
-            parts.tags.insert(
-                server_tokens.tagger,
-                start..start + token.length as usize,
-                tag,
-            );
+            parts
+                .tags
+                .insert(server_tokens.ns, start..start + token.length as usize, tag);
         }
 
         server_tokens.applied = GapBuffer::from(semantic_tokens);
@@ -146,7 +144,7 @@ impl BufferTokens {
 
                     parts
                         .tags
-                        .remove_excl(server_tokens.tagger, start..start + token.length as usize);
+                        .remove_excl(server_tokens.ns, start..start + token.length as usize);
 
                     (line, byte) = fwd_pos(line, byte, &token);
                 }
@@ -164,11 +162,9 @@ impl BufferTokens {
 
                     let tag = server_tokens.forms[token.token_type as usize];
                     let start = parts.strs.point_at_coords(line, 0).byte() + byte;
-                    parts.tags.insert(
-                        server_tokens.tagger,
-                        start..start + token.length as usize,
-                        tag,
-                    );
+                    parts
+                        .tags
+                        .insert(server_tokens.ns, start..start + token.length as usize, tag);
                 }
             }
 

@@ -10,13 +10,7 @@
 use std::sync::{LazyLock, Once};
 
 use duat_core::{
-    buffer::Buffer,
-    context::{self, Handle},
-    data::Pass,
-    form::{self, Form},
-    hook,
-    text::{Tagger, Text, txt},
-    ui::{PrintInfo, RwArea},
+    Ns, buffer::Buffer, context::{self, Handle}, data::Pass, form::{self, Form}, hook, text::{Text, txt}, ui::{PrintInfo, RwArea}
 };
 
 use crate::{
@@ -24,7 +18,7 @@ use crate::{
     modes::{Prompt, PromptMode},
 };
 
-static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
+static NS: LazyLock<Ns> = LazyLock::new(Ns::new);
 
 /// The [`PromptMode`] that makes use of [`IncSearcher`]s
 ///
@@ -87,7 +81,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 
     fn update(&mut self, pa: &mut Pass, mut text: Text, _: &RwArea) -> Text {
         let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
-        text.remove_tags(*TAGGER, ..);
+        text.remove_tags(*NS, ..);
 
         let handle = context::current_buffer(pa);
 
@@ -110,7 +104,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
                     .parse(&text.to_string_no_last_nl())
                     .unwrap();
 
-                crate::tag_from_ast(*TAGGER, &mut text, &ast);
+                crate::tag_from_ast(*NS, &mut text, &ast);
 
                 if !text.is_empty() {
                     self.inc.search(pa, &pat, handle);
@@ -124,7 +118,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
                 let span = err.span();
                 let id = form::id_of!("regex.error");
 
-                text.insert_tag(*TAGGER, span.start.offset..span.end.offset, id.to_tag(0));
+                text.insert_tag(*NS, span.start.offset..span.end.offset, id.to_tag(0));
             }
         }
 

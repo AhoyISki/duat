@@ -26,7 +26,7 @@ use std::{any::TypeId, sync::Mutex};
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
 
-pub use self::ranges::Ranges;
+pub use self::{namespace::Ns, ranges::Ranges};
 
 pub mod buffer;
 pub mod cmd;
@@ -42,6 +42,141 @@ pub mod session;
 pub mod text;
 pub mod ui;
 pub mod utils;
+
+mod namespace {
+    //! A namespace for Duat operations.
+
+    use std::{
+        ops::Range,
+        sync::{
+            LazyLock,
+            atomic::{AtomicU32, Ordering::Relaxed},
+        },
+    };
+
+    static NAMESPACE_COUNT: AtomicU32 = AtomicU32::new(3);
+
+    /// A namespace for Duat operations.
+    ///
+    /// This is a unique identifier which makes sure you're only
+    /// affecting the parts of Duat that you want to affect. It is
+    /// used in various places within duat:
+    ///
+    /// - For adding [`Tag`]s to [`Text`].
+    /// - For [adding] and [removing] [hooks].
+    /// - For dealing with the [`Gutter`]
+    ///
+    /// Here's an example of a namespace being used to add `Tag`s to
+    /// `Text`:
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// let mut text = txt!("This is text with no tags in it");
+    /// // This key will be used to modify text.
+    /// let ns1 = Ns::new();
+    ///
+    /// let id = form::id_of!("invisible");
+    ///
+    /// // You can create an `impl Tag` directly from a `FormId`
+    /// text.insert_tag(ns1, 18..20, id.to_tag(0));
+    ///
+    /// assert_eq!(text, txt!("This is text with [invisible]no[] tags in it"));
+    ///
+    /// // ns2 != ns1, so it shouldn't be able to change what was done with ns1.
+    /// let ns2 = Ns::new();
+    /// text.remove_tags(ns2, 18);
+    ///
+    /// assert_eq!(text, txt!("This is text with [invisible]no[] tags in it"));
+    /// ```
+    ///
+    /// [`Tag`]: crate::text::Tag
+    /// [`Text`]: crate::text::Text
+    /// [adding]: crate::hook::add
+    /// [removing]: crate::hook::remove
+    /// [hooks]: crate::hook
+    /// [`Gutter`]: ../duat/widgets/struct.Gutter.html
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct Ns(u32);
+
+    impl Ns {
+        /// Returns a new, unique namespace.
+        pub fn new() -> Self {
+            Self(NAMESPACE_COUNT.fetch_add(1, Relaxed))
+        }
+
+        /// Returns a new [`LazyLock<Ns>`].
+        ///
+        /// You can use this in order to create `static` namespaces by
+        /// calling something like:
+        ///
+        /// ```rust
+        /// # duat_core::doc_duat!(duat);
+        /// use std::sync::LazyLock;
+        ///
+        /// use duat::prelude::*;
+        ///
+        /// static NS: LazyLock<Ns> = Ns::new_lazy();
+        /// ```
+        pub const fn new_lazy() -> LazyLock<Self> {
+            LazyLock::new(Self::new)
+        }
+
+        /// Returns a number of new, unique namespaces
+        ///
+        /// You may want to do this if you expect to be placing and
+        /// removing a lot of tags, and you want the finest possible
+        /// control over what gets added and deleted from the
+        /// [`Text`].
+        ///
+        /// [`Text`]: crate::text::Text
+        pub fn new_many(amount: u32) -> Range<Self> {
+            let start = NAMESPACE_COUNT.fetch_add(amount + 1, Relaxed);
+            Self(start)..Self(start + amount)
+        }
+
+        /// A simple key with no uniqueness guarantee
+        ///
+        /// You should use this if you're editing widgets that are not
+        /// the [`Buffer`] widget, since you're probably the
+        /// only one that is going to be modifying said widget
+        /// anyway.
+        ///
+        /// The advantage of this function is speed. Since it is a
+        /// `const` function, it's value is just substituted in with
+        /// the code, so there is no need to store it in
+        /// structs or statics.
+        ///
+        /// [`Buffer`]: crate::buffer::Buffer
+        pub const fn basic() -> Self {
+            Self(0)
+        }
+
+        /// A [`Tagger`] specifically for remaps
+        pub(crate) const fn for_alias() -> Self {
+            Self(1)
+        }
+
+        pub(crate) const fn for_toggle() -> Self {
+            Self(2)
+        }
+    }
+
+    impl Default for Ns {
+        /// Returns a _new_ namespace.
+        ///
+        /// Not to be confused with [`Ns::basic`].
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl std::fmt::Debug for Ns {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "Ns({})", self.0)
+        }
+    }
+}
 
 /// A plugin for Duat.
 ///

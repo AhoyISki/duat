@@ -298,8 +298,9 @@
 //! [`Buffer`]: crate::prelude::Buffer
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 
+#[doc(inline)]
 pub use duat_core::{
-    Plugin, Plugins, buffer, clipboard, cmd, context, data, notify, process, text, ui, utils,
+    Ns, Plugin, Plugins, buffer, clipboard, cmd, context, data, notify, process, text, ui, utils,
 };
 
 pub mod colorscheme;
@@ -311,6 +312,7 @@ pub mod cursor {
     //! Functions to alter the [`Selection`]s of Duat
     //!
     //! [`Selection`]: duat_core::mode::Selection
+    #[doc(inline)]
     pub use duat_core::form::{
         extra_cursor as get_extra, id_of, main_cursor as get_main, set_extra_cursor as set_extra,
         set_main_cursor as set_main, unset_cursors as unset, unset_extra_cursor as unset_extra,
@@ -322,6 +324,7 @@ pub mod form {
     //! Functions to alter the [`Form`]s of Duat
     //!
     //! [`Form`]: crate::form::Form
+    #[doc(inline)]
     pub use duat_core::form::{
         CursorShape, Form, Palette, enable_mask, from_id, id_of, set, set_many, set_weak,
     };
@@ -415,49 +418,6 @@ pub mod hook {
     //! These are just the built-in ones, you can [create your own] as
     //! well.
     //!
-    //! # Hook groups
-    //!
-    //! Hook groups are essentially "removable hooks", that are
-    //! predefined in order to give a more complete, yet customizable
-    //! default experience for Duat:
-    //!
-    //! ```rust
-    //! setup_duat!(setup);
-    //! use std::sync::atomic::{AtomicUsize, Ordering};
-    //!
-    //! use duat::{data::RwData, prelude::*};
-    //!
-    //! fn setup(opts: &mut Opts) {
-    //!     let key_count = RwData::new(0);
-    //!
-    //!     hook::add::<KeySent>({
-    //!         let key_count = key_count.clone();
-    //!         move |pa, _| *key_count.write(pa) += 1
-    //!     })
-    //!     .grouped("CountKeys");
-    //!
-    //!     // Shows the key count on the StatusLine
-    //!     opts.fmt_status(move |pa| {
-    //!         let mode_txt = mode_txt();
-    //!         let key_count = key_count.clone();
-    //!         status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt} keys={key_count}")
-    //!     });
-    //!
-    //!     // Stops counting keys 🙁.
-    //!     hook::remove("CountKeys");
-    //! }
-    //! ```
-    //!
-    //! These are the default hook groups:
-    //!
-    //! - `"BufferWidgets"`: Pushes a [`VertRule`] and [`LineNumbers`]
-    //!   to new [`Buffer`]s, via [`WidgetOpened`]..
-    //! - `"LogBook"`: Pushes a [`LogBook`] to the bottom.
-    //! - `"FooterWidgets"`: Pushes a  [`StatusLine`], [`PromptLine`]
-    //!   and [`Notifications`] to new windows, via [`WindowOpened`].
-    //! - `"ReloadOnWrite"`: Reloads the `config` crate whenever any
-    //!   buffer in it is written to, via [`BufferSaved`].
-    //!
     //! [hook above]: WidgetOpened
     //! [That hook]: crate::prelude::WidgetOpened
     //! [`StatusLine`]: crate::widgets::StatusLine
@@ -483,7 +443,9 @@ pub mod hook {
     //! [dyn `Widget`]: crate::widgets::Widget
     //! [`debug!`]: crate::context::debug
     //! [colorscheme is set]: crate::colorscheme::set
+    #[doc(inline)]
     pub use duat_base::hooks::*;
+    #[doc(inline)]
     pub use duat_core::hook::*;
 }
 
@@ -491,10 +453,14 @@ pub mod hook {
 ///
 /// [`Mode`]: crate::mode::Mode
 pub mod mode {
+    #[doc(inline)]
     pub use duat_base::modes::*;
+    #[doc(inline)]
     pub use duat_core::mode::*;
+    #[doc(inline)]
     pub use duatmode::{Insert, Normal, add_to_param, take_param};
 
+    #[doc(inline)]
     pub use crate::regular::Regular;
 }
 
@@ -564,7 +530,7 @@ pub mod prelude {
 
     use crate::setup::ALREADY_PLUGGED;
     pub use crate::{
-        Plugin, Plugins,
+        Ns, Plugin, Plugins,
         buffer::{Buffer, BufferTracker},
         cmd, colorscheme,
         context::{self, Handle},
@@ -584,9 +550,7 @@ pub mod prelude {
         opts::{Opts, ScrollOff, TabMode},
         setup_duat,
         state::*,
-        text::{
-            self, Conceal, Ghost, Point, RegexHaystack, Spacer, SpawnTag, Strs, Tagger, Text, txt,
-        },
+        text::{self, Conceal, Ghost, Point, RegexHaystack, Spacer, SpawnTag, Strs, Text, txt},
         ui::{self, Area, Widget},
         widgets::{self, status},
     };

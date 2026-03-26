@@ -186,6 +186,7 @@ use crossterm::event::MouseEventKind;
 
 pub use self::global::*;
 use crate::{
+    Ns,
     buffer::Buffer,
     context::Handle,
     data::Pass,
@@ -197,47 +198,12 @@ use crate::{
 
 /// Hook functions.
 mod global {
-    use std::sync::{
-        LazyLock,
-        atomic::{AtomicUsize, Ordering},
-    };
+    use std::sync::LazyLock;
 
-    use super::{Hookable, InnerGroupId, InnerHooks};
-    use crate::{data::Pass, hook::Callback};
+    use super::{Hookable, InnerHooks};
+    use crate::{Ns, data::Pass, hook::Callback};
 
     static HOOKS: LazyLock<InnerHooks> = LazyLock::new(InnerHooks::default);
-
-    /// A [`GroupId`] that can be used in order to remove hooks.
-    ///
-    /// When [adding grouped hooks], you can either use strings or a
-    /// [`GroupId`]. You should use strings for publicly removable
-    /// hooks, and [`GroupId`]s for privately removable hooks:
-    ///
-    /// [adding grouped hooks]: HookBuilder::grouped
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    pub struct GroupId(usize);
-
-    impl GroupId {
-        /// Returns a new [`GroupId`]
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            static HOOK_GROUPS: AtomicUsize = AtomicUsize::new(0);
-            Self(HOOK_GROUPS.fetch_add(1, Ordering::Relaxed))
-        }
-
-        /// Remove all hooks that belong to this [`GroupId`].
-        ///
-        /// This can be used in order to have hooks remove themselves,
-        /// for example.
-        pub fn remove(self) {
-            remove(self)
-        }
-
-        /// Returns `true` if this `GroupId` has any hooks.
-        pub fn has_hooks(self) -> bool {
-            group_exists(self)
-        }
-    }
 
     /// A struct used in order to specify more options for [hook]s.
     ///
@@ -256,26 +222,21 @@ mod global {
     /// [removed]: remove
     pub struct HookBuilder<H: Hookable> {
         callback: Option<Callback<H>>,
-        group: Option<InnerGroupId>,
+        ns: Option<Ns>,
         filter: Option<Box<dyn Fn(&H) -> bool + Send>>,
         priority: usize,
     }
 
     impl<H: Hookable> HookBuilder<H> {
-        /// Add a group to this hook
+        /// Groups this hook with a [namespace].
         ///
-        /// This makes it so you can call [`hook::remove`] in order to
-        /// remove this hook as well as every other hook added to the
-        /// same group.
+        /// By adding a namespace to this group, you are then able to
+        /// remove a group of hooks by calling [`hook::remove`].
         ///
-        /// There are two types of group, a private [`GroupId`] and
-        /// [`impl ToString`] types, which can be removed by an end
-        /// user.
-        ///
-        /// [`impl ToString`]: ToString
-        /// [`hook::remove`]: super::remove
-        pub fn grouped(mut self, group: impl Into<InnerGroupId>) -> Self {
-            self.group = Some(group.into());
+        /// [namespace]: Ns
+        /// [`hook::remove`]: remove
+        pub fn grouped(mut self, ns: Ns) -> Self {
+            self.ns = Some(ns);
             self
         }
 
@@ -342,7 +303,7 @@ mod global {
         fn drop(&mut self) {
             HOOKS.add(
                 self.callback.take().unwrap(),
-                self.group.take(),
+                self.ns,
                 self.filter.take(),
                 self.priority,
             )
@@ -377,7 +338,7 @@ mod global {
     ) -> HookBuilder<H> {
         HookBuilder {
             callback: Some(Callback::FnMut(Box::new(f))),
-            group: None,
+            ns: None,
             filter: None,
             priority: 100,
         }
@@ -415,19 +376,24 @@ mod global {
     ) -> HookBuilder<H> {
         HookBuilder {
             callback: Some(Callback::FnOnce(Some(Box::new(f)))),
-            group: None,
+            ns: None,
             filter: None,
             priority: 100,
         }
     }
 
-    /// Removes a [hook] group.
+    /// Removes all [hooks] grouped with a [namespace]
     ///
-    /// The hook can either be a string type, or a [`GroupId`].
+    /// Any hook that was previously added with
+    /// [`HookBuilder::grouped`] with the same `Ns` will be removed.
+    /// This also includes hooks added via [`hook::add_once`]
     ///
-    /// [hook]: Hookable
-    pub fn remove(group: impl Into<InnerGroupId>) {
-        HOOKS.remove(group.into());
+    /// [hooks]: super
+    /// [`Ns`]: crate::Ns
+    /// [namespace]: Ns
+    /// [`hook::add_once`]: add_once
+    pub fn remove(ns: Ns) {
+        HOOKS.remove(ns);
     }
 
     /// Triggers a hooks for a [`Hookable`] struct.
@@ -444,29 +410,8 @@ mod global {
     /// followed these additions
     ///
     /// [`hook::remove`]: remove
-    pub fn group_exists(group: impl Into<InnerGroupId>) -> bool {
-        HOOKS.group_exists(&group.into())
-    }
-}
-
-/// A group can either be created through a name or through a
-/// [`GroupId`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[doc(hidden)]
-pub enum InnerGroupId {
-    Numbered(GroupId),
-    Named(String),
-}
-
-impl From<GroupId> for InnerGroupId {
-    fn from(value: GroupId) -> Self {
-        Self::Numbered(value)
-    }
-}
-
-impl<S: ToString> From<S> for InnerGroupId {
-    fn from(value: S) -> Self {
-        Self::Named(value.to_string())
+    pub fn group_exists(ns: Ns) -> bool {
+        HOOKS.group_exists(ns)
     }
 }
 
@@ -717,14 +662,14 @@ impl PartialEq<Handle> for BufferUnloaded {
 /// static TRACKER: BufferTracker = BufferTracker::new();
 ///
 /// fn setup() {
-///     let tagger = Tagger::new();
+///     let ns = Ns::new();
 ///     let tag = form::id_of!("non_ascii_char").to_tag(50);
 ///
 ///     let hl_non_ascii = move |tags: &mut Tags, strs: &Strs, range: Range<Point>| {
 ///         for (b, char) in strs[range.clone()].char_indices() {
 ///             let b = b + range.start.byte();
 ///             if !char.is_ascii() {
-///                 tags.insert(tagger, b..b + char.len_utf8(), tag);
+///                 tags.insert(ns, b..b + char.len_utf8(), tag);
 ///             }
 ///         }
 ///     };
@@ -741,7 +686,7 @@ impl PartialEq<Handle> for BufferUnloaded {
 ///         let mut parts = TRACKER.parts(handle.write(pa)).unwrap();
 ///
 ///         for change in parts.changes {
-///             parts.tags.remove(tagger, change.added_range());
+///             parts.tags.remove(ns, change.added_range());
 ///             hl_non_ascii(&mut parts.tags, parts.strs, change.added_range())
 ///         }
 ///     });
@@ -1276,7 +1221,7 @@ pub trait Hookable: Sized + 'static {
 #[derive(Clone, Copy)]
 struct InnerHooks {
     types: &'static Mutex<HashMap<TypeId, Box<dyn HookHolder>>>,
-    groups: &'static Mutex<Vec<InnerGroupId>>,
+    namespaces: &'static Mutex<Vec<Ns>>,
 }
 
 impl InnerHooks {
@@ -1284,20 +1229,20 @@ impl InnerHooks {
     fn add<H: Hookable>(
         &self,
         callback: Callback<H>,
-        group: Option<InnerGroupId>,
+        ns: Option<Ns>,
         filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
         priority: usize,
     ) {
         let mut map = self.types.lock().unwrap();
 
-        if let Some(group_id) = group.clone() {
-            let mut groups = self.groups.lock().unwrap();
-            if !groups.contains(&group_id) {
-                groups.push(group_id)
+        if let Some(ns) = ns {
+            let mut namespaces = self.namespaces.lock().unwrap();
+            if !namespaces.contains(&ns) {
+                namespaces.push(ns)
             }
         }
 
-        let new_hook = Hook { callback, group, filter, priority };
+        let new_hook = Hook { callback, ns, filter, priority };
 
         if let Some(holder) = map.get(&TypeId::of::<H>()) {
             let hooks_of = unsafe {
@@ -1320,11 +1265,11 @@ impl InnerHooks {
     }
 
     /// Removes hooks with said group.
-    fn remove(&self, group_id: InnerGroupId) {
-        self.groups.lock().unwrap().retain(|g| *g != group_id);
+    fn remove(&self, ns: Ns) {
+        self.namespaces.lock().unwrap().retain(|g| *g != ns);
         let map = self.types.lock().unwrap();
         for holder in map.iter() {
-            holder.1.remove(&group_id)
+            holder.1.remove(ns)
         }
     }
 
@@ -1343,8 +1288,7 @@ impl InnerHooks {
         };
 
         hooks_of.0.borrow_mut().retain_mut(|hook| {
-            let has_been_removed =
-                || matches!(&hook.group, Some(group_id) if !self.group_exists(group_id));
+            let has_been_removed = || matches!(hook.ns, Some(ns) if !self.group_exists(ns));
 
             if has_been_removed() {
                 return false;
@@ -1395,8 +1339,8 @@ impl InnerHooks {
     }
 
     /// Checks if a hook group exists.
-    fn group_exists(&self, group: &InnerGroupId) -> bool {
-        self.groups.lock().unwrap().contains(group)
+    fn group_exists(&self, ns: Ns) -> bool {
+        self.namespaces.lock().unwrap().contains(&ns)
     }
 }
 
@@ -1404,7 +1348,7 @@ impl Default for InnerHooks {
     fn default() -> Self {
         Self {
             types: Box::leak(Box::default()),
-            groups: Box::leak(Box::default()),
+            namespaces: Box::leak(Box::default()),
         }
     }
 }
@@ -1415,22 +1359,22 @@ unsafe impl Sync for InnerHooks {}
 /// An intermediary trait, meant for group removal.
 trait HookHolder {
     /// Remove the given group from hooks of this holder
-    fn remove(&self, group_id: &InnerGroupId);
+    fn remove(&self, ns: Ns);
 }
 
 /// An intermediary struct, meant to hold the hooks of a [`Hookable`].
 struct HooksOf<H: Hookable>(RefCell<Vec<Hook<H>>>);
 
 impl<H: Hookable> HookHolder for HooksOf<H> {
-    fn remove(&self, group_id: &InnerGroupId) {
+    fn remove(&self, ns: Ns) {
         let mut hooks = self.0.borrow_mut();
-        hooks.retain(|hook| hook.group.as_ref().is_none_or(|g| g != group_id));
+        hooks.retain(|hook| hook.ns.is_none_or(|other| other != ns));
     }
 }
 
 struct Hook<H: Hookable> {
     callback: Callback<H>,
-    group: Option<InnerGroupId>,
+    ns: Option<Ns>,
     filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
     priority: usize,
 }

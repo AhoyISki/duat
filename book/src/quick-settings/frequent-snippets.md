@@ -98,7 +98,7 @@ use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup(opts: &mut Opts) {
-    hook::remove("FooterWidgets");
+	opts.enabled_hooks.default_footer_widgets = false;
 
     hook::add::<BufferOpened>(|pa, handle| {
         widgets::FooterWidgets::default().one_line().push_on(pa, handle);

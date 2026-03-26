@@ -14,7 +14,7 @@ use std::{
     path::Path,
 };
 
-use super::{Change, Tagger, Text};
+use super::{Change, Ns, Text};
 use crate::{
     buffer::PathKind,
     form::FormId,
@@ -90,7 +90,7 @@ impl Builder {
         if let Some((b, id)) = self.last_form
             && b < self.text.last_point().byte()
         {
-            self.text.insert_tag(Tagger::basic(), b.., id);
+            self.text.insert_tag(Ns::basic(), b.., id);
         }
 
         self.text
@@ -135,7 +135,7 @@ impl Builder {
             use BuilderPart as BP;
 
             let end = builder.text.last_point().byte();
-            let tagger = Tagger::basic();
+            let ns = Ns::basic();
 
             match part {
                 BP::Text(text) => builder.push_text(text),
@@ -152,11 +152,11 @@ impl Builder {
                     if let Some((b, tag)) = last_form
                         && b < end
                     {
-                        builder.text.insert_tag(tagger, b..end, tag);
+                        builder.text.insert_tag(ns, b..end, tag);
                     }
                 }
-                BP::Spacer(_) => builder.text.insert_tag(tagger, end, Spacer),
-                BP::Ghost(ghost) => builder.text.insert_tag(tagger, end, ghost.clone()),
+                BP::Spacer(_) => builder.text.insert_tag(ns, end, Spacer),
+                BP::Ghost(ghost) => builder.text.insert_tag(ns, end, ghost.clone()),
                 BP::ToString(_) => unsafe { std::hint::unreachable_unchecked() },
             }
         }
@@ -210,7 +210,7 @@ impl Builder {
     pub fn reset_form(&mut self) {
         let end = self.text.last_point().byte();
         if let Some((b, last_form)) = self.last_form.take() {
-            self.text.insert_tag(Tagger::basic(), b..end, last_form);
+            self.text.insert_tag(Ns::basic(), b..end, last_form);
         }
     }
 
@@ -231,7 +231,7 @@ impl Builder {
         if let Some((b, id)) = other.last_form
             && b < other.text.last_point().byte()
         {
-            self.text.insert_tag(Tagger::basic(), offset + b..end, id);
+            self.text.insert_tag(Ns::basic(), offset + b..end, id);
         }
     }
 }

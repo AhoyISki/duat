@@ -18,6 +18,7 @@ use std::{
 };
 
 use duat_core::{
+    Ns,
     cmd::{
         CfgOrManifest, ColorSchemeArg, Existing, OtherBuffer, Parameter, ReloadOptions,
         ValidFilePath,
@@ -26,7 +27,7 @@ use duat_core::{
     data::Pass,
     hook::{self, FocusChanged, KeySent, OnMouseEvent, WidgetOpened},
     mode::MouseEventKind,
-    text::{Point, SpawnTag, Strs, Tagger, Text, TextMut, txt},
+    text::{Point, SpawnTag, Strs, Text, TextMut, txt},
     ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
 };
 use duat_term::Frame;
@@ -43,7 +44,7 @@ mod paths;
 mod words;
 
 static OPENED_PARAM_COMPLETION: Mutex<Option<Vec<TypeId>>> = Mutex::new(None);
-static TAGGER: LazyLock<Tagger> = Tagger::new_lazy();
+static NS: LazyLock<Ns> = Ns::new_lazy();
 static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (usize, ParamCompletions)>>> =
     LazyLock::new(Mutex::default);
 
@@ -106,11 +107,11 @@ pub fn setup_completions() {
         Completions::set_frame(pa, completions);
 
         let completions = completions.clone();
-        let group = hook::GroupId::new();
+        let ns = Ns::new();
 
         hook::add::<KeySent>(move |pa, _| {
             if completions.is_closed() {
-                hook::remove(group);
+                hook::remove(ns);
                 return;
             }
 
@@ -121,10 +122,10 @@ pub fn setup_completions() {
                 Completions::set_frame(pa, &completions);
             }
         })
-        .grouped(group);
+        .grouped(ns);
     });
 
-    hook::add::<FocusChanged>(move |pa, (prev, _)| prev.text_mut(pa).remove_tags(*TAGGER, ..));
+    hook::add::<FocusChanged>(move |pa, (prev, _)| prev.text_mut(pa).remove_tags(*NS, ..));
 
     hook::add::<OnMouseEvent<Completions>>(|pa, event| match event.kind {
         MouseEventKind::ScrollDown => _ = Completions::scroll(pa, 1),
@@ -177,7 +178,7 @@ impl CompletionsBuilder {
         let handle = context::current_widget(pa).clone();
         // Do both removals, because the previous Completions need to be
         // removed immediately.
-        handle.text_mut(pa).remove_tags(*TAGGER, ..);
+        handle.text_mut(pa).remove_tags(*NS, ..);
         if let Some(completions) = context::handle_of::<Completions>(pa) {
             _ = completions.close(pa);
         }
@@ -207,7 +208,7 @@ impl CompletionsBuilder {
         };
 
         let mut text = handle.text_mut(pa);
-        text.insert_tag(*TAGGER, start_byte, SpawnTag::new(completions, SPAWN_SPECS));
+        text.insert_tag(*NS, start_byte, SpawnTag::new(completions, SPAWN_SPECS));
     }
 
     /// Adds a new [`CompletionsProvider`] to be prioritized over
@@ -332,7 +333,7 @@ impl Completions {
     /// Closes the `Completions` list
     pub fn close(pa: &mut Pass) {
         let handle = context::current_widget(pa).clone();
-        handle.text_mut(pa).remove_tags(*TAGGER, ..);
+        handle.text_mut(pa).remove_tags(*NS, ..);
     }
 
     /// Goes to the next entry on the list.
@@ -490,7 +491,7 @@ impl Completions {
                 };
 
                 let mut text = master_handle.text_mut(pa);
-                text.insert_tag(*TAGGER, start_byte, SpawnTag::new(new_comp, SPAWN_SPECS));
+                text.insert_tag(*NS, start_byte, SpawnTag::new(new_comp, SPAWN_SPECS));
                 _ = completions.close(pa);
                 return main_replacement;
             } else {
