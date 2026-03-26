@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36010e7a.js";
+            window.path_to_searchindex_js = "searchindex-24d6e478.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-74f781a9.js"></script>
@@ -196,12 +196,12 @@ pub struct HighlightMatches;
 impl Plugin for HighlightMatches {
     fn plug(self, _: &amp;Plugins) {
         form::set_weak("same_word", Form::new().underlined());
-        let tagger = Tagger::new();
+        let ns = Ns::new();
 
         hook::add::&lt;BufferUpdated&gt;(move |pa, handle| {
             let lines = handle.printed_line_ranges(pa);
 
-            handle.text_mut(pa).remove_tags(tagger, ..);
+            handle.text_mut(pa).remove_tags(ns, ..);
             let caret = handle.text(pa).main_sel().caret();
             let Some(range) = handle.text(pa).search(r"\A\w+").range(caret..).next() else {
                 return;
@@ -221,7 +221,7 @@ impl Plugin for HighlightMatches {
                 .flat_map(|r| parts.strs.search(r"\w+").range(r))
             {
                 if &amp;parts.strs[range.clone()] == pat {
-                    parts.tags.insert(tagger, range, form_id.to_tag(50));
+                    parts.tags.insert(ns, range, form_id.to_tag(50));
                 }
             }
         });
