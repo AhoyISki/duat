@@ -304,8 +304,11 @@ pub(crate) fn add_default() {
             };
 
             [
+                // The default form, self explanatory.
                 ("default", default),
+                // A form to "accent" text, highlighting things.
                 ("accent", Form::new().with(c.rosewater).bold()),
+                // Variations of the above two for different scenarios.
                 ("default.error", Form::new().with(c.maroon)),
                 ("accent.error", Form::new().with(c.red).bold()),
                 ("default.warning", Form::new().with(c.yellow)),
@@ -314,49 +317,63 @@ pub(crate) fn add_default() {
                 ("accent.info", Form::new().with(c.sky).bold()),
                 ("default.debug", Form::new().with(c.subtext1)),
                 ("accent.debug", Form::new().with(c.lavender).bold()),
+                // In duat, the caret is the blinking bit.
                 ("caret.main", Form::new().with(c.base).on(c.rosewater)),
                 ("caret.extra", Form::new().with(c.base).on(c.teal)),
+                // And the selection is the rest.
                 ("selection.main", Form::new().on(c.surface1)),
                 ("selection.extra", Form::new().on(c.surface0)),
+                // A utility form, mostly used to cover all other forms on screen.
                 ("cloak", Form::new().with(c.overlay1).on(c.base)),
-                ("character.control", Form::new().with(c.overlay1)),
+                // Form for replacement characters (like indent guides).
                 ("replace", Form::new().with(c.surface0)),
+                // Same, but only for trailing newlines.
                 (
                     "replace.newline.trailing",
                     Form::new().with(c.red).on(c.surface1),
                 ),
+                // Forms for hovered and clicked Toggles.
                 ("toggle.hover", Form::new().on(c.surface0)),
                 ("toggle.click", Form::new().on(c.surface1)),
-                // duat-base forms
+                // Forms for the line numbers.
                 ("linenum.main", Form::new().with(c.yellow)),
                 ("linenum.wrapped", Form::new().with(c.teal)),
+                // Various forms for the StatusLine parts.
                 ("file", Form::new().with(c.yellow)),
                 ("selections", Form::new().with(c.blue)),
                 ("coord", Form::new().with(c.peach)),
                 ("separator", Form::mimic("punctuation.delimiter")),
                 ("mode", Form::new().with(c.green)),
+                // Borders separate Buffers.
                 ("terminal.border", Form::new().with(c.surface0).on(c.base)),
+                // Frames surround spawned widgets.
                 ("terminal.frame", Form::new().with(c.text).on(c.base)),
                 ("notifs.colon", Form::new().with(c.subtext0)),
+                // The prompt in a promptline (like `reverse search`).
                 ("prompt", Form::new().with(c.green)),
+                // The colon that separates the prompt from the input.
                 ("prompt.colon", Form::new().with(c.subtext0)),
+                // Various default forms for specific Widgets.
                 ("default.StatusLine", default.on(c.mantle)),
                 ("default.LogBook", default.on(c.mantle)),
                 ("default.VertRule", default.with(c.surface0)),
                 ("default.LineNumbers", default.with(c.overlay0)),
                 ("default.Completions", default.on(c.surface1)),
+                // Used when the caret is over parentheses pairs.
                 (
                     "matched_pair",
                     Form::new().with(c.peach).on(c.surface1).bold(),
                 ),
+                // Form used on the location a log message came from.
                 ("log_book.location", Form::new().with(c.subtext1)),
                 (
                     "selected.Completions",
                     Form::new().with(c.base).on(c.overlay0),
                 ),
+                // Used in the `mapped_txt` StatusLine part.
                 ("key", Form::new().with(c.peach)),
                 ("key.special", Form::new().with(c.teal)),
-                // For duatmode
+                // Same as before, but on specific Modes.
                 ("caret.main.Normal", Form::new().with(c.base).on(c.text)),
                 (
                     "caret.extra.Normal",
@@ -364,6 +381,7 @@ pub(crate) fn add_default() {
                 ),
                 ("caret.main.Insert", Form::new().with(c.base).on(c.mauve)),
                 ("caret.extra.Insert", Form::new().with(c.base).on(c.yellow)),
+                // Used when typing arguments to commands.
                 ("param", Form::new().with(c.lavender)),
                 ("param.flag", Form::new().with(c.pink)),
                 // Tree sitter/LSP Forms
@@ -501,7 +519,6 @@ pub(crate) fn add_default() {
                 ("selection.main", Form::new().on(c.blue0)),
                 ("selection.extra", Form::new().on(c.fg_gutter)),
                 ("cloak", Form::new().with(c.dark5).on(c.bg)),
-                ("character.control", Form::new().with(c.dark5)),
                 ("replace", Form::new().with(c.bg_highlight)),
                 (
                     "replace.newline.trailing",
@@ -659,7 +676,6 @@ pub(crate) fn add_default() {
                 ("selection.main", Form::new().on(c.bg_subtle)),
                 ("selection.extra", Form::new().on(c.bg_overlay)),
                 ("cloak", Form::new().with(c.text_subtle).on(c.bg)),
-                ("character.control", Form::new().with(c.text_subtle)),
                 ("replace", Form::new().with(c.bg_subtle)),
                 (
                     "replace.newline.trailing",
@@ -795,7 +811,6 @@ pub(crate) fn add_default() {
                 ("selection.main", Form::new().with(c.fg).on(c.current_line)),
                 ("selection.extra", Form::new().with(c.fg).on(c.current_line)),
                 ("cloak", Form::new().with(c.comment).on(c.bg)),
-                ("character.control", Form::new().with(c.comment)),
                 ("replace", Form::new().with(c.current_line)),
                 (
                     "replace.newline.trailing",
