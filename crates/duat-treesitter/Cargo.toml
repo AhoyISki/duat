@@ -12,12 +12,12 @@ categories = ["command-line-utilities", "text-editors", "config"]
 include = ["src/*", "treesitter-queries/*"]
 
 [dependencies]
-duat-core = { version = "0.9.0", path = "../duat-core" }
-duat-filetype = { version = "0.4.0", path = "../duat-filetype" }
+duat-core.workspace = true
+duat-filetype.workspace = true
 
 streaming-iterator = "0.1.9"
-tree-sitter = "0.26.3"
-tree-sitter-language = "0.1.6"
+tree-sitter = "0.26.7"
+tree-sitter-language = "0.1.7"
 indoc = "2.0.7"
 libloading = "0.9.0"
 include_dir = "0.7.4"

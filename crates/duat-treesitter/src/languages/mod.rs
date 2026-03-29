@@ -142,7 +142,11 @@ pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
             .map(|(symbol, is_function)| {
                 let fn_name = symbol.to_lowercase();
                 let language = if *is_function {
-                    format!("ts::{symbol}()")
+                    if options.is_arborium {
+                        format!("ts::{symbol}().into()")
+                    } else {
+                        format!("ts::{symbol}()")
+                    }
                 } else {
                     format!("ts::{symbol}.into()")
                 };
@@ -156,8 +160,17 @@ pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
             })
             .collect();
 
+        let crate_prefix = if options.is_arborium {
+            "arborium"
+        } else {
+            "tree-sitter"
+        };
+
         let crate_name = options.crate_name;
-        let git = options.git;
+        let git = options
+            .git
+            .map(|git| format!("git = \"{git}\"\n"))
+            .unwrap_or_default();
         let version = options.crate_version.unwrap_or("*");
 
         let cargo_toml = formatdoc! {r#"
@@ -165,7 +178,7 @@ pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
             name = "ts-{crate_name}"
             version = "0.1.0"
             edition = "2024"
-            description = "Dynamic wrapper for tree-sitter-{crate_name}"
+            description = "Dynamic wrapper for {crate_prefix}-{crate_name}"
 
             [lib]
             name = "{lang}"
@@ -176,8 +189,7 @@ pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
 
             [dependencies.ts]
             version = "{version}"
-            git = "{git}"
-            package = "tree-sitter-{crate_name}"
+            {git}package = "{crate_prefix}-{crate_name}"
         "#};
 
         fs::create_dir_all(crate_dir.join("src")).ok()?;
@@ -197,11 +209,12 @@ fn get_parsers_dir() -> Option<PathBuf> {
 }
 
 struct LanguageOptions {
-    git: &'static str,
+    git: Option<&'static str>,
     symbols: &'static [(&'static str, bool)],
     crate_name: &'static str,
     crate_version: Option<&'static str>,
     _maintainers: &'static [&'static str],
+    is_arborium: bool,
 }
 
 impl LanguageOptions {
@@ -211,11 +224,12 @@ impl LanguageOptions {
         _maintainers: &'static [&'static str],
     ) -> (&'static str, Self) {
         let options = Self {
-            git,
+            git: Some(git),
             symbols: &[("LANGUAGE", false)],
             crate_name: crate_name(lang),
             crate_version: None,
             _maintainers,
+            is_arborium: false,
         };
 
         (lang, options)
@@ -227,11 +241,12 @@ impl LanguageOptions {
         _maintainers: &'static [&'static str],
     ) -> (&'static str, Self) {
         let options = Self {
-            git,
+            git: Some(git),
             symbols: &[("language", true)],
             crate_name: crate_name(lang),
             crate_version: None,
             _maintainers,
+            is_arborium: false,
         };
 
         (lang, options)
@@ -242,31 +257,50 @@ impl LanguageOptions {
         git: &'static str,
         symbols: &'static [(&'static str, bool)],
         _maintainers: &'static [&'static str],
-    ) -> (&'static str, LanguageOptions) {
+    ) -> (&'static str, Self) {
         let options = Self {
-            git,
+            git: Some(git),
             symbols,
             crate_name: crate_name(lang),
             crate_version: None,
             _maintainers,
+            is_arborium: false,
         };
 
         (lang, options)
     }
 
-    fn pairs_with_symbol_and_crate(
+    const fn pairs_with_symbol_and_crate(
         lang: &'static str,
         git: &'static str,
         symbols: &'static [(&'static str, bool)],
         (crate_name, crate_version): (&'static str, Option<&'static str>),
         _maintainers: &'static [&'static str],
-    ) -> (&'static str, LanguageOptions) {
+    ) -> (&'static str, Self) {
         let options = Self {
-            git,
+            git: Some(git),
             symbols,
             crate_name,
             crate_version,
             _maintainers,
+            is_arborium: false,
+        };
+
+        (lang, options)
+    }
+
+    const fn arborium(
+        lang: &'static str,
+        crate_name: &'static str,
+        _maintainers: &'static [&'static str],
+    ) -> (&'static str, Self) {
+        let options = Self {
+            git: None,
+            symbols: &[("language", true)],
+            crate_name,
+            crate_version: None,
+            _maintainers,
+            is_arborium: true,
         };
 
         (lang, options)

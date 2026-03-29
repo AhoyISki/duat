@@ -15,6 +15,16 @@ include = ["src/**", "templates/*"]
 resolver = "3"
 members = ["crates/*"]
 
+[workspace.dependencies]
+duat-core = { path = "crates/duat-core", version = "0.9.0" }
+duat-base = { path = "crates/duat-base", version = "0.9.0" }
+duat-term = { path = "crates/duat-term", version = "0.9.0" }
+duat-filetype = { path = "crates/duat-filetype", version = "0.4.0" }
+duat-treesitter = { path = "crates/duat-treesitter", version = "0.5.0" }
+duat-match-pairs = { path = "crates/duat-match-pairs", version = "0.4.0" }
+duat-jump-list = { path = "crates/duat-jump-list", version = "0.4.0" }
+duatmode = { path = "crates/duatmode", version = "0.9.0" }
+
 [lints.rust]
 missing_docs = "warn"
 
@@ -22,20 +32,17 @@ missing_docs = "warn"
 unit_arg = "allow"
 
 [dependencies]
-duat-core = { version = "0.9.0", path = "crates/duat-core" }
+duat-core.workspace = true
+duat-base.workspace = true
+duat-filetype.workspace = true
+duatmode.workspace = true
+duat-match-pairs.workspace = true
+duat-treesitter = { workspace = true, optional = true }
+# Possible Ui implementations (only terminal for now).
+duat-term = { workspace = true, optional = true }
+
 dirs-next = "2.0.0"
 dissimilar = "1.0.10"
-
-# Possible Ui implementations (only terminal for now).
-duat-term = { version = "0.9.0", path = "crates/duat-term", optional = true }
-
-# Default plugins
-duat-base = { version = "0.9.0", path = "crates/duat-base" }
-duat-filetype = { version = "0.4.0", path = "crates/duat-filetype" }
-duatmode = { version = "0.9.0", path = "crates/duatmode" }
-duat-treesitter = { version = "0.5.0", path = "crates/duat-treesitter", optional = true }
-duat-match-pairs = { version = "0.4.0", path = "crates/duat-match-pairs", optional = true }
-
 # App dependencies
 clap = { version = "4.5.53", features = ["derive"], optional = true }
 convert_case = { version = "0.10.0", optional = true }
@@ -56,7 +63,7 @@ optional = true
 [features]
 default = ["term-ui", "treesitter", "app"]
 term-ui = ["dep:duat-term"]
-treesitter = ["dep:duat-treesitter", "dep:duat-match-pairs"]
+treesitter = ["dep:duat-treesitter"]
 app = ["dep:clap", "dep:convert_case", "dep:notify", "dep:arboard", "dep:android_clipboard"]
 
 [[bin]]

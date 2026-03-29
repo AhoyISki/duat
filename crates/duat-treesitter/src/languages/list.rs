@@ -915,11 +915,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/ObserverOfTime/tree-sitter-pymanifest",
             &["@ObserverOfTime"],
         ),
-        LanguageOptions::pair_const(
-            "python",
-            "https://github.com/tree-sitter/tree-sitter-python",
-            &["@stsewd", "@theHamsta"],
-        ),
+        LanguageOptions::arborium("python", "python", &["@stsewd", "@theHamsta"]),
         LanguageOptions::pair_const("ql", "https://github.com/tree-sitter/tree-sitter-ql", &[
             "@pwntester",
         ]),
@@ -1020,7 +1016,13 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
         LanguageOptions::pair_const("scfg", "https://github.com/rockorager/tree-sitter-scfg", &[
             "@WhyNotHugo",
         ]),
-        LanguageOptions::pair_const("scheme", "https://github.com/6cdh/tree-sitter-scheme", &[]),
+        LanguageOptions::pairs_with_symbol_and_crate(
+            "scheme",
+            "https://github.com/6cdh/tree-sitter-scheme",
+            &[("LANGUAGE", false)],
+            ("scheme", Some("0.24.7-1")),
+            &[],
+        ),
         LanguageOptions::pair_const("scss", "https://github.com/serenadeai/tree-sitter-scss", &[
             "@elianiva",
         ]),

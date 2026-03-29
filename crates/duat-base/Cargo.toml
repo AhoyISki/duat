@@ -14,9 +14,9 @@ categories = ["command-line-utilities", "text-editors", "config"]
 missing_docs = "warn"
 
 [dependencies]
-format-like = "0.7.0"
-duat-core = { version = "0.9.0", path = "../duat-core" }
-regex-syntax = "0.8.8"
+duat-core.workspace = true 
+duat-term.workspace = true
+duat-filetype.workspace = true
 
-duat-term = { version = "0.9.0", path = "../duat-term" }
-duat-filetype = { version = "0.4.0", path = "../duat-filetype" }
+format-like = "0.7.0"
+regex-syntax = "0.8.8"

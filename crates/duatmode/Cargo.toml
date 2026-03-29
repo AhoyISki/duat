@@ -11,8 +11,8 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2024"
 
 [dependencies]
-duat-core = { version = "0.9.0", path = "../duat-core" }
-duat-base = { version = "0.9.0", path = "../duat-base" }
-duat-jump-list = { version = "0.4.0", path = "../duat-jump-list" }
-duat-treesitter = { version = "0.5.0", path = "../duat-treesitter" }
-duat-filetype = { version = "0.4.0", path = "../duat-filetype" }
+duat-core.workspace = true
+duat-base.workspace = true
+duat-jump-list.workspace = true
+duat-treesitter.workspace = true
+duat-filetype.workspace = true

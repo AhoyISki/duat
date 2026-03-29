@@ -11,10 +11,7 @@ keywords = ["duat", "plugin"]
 categories = ["command-line-utilities", "text-editors", "config"]
 
 [dependencies]
-dirs-next = "2.0"
-duat-core = { version = "0.9.0", path = "../duat-core" }
+duat-core.workspace = true
 
-[dependencies.regex]
-version = "1.12"
-default-features = false
-features = ["perf", "std"]
+dirs-next = "2.0"
+regex = { version = "1.12", default-features = false, features = ["perf", "std"] }
