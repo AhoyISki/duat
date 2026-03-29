@@ -18,7 +18,8 @@ use std::{
 };
 
 use duat_core::{
-    buffer::{BufferTracker, Change},
+    Ns,
+    buffer::Change,
     context::Handle,
     data::Pass,
     hook::{self, BufferOpened, BufferUpdated},
@@ -27,9 +28,9 @@ use duat_core::{
 
 use crate::widgets::completions::{CompletionsProvider, string_cmp};
 
-static TRACKER: BufferTracker = BufferTracker::new();
 static BUFFER_WORDS: Mutex<BTreeMap<Arc<str>, WordInfo>> = Mutex::new(BTreeMap::new());
 
+/// Word completions provider.
 pub struct WordCompletions;
 
 impl CompletionsProvider for WordCompletions {
@@ -84,13 +85,15 @@ pub struct WordInfo {
 #[doc(hidden)]
 /// Begin tracking words for word autocompletions
 pub(super) fn track_words() {
-    hook::add::<BufferOpened>(|pa, handle| {
-        TRACKER.register_buffer(handle.write(pa));
+    let ns = Ns::new();
+
+    hook::add::<BufferOpened>(move |pa, buffer| {
         let mut words = BUFFER_WORDS.lock().unwrap();
-        let buffer = handle.read(pa);
-        let source: Arc<str> = buffer.name().into();
-        for range in buffer.text().search(r"\w{3,}") {
-            let word = buffer.text()[range].to_string().into();
+        let buf = buffer.read(pa);
+
+        let source: Arc<str> = buf.name().into();
+        for range in buf.text().search(r"\w{3,}") {
+            let word = buf.text()[range].to_string().into();
             let info = words
                 .entry(word)
                 .or_insert_with(|| WordInfo { source: source.clone(), count: 0 });
@@ -99,42 +102,37 @@ pub(super) fn track_words() {
         }
     });
 
-    hook::add::<BufferUpdated>(update_counts);
+    hook::add::<BufferUpdated>(move |pa, buffer| update_counts(pa, buffer, ns));
 }
 
-fn update_counts(pa: &mut Pass, handle: &Handle) {
+fn update_counts(pa: &mut Pass, buffer: &Handle, ns: Ns) {
     fn to_str<'a>(str: &'a str) -> impl Fn(Range<usize>) -> (Range<usize>, &'a str) {
         |range| (range.clone(), &str[range])
     }
 
-    let source: Arc<str> = handle.read(pa).name().into();
-    let parts = TRACKER.parts(handle.write(pa)).unwrap();
+    let source: Arc<str> = buffer.read(pa).name().into();
+    let (text, moment) = {
+        let buf = buffer.read(pa);
+        (buf.text(), buf.moment_for(ns))
+    };
 
-    if parts.changes.len() == 0 {
+    if moment.is_empty() {
         return;
     }
 
     let surrounded = |match_r: Range<usize>, word: &str, change_str: &str, change: &Change| {
         let prefix = if match_r.start == 0
-            && let Some(text_range) = parts
-                .strs
-                .search(r"\w+\z")
-                .range(..change.start())
-                .next_back()
+            && let Some(text_range) = text.search(r"\w+\z").range(..change.start()).next_back()
         {
-            &parts.strs[text_range]
+            &text[text_range]
         } else {
             Strs::empty()
         };
 
         if match_r.end == change_str.len()
-            && let Some(text_range) = parts
-                .strs
-                .search(r"\A\w+")
-                .range(change.added_end()..)
-                .next()
+            && let Some(text_range) = text.search(r"\A\w+").range(change.added_end()..).next()
         {
-            format!("{prefix}{word}{}", &parts.strs[text_range])
+            format!("{prefix}{word}{}", &text[text_range])
         } else {
             format!("{prefix}{word}")
         }
@@ -158,7 +156,7 @@ fn update_counts(pa: &mut Pass, handle: &Handle) {
         }
     };
 
-    for change in parts.changes {
+    for change in moment.iter() {
         let added_str = change.added_str();
         let added_words: Vec<_> = added_str.search(r"\w+").map(to_str(added_str)).collect();
         let taken_str = change.taken_str();

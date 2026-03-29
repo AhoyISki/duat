@@ -955,9 +955,9 @@ impl AsRef<Strs> for Text {
 }
 
 /// The Parts that make up a [`Text`].
-pub struct TextParts<'a> {
+pub struct TextParts<'t> {
     /// The [`Strs`] of the whole [`Text`].
-    pub strs: &'a Strs,
+    pub strs: &'t Strs,
     /// The [`Tags`] of the [`Text`].
     ///
     /// This, unlike the previous field, allows mutation in the form
@@ -965,17 +965,17 @@ pub struct TextParts<'a> {
     ///
     /// [adding]: Tags::insert
     /// [removing]: Tags::remove
-    pub tags: Tags<'a>,
+    pub tags: Tags<'t>,
     /// The [`Selections`] of the [`Text`].
     ///
     /// For most [`Widget`]s, there should be no [`Selection`], since
     /// they are just visual.
     ///
     /// [`Widget`]: crate::ui::Widget
-    pub selections: &'a Selections,
+    pub selections: &'t Selections,
 }
 
-impl<'a> TextParts<'a> {
+impl<'t> TextParts<'t> {
     /// A struct representing how many changes took place since the
     /// creation of this `Text`
     ///

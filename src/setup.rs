@@ -100,10 +100,9 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, Vec<TypeId>, BufferOpts) {
             indent_str_on_empty: opts.indent_str_on_empty,
             indent_tab_str: opts.indent_tab_str,
             space_char: opts.space_char,
-            space_char_trailing: opts.space_char_trailing,
-            new_line_char: opts.new_line_char,
-            new_line_on_empty: opts.new_line_char_on_empty,
-            new_line_trailing: opts.new_line_trailing,
+            newline: opts.newline,
+            newline_on_empty: opts.newline_on_empty,
+            newline_trailing: opts.newline_trailing,
         }
     };
 

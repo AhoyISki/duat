@@ -15,8 +15,8 @@ use duat_core::{
     context::{Handle, WidgetRelation},
     data::Pass,
     form::{self, Form, FormId},
-    hook::{self, BufferUpdated},
-    text::{Ghost, Text, TextParts, TextRange, Toggle},
+    hook::{self, BufferOpened, BufferUpdated},
+    text::{Ghost, Point, Text, TextParts, TextRange, Toggle},
     txt,
     ui::{PushSpecs, Side, Widget},
 };
@@ -30,7 +30,7 @@ use duat_core::{
 /// [`Buffer`]: duat_core::buffer::Buffer
 pub struct Gutter {
     text: Text,
-    entries: HashMap<Ns, HashMap<usize, Vec<GutterEntry>>>,
+    entries: HashMap<Ns, Vec<GutterEntry>>,
     opts: GutterOpts,
 }
 
@@ -50,12 +50,56 @@ impl Gutter {
             );
             form::set_weak("buffer.error", Form::new().underline_red().underlined());
 
-            hook::add::<BufferUpdated>(|pa, buffer| {
+            let ns = Ns::new();
+
+            hook::add::<BufferOpened>(move |pa, buffer| _ = buffer.read(pa).moment_for(ns));
+            hook::add::<BufferUpdated>(move |pa, buffer| {
                 let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
                     return;
                 };
 
-                gutter.write(pa).text = gutter.read(pa).form_text(pa, buffer);
+                let (gt, buf) = pa.write_many((&gutter, buffer));
+                let moment = buf.moment_for(ns);
+
+                let sh = |value: &mut usize, shift: i32, min: Point| {
+                    *value = value.saturating_add_signed(shift as isize).max(min.byte());
+                };
+
+                for (_, entries) in gt.entries.iter_mut() {
+                    let mut shift = 0;
+                    let mut iter = entries.iter_mut().enumerate();
+                    let mut to_remove = Vec::new();
+
+                    for change in moment.iter() {
+                        if let Some((i, entry)) = iter.find_map(|(i, entry)| {
+                            sh(&mut entry.range.start, shift, change.start());
+                            sh(&mut entry.range.end, shift, change.start());
+
+                            if entry.range.start == entry.range.end {
+                                to_remove.push(i);
+                            }
+
+                            (entry.range.end > change.start().byte()).then_some((i, entry))
+                        }) {
+                            let start_shift = change.shift()[0]
+                                * (entry.range.start > change.start().byte()) as i32;
+
+                            sh(&mut entry.range.start, start_shift, change.start());
+                            sh(&mut entry.range.end, change.shift()[0], change.start());
+
+                            if entry.range.start == entry.range.end {
+                                to_remove.push(i);
+                            }
+                        }
+                        shift += change.shift()[0];
+                    }
+
+                    for idx in to_remove.into_iter().rev() {
+                        entries.remove(idx);
+                    }
+                }
+
+                gutter.write(pa).text = Gutter::form_text(gutter.read(pa), pa, buffer);
             })
             .priority(100_000_000);
         });
@@ -79,6 +123,7 @@ impl Gutter {
 
     fn form_text(&self, pa: &Pass, buffer: &Handle) -> Text {
         let printed_line_numbers = buffer.printed_line_numbers(pa);
+        let text = buffer.text(pa);
 
         let mut builder = Text::builder();
 
@@ -89,12 +134,17 @@ impl Gutter {
             };
 
             let mut kind = None;
+            let range = text.line(line.number).byte_range();
 
             for (_, entries) in self.entries.iter() {
-                if let Some(entries) = entries.get(&line.number) {
-                    for entry in entries {
-                        kind = kind.max(Some(entry.kind));
-                    }
+                let (Ok(idx) | Err(idx)) =
+                    entries.binary_search_by(|entry| entry.range.start.cmp(&range.start));
+
+                let mut iter = entries[idx..].iter();
+                while let Some(entry) = iter.next()
+                    && entry.range.start < range.end
+                {
+                    kind = kind.max(Some(entry.kind))
                 }
             }
 
@@ -349,11 +399,12 @@ impl<'g> Drop for GutterEntryBuilder<'g> {
         renderer(&self.entries, self.ns, buf.text_mut().parts());
         gutter.opts.renderer = Some(renderer);
 
-        let map = gutter.entries.entry(self.ns).or_default();
+        let entries = gutter.entries.entry(self.ns).or_default();
 
         for entry in std::mem::take(&mut self.entries.list) {
-            let line = buf.text().point_at_byte(entry.range.start).line();
-            map.entry(line).or_default().push(entry);
+            let (Ok(idx) | Err(idx)) =
+                entries.binary_search_by(|e| e.range.start.cmp(&entry.range.start));
+            entries.insert(idx, entry);
         }
     }
 }
@@ -491,9 +542,14 @@ pub fn default_renderer(entries: &GutterEntries, ns: Ns, mut parts: TextParts<'_
                     let inlay = Ghost::inlay(txt!("{entry.msg}\n"));
                     parts.tags.insert(ns, msg_start, inlay);
                 } else {
-                    parts
-                        .tags
-                        .insert(ns, entry.range.clone(), Toggle::new(|_, _, _| {}));
+                    parts.tags.insert(
+                        ns,
+                        entry.range.clone(),
+                        Toggle::new(|pa, event, range| {
+                            let parts = event.handle.text_parts(pa);
+                            let msg_start = parts.strs.line(range.end.line()).end_point();
+                        }),
+                    );
                 }
             }
         }

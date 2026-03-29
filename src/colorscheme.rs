@@ -322,7 +322,7 @@ pub(crate) fn add_default() {
                 ("character.control", Form::new().with(c.overlay1)),
                 ("replace", Form::new().with(c.surface0)),
                 (
-                    "replace.new_line.trailing",
+                    "replace.newline.trailing",
                     Form::new().with(c.red).on(c.surface1),
                 ),
                 ("toggle.hover", Form::new().on(c.surface0)),
@@ -504,7 +504,7 @@ pub(crate) fn add_default() {
                 ("character.control", Form::new().with(c.dark5)),
                 ("replace", Form::new().with(c.bg_highlight)),
                 (
-                    "replace.new_line.trailing",
+                    "replace.newline.trailing",
                     Form::new().with(c.red).on(c.terminal_black),
                 ),
                 ("toggle.hover", Form::new().on(c.bg_highlight)),
@@ -662,7 +662,7 @@ pub(crate) fn add_default() {
                 ("character.control", Form::new().with(c.text_subtle)),
                 ("replace", Form::new().with(c.bg_subtle)),
                 (
-                    "replace.new_line.trailing",
+                    "replace.newline.trailing",
                     Form::new().with(c.red).on(c.bg_subtle),
                 ),
                 ("toggle.hover", Form::new().on(c.bg_overlay)),
@@ -798,7 +798,7 @@ pub(crate) fn add_default() {
                 ("character.control", Form::new().with(c.comment)),
                 ("replace", Form::new().with(c.current_line)),
                 (
-                    "replace.new_line.trailing",
+                    "replace.newline.trailing",
                     Form::new().with(c.red).on(c.current_line),
                 ),
                 ("toggle.hover", Form::new().on(c.current_line)),

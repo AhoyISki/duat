@@ -13,7 +13,7 @@ use std::{
 
 use duat_core::{
     Ns,
-    buffer::{BufferOpts, BufferParts, BufferTracker, PerBuffer},
+    buffer::{Buffer, BufferOpts, Moment, PerBuffer},
     form::{self, FormId},
     hook::{self, BufferClosed, BufferOpened, BufferPrinted, BufferUpdated},
     text::{Ghost, RegexHaystack, Spacer, Strs, Tags, txt},
@@ -24,16 +24,12 @@ struct BufferOptsParser {
     opts: BufferOpts,
 }
 
-static REPLACEMENT_TRACKER: BufferTracker = BufferTracker::new();
-static INDENT_TRACKER: BufferTracker = BufferTracker::new();
 static PARSERS: PerBuffer<BufferOptsParser> = PerBuffer::new();
 
 pub fn enable_parser(ns: Ns) {
-    hook::add::<BufferOpened>(|pa, handle| {
+    hook::add::<BufferOpened>(move |pa, handle| {
         let opts_parser = BufferOptsParser { opts: handle.read(pa).opts };
         PARSERS.register(pa, handle, opts_parser);
-        REPLACEMENT_TRACKER.register_buffer(handle.write(pa));
-        INDENT_TRACKER.register_buffer(handle.write(pa));
     })
     .grouped(ns);
 
@@ -42,25 +38,25 @@ pub fn enable_parser(ns: Ns) {
     let [nl_ns, space_ns] = [Ns::new(), Ns::new()];
     let cur_line_ns = Ns::new();
     let indent_ns = Ns::new();
+    let replacement_ns = Ns::new();
 
     hook::add::<BufferUpdated>(move |pa, handle| {
         let printed_line_ranges = handle.printed_line_ranges(pa);
-        let (parser, buffer) = PARSERS.write(pa, handle).unwrap();
+        let (parser, buf) = PARSERS.write(pa, handle).unwrap();
 
-        let opts_changed = buffer.opts != parser.opts;
-        parser.opts = buffer.opts;
+        let opts_changed = buf.opts != parser.opts;
+        parser.opts = buf.opts;
 
-        let mut parts = REPLACEMENT_TRACKER.parts(buffer).unwrap();
+        let moment = buf.moment_for(replacement_ns);
 
         if parser.opts.highlight_current_line {
-            hightlight_current_line(&mut parts, cur_line_ns);
+            hightlight_current_line(buf, cur_line_ns);
         }
 
         let nss = [nl_ns, space_ns];
-        replace_chars(parts, &printed_line_ranges, nss, opts_changed);
+        replace_chars(buf, &moment, &printed_line_ranges, nss, opts_changed);
 
-        let parts = INDENT_TRACKER.parts(buffer).unwrap();
-        show_indents(parts, &printed_line_ranges, indent_ns, opts_changed);
+        show_indents(buf, &moment, &printed_line_ranges, indent_ns, opts_changed);
     })
     .grouped(ns);
 
@@ -70,9 +66,11 @@ pub fn enable_parser(ns: Ns) {
     .grouped(ns);
 }
 
-fn hightlight_current_line(parts: &mut BufferParts, ns: Ns) {
+fn hightlight_current_line(buf: &mut Buffer, ns: Ns) {
     static CUR_LINE_INLAY: LazyLock<Ghost> =
         LazyLock::new(|| Ghost::overlay(txt!("[current_line] {Spacer}")));
+
+    let mut parts = buf.text_parts();
 
     let caret = parts.selections.main().caret();
     let line_range = parts.strs.line(caret.line()).byte_range();
@@ -86,7 +84,8 @@ fn hightlight_current_line(parts: &mut BufferParts, ns: Ns) {
 }
 
 fn replace_chars(
-    mut parts: BufferParts,
+    buf: &mut Buffer,
+    moment: &Moment,
     ranges: &[Range<usize>],
     nss: [Ns; 2],
     opts_changed: bool,
@@ -105,36 +104,32 @@ fn replace_chars(
         }};
     }
 
+    let ranges_to_update = buf.ranges_to_update_for(nss[0]);
+    let opts = buf.opts;
+    let mut parts = buf.text_parts();
+
     if opts_changed {
-        parts.ranges_to_update.add_ranges([..]);
+        ranges_to_update.add_ranges([..]);
     } else {
-        parts.ranges_to_update.add_ranges(
-            parts
-                .changes
-                .clone()
-                .map(|change| change.line_range(parts.strs)),
-        );
+        ranges_to_update.add_ranges(moment.iter().map(|change| change.line_range(parts.strs)));
     }
 
-    let lines_to_update = parts.ranges_to_update.select_from(ranges.iter().cloned());
+    let lines_to_update = ranges_to_update.select_from(ranges.iter().cloned());
     if lines_to_update.is_empty() {
         return;
     }
 
     let [nl_ns, space_ns] = nss;
 
-    let opts = parts.opts;
-
     let space_overlay = opts.space_char.map(|char| overlay!(char, "replace.space"));
 
-    let nl_overlay =
-        (opts.new_line_char != ' ').then(|| overlay!(opts.new_line_char, "replace.new_line"));
+    let nl_overlay = (opts.newline != ' ').then(|| overlay!(opts.newline, "replace.newline"));
     let nl_overlay_empty = opts
-        .new_line_on_empty
-        .map(|char| overlay!(char, "replace.new_line.empty"));
+        .newline_on_empty
+        .map(|char| overlay!(char, "replace.newline.empty"));
     let nl_overlay_trailing = opts
-        .new_line_trailing
-        .map(|char| overlay!(char, "replace.new_line.trailing"));
+        .newline_trailing
+        .map(|char| overlay!(char, "replace.newline.trailing"));
 
     for range in lines_to_update.iter().cloned() {
         parts.tags.remove(space_ns, range.start..range.end);
@@ -180,27 +175,32 @@ fn replace_chars(
         }
     }
 
-    parts.ranges_to_update.update_on(lines_to_update);
+    ranges_to_update.update_on(lines_to_update);
 }
 
-fn show_indents(mut parts: BufferParts, ranges: &[Range<usize>], ns: Ns, opts_changed: bool) {
+fn show_indents(
+    buf: &mut Buffer,
+    moment: &Moment,
+    ranges: &[Range<usize>],
+    ns: Ns,
+    opts_changed: bool,
+) {
+    let ranges_to_update = buf.ranges_to_update_for(ns);
+    let opts = buf.opts;
+    let mut parts = buf.text_parts();
+
     if opts_changed {
-        parts.ranges_to_update.add_ranges([..]);
+        ranges_to_update.add_ranges([..]);
     } else {
-        parts.ranges_to_update.add_ranges(
-            parts
-                .changes
-                .clone()
-                .map(|change| change.line_range(parts.strs)),
-        );
+        ranges_to_update.add_ranges(moment.iter().map(|change| change.line_range(parts.strs)));
     }
 
-    let lines_to_update = parts.ranges_to_update.select_from(ranges.iter().cloned());
+    let lines_to_update = ranges_to_update.select_from(ranges.iter().cloned());
     if lines_to_update.is_empty() {
         return;
     }
 
-    let popts = parts.opts.to_print_opts();
+    let popts = opts.to_print_opts();
     let sequences = lines_to_update
         .iter()
         .fold(Vec::<Vec<&Strs>>::new(), |mut seqs, range| {
@@ -243,7 +243,7 @@ fn show_indents(mut parts: BufferParts, ranges: &[Range<usize>], ns: Ns, opts_ch
                 .unwrap_or(parts.strs.len()..parts.strs.len())
         };
 
-        let mut state = IndentState::new(parts.opts.indent_str, parts.opts.tabstop);
+        let mut state = IndentState::new(opts.indent_str, opts.tabstop);
         let mut empty_lines = Vec::new();
 
         for line in parts.strs[prev_unindented.end..next_unindented.end].lines() {
@@ -265,7 +265,7 @@ fn show_indents(mut parts: BufferParts, ranges: &[Range<usize>], ns: Ns, opts_ch
         }
 
         let updated_range = prev_unindented.end..next_unindented.end;
-        parts.ranges_to_update.update_on([updated_range]);
+        ranges_to_update.update_on([updated_range]);
     }
 }
 

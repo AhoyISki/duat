@@ -15,30 +15,30 @@ use std::{
     iter::{Chain, Enumerate},
     marker::PhantomData,
     ops::Range,
-    path::PathBuf,
-    sync::{Arc, LazyLock, Mutex},
+    sync::{Arc, Mutex},
 };
 
+use bincode::{Decode, Encode};
 use gap_buf::GapBuffer;
 
 use super::{Point, Text};
 use crate::{
-    Ranges,
-    buffer::{Buffer, BufferId, BufferOpts, PathKind},
-    mode::Selections,
-    text::{Strs, Tags, TextRange, TextVersion},
+    Ns, Ranges,
+    buffer::Buffer,
+    text::{Strs, TextRange},
     utils::{add_shifts as add, merging_range_by_guess_and_lazy_shift},
 };
 
 /// The history of edits, contains all moments.
-#[derive(Default, Debug, bincode::Decode, bincode::Encode)]
+#[derive(Debug)]
 pub struct History {
     // Moments in regard to undoing/redoing.
     new_moment: Moment,
     undo_redo_moments: Vec<Moment>,
     cur_moment: usize,
-    // Moments in regard to BufferTrackers.
-    unread_moments: Vec<UnreadMoment>,
+    // Moments in regard to namespaces.
+    unread_moments: Mutex<Vec<(Ns, Moment)>>,
+    ranges_to_update: Arc<Mutex<(Vec<(Ns, Ranges)>, usize)>>,
     // The moment where a [`Buffer`] was saved.
     //
     // [`Buffer`]: crate::buffer::Buffer
@@ -48,12 +48,13 @@ pub struct History {
 impl History {
     /// Returns a new `History`.
     #[allow(clippy::new_without_default)]
-    pub const fn new() -> Self {
+    pub fn new(text: &Strs) -> Self {
         Self {
             new_moment: Moment::new(),
             undo_redo_moments: Vec::new(),
             cur_moment: 0,
-            unread_moments: Vec::new(),
+            unread_moments: Mutex::new(Vec::new()),
+            ranges_to_update: Arc::new(Mutex::new((Vec::new(), text.len()))),
             saved_moment: None,
         }
     }
@@ -64,9 +65,25 @@ impl History {
         guess_i: Option<usize>,
         change: Change<'static, String>,
     ) -> usize {
-        for unread in self.unread_moments.iter_mut() {
-            unread.add_change(guess_i, change.clone());
+        let mut ranges_to_update = self.ranges_to_update.lock().unwrap();
+        let (ranges_to_update, buf_len) = &mut *ranges_to_update;
+        *buf_len = buf_len.saturating_add_signed(change.shift()[0] as isize);
+
+        for (_, ranges) in ranges_to_update.iter_mut() {
+            ranges.shift_by(
+                change.start().byte(),
+                change.added_end().byte() as i32 - change.taken_end().byte() as i32,
+            );
+
+            let range = change.added_range();
+            ranges.add(range.start.byte()..range.end.byte());
         }
+
+        let unread_moments = self.unread_moments.get_mut().unwrap();
+        for (_, moment) in unread_moments.iter_mut() {
+            moment.add_change(guess_i, change.clone());
+        }
+
         self.new_moment.add_change(guess_i, change)
     }
 
@@ -103,13 +120,30 @@ impl History {
         } else {
             self.cur_moment += 1;
 
+            let mut ranges_to_update = self.ranges_to_update.lock().unwrap();
+            let unread_moments = self.unread_moments.get_mut().unwrap();
+
             let iter = self.undo_redo_moments[self.cur_moment - 1]
                 .iter()
                 .enumerate()
-                .map(|(i, change)| {
-                    for unread in self.unread_moments.iter_mut() {
-                        unread.add_change(Some(i), change.to_string_change());
+                .map(move |(i, change)| {
+                    let (ranges_to_update, buf_len) = &mut *ranges_to_update;
+                    *buf_len = buf_len.saturating_add_signed(change.shift()[0] as isize);
+
+                    for (_, ranges) in ranges_to_update.iter_mut() {
+                        ranges.shift_by(
+                            change.start().byte(),
+                            change.added_end().byte() as i32 - change.taken_end().byte() as i32,
+                        );
+
+                        let range = change.added_range();
+                        ranges.add(range.start.byte()..range.end.byte());
                     }
+
+                    for (_, moment) in unread_moments.iter_mut() {
+                        moment.add_change(Some(i), change.to_string_change());
+                    }
+
                     change
                 });
 
@@ -132,14 +166,31 @@ impl History {
         } else {
             self.cur_moment -= 1;
 
+            let mut ranges_to_update = self.ranges_to_update.lock().unwrap();
+            let unread_moments = self.unread_moments.get_mut().unwrap();
+
             let iter = self.undo_redo_moments[self.cur_moment]
                 .iter()
                 .undone()
                 .enumerate()
-                .map(|(i, change)| {
-                    for unread in self.unread_moments.iter_mut() {
-                        unread.add_change(Some(i), change.to_string_change());
+                .map(move |(i, change)| {
+                    let (ranges_to_update, buf_len) = &mut *ranges_to_update;
+                    *buf_len = buf_len.saturating_add_signed(change.shift()[0] as isize);
+
+                    for (_, ranges) in ranges_to_update.iter_mut() {
+                        ranges.shift_by(
+                            change.start().byte(),
+                            change.added_end().byte() as i32 - change.taken_end().byte() as i32,
+                        );
+
+                        let range = change.added_range();
+                        ranges.add(range.start.byte()..range.end.byte());
                     }
+
+                    for (_, moment) in unread_moments.iter_mut() {
+                        moment.add_change(Some(i), change.to_string_change());
+                    }
+
                     change
                 });
 
@@ -155,15 +206,33 @@ impl History {
     }
 }
 
-impl Clone for History {
-    fn clone(&self) -> Self {
-        Self {
-            new_moment: self.new_moment.clone(),
-            undo_redo_moments: self.undo_redo_moments.clone(),
-            cur_moment: self.cur_moment,
-            unread_moments: Vec::new(),
-            saved_moment: self.saved_moment,
-        }
+impl<Context> Decode<Context> for History {
+    fn decode<D: bincode::de::Decoder<Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(History {
+            new_moment: Decode::decode(decoder)?,
+            undo_redo_moments: Decode::decode(decoder)?,
+            cur_moment: Decode::decode(decoder)?,
+            unread_moments: Mutex::new(Vec::new()),
+            ranges_to_update: Arc::new(Mutex::new((Vec::new(), usize::decode(decoder)?))),
+            saved_moment: Decode::decode(decoder)?,
+        })
+    }
+}
+
+bincode::impl_borrow_decode!(History);
+
+impl Encode for History {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        self.new_moment.encode(encoder)?;
+        self.undo_redo_moments.encode(encoder)?;
+        self.cur_moment.encode(encoder)?;
+        self.ranges_to_update.lock().unwrap().1.encode(encoder)?;
+        self.saved_moment.encode(encoder)
     }
 }
 
@@ -188,13 +257,13 @@ impl Moment {
     }
 }
 
-impl<Context> bincode::Decode<Context> for Moment {
+impl<Context> Decode<Context> for Moment {
     fn decode<D: bincode::de::Decoder<Context = Context>>(
         decoder: &mut D,
     ) -> Result<Self, bincode::error::DecodeError> {
         Ok(Moment {
-            changes: bincode::Decode::decode(decoder)?,
-            shift_state: bincode::Decode::decode(decoder)?,
+            changes: Decode::decode(decoder)?,
+            shift_state: Decode::decode(decoder)?,
         })
     }
 }
@@ -204,13 +273,13 @@ impl<'de, Context> bincode::BorrowDecode<'de, Context> for Moment {
         decoder: &mut D,
     ) -> Result<Self, bincode::error::DecodeError> {
         Ok(Moment {
-            changes: bincode::Decode::decode(decoder)?,
-            shift_state: bincode::Decode::decode(decoder)?,
+            changes: Decode::decode(decoder)?,
+            shift_state: Decode::decode(decoder)?,
         })
     }
 }
 
-impl bincode::Encode for Moment {
+impl Encode for Moment {
     fn encode<E: bincode::enc::Encoder>(
         &self,
         encoder: &mut E,
@@ -580,16 +649,16 @@ impl<'s, S: std::fmt::Debug> std::fmt::Debug for Change<'s, S> {
     }
 }
 
-impl<Context> bincode::Decode<Context> for Change<'static, String> {
+impl<Context> Decode<Context> for Change<'static, String> {
     fn decode<D: bincode::de::Decoder<Context = Context>>(
         decoder: &mut D,
     ) -> Result<Self, bincode::error::DecodeError> {
         Ok(Self {
-            start: bincode::Decode::decode(decoder)?,
-            added: bincode::Decode::decode(decoder)?,
-            taken: bincode::Decode::decode(decoder)?,
-            added_end: bincode::Decode::decode(decoder)?,
-            taken_end: bincode::Decode::decode(decoder)?,
+            start: Decode::decode(decoder)?,
+            added: Decode::decode(decoder)?,
+            taken: Decode::decode(decoder)?,
+            added_end: Decode::decode(decoder)?,
+            taken_end: Decode::decode(decoder)?,
             _ghost: PhantomData,
         })
     }
@@ -600,305 +669,90 @@ impl<'de, Context> bincode::BorrowDecode<'de, Context> for Change<'static, Strin
         decoder: &mut D,
     ) -> Result<Self, bincode::error::DecodeError> {
         Ok(Self {
-            start: bincode::Decode::decode(decoder)?,
-            added: bincode::Decode::decode(decoder)?,
-            taken: bincode::Decode::decode(decoder)?,
-            added_end: bincode::Decode::decode(decoder)?,
-            taken_end: bincode::Decode::decode(decoder)?,
+            start: Decode::decode(decoder)?,
+            added: Decode::decode(decoder)?,
+            taken: Decode::decode(decoder)?,
+            added_end: Decode::decode(decoder)?,
+            taken_end: Decode::decode(decoder)?,
             _ghost: PhantomData,
         })
     }
 }
 
-impl bincode::Encode for Change<'static, String> {
+impl Encode for Change<'static, String> {
     fn encode<E: bincode::enc::Encoder>(
         &self,
         encoder: &mut E,
     ) -> Result<(), bincode::error::EncodeError> {
-        bincode::Encode::encode(&self.start, encoder)?;
-        bincode::Encode::encode(&self.added, encoder)?;
-        bincode::Encode::encode(&self.taken, encoder)?;
-        bincode::Encode::encode(&self.added_end, encoder)?;
-        bincode::Encode::encode(&self.taken_end, encoder)?;
+        Encode::encode(&self.start, encoder)?;
+        Encode::encode(&self.added, encoder)?;
+        Encode::encode(&self.taken, encoder)?;
+        Encode::encode(&self.added_end, encoder)?;
+        Encode::encode(&self.taken_end, encoder)?;
         Ok(())
     }
 }
 
-/// A tracker to keep up to date on changes to [`Buffer`]s.
-///
-/// This struct is capable of tracking all the [`Change`]s that happen
-/// to any `Buffer`. That happens through the
-/// [`BufferTracker::parts`] method, which gives a
-/// [`BufferParts`] struct, including the `Buffer`'s [`Strs`],
-/// [`Tags`], [`Selections`], as well as an [`ExactSizeIterator`] over
-/// the `Change`s that took place since the last call to this
-/// function, and a [`RangesToUpdate`] associated with the [`Buffer`].
-///
-/// The [`RangesToUpdate`] is a struct that keeps track of the ranges
-/// where changes have taken place, and informs you on which ones need
-/// to be updated based on what is currently visible on screen. At the
-/// start, this will include the full range of the `Buffer`, since
-/// Duat assumes that you will want to update the whole buffer.
-///
-/// This struct, alongside [`PerBuffer`], allows for a nice and
-/// standardised workflow for "parsers", which essentially update the
-/// [`Buffer`]s based on changes that took place and on what is
-/// presently visible. One example of such a parser can be seen in the
-/// `duat-treesitter` crate.
-///
-/// [`PerBuffer`]: super::PerBuffer
-pub struct BufferTracker {
-    id: LazyLock<TrackerId>,
-    tracked: Mutex<Vec<(BufferId, Arc<Mutex<Ranges>>)>>,
-}
-
-impl BufferTracker {
-    /// Returns a new `ChangesFetcher`.
+impl Buffer {
+    /// Get the latest [`Moment`] for a given [namespace]
     ///
-    /// This struct can be stored in a `static` variable, since this
-    /// function is `const`. You can then use the same
-    /// `ChangesFetcher` to fetch [`Change`]s from all [`Buffer`]s.
-    pub const fn new() -> Self {
-        Self {
-            id: LazyLock::new(TrackerId::new),
-            tracked: Mutex::new(Vec::new()),
-        }
-    }
-
-    /// Gets the [`BufferParts`] of a [`Buffer`].
+    /// This `Moment` contains every change that took place since the
+    /// last call with the same `Ns`. On the first call, it is assumed
+    /// that you don't care about previous [`Change`]s, so the
+    /// returned `Moment` will be empty.
     ///
-    /// This struct consists of the normal [`TextParts`], ([`Strs`],
-    /// [`Tags`], [`Selections`]), but it also includes an
-    /// [`Iterator`] over all the [`Change`]s that took place since
-    /// the last time this function was called by this tracker on this
-    /// `Buffer`.
+    /// This means that, in order to use this properly, you might want
+    /// to add a hook like this:
     ///
-    /// It is intended for borrowing the `Tags` mutably, whilst
-    /// reading from the `Strs`, `Selections` and the `Change`s that
-    /// took place.
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
+    /// let my_plugin_ns = Ns::new();
     ///
-    /// Returns [`None`] when calling this function on a [`Buffer`]
-    /// without first having called [`BufferTracker::register_buffer`]
-    /// on it.
+    /// hook::add::<BufferOpened>(move |pa, buffer| _ = buffer.read(pa).moment_for(my_plugin_ns));
+    /// ```
     ///
-    /// [`TextParts`]: crate::text::TextParts
-    /// [`Tags`]: crate::text::Tags
-    /// [`Selections`]: crate::mode::Selections
-    #[track_caller]
-    pub fn parts<'b>(&self, buf: &'b mut Buffer) -> Option<BufferParts<'b>> {
-        let mut tracked = self.tracked.lock().unwrap();
-
-        let buf_id = buf.buffer_id();
-
-        let (_, ranges) = tracked.iter_mut().find(|(id, ..)| *id == buf_id)?;
-        let unread = buf
-            .history
-            .unread_moments
-            .iter_mut()
-            .find(|unread| unread.id == *self.id)
-            .unwrap();
-
-        if unread.has_been_read {
-            unread.moment = Moment::new();
+    /// This way, you "register" the [`Buffer`], telling it "yes, I
+    /// henceforth care about the future `Changes`".
+    ///
+    /// # Note: Why is this necessary?
+    ///
+    /// You might reason that the first call to this function should
+    /// return a [`Moment`] with all prior [`Change`]s.
+    ///
+    /// However, one thing to note is that
+    ///
+    /// [namespace]: crate::Ns
+    pub fn moment_for(&self, ns: Ns) -> Moment {
+        let mut unread = self.history.unread_moments.lock().unwrap();
+        if let Some((_, moment)) = unread.iter_mut().find(|(other, _)| *other == ns) {
+            std::mem::take(moment)
         } else {
-            unread.has_been_read = true;
-
-            let mut ranges_lock = ranges.lock().unwrap_or_else(|err| err.into_inner());
-            for change in unread.moment.iter() {
-                ranges_lock.shift_by(
-                    change.start().byte(),
-                    change.added_end().byte() as i32 - change.taken_end().byte() as i32,
-                );
-
-                let range = change.added_range();
-                ranges_lock.add(range.start.byte()..range.end.byte());
-            }
-        }
-
-        let parts = buf.text.parts();
-
-        Some(BufferParts {
-            strs: parts.strs,
-            tags: parts.tags,
-            selections: parts.selections,
-            changes: unread.moment.iter(),
-            ranges_to_update: RangesToUpdate {
-                ranges: ranges.clone(),
-                buf_len: parts.strs.len(),
-                _ghost: PhantomData,
-            },
-            opts: &buf.opts,
-            path: &buf.path,
-        })
-    }
-
-    /// Registers a [`Buffer`] on the list of those that should be
-    /// tracked.
-    ///
-    /// Does nothing if the `Buffer` was already registered.
-    pub fn register_buffer(&self, buf: &mut Buffer) {
-        let mut tracked = self.tracked.lock().unwrap();
-
-        if !tracked.iter().any(|(id, ..)| *id == buf.buffer_id()) {
-            buf.history.unread_moments.push(UnreadMoment {
-                id: *self.id,
-                moment: Moment::new(),
-                has_been_read: false,
-            });
-            let ranges = Arc::new(Mutex::new(Ranges::new(0..buf.text().len())));
-            tracked.push((buf.buffer_id(), ranges));
-        }
-    }
-}
-
-impl Default for BufferTracker {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// This function is like [`TextParts`], but it includes information
-/// about [`Change`]s that took place since the last call to
-/// [`BufferTracker::parts`], as well as all the ranges of the
-/// [`Text`] that still need updating.
-///
-/// [`TextParts`]: crate::text::TextParts
-pub struct BufferParts<'b> {
-    /// The [`Strs`] of the whole [`Text`] of the [`Buffer`].
-    pub strs: &'b Strs,
-    /// The [`Tags`] of the [`Buffer`].
-    ///
-    /// This, unlike [`Strs`], allows mutation in the form of
-    /// [adding] and [removing] [`Tag`]s.
-    ///
-    /// [adding]: Tags::insert
-    /// [removing]: Tags::remove
-    /// [`Tag`]: crate::text::Tag
-    pub tags: Tags<'b>,
-    /// The [`Selections`] of the [`Buffer`].
-    pub selections: &'b Selections,
-    /// An [`ExactSizeIterator`] of all [`Change`]s that took place
-    /// since the last call to [`BufferTracker::parts`].
-    pub changes: Changes<'b>,
-    /// A list of the ranges that need to be updated.
-    ///
-    /// This should be used in conjunction with visible ranges
-    /// acquired from a [`Handle<Buffer>`], in order to update only
-    /// what is visible on screen.
-    ///
-    /// [`Handle<Buffer>`]: crate::context::Handle
-    pub ranges_to_update: RangesToUpdate<'b>,
-    /// The [`BufferOpts`] of the `Buffer` in question.
-    pub opts: &'b BufferOpts,
-    /// The [`PathKind`] of the `Buffer` in question.
-    path: &'b PathKind,
-}
-
-impl<'b> BufferParts<'b> {
-    /// A struct representing how many changes took place since the
-    /// creation of this `Text`.
-    ///
-    /// This struct tracks all [`Change`]s and [`Tag`]
-    /// additions/removals, giving you information about wether this
-    /// `Text` has changed, when comparing this to previous
-    /// [`TextVersion`]s of the same `Text`.
-    ///
-    /// This _does_ also include things like undoing and redoing. This
-    /// is done to keep track of all changes that took place, even to
-    /// previously extant states of the text.
-    ///
-    /// [`Tag`]: crate::text::Tag
-    pub fn version(&self) -> TextVersion {
-        let (tags, meta_tags) = self.tags.versions();
-
-        TextVersion {
-            strs: self.strs.version(),
-            tags,
-            meta_tags,
+            unread.push((ns, Moment::new()));
+            Moment::new()
         }
     }
 
-    /// The full path of the buffer.
-    ///
-    /// If there is no set path, returns `"*scratch buffer*#{id}"`.
-    pub fn path(&self) -> PathBuf {
-        self.path.path()
-    }
+    /// Returns a struct that keeps track of which byte ranges need to
+    /// be updated for a given [`Ns`].
+    pub fn ranges_to_update_for(&self, ns: Ns) -> RangesToUpdate {
+        let mut ranges_to_update = self.history.ranges_to_update.lock().unwrap();
+        let (ranges_to_update, _) = &mut *ranges_to_update;
 
-    /// The full path of the buffer.
-    ///
-    /// Returns [`None`] if the path has not been set yet, i.e., if
-    /// the buffer is a scratch buffer.
-    pub fn path_set(&self) -> Option<PathBuf> {
-        self.path.path_set()
-    }
+        let idx = if let Some(idx) = ranges_to_update
+            .iter_mut()
+            .position(|(other, _)| *other == ns)
+        {
+            idx
+        } else {
+            ranges_to_update.push((ns, Ranges::new(0..self.text.len())));
+            ranges_to_update.len() - 1
+        };
 
-    /// A [`Text`] from the full path of this [`PathKind`]
-    ///
-    /// # Formatting
-    ///
-    /// If the buffer's `path` was set:
-    ///
-    /// ```text
-    /// [buffer]{path}
-    /// ```
-    ///
-    /// If the buffer's `path` was not set:
-    ///
-    /// ```text
-    /// [buffer.new.scratch]*scratch buffer #{id}*
-    /// ```
-    pub fn path_txt(&self) -> Text {
-        self.path_kind().path_txt()
-    }
-
-    /// The buffer's name.
-    ///
-    /// If there is no set path, returns `"*scratch buffer #{id}*"`.
-    pub fn name(&self) -> String {
-        self.path.name()
-    }
-
-    /// The buffer's name.
-    ///
-    /// Returns [`None`] if the path has not been set yet, i.e., if
-    /// the buffer is a scratch buffer.
-    pub fn name_set(&self) -> Option<String> {
-        self.path.name_set()
-    }
-
-    /// A [`Text`] from the name of this [`PathKind`]
-    ///
-    /// The name of a [`Buffer`] widget is the same as the path, but
-    /// it strips away the current directory. If it can't, it will
-    /// try to strip away the home directory, replacing it with
-    /// `"~"`. If that also fails, it will just show the full
-    /// path.
-    ///
-    /// # Formatting
-    ///
-    /// If the buffer's `name` was set:
-    ///
-    /// ```text
-    /// [buffer]{name}
-    /// ```
-    ///
-    /// If the buffer's `name` was not set:
-    ///
-    /// ```text
-    /// [buffer.new.scratch]*scratch buffer #{id}*
-    /// ```
-    pub fn name_txt(&self) -> Text {
-        self.path.name_txt()
-    }
-
-    /// The type of [`PathBuf`]
-    ///
-    /// This represents the three possible states for a `Buffer`'s
-    /// `PathBuf`, as it could either represent a real `Buffer`,
-    /// not exist, or not have been defined yet.
-    pub fn path_kind(&self) -> PathKind {
-        self.path.clone()
+        RangesToUpdate {
+            list: self.history.ranges_to_update.clone(),
+            idx,
+        }
     }
 }
 
@@ -920,18 +774,18 @@ fn to_point(signed: [i32; 3]) -> Point {
 /// An [`Iterator`] over the [`Change`]s of a [`Moment`].
 #[doc(hidden)]
 #[derive(Debug, Clone)]
-pub struct Changes<'h> {
-    moment: &'h Moment,
+pub struct Changes<'m> {
+    moment: &'m Moment,
     iter: Enumerate<
         Chain<
-            std::slice::Iter<'h, Change<'static, String>>,
-            std::slice::Iter<'h, Change<'static, String>>,
+            std::slice::Iter<'m, Change<'static, String>>,
+            std::slice::Iter<'m, Change<'static, String>>,
         >,
     >,
     undo_shift: Option<[i32; 3]>,
 }
 
-impl<'h> Changes<'h> {
+impl<'m> Changes<'m> {
     /// Converts this [`Iterator`] to one over the undone version of
     /// the [`Change`]s.
     ///
@@ -956,8 +810,8 @@ impl<'h> Changes<'h> {
     }
 }
 
-impl<'h> Iterator for Changes<'h> {
-    type Item = Change<'h>;
+impl<'m> Iterator for Changes<'m> {
+    type Item = Change<'m>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let change = self.iter.next().map(|(i, change)| {
@@ -1014,13 +868,12 @@ impl<'h> ExactSizeIterator for Changes<'h> {}
 /// [`intersecting`]: RangesToUpdate::intersecting
 /// [`select_from`]: RangesToUpdate::select_from
 /// [`update_intersecting`]: RangesToUpdate::update_intersecting
-pub struct RangesToUpdate<'b> {
-    ranges: Arc<Mutex<Ranges>>,
-    buf_len: usize,
-    _ghost: PhantomData<&'b Buffer>,
+pub struct RangesToUpdate {
+    list: Arc<Mutex<(Vec<(Ns, Ranges)>, usize)>>,
+    idx: usize,
 }
 
-impl<'b> RangesToUpdate<'b> {
+impl RangesToUpdate {
     /// Adds ranges to the list of those that need updating.
     ///
     /// Later on, when duat prints on a range that intersects with
@@ -1040,10 +893,13 @@ impl<'b> RangesToUpdate<'b> {
     /// [`select_from`]: Self::select_from
     #[track_caller]
     pub fn add_ranges(&self, to_add: impl IntoIterator<Item = impl TextRange>) -> bool {
-        let mut ranges = self.ranges.lock().unwrap();
+        let mut ranges = self.list.lock().unwrap();
+        let (ranges, buf_len) = &mut *ranges;
+        let (_, ranges) = &mut ranges[self.idx];
+
         let mut has_changed = false;
         for range in to_add {
-            has_changed |= ranges.add(range.to_range(self.buf_len));
+            has_changed |= ranges.add(range.to_range(*buf_len));
         }
         has_changed
     }
@@ -1072,7 +928,10 @@ impl<'b> RangesToUpdate<'b> {
     /// [`Handle::printed_line_ranges`]: crate::context::Handle::printed_line_ranges
     /// [`update_intersecting`]: Self::update_intersecting
     pub fn update_on(&self, visible: impl IntoIterator<Item = impl TextRange>) -> bool {
-        let mut ranges = self.ranges.lock().unwrap();
+        let mut ranges = self.list.lock().unwrap();
+        let (ranges, _) = &mut *ranges;
+        let (_, ranges) = &mut ranges[self.idx];
+
         let mut has_changed = false;
         for range in visible {
             let range = range.to_range(u32::MAX as usize);
@@ -1099,7 +958,10 @@ impl<'b> RangesToUpdate<'b> {
     /// [`Handle::printed_line_ranges`]: crate::context::Handle::printed_line_ranges
     /// [`update_on`]: Self::update_on
     pub fn update_intersecting(&self, visible: impl IntoIterator<Item = impl TextRange>) -> bool {
-        let mut ranges = self.ranges.lock().unwrap();
+        let mut ranges = self.list.lock().unwrap();
+        let (ranges, _) = &mut *ranges;
+        let (_, ranges) = &mut ranges[self.idx];
+
         let mut has_changed = false;
         for range in visible {
             let range = range.to_range(u32::MAX as usize);
@@ -1139,7 +1001,10 @@ impl<'b> RangesToUpdate<'b> {
     /// [`intersecting`]: Self::intersecting
     /// [`select_from`]: Self::select_from
     pub fn cutoff(&self, list: impl IntoIterator<Item = impl TextRange>) -> Vec<Range<usize>> {
-        let ranges = self.ranges.lock().unwrap();
+        let mut ranges = self.list.lock().unwrap();
+        let (ranges, _) = &mut *ranges;
+        let (_, ranges) = &mut ranges[self.idx];
+
         list.into_iter()
             .flat_map(|range| ranges.iter_over(range.to_range(u32::MAX as usize)))
             .collect()
@@ -1170,7 +1035,10 @@ impl<'b> RangesToUpdate<'b> {
         &self,
         list: impl IntoIterator<Item = impl TextRange>,
     ) -> Vec<Range<usize>> {
-        let ranges = self.ranges.lock().unwrap();
+        let mut ranges = self.list.lock().unwrap();
+        let (ranges, _) = &mut *ranges;
+        let (_, ranges) = &mut ranges[self.idx];
+
         let mut intersecting = Vec::new();
 
         // There will almost never be more than 50 or so ranges in here, so
@@ -1216,7 +1084,10 @@ impl<'b> RangesToUpdate<'b> {
     /// [`cutoff`]: Self::cutoff
     /// [`intersecting`]: Self::intersecting
     pub fn select_from(&self, list: impl IntoIterator<Item = impl TextRange>) -> Vec<Range<usize>> {
-        let ranges = self.ranges.lock().unwrap();
+        let mut ranges = self.list.lock().unwrap();
+        let (ranges, _) = &mut *ranges;
+        let (_, ranges) = &mut ranges[self.idx];
+
         // There will almost never be more than 50 or so ranges in here, so
         // it's ok to be a little inefficient.
         // Feel free to optimize this if you wish to.
@@ -1232,42 +1103,10 @@ impl<'b> RangesToUpdate<'b> {
     }
 }
 
-impl<'b> std::fmt::Debug for RangesToUpdate<'b> {
+impl std::fmt::Debug for RangesToUpdate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RangesToUpdate")
-            .field("ranges", &*self.ranges.lock().unwrap())
-            .field("buf_len", &self.buf_len)
+            .field("ranges", &*self.list.lock().unwrap())
             .finish_non_exhaustive()
-    }
-}
-
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, bincode::Decode, bincode::Encode)]
-struct TrackerId(usize);
-
-impl TrackerId {
-    /// Returns a new [`TrackerId`]
-    fn new() -> Self {
-        use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
-        static COUNT: AtomicUsize = AtomicUsize::new(0);
-        Self(COUNT.fetch_add(1, Relaxed))
-    }
-}
-
-#[derive(Debug, bincode::Decode, bincode::Encode)]
-struct UnreadMoment {
-    id: TrackerId,
-    moment: Moment,
-    has_been_read: bool,
-}
-
-impl UnreadMoment {
-    /// Adds a [`Change`], resetting the [`Moment`] first if
-    /// necessary.
-    fn add_change(&mut self, guess_i: Option<usize>, change: Change<'static, String>) {
-        if self.has_been_read {
-            self.has_been_read = false;
-            self.moment = Moment::new();
-        }
-        self.moment.add_change(guess_i, change);
     }
 }

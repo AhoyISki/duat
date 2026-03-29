@@ -5,7 +5,8 @@ use std::{
 };
 
 use duat_core::{
-    buffer::{Buffer, BufferTracker, PerBuffer},
+    Ns,
+    buffer::{Buffer, PerBuffer},
     context::{self, Handle},
     data::Pass,
     hook::{self, BufferClosed, BufferOpened, BufferUpdated},
@@ -31,6 +32,7 @@ mod semantic_tokens;
 /// The struct responsible for updating each individual [`Buffer`].
 pub struct Parser {
     uri: Uri,
+    ns: Ns,
     pub servers: Vec<Server>,
     /// The [`SemanticToken`]s that have been applied to the `Buffer`.
     ///
@@ -50,7 +52,6 @@ impl Parser {
 }
 
 static PARSERS: PerBuffer<Parser> = PerBuffer::new();
-static TRACKER: BufferTracker = BufferTracker::new();
 
 pub fn setup_hooks() {
     #[derive(Default, storage::bincode::Decode, storage::bincode::Encode)]
@@ -89,9 +90,9 @@ pub fn setup_hooks() {
                 });
             }
 
-            TRACKER.register_buffer(handle.write(pa));
             let (parser, buffer) = PARSERS.register(pa, handle, Parser {
                 uri,
+                ns: Ns::new(),
                 servers: servers.clone(),
                 tokens: BufferTokens::default(),
             });
@@ -103,9 +104,9 @@ pub fn setup_hooks() {
     });
 
     hook::add::<BufferUpdated>(|pa, handle| {
-        if let Some((parser, buffer)) = PARSERS.write(pa, handle)
-            && let Some(parts) = TRACKER.parts(buffer)
-            && parts.changes.len() > 0
+        if let Some((parser, buf)) = PARSERS.write(pa, handle)
+            && let moment = buf.moment_for(parser.ns)
+            && moment.is_empty()
         {
             for server in &parser.servers {
                 let bytes = server
@@ -117,11 +118,10 @@ pub fn setup_hooks() {
                 let notification = DidChangeTextDocumentParams {
                     text_document: VersionedTextDocumentIdentifier {
                         uri: parser.uri.clone(),
-                        version: parts.version().strs as i32,
+                        version: buf.text().version().strs as i32,
                     },
-                    content_changes: parts
-                        .changes
-                        .clone()
+                    content_changes: moment
+                        .iter()
                         .map(|change| {
                             let start = change.start();
 
@@ -129,11 +129,11 @@ pub fn setup_hooks() {
                                 range: Some(lsp_types::Range {
                                     start: lsp_types::Position {
                                         line: start.line() as u32,
-                                        character: (start.byte_col(parts.strs) / bytes) as u32,
+                                        character: (start.byte_col(buf.text()) / bytes) as u32,
                                     },
                                     end: lsp_types::Position {
                                         line: change.taken_end().line() as u32,
-                                        character: change.taken_byte_col(parts.strs) as u32,
+                                        character: change.taken_byte_col(buf.text()) as u32,
                                     },
                                 }),
                                 range_length: None,
@@ -144,7 +144,7 @@ pub fn setup_hooks() {
                 };
                 server.send_notification::<DidChangeTextDocument>(notification);
 
-                server.send_semantic_tokens_request(parts.path(), handle, parser);
+                server.send_semantic_tokens_request(buf.path(), handle, parser);
             }
         }
     });

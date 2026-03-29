@@ -426,10 +426,11 @@ impl ReloadedBuffer {
             )
         };
 
+        let history = History::new(&buf);
         Ok(Self {
             buf,
             selections,
-            history: History::default(),
+            history,
             path_kind,
             is_active,
             was_reloaded: false,

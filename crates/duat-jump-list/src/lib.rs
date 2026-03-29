@@ -15,15 +15,14 @@ use std::{
 };
 
 use duat_core::{
-    Plugin, Plugins,
-    buffer::{Buffer, BufferParts, BufferTracker, PerBuffer},
+    Ns, Plugin, Plugins,
+    buffer::{Buffer, PerBuffer},
     context::Handle,
     data::Pass,
     hook::{self, BufferClosed, BufferOpened},
 };
 use gap_buf::GapBuffer;
 
-static TRACKER: BufferTracker = BufferTracker::new();
 static PARSERS: PerBuffer<Parser> = PerBuffer::new();
 
 /// [`Plugin`]: Adds a `Jumps` parser to every [`Buffer`]
@@ -37,14 +36,8 @@ pub struct JumpList;
 
 impl Plugin for JumpList {
     fn plug(self, _: &Plugins) {
-        hook::add::<BufferOpened>(|pa, handle| {
-            TRACKER.register_buffer(handle.write(pa));
-            PARSERS.register(pa, handle, Parser::new());
-        });
-
-        hook::add::<BufferClosed>(|pa, handle| {
-            PARSERS.unregister(pa, handle);
-        });
+        hook::add::<BufferOpened>(|pa, handle| _ = PARSERS.register(pa, handle, Parser::new()));
+        hook::add::<BufferClosed>(|pa, handle| _ = PARSERS.unregister(pa, handle));
     }
 }
 
@@ -137,17 +130,18 @@ impl Jump {
 }
 
 #[derive(Debug)]
-struct Parser(HashMap<JumpListId, (GapBuffer<Saved>, usize)>);
+struct Parser(HashMap<JumpListId, (GapBuffer<Saved>, usize)>, Ns);
 
 impl Parser {
     fn new() -> Self {
-        Self(HashMap::new())
+        Self(HashMap::new(), Ns::new())
     }
 
-    fn update(&mut self, parts: BufferParts) {
+    fn update(&mut self, buf: &mut Buffer) {
+        let moment = buf.moment_for(self.1);
         // If there are no elements, every future jump is already correctly
         // shifted, so no need to add these Changes lists
-        if parts.changes.len() == 0 || self.0.values().all(|(list, _)| list.is_empty()) {
+        if moment.is_empty() || self.0.values().all(|(list, _)| list.is_empty()) {
             return;
         }
 
@@ -169,7 +163,7 @@ impl Parser {
                 changes
             };
 
-            for change in parts.changes.clone() {
+            for change in moment.iter() {
                 let change = (
                     change.start().byte() as i32,
                     change.taken_end().byte() as i32,
@@ -265,10 +259,10 @@ impl BufferJumps for Handle {
         jump_list_id: JumpListId,
         allow_duplicates: bool,
     ) -> Option<JumpId> {
-        let (parser, buffer) = PARSERS.write(pa, self).unwrap();
-        parser.update(TRACKER.parts(buffer).unwrap());
+        let (parser, buf) = PARSERS.write(pa, self).unwrap();
+        parser.update(buf);
 
-        let selections = buffer.selections();
+        let selections = buf.selections();
         let (list, cur) = parser.0.entry(jump_list_id).or_default();
 
         if !allow_duplicates {
@@ -279,8 +273,7 @@ impl BufferJumps for Handle {
 
                 match jump {
                     Jump::Single(sel) => {
-                        if selections.len() == 1
-                            && selections.main().byte_range(buffer.text()) == *sel
+                        if selections.len() == 1 && selections.main().byte_range(buf.text()) == *sel
                         {
                             return None;
                         }
@@ -291,7 +284,7 @@ impl BufferJumps for Handle {
                             && sels
                                 .iter()
                                 .zip(selections.iter())
-                                .all(|(lhs, (rhs, _))| *lhs == rhs.byte_range(buffer.text()))
+                                .all(|(lhs, (rhs, _))| *lhs == rhs.byte_range(buf.text()))
                         {
                             return None;
                         }
@@ -305,7 +298,7 @@ impl BufferJumps for Handle {
 
         if selections.len() == 1 {
             list.push_back(Saved::Jump(
-                Jump::Single(selections.main().byte_range(buffer.text())),
+                Jump::Single(selections.main().byte_range(buf.text())),
                 jump_id,
             ));
             *cur += 1;
@@ -314,7 +307,7 @@ impl BufferJumps for Handle {
                 Jump::Multiple(
                     selections
                         .iter()
-                        .map(|(sel, _)| sel.byte_range(buffer.text()))
+                        .map(|(sel, _)| sel.byte_range(buf.text()))
                         .collect(),
                     selections.main_index(),
                 ),
@@ -327,8 +320,8 @@ impl BufferJumps for Handle {
     }
 
     fn move_jumps_by(&self, pa: &mut Pass, jump_list_id: JumpListId, mut by: i32) -> Option<Jump> {
-        let (parser, buffer) = PARSERS.write(pa, self).unwrap();
-        parser.update(TRACKER.parts(buffer).unwrap());
+        let (parser, buf) = PARSERS.write(pa, self).unwrap();
+        parser.update(buf);
 
         let mut changes = Changes::default();
         let mut last_seen = None;
@@ -414,8 +407,8 @@ impl BufferJumps for Handle {
         if let Some(jump_id) = self.record_jump(pa, jump_list_id, false) {
             jump_id
         } else {
-            let (parser, buffer) = PARSERS.write(pa, self).unwrap();
-            parser.update(TRACKER.parts(buffer).unwrap());
+            let (parser, buf) = PARSERS.write(pa, self).unwrap();
+            parser.update(buf);
 
             let (list, cur) = parser.0.get_mut(&jump_list_id).unwrap();
 
@@ -441,8 +434,8 @@ fn get_jump(
     id: JumpId,
     do_jump: bool,
 ) -> Option<Jump> {
-    let (parser, buffer) = PARSERS.write(pa, handle).unwrap();
-    parser.update(TRACKER.parts(buffer).unwrap());
+    let (parser, buf) = PARSERS.write(pa, handle).unwrap();
+    parser.update(buf);
 
     let (list, cur) = parser.0.entry(jump_list_id).or_default();
 

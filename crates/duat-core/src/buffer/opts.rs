@@ -189,47 +189,36 @@ pub struct BufferOpts {
     ///
     /// [`Form`]: crate::form::Form
     pub space_char: Option<char>,
-    /// A character to be printed on trailing whitespace
-    ///
-    /// The default is `None`
-    ///
-    /// This character will be printed with the
-    /// `replace.space.trailing` [`Form`]
-    ///
-    /// If it is `None`, it will be the same as `opts.space_char`.
-    ///
-    /// [`Form`]: crate::form::Form
-    pub space_char_trailing: Option<char>,
     /// Which `char` should be printed in new lines
     ///
     /// The default is `' '` (space character)
     ///
-    /// This character will be printed with the `replace.new_line`
+    /// This character will be printed with the `replace.newline`
     /// [`Form`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`Form`]: crate::form::Form
-    pub new_line_char: char,
+    pub newline: char,
     /// A character to be printed on the new line on empty strings
     ///
     /// The default is `None`
     ///
     /// This character will be printed with the
-    /// `replace.new_line.empty` [`Form`].
+    /// `replace.newline.empty` [`Form`].
     ///
-    /// If it is `None`, it will be the same as `opts.new_line_char`.
+    /// If it is `None`, it will be the same as `opts.newline_char`.
     ///
     /// [`Form`]: crate::form::Form
-    pub new_line_on_empty: Option<char>,
+    pub newline_on_empty: Option<char>,
     /// A character to be printed on trailing new lines
     ///
     /// The default is `None`
     ///
     /// This character will be printed with the
-    /// `replace.new_line.trailing` [`Form`].
+    /// `replace.newline.trailing` [`Form`].
     ///
     /// [`Form`]: crate::form::Form
-    pub new_line_trailing: Option<char>,
+    pub newline_trailing: Option<char>,
 }
 
 impl BufferOpts {
@@ -267,10 +256,9 @@ impl Default for BufferOpts {
             indent_str_on_empty: true,
             indent_tab_str: None,
             space_char: None,
-            space_char_trailing: None,
-            new_line_char: ' ',
-            new_line_on_empty: None,
-            new_line_trailing: Some('↵'),
+            newline: ' ',
+            newline_on_empty: None,
+            newline_trailing: Some('↵'),
         }
     }
 }

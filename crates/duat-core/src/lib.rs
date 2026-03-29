@@ -96,7 +96,9 @@ mod namespace {
     /// [removing]: crate::hook::remove
     /// [hooks]: crate::hook
     /// [`Gutter`]: ../duat/widgets/struct.Gutter.html
-    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    #[derive(
+        Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, bincode::Decode, bincode::Encode,
+    )]
     pub struct Ns(u32);
 
     impl Ns {

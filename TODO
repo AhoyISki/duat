@@ -36,6 +36,8 @@ FOR NEXT UPDATE:
 [x] Turn the config into a separate process I guess...
 [x] High priority hooks.
 [x] Opts should be given as argument.
+[x] Move all hook removal options to Opts.
+[x] Get rid of Taggers, GroupIds and Gutterers.
 
 KNOWN BUGS:
  HIGH PRIORITY:

@@ -24,7 +24,7 @@ use crossterm::event::{MouseButton, MouseEventKind};
 
 pub use crate::buffer::{
     buffer_id::BufferId,
-    history::{BufferParts, BufferTracker, Change, Changes, History, Moment, RangesToUpdate},
+    history::{Change, Changes, History, Moment, RangesToUpdate},
     opts::BufferOpts,
 };
 use crate::{
@@ -33,7 +33,7 @@ use crate::{
     hook::{self, BufferSaved, BufferUpdated, OnMouseEvent},
     mode::{Cursor, Selections, TwoPointsPlace},
     opts::PrintOpts,
-    text::{Point, Strs, StrsBuf, Text, TextMut, TextVersion, txt},
+    text::{Point, Strs, StrsBuf, Text, TextMut, TextParts, TextVersion, txt},
     ui::{Area, Coord, PrintInfo, PrintedLine, Widget},
 };
 
@@ -97,7 +97,11 @@ pub struct Buffer {
     pub(crate) layout_order: usize,
     history: History,
     cached_print_info: Mutex<Option<CachedPrintInfo>>,
-    /// The [`PrintOpts`] of this [`Buffer`]
+    /// The [`PrintOpts`] of this `Buffer`.
+    ///
+    /// This object, much like `PrintOpts`, implements [`Copy`], which
+    /// makes it convenient for moving it around without borrowing the
+    /// `Buffer`.
     ///
     /// You can use this member to change the way this `Buffer` will
     /// be printed specifically.
@@ -136,12 +140,14 @@ impl Buffer {
             None => (Text::with_default_main_selection(), PathKind::new_unset()),
         };
 
+        let history = History::new(&text);
+
         Self {
             id: BufferId::new(),
             path,
             text,
             layout_order: 0,
-            history: History::new(),
+            history,
             cached_print_info: Mutex::new(None),
             opts,
             prev_opts: Mutex::new(opts.to_print_opts()),
@@ -335,6 +341,21 @@ impl Buffer {
         self.text.as_mut()
     }
 
+    /// The parts that make up a [`Text`].
+    ///
+    /// This function is used when you want to [insert]/[remove]
+    /// [`Tag`]s (i.e., borrow the inner `InnerTags` mutably via
+    /// [`Tags`]), while still being able to read from the
+    /// [`Strs`] and [`Selections`].
+    ///
+    /// [insert]: crate::text::Tags::insert
+    /// [remove]: crate::text::Tags::remove
+    /// [`Tag`]: crate::text::Tag
+    /// [`Tags`]: crate::text::Tags
+    pub fn text_parts(&mut self) -> TextParts<'_> {
+        self.text.parts()
+    }
+
     /// The number of bytes in the buffer.
     pub fn len_bytes(&self) -> usize {
         self.text.len()
@@ -385,7 +406,7 @@ impl Buffer {
         (
             strs_buf,
             selections,
-            std::mem::replace(&mut self.history, History::new()),
+            std::mem::replace(&mut self.history, History::new(&self.text)),
         )
     }
 

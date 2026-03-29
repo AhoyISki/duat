@@ -7,13 +7,13 @@ use std::{
 
 use duat_core::{
     Ns, Ranges,
-    buffer::{Buffer, BufferParts, BufferTracker, Change, PerBuffer},
+    buffer::{Buffer, Change, Moment, PerBuffer, RangesToUpdate},
     context::{self, Handle},
     data::Pass,
     form::{self, FormId},
     hook::{self, BufferUpdated},
     opts::PrintOpts,
-    text::{Point, Strs},
+    text::{Point, Strs, TextParts},
 };
 use duat_filetype::{FileType, PassFileType};
 use tree_sitter::{
@@ -24,7 +24,6 @@ use tree_sitter::{
 use crate::{LangParts, Queries, lang_parts_of, query_from_path, tree::Trees};
 
 const PARSE_TIMEOUT: Duration = Duration::from_millis(3);
-static TRACKER: BufferTracker = BufferTracker::new();
 static PARSERS: PerBuffer<Parser> = PerBuffer::new();
 
 pub(crate) fn add_parser_hook() {
@@ -45,18 +44,26 @@ pub(crate) fn add_parser_hook() {
             parser.is_parsing = true;
 
             let visible_ranges = get_visible_ranges(&printed_lines);
-            let mut parts = TRACKER.parts(buf).unwrap();
+            let moment = buf.moment_for(parser.ns);
+            let ranges_to_update = buf.ranges_to_update_for(parser.ns);
+            let mut parts = buf.text_parts();
 
-            apply_changes(&parts, parser);
+            parser.apply_changes(&moment, &ranges_to_update, parts.strs);
 
             // In this case, the previously sent printed_lines may be outdated and
             // the TsParsers have been reset, so get new ones.
-            if is_queued && parts.changes.len() > 0 {
+            if is_queued && !moment.is_empty() {
                 let printed_lines = handle.printed_line_ranges(pa);
                 return async_parse(pa, handle, printed_lines, is_queued);
             }
 
-            if !parser.parse(&mut parts, &visible_ranges, Some(Instant::now()), handle) {
+            if !parser.parse(
+                &mut parts,
+                &ranges_to_update,
+                &visible_ranges,
+                Some(Instant::now()),
+                handle,
+            ) {
                 let handle = handle.clone();
                 let printed_lines = printed_lines.clone();
                 context::queue(move |pa| _ = async_parse(pa, &handle, printed_lines, true))
@@ -64,14 +71,11 @@ pub(crate) fn add_parser_hook() {
                 parser.is_parsing = false;
             }
 
-            for range in parts
-                .ranges_to_update
-                .select_from(printed_lines.iter().cloned())
-            {
+            for range in ranges_to_update.select_from(printed_lines.iter().cloned()) {
                 let range = range.start..range.end + 1;
                 parts.tags.remove_excl(ts_ns(), range.clone());
                 parser.highlight(range.clone(), &mut parts);
-                parts.ranges_to_update.update_on([range]);
+                ranges_to_update.update_on([range]);
             }
 
             true
@@ -96,7 +100,6 @@ pub(crate) fn add_parser_hook() {
             let mut parser = TsParser::new();
             parser.set_language(lang_parts.1).unwrap();
 
-            TRACKER.register_buffer(handle.write(pa));
             PARSERS.register(pa, handle, Parser {
                 parser,
                 trees: Trees::new([Ranges::new(0..len_bytes)]),
@@ -105,6 +108,7 @@ pub(crate) fn add_parser_hook() {
                 injections: Vec::new(),
                 ranges_to_inject: Ranges::new(0..len_bytes),
                 is_parsing: false,
+                ns: Ns::new(),
             });
 
             async_parse(pa, handle, printed_lines.clone(), false);
@@ -120,6 +124,7 @@ pub struct Parser {
     ranges_to_inject: Ranges,
     injections: Vec<Parser>,
     is_parsing: bool,
+    ns: Ns,
 }
 
 impl Parser {
@@ -132,7 +137,8 @@ impl Parser {
 
     fn parse(
         &mut self,
-        parts: &mut BufferParts,
+        parts: &mut TextParts,
+        ranges_to_update: &RangesToUpdate,
         visible_ranges: &[Range<usize>],
         start: Option<Instant>,
         handle: &Handle,
@@ -148,7 +154,9 @@ impl Parser {
         let mut parsed_at_least_one_region = false;
 
         for range in visible_ranges.iter() {
-            let Some(parsed_a_tree) = self.parse_trees(range.clone(), parts, start) else {
+            let Some(parsed_a_tree) =
+                self.parse_trees(range.clone(), parts, ranges_to_update, start)
+            else {
                 return false;
             };
 
@@ -171,14 +179,14 @@ impl Parser {
             });
 
         for range in ranges_to_inject {
-            self.inject(range, parts, handle);
+            self.inject(range, parts, ranges_to_update, handle);
             if must_yield(start) {
                 return false;
             }
         }
 
         for injection in self.injections.iter_mut() {
-            if !injection.parse(parts, visible_ranges, start, handle) {
+            if !injection.parse(parts, ranges_to_update, visible_ranges, start, handle) {
                 return false;
             }
         }
@@ -189,7 +197,8 @@ impl Parser {
     fn parse_trees(
         &mut self,
         range: Range<usize>,
-        parts: &mut BufferParts,
+        parts: &mut TextParts,
+        ranges_to_update: &RangesToUpdate,
         start: Option<Instant>,
     ) -> Option<bool> {
         let mut callback = |_: &ParseState| match must_yield(start) {
@@ -231,7 +240,7 @@ impl Parser {
             };
 
             if let Some(ts_tree) = tree.ts_tree.as_mut() {
-                parts.ranges_to_update.add_ranges(
+                ranges_to_update.add_ranges(
                     ts_tree
                         .changed_ranges(&new_ts_tree)
                         .map(|r| r.start_byte..r.end_byte),
@@ -239,7 +248,7 @@ impl Parser {
 
                 *ts_tree = new_ts_tree;
             } else {
-                parts.ranges_to_update.add_ranges(tree.region.iter());
+                ranges_to_update.add_ranges(tree.region.iter());
                 tree.ts_tree = Some(new_ts_tree);
             }
 
@@ -254,7 +263,7 @@ impl Parser {
         Some(parsed_at_least_one_region)
     }
 
-    fn highlight(&self, range: Range<usize>, parts: &mut BufferParts) {
+    fn highlight(&self, range: Range<usize>, parts: &mut TextParts) {
         let buf = TsBuf(parts.strs);
 
         let ns = ts_ns();
@@ -290,7 +299,13 @@ impl Parser {
         }
     }
 
-    fn inject(&mut self, range: Range<usize>, parts: &mut BufferParts, handle: &Handle) {
+    fn inject(
+        &mut self,
+        range: Range<usize>,
+        parts: &mut TextParts,
+        ranges_to_update: &RangesToUpdate,
+        handle: &Handle,
+    ) {
         let range = self
             .injections
             .iter()
@@ -368,7 +383,7 @@ impl Parser {
                     .find(|injection| injection.lang_parts.0 == lang_parts.0)
                 {
                     if injection.trees.add_region(Ranges::new(cap_range.clone())) {
-                        parts.ranges_to_update.add_ranges([cap_range.clone()]);
+                        ranges_to_update.add_ranges([cap_range.clone()]);
                     }
                 } else {
                     let mut parser = TsParser::new();
@@ -381,9 +396,10 @@ impl Parser {
                         ranges_to_inject: Ranges::new(0..parts.strs.len()),
                         injections: Vec::new(),
                         is_parsing: false,
+                        ns: self.ns,
                     });
 
-                    parts.ranges_to_update.add_ranges([cap_range.clone()]);
+                    ranges_to_update.add_ranges([cap_range.clone()]);
                 };
 
                 observed_injections.push((lang_parts.0, cap_range.clone()));
@@ -403,7 +419,7 @@ impl Parser {
                     .next()
                     .is_none()
                 {
-                    parts.ranges_to_update.add_ranges(tree.region.iter());
+                    ranges_to_update.add_ranges(tree.region.iter());
                     to_remove.push((i, range));
                 }
             }
@@ -717,6 +733,14 @@ impl Parser {
             injection.edit(edit);
         }
     }
+
+    fn apply_changes(&mut self, moment: &Moment, ranges_to_update: &RangesToUpdate, strs: &Strs) {
+        for change in moment.iter() {
+            ranges_to_update.add_ranges([change.line_range(strs)]);
+            let edit = input_edit(change, strs);
+            self.edit(&edit);
+        }
+    }
 }
 
 /// Does a forced parsing of the handle
@@ -726,14 +750,17 @@ pub(crate) fn sync_parse<'p>(
 ) -> Option<(&'p Parser, &'p Buffer)> {
     let printed_lines = handle.printed_line_ranges(pa);
     let visible_ranges = get_visible_ranges(&printed_lines);
-    let (parser, buffer) = PARSERS.write(pa, handle)?;
+    let (parser, buf) = PARSERS.write(pa, handle)?;
 
-    let mut parts = TRACKER.parts(buffer).unwrap();
+    let moment = buf.moment_for(parser.ns);
+    let ranges_to_update = buf.ranges_to_update_for(parser.ns);
+    let mut parts = buf.text_parts();
 
-    apply_changes(&parts, parser);
-    parser.parse(&mut parts, &visible_ranges, None, handle);
+    parser.apply_changes(&moment, &ranges_to_update, parts.strs);
 
-    Some((parser, buffer))
+    parser.parse(&mut parts, &ranges_to_update, &visible_ranges, None, handle);
+
+    Some((parser, buf))
 }
 
 /// The Key for tree-sitter
@@ -800,17 +827,6 @@ fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TsPoint {
     };
 
     TsPoint::new(to.line(), col)
-}
-
-#[track_caller]
-fn apply_changes(parts: &BufferParts<'_>, parser: &mut Parser) {
-    for change in parts.changes.clone() {
-        parts
-            .ranges_to_update
-            .add_ranges([change.line_range(parts.strs)]);
-        let edit = input_edit(change, parts.strs);
-        parser.edit(&edit);
-    }
 }
 
 #[track_caller]

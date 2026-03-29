@@ -531,7 +531,7 @@ pub mod prelude {
     use crate::setup::ALREADY_PLUGGED;
     pub use crate::{
         Ns, Plugin, Plugins,
-        buffer::{Buffer, BufferTracker},
+        buffer::Buffer,
         cmd, colorscheme,
         context::{self, Handle},
         cursor,
