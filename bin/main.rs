@@ -155,6 +155,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         clear_path(&cache_dir.join("duat"));
     }
+    if args.clean
+        && let Some(local_dir) = dirs_next::data_local_dir()
+    {
+        clear_path(&local_dir.join("duat"));
+    }
 
     if args.clean
         && let Err(err) = cargo::clean(crate_dir, true)
@@ -473,7 +478,7 @@ fn decide_on_new_config(
 /// Doesn't give up upon failing to remove some individual item.
 fn clear_path(path: &Path) {
     let Ok(entries) = std::fs::read_dir(path) else {
-        let _ = std::fs::remove_file(path);
+        _ = std::fs::remove_file(path);
         return;
     };
 
@@ -481,9 +486,9 @@ fn clear_path(path: &Path) {
         if let Ok(ft) = entry.file_type()
             && ft.is_dir()
         {
-            let _ = std::fs::remove_dir_all(entry.path());
+            _ = std::fs::remove_dir_all(entry.path());
         } else {
-            let _ = std::fs::remove_file(entry.path());
+            _ = std::fs::remove_file(entry.path());
         }
     }
 }

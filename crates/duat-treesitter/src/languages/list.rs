@@ -353,7 +353,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/ObserverOfTime/tree-sitter-gitattributes",
             &["@ObserverOfTime"],
         ),
-        LanguageOptions::pair_fn(
+        LanguageOptions::pair_const(
             "gitcommit",
             "https://github.com/gbprod/tree-sitter-gitcommit",
             &["@gbprod"],
@@ -915,7 +915,11 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/ObserverOfTime/tree-sitter-pymanifest",
             &["@ObserverOfTime"],
         ),
-        LanguageOptions::arborium("python", "python", &["@stsewd", "@theHamsta"]),
+        LanguageOptions::pair_const(
+            "python",
+            "https://github.com/tree-sitter/tree-sitter-python",
+            &["@stsewd", "@theHamsta"],
+        ),
         LanguageOptions::pair_const("ql", "https://github.com/tree-sitter/tree-sitter-ql", &[
             "@pwntester",
         ]),

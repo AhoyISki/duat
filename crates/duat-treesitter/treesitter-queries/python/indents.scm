@@ -46,14 +46,9 @@
   (#set! indent.immediate 1)) @indent.begin
 
 (ERROR
-  "try"
-  .
-  ":"
-  (ERROR
-    (block
-      (expression_statement
-        (identifier) @_except) @indent.branch))
-  (#eq? @_except "except"))
+  (try_statement
+    .
+    (ERROR) @indent.branch))
 
 ((function_definition) @indent.begin
   (#set! indent.immediate 1))
