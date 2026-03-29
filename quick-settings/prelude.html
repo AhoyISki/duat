@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24d6e478.js";
+            window.path_to_searchindex_js = "../searchindex-75db7144.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -240,23 +240,40 @@ values.</p>
 use duat::prelude::*;
 
 fn setup(opts: &amp;mut Opts) {
-    // Default options for the Buffer widget
-
     // Buffer options:
+    // Highlights the current line (not currently working).
+    opts.highlight_current_line = false;
+    // Wrap lines instead of letting them go offscreen if too long.
     opts.wrap_lines = false;
+    // Wether to wrap on words (not currently working).
     opts.wrap_on_word = false;
     // Where to wrap, as opposed to at the rightmost edge.
     opts.wrapping_cap = None::&lt;u32&gt;;
     // Indent wrapped lines.
     opts.indent_wraps = true;
+    // How many spaces a tab (key included) should be.
     opts.tabstop = 4;
     // Minimum cursor distance from the top and bottom edges.
     opts.scrolloff.x = 3;
     // Minimum cursor distance from the left and right edges.
     opts.scrolloff.y = 3;
-    opts.extra_word_chars = &amp;[];
     // Forces scrolloff at the end of a line.
     opts.force_scrolloff = false;
+    opts.extra_word_chars = &amp;[];
+    // How to show indentation levels.
+    opts.indent_str = Some("▎");
+    // Wether to show the indent_str on empty lines.
+    opts.indent_str_on_empty = true;
+    // Wether to show the indent_str on empty lines.
+    opts.indent_tab_str = None;
+    // A character to show on top of spaces.
+    opts.space_char = None;
+    // Which character to show on newlines.
+    opts.new_line = ' ';
+    // Which character to show on an empty newline.
+    opts.new_line_on_empty = None;
+    // Which character to show on trailing newlines.
+    opts.new_line_trailing = Some('↵');
 
     // General settings:
     // Place the bottom widgets on the top of the screen.
@@ -265,6 +282,18 @@ fn setup(opts: &amp;mut Opts) {
     opts.one_line_footer = false;
     // Shows available keybindings
     opts.help_key = Some(KeyEvent::new(KeyCode::Char('?'), mode::KeyMod::CONTROL));
+
+    // Default formatting for the StatusLine
+    opts.fmt_status(|pa| {
+        // If on one line footer mode:
+        let mode = mode_txt();
+        let param = duat_param_txt();
+        status!("{Spacer}{name_txt} {mode} {sels_txt} {param} {main_txt}");
+        // If on regular mode (default):
+        let mode = mode_txt();
+        let param = duat_param_txt();
+        status!("{mode} {name_txt}{Spacer}{sels_txt} {param} {main_txt}")
+    });
 
     // duatmode settings:
     // Inserts a \t instead of spaces when pressing Tab
@@ -319,28 +348,32 @@ fn setup(opts: &amp;mut Opts) {
     // How to format each message
     opts.logs.fmt(|rec| todo!("default log fmt"));
     opts.logs.close_on_unfocus = true;
-    // It can be shown via the "logs" command
+    // It can be shown via the "logs" command.
     opts.logs.hidden = false;
-    // Where to place it
+    // Where to place it.
     opts.logs.side = ui::Side::Below;
-    // Is ignored when the side is Left or Right
+    // Is ignored when the side is Left or Right.
     opts.logs.height = 8.0;
-    // Is ignored when the side is Above or Below
+    // Is ignored when the side is Above or Below.
     opts.logs.width = 50.0;
-    // Wether to show the source of the message (on the default fmt)
+    // Wether to show the source of the message (on the default fmt).
     opts.logs.show_source = true;
 
-    // Default options for the StatusLine widget
-    opts.fmt_status(|pa| {
-        // If on one line footer mode:
-        let mode = mode_txt();
-        let param = duat_param_txt();
-        status!("{Spacer}{name_txt} {mode} {sels_txt} {param} {main_txt}");
-        // If on regular mode (default):
-        let mode = mode_txt();
-        let param = duat_param_txt();
-        status!("{mode} {name_txt}{Spacer}{sels_txt} {param} {main_txt}")
-    });
+    // Hook enabling/disabling options
+    // Enables the default BufferOpts parser.
+    opts.enabled_hooks.default_opts_parser = true;
+    // Automatically reloads the configuration when saving.
+    opts.enabled_hooks.reload_on_save = true;
+    // Automatically reloads Bufferss when external changes happen.
+    opts.enabled_hooks.auto_reload_buffers = true;
+    // Automatically shows the WhichKey widget.
+    opts.enabled_hooks.show_whichkey = true;
+    // Adds the default buffer widgets to every Buffer.
+    opts.enabled_hooks.default_buffer_widgets = true;
+    // Adds the default FooterWidgets to each window.
+    opts.enabled_hooks.default_footer_widgets = true;
+    // Save cursor positions when closing Bufferss.
+    opts.enabled_hooks.cache_cursor_position = true;
 }</code></pre>
 <p>For more information about modification of the <code>StatusLine</code>, see the chapter on
 <a href="../../scripting-duat/mod-status.html">modding the <code>StatusLine</code></a>. For information on modding the <code>Notifications</code> and
