@@ -70,7 +70,7 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     /// This, alongside [`RawUi::open`] is the only functions that
     /// will be executed from the Duat application. This means
     /// that any changes on `static` variables will not be
-    /// reflected on the config [`Command`], so keep that in mind.
+    /// reflected on the config process, so keep that in mind.
     fn close();
 
     ////////// Configuration address space functions.

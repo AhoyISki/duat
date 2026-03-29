@@ -470,7 +470,7 @@ macro_rules! doc_duat {
                 
                 pub use $crate::{
                     Ns, Plugin, Plugins,
-                    buffer::{Buffer, BufferTracker},
+                    buffer::Buffer,
                     cmd,
                     context::{self, Handle},
                     data::{self, Pass},

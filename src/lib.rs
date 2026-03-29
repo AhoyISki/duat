@@ -106,7 +106,7 @@
 //!
 //! These are only some of the options available to configure Duat,
 //! you can also add [custom commands], place widgets around other
-//! [`Widget`]s and [windows], create [parser]s that can track every
+//! [`Widget`]s and [windows], create parsers that can track every
 //! change on a [`Buffer`], and many other things.
 //!
 //! Duat also comes with a fully fledged [text creation system], which
@@ -294,7 +294,6 @@
 //! [dependencies section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 //! [custom commands]: crate::prelude::cmd
 //! [windows]: crate::hook::WindowOpened
-//! [parser]: duat_core::buffer::BufferTracker
 //! [`Buffer`]: crate::prelude::Buffer
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 

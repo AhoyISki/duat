@@ -659,8 +659,6 @@ impl PartialEq<Handle> for BufferUnloaded {
 ///     text::{Strs, Tags},
 /// };
 ///
-/// static TRACKER: BufferTracker = BufferTracker::new();
-///
 /// fn setup() {
 ///     let ns = Ns::new();
 ///     let tag = form::id_of!("non_ascii_char").to_tag(50);
@@ -674,18 +672,19 @@ impl PartialEq<Handle> for BufferUnloaded {
 ///         }
 ///     };
 ///
-///     hook::add::<BufferOpened>(move |pa, handle| {
-///         TRACKER.register_buffer(handle.write(pa));
+///     hook::add::<BufferOpened>(move |pa, buffer| {
+///         let _ = buffer.read(pa).moment_for(ns);
 ///
-///         let mut parts = handle.text_parts(pa);
+///         let mut parts = buffer.text_parts(pa);
 ///         let range = Point::default()..parts.strs.end_point();
 ///         hl_non_ascii(&mut parts.tags, parts.strs, range);
 ///     });
 ///
-///     hook::add::<BufferUpdated>(move |pa, handle| {
-///         let mut parts = TRACKER.parts(handle.write(pa)).unwrap();
+///     hook::add::<BufferUpdated>(move |pa, buffer| {
+///         let moment = buffer.read(pa).moment_for(ns);
 ///
-///         for change in parts.changes {
+///         let mut parts = buffer.text_parts(pa);
+///         for change in moment.iter() {
 ///             parts.tags.remove(ns, change.added_range());
 ///             hl_non_ascii(&mut parts.tags, parts.strs, change.added_range())
 ///         }
@@ -693,16 +692,18 @@ impl PartialEq<Handle> for BufferUnloaded {
 /// }
 /// ```
 ///
-/// The [`BufferTracker`] will keep track of each registered
-/// [`Buffer`], telling you about every new [`Change`] that took place
-/// since the last call to [`BufferTracker::parts`]. The
-/// `BufferTracker::parts` function works much like [`Text::parts`],
-/// by separating the [`Strs`], [`Tags`] and [`Selections`], letting
-/// you modify the tags, without permitting further edits to the
-/// `Text`.
+/// You can see here that I called [`Buffer::moment_for`]. This
+/// function will give, for a given [namespace], a list of all
+/// [`Change`]s that have taken place since the last call of that
+/// function with the same namespace. This is very useful for tracking
+/// alterations to the `Buffer` and acting on them accordingly.
 ///
-/// This is a nice way to automatically keep track of the changes, and
-/// it will work even if the function isn't called frequently.
+/// In this case, I'm just taking the added range of changes and
+/// adding tags to every non ascii character in them.
+///
+/// Note that the `moment_for` function will work anywhere (that you
+/// have a [`Pass`], this is just a common situation where you'd use
+/// it.
 ///
 /// # Arguments
 ///
@@ -720,8 +721,7 @@ impl PartialEq<Handle> for BufferUnloaded {
 /// [`Text`]: crate::text::Text
 /// [`Text::parts`]: crate::text::Text::parts
 /// [`Text::replace_range`]: crate::text::Text::replace_range
-/// [`BufferTracker`]: crate::buffer::BufferTracker
-/// [`BufferTracker::parts`]: crate::buffer::BufferTracker::parts
+/// [namespace]: crate::Ns
 pub struct BufferUpdated(pub(crate) Handle);
 
 impl Hookable for BufferUpdated {

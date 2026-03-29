@@ -104,7 +104,6 @@ use crate::ui::Widget;
 ///
 /// [`Mutex`]: std::sync::Mutex
 /// [`MutexGuard`]: std::sync::MutexGuard
-/// [parser]: crate::buffer::BufferTracker
 /// [`Text`]: crate::text::Text
 /// [_at the same time_]: Pass::write_many
 #[derive(Debug)]

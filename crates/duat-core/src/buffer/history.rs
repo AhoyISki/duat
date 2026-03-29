@@ -9,8 +9,8 @@
 //! well as Kakoune style undoing (multiple [`Change`]s per
 //! [`Moment`]).
 //!
-//! [`undo`]: Text::undo
-//! [`redo`]: Text::redo
+//! [`undo`]: crate::text::TextMut::undo
+//! [`redo`]: crate::text::TextMut::redo
 use std::{
     iter::{Chain, Enumerate},
     marker::PhantomData,
@@ -371,10 +371,6 @@ impl Moment {
 }
 
 /// A change in a buffer, with a start, taken text, and added text.
-///
-/// If you acquired this `Change` from a [`BufferTracker::parts`]
-/// call, you need not worry about adding it to the ranges that need
-/// to be updated, as that has already been done.
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change<'h, S = &'h str> {
     start: [i32; 3],
@@ -849,18 +845,29 @@ impl<'h> ExactSizeIterator for Changes<'h> {}
 /// - Firstly, this should all probably happen in the
 ///   [`BufferUpdated`] hook, which is called right before printing to
 ///   the screen.
-/// - Before calling [`BufferTracker::parts`], you should retrieve the
-///   ranges that you care about updating, either through
-///   [`Handle::full_printed_range`] or
-///   [`Handle::printed_line_ranges`]. This is to update only what is
-///   visible, conserving cpu resources.
+/// - In it, you can call [`Handle::full_printed_range`] or
+///   [`Handle::printed_line_ranges`]. This is to get only the ranges
+///   that are visible, conserving cpu resources.
 /// - Then, with the received ranges, you can call
 ///   [`RangesToUpdate::cutoff`], [`intersecting`], or
 ///   [`select_from`], in order to filter out which ranges need to be
 ///   updated.
 /// - If updating the ranges was successfull, you can call
 ///   [`RangesToUpdate::update_on`] or [`update_intersecting`], in
-///   order to declare those ranges as updated.
+///   order to declare those ranges as updated, removing them from the
+///   list.
+///
+/// This is the general standardized loop which allows efficient
+/// plugins to update things only when necessary.
+///
+/// Some things to note:
+///
+/// - [`Change`]s applied to the `Buffer`'s [`Text`] are automatically
+///   added to the `RangesToUpdate`.
+/// - By calling `Handle::printed_line_ranges` and passing the list to
+///   `RangesToUpdate::select_from`, you can effectively obtain all
+///   lines that have changed on screen, which is a frequently used
+///   pattern.
 ///
 /// [`BufferUpdated`]: crate::hook::BufferUpdated
 /// [`Handle::full_printed_range`]: crate::context::Handle::full_printed_range

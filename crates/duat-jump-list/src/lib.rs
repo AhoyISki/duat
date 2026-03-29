@@ -183,9 +183,8 @@ enum Saved {
 
 /// A trait for recording and jumping [`Selections`]
 ///
-/// This trait makes use of an internal [`BufferTracker`], so it
-/// automatically takes into consideration any [`Change`]s that may
-/// have taken place in between jumps.
+/// This trait automatically takes into consideration any [`Change`]s
+/// that may have taken place in between jumps.
 ///
 /// [`Selections`]: duat_core::mode::Selections
 /// [`Change`]: duat_core::buffer::Change

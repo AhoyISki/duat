@@ -111,11 +111,11 @@ fn setup(opts: &mut Opts) {
     // A character to show on top of spaces.
     opts.space_char = None;
     // Which character to show on newlines.
-    opts.new_line = ' ';
+    opts.newline = ' ';
     // Which character to show on an empty newline.
-    opts.new_line_on_empty = None;
+    opts.newline_on_empty = None;
     // Which character to show on trailing newlines.
-    opts.new_line_trailing = Some('↵');
+    opts.newline_trailing = Some('↵');
 
     // General settings:
     // Place the bottom widgets on the top of the screen.

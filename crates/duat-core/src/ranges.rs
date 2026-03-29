@@ -13,16 +13,14 @@ use gap_buf::{GapBuffer, gap_buffer};
 
 use crate::utils::merging_range_by_guess_and_lazy_shift;
 
-/// A list of non intersecting exclusive [`Range<usize>`]s
+/// A list of non intersecting exclusive [`Range<usize>`]s.
 ///
-/// The primary purpose of this struct is to serve [parser]s by
-/// telling Duat which ranges need to be updated. This lets Duat
-/// minimize as much as possible the amount of work done to update
-/// the [`Text`] when it changes in a [`Buffer`].
+/// This is useful for tracking ranges within a [`Text`], wether it is
+/// ranges that need updating, or that have some property, this struct
+/// is useful for efficintly keeping track of stuff.
 ///
 /// [`Text`]: crate::text::Text
 /// [`Buffer`]: crate::buffer::Buffer
-/// [parser]: crate::buffer::BufferTracker
 #[derive(Clone, Default, Debug)]
 pub struct Ranges {
     list: GapBuffer<Range<i32>>,
