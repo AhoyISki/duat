@@ -30,7 +30,7 @@ use crate::{
     opts::PrintOpts,
     text::{Point, Text, TwoPoints},
     ui::{
-        Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs,
+        Columns, Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs,
         traits::{RawArea, RawUi, UiPass},
     },
 };
@@ -523,6 +523,21 @@ impl RwArea {
         self.0.read(pa).height()
     }
 
+    /// The [`TwoPoints`] where a [`Coord`] is found
+    ///
+    /// Returns [`None`] if either the `RawArea` does not contain
+    /// the given `Coord`, or if the `Coord` is in a position where
+    /// [`Text`] is not printed.
+    pub fn points_at_coord(
+        &self,
+        pa: &Pass,
+        text: &Text,
+        coord: Coord,
+        opts: PrintOpts,
+    ) -> Option<TwoPointsPlace> {
+        self.0.read(pa).points_at_coord(text, coord, opts)
+    }
+
     /// The [`Coord`] where the given [`TwoPoints`] would be printed
     ///
     /// Returns [`None`] if the `TwoPoints` are not part of the
@@ -537,19 +552,23 @@ impl RwArea {
         self.0.read(pa).coord_at_points(text, points, opts)
     }
 
-    /// The [`TwoPoints`] where a [`Coord`] is found
+    /// Returns column information about a [`TwoPoints`].
     ///
-    /// Returns [`None`] if either the `RawArea` does not contain
-    /// the given `Coord`, or if the `Coord` is in a position where
-    /// [`Text`] is not printed.
-    pub fn points_at_coord(
+    /// If the points are part of the `Strs`, returns a [`Columns`]
+    /// struct. This contains the `line` column and the `wrapped`
+    /// column.
+    ///
+    /// The former measures the distance since the last `\n` character
+    /// or start of `Text`. The latter measures the distance since the
+    /// last wrap, i.e., the distance to the left edge of the area.
+    pub fn columns_at(
         &self,
         pa: &Pass,
         text: &Text,
-        coord: Coord,
+        points: TwoPoints,
         opts: PrintOpts,
-    ) -> Option<TwoPointsPlace> {
-        self.0.read(pa).points_at_coord(text, coord, opts)
+    ) -> Option<Columns> {
+        self.0.read(pa).columns_at(text, points, opts)
     }
 
     /// Returns `true` if this is the currently active [`Area`]
@@ -647,7 +666,7 @@ impl Area {
     ///
     /// This should return a [`VPoint`], which is a struct that
     /// describes additional information about a position in the text,
-    /// namely the character, visual, and wrapped distances from the
+    /// namely the character, line, and wrapped distances from the
     /// start of the line.
     ///
     /// The `desired_col` parameter describes what visual distance
@@ -667,10 +686,10 @@ impl Area {
     ///
     /// This should return a [`VPoint`], which is a struct that
     /// describes additional information about a position in the text,
-    /// namely the character, visual, and wrapped distances from the
+    /// namely the character, line, and wrapped distances from the
     /// start of the line.
     ///
-    /// The `desired_col` parameter describes what visual distance
+    /// The `desired_col` parameter describes what line distance
     /// from the start of the line is desired.
     pub fn move_ver_wrapped(
         &self,
@@ -732,6 +751,19 @@ impl Area {
     /// Scrolls the `Area` to the given [`TwoPoints`]
     pub fn end_points(&self, text: &Text, opts: PrintOpts) -> TwoPoints {
         (self.fns.end_points)(self, text, opts)
+    }
+
+    /// Returns column information about a [`TwoPoints`].
+    ///
+    /// If the points are part of the `Strs`, returns a [`Columns`]
+    /// struct. This contains the `line` column and the `wrapped`
+    /// column.
+    ///
+    /// The former measures the distance since the last `\n` character
+    /// or start of `Text`. The latter measures the distance since the
+    /// last wrap, i.e., the distance to the left edge of the area.
+    pub fn columns_at(&self, text: &Text, points: TwoPoints, opts: PrintOpts) -> Option<Columns> {
+        (self.fns.columns_at)(self, text, points, opts)
     }
 
     /////////// Querying functions
@@ -850,8 +882,9 @@ struct AreaFunctions {
     eq: fn(&Area, &Area) -> bool,
     top_left: fn(&Area) -> Coord,
     bottom_right: fn(&Area) -> Coord,
-    coord_at_points: fn(&Area, &Text, TwoPoints, PrintOpts) -> Option<Coord>,
     points_at_coord: fn(&Area, &Text, Coord, PrintOpts) -> Option<TwoPointsPlace>,
+    coord_at_points: fn(&Area, &Text, TwoPoints, PrintOpts) -> Option<Coord>,
+    columns_at: fn(&Area, &Text, TwoPoints, PrintOpts) -> Option<Columns>,
     is_active: fn(&Area) -> bool,
 }
 
@@ -1005,13 +1038,17 @@ impl AreaFunctions {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
                 area.bottom_right(UiPass::new())
             },
+            points_at_coord: |area, text, coord, opts| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                area.points_at_coord(UiPass::new(), text, coord, opts)
+            },
             coord_at_points: |area, text, two_points, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
                 area.coord_at_points(UiPass::new(), text, two_points, opts)
             },
-            points_at_coord: |area, text, coord, opts| {
+            columns_at: |area, text, two_points, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.points_at_coord(UiPass::new(), text, coord, opts)
+                area.columns_at(UiPass::new(), text, two_points, opts)
             },
             is_active: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();

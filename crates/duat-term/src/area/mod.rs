@@ -17,7 +17,7 @@ use duat_core::{
     opts::PrintOpts,
     text::{Point, Text, TextPart, TextPlace, TwoPoints, txt},
     ui::{
-        self, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId,
+        self, Columns, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId,
         traits::{RawArea, UiPass},
     },
 };
@@ -647,53 +647,6 @@ impl RawArea for Area {
             .unwrap_or_default()
     }
 
-    fn coord_at_points(
-        &self,
-        _: UiPass,
-        text: &Text,
-        points: TwoPoints,
-        opts: PrintOpts,
-    ) -> Option<ui::Coord> {
-        self.layouts.update(self.id);
-        let Some(coords) = self.layouts.coords_of(self.id, false) else {
-            context::warn!("This Area was already deleted");
-            return None;
-        };
-
-        if coords.width() == 0 || coords.height() == 0 {
-            return None;
-        }
-
-        let (s_points, x_shift) = {
-            let mut info = self.layouts.get_info_of(self.id).unwrap();
-            let s_points = info.start_points(coords, text, opts);
-            self.layouts.set_info_of(self.id, info);
-            (s_points, info.x_shift())
-        };
-
-        let mut row = coords.tl.y;
-        for (place, item) in print_iter(text, s_points, coords.width(), opts) {
-            row += place.wrap as u32;
-
-            if row > coords.br.y {
-                break;
-            }
-
-            if item.points() == points && item.part.is_char() {
-                if place.x >= x_shift && place.x <= x_shift + coords.width() {
-                    return Some(ui::Coord {
-                        x: (coords.tl.x + place.x - x_shift) as f32,
-                        y: (row - 1) as f32,
-                    });
-                } else {
-                    break;
-                }
-            }
-        }
-
-        None
-    }
-
     fn points_at_coord(
         &self,
         _: UiPass,
@@ -747,6 +700,89 @@ impl RawArea for Area {
             }
 
             backup = Some(TwoPointsPlace::AheadOf(item.points()));
+        }
+
+        None
+    }
+
+    fn coord_at_points(
+        &self,
+        _: UiPass,
+        text: &Text,
+        points: TwoPoints,
+        opts: PrintOpts,
+    ) -> Option<ui::Coord> {
+        self.layouts.update(self.id);
+        let Some(coords) = self.layouts.coords_of(self.id, false) else {
+            context::warn!("This Area was already deleted");
+            return None;
+        };
+
+        if coords.width() == 0 || coords.height() == 0 {
+            return None;
+        }
+
+        let (s_points, x_shift) = {
+            let mut info = self.layouts.get_info_of(self.id).unwrap();
+            let s_points = info.start_points(coords, text, opts);
+            self.layouts.set_info_of(self.id, info);
+            (s_points, info.x_shift())
+        };
+
+        let mut row = coords.tl.y;
+        for (place, item) in print_iter(text, s_points, coords.width(), opts) {
+            row += place.wrap as u32;
+
+            if row > coords.br.y {
+                break;
+            }
+
+            if item.points() == points && item.part.is_char() {
+                if place.x >= x_shift && place.x <= x_shift + coords.width() {
+                    return Some(ui::Coord {
+                        x: (coords.tl.x + place.x - x_shift) as f32,
+                        y: (row - 1) as f32,
+                    });
+                } else {
+                    break;
+                }
+            }
+        }
+
+        None
+    }
+
+    fn columns_at(
+        &self,
+        _: UiPass,
+        text: &Text,
+        points: TwoPoints,
+        opts: PrintOpts,
+    ) -> Option<Columns> {
+        self.layouts.update(self.id);
+        let Some(coords) = self.layouts.coords_of(self.id, false) else {
+            context::warn!("This Area was already deleted");
+            return None;
+        };
+
+        if coords.width() == 0 {
+            return None;
+        }
+
+        let mut line = 0;
+
+        for (place, item) in print_iter(text, points, coords.width(), opts) {
+            if item.points() == points && item.part.is_char() {
+                return Some(Columns {
+                    line,
+                    wrapped: place.x as usize,
+                    len: place.len as usize,
+                });
+            } else if let Some('\n') = item.part.as_char() {
+                break;
+            }
+
+            line += place.len as usize;
         }
 
         None

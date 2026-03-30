@@ -12,13 +12,14 @@ use std::{collections::HashMap, ops::Range, sync::Once};
 
 use duat_core::{
     Ns,
-    context::{Handle, WidgetRelation},
+    buffer::{Buffer, Moment},
+    context::{self, Handle, WidgetRelation},
     data::Pass,
     form::{self, Form, FormId},
-    hook::{self, BufferOpened, BufferUpdated},
-    text::{Ghost, Point, Text, TextParts, TextRange, Toggle},
+    hook::{self, BufferOpened, BufferUpdated, OnMouseEvent},
+    text::{Ghost, Text, TextParts, TextRange, TwoPoints},
     txt,
-    ui::{PushSpecs, Side, Widget},
+    ui::{Coord, PushSpecs, Side, Widget},
 };
 
 /// A struct to hold diagnostic hints about a [`Buffer`].
@@ -32,6 +33,7 @@ pub struct Gutter {
     text: Text,
     entries: HashMap<Ns, Vec<GutterEntry>>,
     opts: GutterOpts,
+    mouse_coord: Option<Coord>,
 }
 
 impl Gutter {
@@ -51,6 +53,7 @@ impl Gutter {
             form::set_weak("buffer.error", Form::new().underline_red().underlined());
 
             let ns = Ns::new();
+            let msg_ns = Ns::new();
 
             hook::add::<BufferOpened>(move |pa, buffer| _ = buffer.read(pa).moment_for(ns));
             hook::add::<BufferUpdated>(move |pa, buffer| {
@@ -58,50 +61,95 @@ impl Gutter {
                     return;
                 };
 
+                let printed_line_ranges = buffer.printed_line_ranges(pa);
+
                 let (gt, buf) = pa.write_many((&gutter, buffer));
-                let moment = buf.moment_for(ns);
-
-                let sh = |value: &mut usize, shift: i32, min: Point| {
-                    *value = value.saturating_add_signed(shift as isize).max(min.byte());
-                };
-
-                for (_, entries) in gt.entries.iter_mut() {
-                    let mut shift = 0;
-                    let mut iter = entries.iter_mut().enumerate();
-                    let mut to_remove = Vec::new();
-
-                    for change in moment.iter() {
-                        if let Some((i, entry)) = iter.find_map(|(i, entry)| {
-                            sh(&mut entry.range.start, shift, change.start());
-                            sh(&mut entry.range.end, shift, change.start());
-
-                            if entry.range.start == entry.range.end {
-                                to_remove.push(i);
-                            }
-
-                            (entry.range.end > change.start().byte()).then_some((i, entry))
-                        }) {
-                            let start_shift = change.shift()[0]
-                                * (entry.range.start > change.start().byte()) as i32;
-
-                            sh(&mut entry.range.start, start_shift, change.start());
-                            sh(&mut entry.range.end, change.shift()[0], change.start());
-
-                            if entry.range.start == entry.range.end {
-                                to_remove.push(i);
-                            }
-                        }
-                        shift += change.shift()[0];
-                    }
-
-                    for idx in to_remove.into_iter().rev() {
-                        entries.remove(idx);
-                    }
-                }
-
+                gt.apply_changes(buf.moment_for(ns));
                 gutter.write(pa).text = Gutter::form_text(gutter.read(pa), pa, buffer);
+
+                let (gt, buf, area) = pa.write_many((&gutter, buffer, buffer.area()));
+                buf.text_parts().tags.remove(msg_ns, ..);
+                let opts = buf.print_opts();
+
+                let mouse_point = gt.mouse_coord.and_then(|coord| {
+                    Some(
+                        area.points_at_coord(buf.text(), coord, opts)?
+                            .as_within()?
+                            .real,
+                    )
+                });
+
+                let entries = gt
+                    .entries
+                    .iter()
+                    .flat_map(|(_, entries)| entries)
+                    .filter(|entry| {
+                        let is_onscreen = printed_line_ranges
+                            .iter()
+                            .any(|range| range.contains(&entry.range.end));
+
+                        let display = match entry.kind {
+                            EntryKind::Hint => gt.opts.hint.display,
+                            EntryKind::Warning => gt.opts.warning.display,
+                            EntryKind::Error => gt.opts.error.display,
+                            EntryKind::_Custom(..) => todo!(),
+                        };
+
+                        let do_show = match display {
+                            GutterDisplay::OwnLines(always) => {
+                                always
+                                    || mouse_point
+                                        .is_some_and(|point| entry.range.contains(&point.byte()))
+                            }
+                            GutterDisplay::Inline(_) => todo!(),
+                            GutterDisplay::Spawn(_) => todo!(),
+                            GutterDisplay::SpawnCorner(..) => todo!(),
+                        };
+
+                        do_show && is_onscreen
+                    });
+
+                for entry in entries {
+                    let point = buf.text().point_at_byte(entry.range.start);
+                    let Some(columns) =
+                        area.columns_at(buf.text(), TwoPoints::new_after_ghost(point), opts)
+                    else {
+                        continue;
+                    };
+
+                    let mut parts = buf.text_parts();
+                    let line = parts.strs.line(point.line());
+
+                    parts.tags.insert(
+                        msg_ns,
+                        line.byte_range().end,
+                        Ghost::inlay(txt!("{}{entry.msg}\n", " ".repeat(columns.wrapped))),
+                    )
+                }
             })
             .priority(100_000_000);
+
+            hook::add::<OnMouseEvent<Buffer>>(move |pa, event| {
+                let Some((gutter, _)) = event.handle.get_related::<Gutter>(pa).first().cloned()
+                else {
+                    return;
+                };
+
+                gutter.write(pa).mouse_coord = Some(event.coord);
+            })
+            .priority(usize::MAX);
+
+            hook::add::<OnMouseEvent>(move |pa, _| {
+                for gutter in context::windows().handles_of::<Gutter>(pa) {
+                    let gt = gutter.write(pa);
+                    if gt.mouse_coord.take().is_some() {
+                        let (buffer, _) =
+                            gutter.get_related::<Buffer>(pa).first().cloned().unwrap();
+                        buffer.request_update();
+                    }
+                }
+            })
+            .priority(usize::MAX);
         });
 
         GutterOpts {
@@ -167,6 +215,51 @@ impl Gutter {
         }
 
         builder.build()
+    }
+
+    fn apply_changes(&mut self, moment: Moment) {
+        let sh = |value: &mut usize, shift: i32| {
+            *value = value.saturating_add_signed(shift as isize);
+        };
+
+        for (_, entries) in self.entries.iter_mut() {
+            let mut shift = 0;
+            let mut iter = entries.iter_mut().enumerate();
+            let mut to_remove = Vec::new();
+
+            for change in moment.iter() {
+                let mut is_contained = |i: usize, range: Range<usize>| {
+                    let change_range = change.taken_range();
+                    let change_range = change_range.start.byte()..change_range.end.byte();
+                    if change_range.contains(&range.start) || change_range.contains(&range.end) {
+                        to_remove.push(i);
+                        true
+                    } else {
+                        false
+                    }
+                };
+
+                if let Some((_, entry)) = iter.find_map(|(i, entry)| {
+                    sh(&mut entry.range.start, shift);
+                    sh(&mut entry.range.end, shift);
+
+                    (!is_contained(i, entry.range.clone())
+                        && entry.range.end > change.start().byte())
+                    .then_some((i, entry))
+                }) {
+                    let start_shift =
+                        change.shift()[0] * (entry.range.start > change.start().byte()) as i32;
+
+                    sh(&mut entry.range.start, start_shift);
+                    sh(&mut entry.range.end, change.shift()[0]);
+                }
+                shift += change.shift()[0];
+            }
+
+            for idx in to_remove.into_iter().rev() {
+                entries.remove(idx);
+            }
+        }
     }
 }
 
@@ -243,6 +336,7 @@ impl GutterOpts {
                 text,
                 entries: HashMap::new(),
                 opts: self,
+                mouse_coord: None,
             },
             PushSpecs {
                 side: Side::Left,
@@ -255,16 +349,16 @@ impl GutterOpts {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GutterSymbolOpts {
-    pub symbol: char,
-    pub display: GutterDisplay,
+    symbol: char,
+    display: GutterDisplay,
 }
 
 /// Related entries on the [`Gutter`].
 pub struct GutterEntries {
     /// The entries that are related.
-    pub list: Vec<GutterEntry>,
+    list: Vec<GutterEntry>,
     /// How to display the entry's message.
-    pub display: GutterDisplay,
+    display: GutterDisplay,
 }
 
 /// An entry in the [`Gutter`].
@@ -272,8 +366,8 @@ pub struct GutterEntries {
 /// This contains a range in the [`Text`] and a message, in the form
 /// of a `Text`.
 pub struct GutterEntry {
-    pub range: Range<usize>,
-    pub msg: Text,
+    range: Range<usize>,
+    msg: Text,
     kind: EntryKind,
 }
 
@@ -527,32 +621,6 @@ pub fn default_renderer(entries: &GutterEntries, ns: Ns, mut parts: TextParts<'_
         };
 
         parts.tags.insert(ns, entry.range.clone(), form_tag);
-
-        match entries.display {
-            GutterDisplay::Inline(_) => {}
-            GutterDisplay::Spawn(_) => {}
-            GutterDisplay::SpawnCorner(..) => {}
-            GutterDisplay::OwnLines(always) => {
-                let msg_start = parts
-                    .strs
-                    .line(parts.strs.point_at_byte(entry.range.end).line())
-                    .end_point();
-
-                if always {
-                    let inlay = Ghost::inlay(txt!("{entry.msg}\n"));
-                    parts.tags.insert(ns, msg_start, inlay);
-                } else {
-                    parts.tags.insert(
-                        ns,
-                        entry.range.clone(),
-                        Toggle::new(|pa, event, range| {
-                            let parts = event.handle.text_parts(pa);
-                            let msg_start = parts.strs.line(range.end.line()).end_point();
-                        }),
-                    );
-                }
-            }
-        }
     }
 }
 

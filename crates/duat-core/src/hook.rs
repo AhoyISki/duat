@@ -259,7 +259,7 @@ mod global {
             self
         }
 
-        /// Set the priority of this [`hook`]
+        /// Set the priority of this [`hook`].
         ///
         /// Much like with [`Tag`]s, the priority of `hook`s
         /// determines how "lately" they are applied. The logic here

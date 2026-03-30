@@ -533,6 +533,32 @@ impl TwoPointsPlace {
             TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points) => *points,
         }
     }
+
+    /// Returns [`Some`] if the [`TwoPoints`] were within the
+    /// [`Text`].
+    ///
+    /// [`Text`]: crate::text::Text
+    #[must_use]
+    pub fn as_within(&self) -> Option<TwoPoints> {
+        if let Self::Within(v) = self {
+            Some(*v)
+        } else {
+            None
+        }
+    }
+
+    /// Returns [`Some`] if the [`TwoPoints`] were ahead of the
+    /// [`Text`].
+    ///
+    /// [`Text`]: crate::text::Text
+    #[must_use]
+    pub fn as_ahead(&self) -> Option<TwoPoints> {
+        if let Self::Within(v) = self {
+            Some(*v)
+        } else {
+            None
+        }
+    }
 }
 
 /// Return the length of a strin in chars

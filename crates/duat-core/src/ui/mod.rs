@@ -730,3 +730,16 @@ pub struct PrintedLine {
     /// Wether the line is wrapped.
     pub is_wrapped: bool,
 }
+
+/// Information about the horizontal place of a [`TwoPoints`]
+///
+/// [`TwoPoints`]: crate::text::TwoPoints
+pub struct Columns {
+    /// The distance from the last `\n` character (or start).
+    pub line: usize,
+    /// The distance from the leftmost edge of the area.
+    pub wrapped: usize,
+    /// How much horizontal space the character in this position is
+    /// occupying.
+    pub len: usize,
+}

@@ -142,11 +142,7 @@ pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
             .map(|(symbol, is_function)| {
                 let fn_name = symbol.to_lowercase();
                 let language = if *is_function {
-                    if options.is_arborium {
-                        format!("ts::{symbol}().into()")
-                    } else {
-                        format!("ts::{symbol}()")
-                    }
+                    format!("ts::{symbol}()")
                 } else {
                     format!("ts::{symbol}.into()")
                 };
@@ -160,12 +156,6 @@ pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
             })
             .collect();
 
-        let crate_prefix = if options.is_arborium {
-            "arborium"
-        } else {
-            "tree-sitter"
-        };
-
         let crate_name = options.crate_name;
         let git = options
             .git
@@ -178,7 +168,7 @@ pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
             name = "ts-{crate_name}"
             version = "0.1.0"
             edition = "2024"
-            description = "Dynamic wrapper for {crate_prefix}-{crate_name}"
+            description = "Dynamic wrapper for tree-sitter-{crate_name}"
 
             [lib]
             name = "{lang}"
@@ -189,7 +179,7 @@ pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
 
             [dependencies.ts]
             version = "{version}"
-            {git}package = "{crate_prefix}-{crate_name}"
+            {git}package = "tree-sitter-{crate_name}"
         "#};
 
         fs::create_dir_all(crate_dir.join("src")).ok()?;
@@ -214,7 +204,6 @@ struct LanguageOptions {
     crate_name: &'static str,
     crate_version: Option<&'static str>,
     _maintainers: &'static [&'static str],
-    is_arborium: bool,
 }
 
 impl LanguageOptions {
@@ -229,7 +218,6 @@ impl LanguageOptions {
             crate_name: crate_name(lang),
             crate_version: None,
             _maintainers,
-            is_arborium: false,
         };
 
         (lang, options)
@@ -246,7 +234,6 @@ impl LanguageOptions {
             crate_name: crate_name(lang),
             crate_version: None,
             _maintainers,
-            is_arborium: false,
         };
 
         (lang, options)
@@ -264,7 +251,6 @@ impl LanguageOptions {
             crate_name: crate_name(lang),
             crate_version: None,
             _maintainers,
-            is_arborium: false,
         };
 
         (lang, options)
@@ -283,24 +269,6 @@ impl LanguageOptions {
             crate_name,
             crate_version,
             _maintainers,
-            is_arborium: false,
-        };
-
-        (lang, options)
-    }
-
-    const fn arborium(
-        lang: &'static str,
-        crate_name: &'static str,
-        _maintainers: &'static [&'static str],
-    ) -> (&'static str, Self) {
-        let options = Self {
-            git: None,
-            symbols: &[("language", true)],
-            crate_name,
-            crate_version: None,
-            _maintainers,
-            is_arborium: true,
         };
 
         (lang, options)
