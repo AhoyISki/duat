@@ -831,11 +831,6 @@ pub fn print_text(
     end_line: impl Fn(&mut Lines, u32, u32),
     print_spacer: impl Fn(&mut Lines, u32),
 ) -> Option<(Lines, Vec<(SpawnId, Coord, u32)>)> {
-    enum Cursor {
-        Main(bool, bool),
-        Extra(bool, bool),
-    }
-
     if coords.width() == 0 || coords.height() == 0 {
         return None;
     }
@@ -887,46 +882,21 @@ pub fn print_text(
     let mut spawns_for_next: Vec<SpawnId> = Vec::new();
     let mut observed_spawns = Vec::new();
     let mut style_was_set = false;
-    let mut overlays = Vec::new();
+    let mut overlay_liness = Vec::new();
 
-    let end_line = |lines: &mut Lines, painter: &mut Painter, last_x, overlays: &mut Vec<_>| {
+    let end_line = |lines: &mut Lines, painter: &mut Painter, last_x, overlay_liness: Vec<_>| {
         let mut default = painter.get_default();
         default.style.foreground_color = None;
         default.style.underline_color = None;
         default.style.attributes = Attributes::from(Attribute::Reset);
         print_style(lines, default.style);
-
         end_line(lines, last_x, max.x);
-        let mut observed_spawns = Vec::new();
 
-        let opts = PrintOpts { print_new_line: false, ..opts };
-
-        for (x, point, overlay) in overlays.drain(..) {
-            let coords = Coords::new(Coord::new(coords.tl.x + x, 0), Coord::new(coords.br.x, 1));
-            write!(lines, "\x1b[{}G", coords.tl.x + 1).unwrap();
-
-            painter.prepare_for_overlay();
-            if let Some((overlay, obs_spawns)) = print_overlay(
-                (overlay, opts, painter),
-                (point, text),
-                coords,
-                (is_active, TwoPoints::default(), x_shift),
-                |lines: &mut Lines, len| {
-                    if len > 0 {
-                        write!(lines, "\x1b[{len}C").unwrap()
-                    }
-                },
-            ) {
-                lines.add_overlay(overlay);
-                observed_spawns.extend(obs_spawns);
-            }
-            painter.return_from_overlay();
+        for overlay_lines in overlay_liness {
+            lines.add_overlay(overlay_lines);
         }
 
-        write!(lines, "\x1b[{}G", coords.br.x + 1).unwrap();
-
         lines.flush().unwrap();
-        observed_spawns
     };
 
     for (place, item) in iter {
@@ -940,10 +910,7 @@ pub fn print_text(
                 break;
             }
             if y > lines.coords().tl.y {
-                let new_spawns = end_line(lines, painter, last_x, &mut overlays);
-                observed_spawns.extend(new_spawns);
-            } else {
-                overlays.clear();
+                end_line(lines, painter, last_x, std::mem::take(&mut overlay_liness));
             }
             let initial_space = x.saturating_sub(x_shift).min(lines.coords().width());
             if initial_space > 0 {
@@ -1063,16 +1030,42 @@ pub fn print_text(
             }
             TextPart::ResetState => print_style(lines, painter.reset()),
             TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
-            TextPart::Overlay(overlay) => overlays.push((x, real, overlay)),
+            TextPart::Overlay(overlay) => {
+                let opts = PrintOpts { print_new_line: false, ..opts };
+                let overlay_coords =
+                    Coords::new(Coord::new(coords.tl.x + x, 0), Coord::new(coords.br.x, 1));
+
+                let mut overlay_lines = Lines::new(overlay_coords, false);
+
+                // Since we're printing after moving, the context for the original
+                // style will be lost, so we need to print it again.
+                painter.reset_prev_style();
+                write!(overlay_lines, "\x1b[{}G", overlay_coords.tl.x + 1).unwrap();
+                if let Some(overlay_observed_spawns) = print_overlay(
+                    (overlay, opts, painter, &mut overlay_lines),
+                    (real, text),
+                    overlay_coords,
+                    (is_active, TwoPoints::default(), x_shift),
+                    |lines: &mut Lines, len| {
+                        if len > 0 {
+                            write!(lines, "\x1b[{len}C").unwrap()
+                        }
+                    },
+                ) {
+                    observed_spawns.extend(overlay_observed_spawns);
+                }
+                painter.reset_prev_style();
+                write!(overlay_lines, "\x1b[{}G", overlay_coords.br.x + 1).unwrap();
+
+                overlay_liness.push(overlay_lines);
+            }
         }
     }
 
-    let new_spawns = end_line(&mut lines, painter, last_x, &mut overlays);
-    observed_spawns.extend(new_spawns);
+    end_line(&mut lines, painter, last_x, overlay_liness);
 
     for _ in 0..lines.coords().br.y - y {
-        let new_spawns = end_line(&mut lines, painter, 0, &mut Vec::new());
-        observed_spawns.extend(new_spawns);
+        end_line(&mut lines, painter, 0, Vec::new());
     }
 
     Some((lines, observed_spawns))
@@ -1081,29 +1074,26 @@ pub fn print_text(
 /// The [`Text`] printing function
 #[allow(clippy::type_complexity)]
 pub fn print_overlay(
-    (text, opts, painter): (&Text, PrintOpts, &mut Painter),
+    (text, opts, painter, lines): (&Text, PrintOpts, &mut Painter, &mut Lines),
     (point, parent_text): (Point, &Text),
     coords: Coords,
     (is_active, s_points, x_shift): (bool, TwoPoints, u32),
     print_spacer: impl Fn(&mut Lines, u32),
-) -> Option<(Lines, Vec<(SpawnId, Coord, u32)>)> {
-    enum Cursor {
-        Main(bool, bool),
-        Extra(bool, bool),
-    }
-
+) -> Option<Vec<(SpawnId, Coord, u32)>> {
     if coords.width() == 0 || coords.height() == 0 {
         return None;
     }
 
-    let (mut lines, iter, mut next_cursor_end) = {
-        // has_edge_ahead doesn't matter, since this is just going to be added
-        // to an existing Lines anyways.
-        let lines = Lines::new(coords, false);
+    let mut main_selection_was_printed = false;
+    let mut extra_selections_print_count = 0;
+
+    let (iter, mut next_cursor_end) = {
         let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
         let iter = print_iter(text, s_points, width, opts);
         let mut selections = iter_selections(parent_text, point).peekable();
 
+        let main_selection_was_printed = &mut main_selection_was_printed;
+        let extra_selections_print_count = &mut extra_selections_print_count;
         let next_c = move |lines: &mut Lines, painter: &mut Painter, real: Point| {
             let mut last_found = None;
             // Compare chars because the byte indices of cursors may not match up
@@ -1121,6 +1111,8 @@ pub fn print_overlay(
             if let Some(parts) = last_found {
                 let print_caret =
                     parts.is_caret && parts.point.char() == real.char() + point.char();
+                let is_range_start = parts.is_start == Some(true);
+                let is_range_end = parts.is_start == Some(false);
 
                 if parts.is_main {
                     if let Some(shape) = painter.main_cursor()
@@ -1130,19 +1122,22 @@ pub fn print_overlay(
                         queue!(lines, shape, cursor::SavePosition).unwrap();
                     } else {
                         lines.hide_real_cursor();
-                        painter.apply_main_selection(print_caret, parts.is_start == Some(true));
+                        painter.apply_main_selection(print_caret, is_range_start);
                     }
-                    Some(Cursor::Main(print_caret, parts.is_start == Some(false)))
+                    *main_selection_was_printed = is_range_start;
+                    Some(Cursor::Main(print_caret, is_range_end))
                 } else {
-                    painter.apply_extra_selection(print_caret, parts.is_start == Some(true));
-                    Some(Cursor::Extra(print_caret, parts.is_start == Some(false)))
+                    painter.apply_extra_selection(print_caret, is_range_start);
+                    *extra_selections_print_count += is_range_start as usize;
+                    *extra_selections_print_count -= is_range_end as usize;
+                    Some(Cursor::Extra(print_caret, is_range_end))
                 }
             } else {
                 None
             }
         };
 
-        (lines, iter, next_c)
+        (iter, next_c)
     };
 
     // For specific Tags
@@ -1151,8 +1146,6 @@ pub fn print_overlay(
     let mut style_was_set = false;
 
     for (place, item) in iter {
-        let lines = &mut lines;
-
         let PrintedPlace { x, len, wrap } = place;
         let TextPlace { part, real, .. } = item;
 
@@ -1200,11 +1193,11 @@ pub fn print_overlay(
 
                 if let Some(cursor) = cursor_style {
                     match cursor {
-                        Cursor::Main(is_caret, end_range) => {
-                            painter.remove_main_selection(is_caret, end_range)
+                        Cursor::Main(is_caret, is_range_end) => {
+                            painter.remove_main_selection(is_caret, is_range_end)
                         }
-                        Cursor::Extra(is_caret, end_range) => {
-                            painter.remove_extra_selection(is_caret, end_range)
+                        Cursor::Extra(is_caret, is_range_end) => {
+                            painter.remove_extra_selection(is_caret, is_range_end)
                         }
                     }
                     if let Some(style) = painter.relative_style() {
@@ -1263,7 +1256,14 @@ pub fn print_overlay(
         }
     }
 
-    Some((lines, observed_spawns))
+    if main_selection_was_printed {
+        painter.remove_main_selection(false, true);
+    }
+    for _ in 0..extra_selections_print_count {
+        painter.remove_extra_selection(false, true);
+    }
+
+    Some(observed_spawns)
 }
 
 fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPoint {
@@ -1398,4 +1398,10 @@ impl CursorParts {
     fn new(point: Point, is_main: bool, is_caret: bool, is_start: Option<bool>) -> Self {
         Self { point, is_main, is_caret, is_start }
     }
+}
+
+#[derive(Clone, Copy)]
+enum Cursor {
+    Main(bool, bool),
+    Extra(bool, bool),
 }

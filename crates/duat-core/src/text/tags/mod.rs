@@ -157,20 +157,6 @@ impl Tags<'_> {
     pub fn clear(&mut self) {
         *self.0 = InnerTags::new(self.0.list.max() as usize);
     }
-
-    /////////// Querying functions
-
-    /// The lenght of this `Tags` struct
-    ///
-    /// This number is always identical to calling [`Strs::len`] from
-    /// the [`Strs`] of the same [`Text`], or calling `Text::len`
-    /// from the `Text` itself.
-    ///
-    /// [`Strs::len`]: super::Strs::len
-    /// [`Strs`]: super::Strs
-    pub fn len_bytes(&self) -> usize {
-        self.0.len_bytes()
-    }
 }
 
 impl std::ops::Deref for Tags<'_> {

@@ -714,8 +714,6 @@ impl Parser {
             opt_node = node.parent();
         }
 
-        context::debug!("{}", crate::format_root(root));
-
         // indent < 0 means "keep level of indentation"
         (indent >= 0).then_some(indent as usize)
     }

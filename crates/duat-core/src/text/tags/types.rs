@@ -223,7 +223,8 @@ impl Ghost {
     /// Returns a new `Ghost`, which can be inserted on [`Text`].
     #[track_caller]
     pub fn inlay(value: impl Into<Text>) -> Self {
-        let text = value.into();
+        let mut text = value.into();
+        text.0.tags.transform(text.len() - 1..text.len(), text.len() - 1);
 
         assert!(
             text.0.tags.ghosts.is_empty(),
