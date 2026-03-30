@@ -18,7 +18,7 @@ use super::{Change, Ns, Text};
 use crate::{
     buffer::PathKind,
     form::FormId,
-    text::{FormTag, Ghost, Spacer},
+    text::{FormTag, Ghost, Mask, Spacer},
 };
 
 /// Builds and modifies a [`Text`], based on replacements applied
@@ -60,6 +60,7 @@ use crate::{
 pub struct Builder {
     text: Text,
     last_form: Option<(usize, FormTag)>,
+    last_mask: Option<(usize, Mask)>,
     buffer: String,
     last_was_empty: bool,
     /// Wether to collapse `" "`s after an empty element is pushed
@@ -88,6 +89,12 @@ impl Builder {
     /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     pub fn build(mut self) -> Text {
         if let Some((b, id)) = self.last_form
+            && b < self.text.last_point().byte()
+        {
+            self.text.insert_tag(Ns::basic(), b.., id);
+        }
+
+        if let Some((b, id)) = self.last_mask
             && b < self.text.last_point().byte()
         {
             self.text.insert_tag(Ns::basic(), b.., id);
@@ -158,6 +165,19 @@ impl Builder {
                 BP::Spacer(_) => builder.text.insert_tag(ns, end, Spacer),
                 BP::Ghost(ghost) => builder.text.insert_tag(ns, end, ghost.clone()),
                 BP::ToString(_) => unsafe { std::hint::unreachable_unchecked() },
+                BP::Mask(mask) => {
+                    let last_form = if mask == Mask::no_mask() {
+                        builder.last_mask.take()
+                    } else {
+                        builder.last_mask.replace((end, mask))
+                    };
+
+                    if let Some((b, tag)) = last_form
+                        && b < end
+                    {
+                        builder.text.insert_tag(ns, b..end, tag);
+                    }
+                }
             }
         }
 
@@ -241,6 +261,7 @@ impl Default for Builder {
         Builder {
             text: Text::new(),
             last_form: None,
+            last_mask: None,
             buffer: String::with_capacity(50),
             last_was_empty: false,
             no_space_after_empty: false,
@@ -292,19 +313,24 @@ pub enum BuilderPart<'a, D: Display = String, _T = ()> {
     Spacer(PhantomData<_T>),
     /// Ghost [`Text`] that is separate from the real thing
     Ghost(&'a Ghost),
+    /// A mask, which maps applied [`Form`]s.
+    ///
+    /// [`Form`]: crate::form::Form
+    Mask(Mask),
 }
 
 impl<'a, D: Display, _T> BuilderPart<'a, D, _T> {
     fn try_to_basic(self) -> Result<BuilderPart<'a>, Self> {
         match self {
-            BuilderPart::Text(text) => Ok(BuilderPart::Text(text)),
-            BuilderPart::Builder(builder) => Ok(BuilderPart::Builder(builder)),
-            BuilderPart::ToString(_) => Err(self),
-            BuilderPart::Path(path) => Ok(BuilderPart::Path(path)),
-            BuilderPart::PathKind(text) => Ok(BuilderPart::PathKind(text)),
-            BuilderPart::Form(form_id) => Ok(BuilderPart::Form(form_id)),
-            BuilderPart::Spacer(_) => Ok(BuilderPart::Spacer(PhantomData)),
-            BuilderPart::Ghost(ghost) => Ok(BuilderPart::Ghost(ghost)),
+            Self::Text(text) => Ok(BuilderPart::Text(text)),
+            Self::Builder(builder) => Ok(BuilderPart::Builder(builder)),
+            Self::ToString(_) => Err(self),
+            Self::Path(path) => Ok(BuilderPart::Path(path)),
+            Self::PathKind(text) => Ok(BuilderPart::PathKind(text)),
+            Self::Form(form_id) => Ok(BuilderPart::Form(form_id)),
+            Self::Spacer(_) => Ok(BuilderPart::Spacer(PhantomData)),
+            Self::Ghost(ghost) => Ok(BuilderPart::Ghost(ghost)),
+            Self::Mask(mask) => Ok(BuilderPart::Mask(mask)),
         }
     }
 }
@@ -339,6 +365,7 @@ implAsBuilderPart!(Ghost, ghost, BuilderPart::Ghost(ghost));
 implAsBuilderPart!(Text, text, BuilderPart::Text(text));
 implAsBuilderPart!(Path, path, BuilderPart::Path(path));
 implAsBuilderPart!(PathKind, path, BuilderPart::PathKind(path.name_txt()));
+implAsBuilderPart!(Mask, mask, BuilderPart::Mask(*mask));
 
 impl<D: Display> AsBuilderPart<D, D> for D {
     fn as_builder_part(&self) -> BuilderPart<'_, D, D> {

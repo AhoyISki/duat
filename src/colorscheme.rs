@@ -323,6 +323,8 @@ pub(crate) fn add_default() {
                 // And the selection is the rest.
                 ("selection.main", Form::new().on(c.surface1)),
                 ("selection.extra", Form::new().on(c.surface0)),
+                ("selection.main.indent", Form::new().with_on(c.surface1)),
+                ("selection.extra.indent", Form::new().with_on(c.surface0)),
                 // A utility form, mostly used to cover all other forms on screen.
                 ("cloak", Form::new().with(c.overlay1).on(c.base)),
                 // Form for replacement characters (like indent guides).
@@ -518,6 +520,8 @@ pub(crate) fn add_default() {
                 ("caret.extra", Form::new().with(c.bg).on(c.teal)),
                 ("selection.main", Form::new().on(c.blue0)),
                 ("selection.extra", Form::new().on(c.fg_gutter)),
+                ("selection.main.indent", Form::new().with_on(c.blue0)),
+                ("selection.extra.indent", Form::new().with_on(c.fg_gutter)),
                 ("cloak", Form::new().with(c.dark5).on(c.bg)),
                 ("replace", Form::new().with(c.bg_highlight)),
                 (
@@ -675,6 +679,8 @@ pub(crate) fn add_default() {
                 ("caret.extra", Form::new().with(c.bg).on(c.text_muted)),
                 ("selection.main", Form::new().on(c.bg_subtle)),
                 ("selection.extra", Form::new().on(c.bg_overlay)),
+                ("selection.main.indent", Form::new().with_on(c.bg_subtle)),
+                ("selection.extra.indent", Form::new().with_on(c.bg_overlay)),
                 ("cloak", Form::new().with(c.text_subtle).on(c.bg)),
                 ("replace", Form::new().with(c.bg_subtle)),
                 (
@@ -810,6 +816,11 @@ pub(crate) fn add_default() {
                 ("caret.extra", Form::new().reverse()),
                 ("selection.main", Form::new().with(c.fg).on(c.current_line)),
                 ("selection.extra", Form::new().with(c.fg).on(c.current_line)),
+                ("selection.main.indent", Form::new().with_on(c.current_line)),
+                (
+                    "selection.extra.indent",
+                    Form::new().with_on(c.current_line),
+                ),
                 ("cloak", Form::new().with(c.comment).on(c.bg)),
                 ("replace", Form::new().with(c.current_line)),
                 (

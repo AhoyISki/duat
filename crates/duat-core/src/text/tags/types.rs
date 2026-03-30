@@ -614,7 +614,17 @@ impl Tag<usize> for Spawn {
 ///
 /// [`Form`]: form::Form
 /// [explicitely set]: form::set
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Mask(pub &'static str);
+
+impl Mask {
+    /// Returns a `Mask` that doesn't map [`Form`]s.
+    ///
+    /// [`Form`]: form::Form
+    pub fn no_mask() -> Self {
+        Self("")
+    }
+}
 
 impl<I: TextRange> Tag<I> for Mask {
     const IS_META: bool = false;

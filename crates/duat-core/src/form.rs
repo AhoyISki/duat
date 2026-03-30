@@ -735,7 +735,7 @@ impl Form {
         self
     }
 
-    /// New `Form` with a colored background.
+    /// Sets the color of the background.
     ///
     /// This function accepts two color formats:
     ///
@@ -747,6 +747,7 @@ impl Form {
     /// If this `Form` was created via [`Form::mimic`], then the other
     /// attributes will change as the mimicked color does, but the
     /// background won't.
+    #[track_caller]
     pub const fn on(mut self, color: &str) -> Form {
         self.style.background_color = match str_to_color(color) {
             Ok(color) => Some(color),
@@ -760,7 +761,40 @@ impl Form {
         self
     }
 
-    /// New `Form` with a colored underline.
+    /// Sets the color of the foreground and background.
+    ///
+    /// You can use this if you want to "hide" the text as if it were
+    /// just one solid block of one color.
+    ///
+    /// This function accepts two color formats:
+    ///
+    /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
+    /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
+    ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
+    ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
+    ///
+    /// If this `Form` was created via [`Form::mimic`], then the other
+    /// attributes will change as the mimicked color does, but the
+    /// background and foreground won't.
+    #[track_caller]
+    pub const fn with_on(mut self, color: &str) -> Form {
+        let color = match str_to_color(color) {
+            Ok(color) => color,
+            Err(_) => panic!("Ill-formed color"),
+        };
+
+        self.style.background_color = Some(color);
+        self.style.foreground_color = Some(color);
+
+        if let FormKind::Ref(_, style) = &mut self.kind {
+            style.background_color = self.style.background_color;
+            style.foreground_color = self.style.foreground_color;
+        }
+
+        self
+    }
+
+    /// Sets the color of underlines.
     ///
     /// Note that this doesn't actually make the underline show up, it
     /// merely colors one that is set via a command like
@@ -776,6 +810,7 @@ impl Form {
     /// If this `Form` was created via [`Form::mimic`], then the other
     /// attributes will change as the mimicked color does, but the
     /// underline color won't.
+    #[track_caller]
     pub fn underline(mut self, color: &str) -> Form {
         self.style.underline_color = match str_to_color(color) {
             Ok(color) => Some(color),

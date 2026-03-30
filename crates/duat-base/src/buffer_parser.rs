@@ -16,7 +16,7 @@ use duat_core::{
     buffer::{Buffer, BufferOpts, Moment, PerBuffer},
     form::{self, FormId},
     hook::{self, BufferClosed, BufferOpened, BufferPrinted, BufferUpdated},
-    text::{Ghost, RegexHaystack, Spacer, Strs, Tags, txt},
+    text::{Ghost, Mask, RegexHaystack, Spacer, Strs, Tags, txt},
     utils::Memoized,
 };
 
@@ -64,6 +64,8 @@ pub fn enable_parser(ns: Ns) {
         handle.text_mut(pa).remove_tags(cur_line_ns, ..);
     })
     .grouped(ns);
+
+    form::enable_mask("indent");
 }
 
 fn hightlight_current_line(buf: &mut Buffer, ns: Ns) {
@@ -318,7 +320,7 @@ impl IndentState {
             return;
         };
 
-        let indent_form = form::id_of!("replace.indent").to_tag(90);
+        let indent_form = form::id_of!("replace").to_tag(90);
 
         let overlay = OVERLAYS.get_or_insert_with(self, || {
             let ghost: String = self
@@ -329,7 +331,8 @@ impl IndentState {
                 .flat_map(|len| indent_str.chars().chain(std::iter::repeat(' ')).take(len))
                 .collect();
 
-            Ghost::overlay(txt!("{indent_form}{ghost}"))
+            let mask = Mask("indent");
+            Ghost::overlay(txt!("{mask}{indent_form}{ghost}"))
         });
 
         tags.insert(ns, range.start, overlay);
