@@ -10,10 +10,11 @@
 use std::sync::Mutex;
 
 use duat_core::{
+    Ns,
     context::{self, Handle, Level, Record},
     data::Pass,
     hook::{self, KeyTyped, MsgLogged},
-    text::{Text, TextMut},
+    text::{Mask, Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
@@ -32,13 +33,13 @@ pub fn add_notifications_hook() {
         let mut global_fmt = GLOBAL_FMT.lock().unwrap();
         let mut global_get_mask = GLOBAL_GET_MASK.lock().unwrap();
 
-        notifications.set_mask(if let Some(get_mask) = notifs.get_mask.as_mut() {
+        let mask = if let Some(get_mask) = notifs.get_mask.as_mut() {
             get_mask(rec.clone())
         } else if let Some(get_mask) = global_get_mask.as_mut() {
             get_mask(rec.clone())
         } else {
             default_get_mask(rec.clone())
-        });
+        };
 
         notifs.text = if let Some(fmt) = notifs.fmt.as_mut() {
             fmt(rec)
@@ -47,6 +48,8 @@ pub fn add_notifications_hook() {
         } else {
             default_fmt(rec)
         };
+
+        notifs.text.insert_tag(Ns::basic(), .., Mask(mask));
 
         if notifs.request_width {
             let notifs = notifications.read(pa);
@@ -61,8 +64,6 @@ pub fn add_notifications_hook() {
 
     hook::add::<KeyTyped>(|pa, _| {
         for notifications in context::windows().handles_of::<Notifications>(pa) {
-            notifications.set_mask("");
-
             let (notifs, area) = notifications.write_with_area(pa);
 
             if !notifs.text.is_empty_empty() {

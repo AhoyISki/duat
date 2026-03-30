@@ -2,26 +2,43 @@ use std::sync::{Mutex, atomic::Ordering};
 
 use duat_base::widgets::Completions;
 use duat_core::{
+    Ns,
     buffer::Buffer,
     context::{self, Handle},
     data::Pass,
-    hook::{self, ModeSwitched},
+    hook::{self, BufferSwitched, ModeSwitched},
     mode::{self, Cursor, KeyEvent, KeyMod, Mode, alt, ctrl, event, shift},
+    text::Mask,
 };
 use duat_filetype::AutoPrefix;
 
 use crate::{Normal, opts::INSERT_TABS, set_anchor_if_needed};
 
 pub fn add_insert_hook() {
-    hook::add::<ModeSwitched>(|pa, switch| {
+    let mask_ns = Ns::new();
+
+    hook::add::<ModeSwitched>(move |pa, switch| {
+        let buffer = context::current_buffer(pa);
+        buffer.text_parts(pa).tags.remove(mask_ns, ..);
+
         if switch.new.is::<Insert>() {
             INSERT_EVENTS.lock().unwrap().clear();
             Completions::open_default(pa);
-            let buffer = context::current_buffer(pa);
-            buffer.set_mask("Insert");
+
+            let mask = Mask("Insert");
+            buffer.text_parts(pa).tags.insert(mask_ns, .., mask);
         } else if switch.old.is::<Insert>() {
             Completions::close(pa);
         }
+
+        if switch.new.is::<Normal>() {
+            let mask = Mask("Normal");
+            buffer.text_parts(pa).tags.insert(mask_ns, .., mask);
+        }
+    });
+
+    hook::add::<BufferSwitched>(move |pa, (old_buffer, _)| {
+        old_buffer.text_parts(pa).tags.remove(mask_ns, ..)
     });
 }
 

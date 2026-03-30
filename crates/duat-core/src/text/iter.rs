@@ -21,7 +21,10 @@ use super::{
     Point, SpawnId, Text,
     tags::{self, RawTag},
 };
-use crate::text::{TwoPoints, tags::InnerTags};
+use crate::{
+    form::MaskId,
+    text::{TwoPoints, tags::InnerTags},
+};
 
 /// An [`Iterator`] over the [`TextPart`]s of the [`Text`].
 ///
@@ -509,14 +512,20 @@ pub enum TextPart<'t> {
     ///
     /// [`Spacer`]: super::Spacer
     Spacer,
+    /// An inlay [`Text`].
+    Overlay(&'t Text),
     /// A spawned [`Widget`].
     ///
     /// [`Widget`]: crate::ui::Widget
     SpawnedWidget(SpawnId),
-
-    /// An inlay [`Text`].
-    Overlay(&'t Text),
-
+    /// Push a mask to the [`Painter`], which can map [`Form`]s given
+    /// a suffix.
+    ///
+    /// [`Form`]: crate::form::Form
+    /// [`Painter`]: crate::form::Painter
+    PushMask(MaskId),
+    /// Pop a mask from the [`Painter`].
+    PopMask(MaskId),
     /// Resets all [`FormId`]s, [`ToggleId`]s and alignments.
     ///
     /// Used when a [`Conceal`] covers a large region, which Duat
@@ -543,6 +552,8 @@ impl<'t> TextPart<'t> {
             RawTag::ConcealUntil(_) => Self::ResetState,
             RawTag::SpawnedWidget(_, id) => Self::SpawnedWidget(id),
             RawTag::Overlay(_, id) => Self::Overlay(tags.get_ghost(id).unwrap()),
+            RawTag::PushMask(_, id) => Self::PushMask(id),
+            RawTag::PopMask(_, id) => Self::PopMask(id),
             RawTag::StartConceal(_)
             | RawTag::EndConceal(_)
             | RawTag::Inlay(..)

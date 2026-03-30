@@ -20,7 +20,7 @@ use RawTag::*;
 use self::{bounds::Bounds, extents::NsExtents};
 pub use self::{
     ids::*,
-    types::{Conceal, FormTag, Ghost, RawTag, Spacer, SpawnTag, Tag, Toggle, ToggleFn},
+    types::{Conceal, FormTag, Ghost, RawTag, Spacer, Spawn, Tag, Toggle, ToggleFn, Mask},
 };
 use crate::{
     Ns,
@@ -306,8 +306,8 @@ impl InnerTags {
         for (_, (b, tag)) in other.list.iter_fwd(..) {
             let b = (b as usize).min(cap) + p.byte();
             match tag {
-                PushForm(..) | StartConceal(_) => starts.push((b, tag)),
-                PopForm(..) | EndConceal(_) => {
+                PushForm(..) | StartConceal(_) | PushMask(..) => starts.push((b, tag)),
+                PopForm(..) | EndConceal(_) | PopMask(..) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, stag) = starts.remove(i);
                     if b > sb {

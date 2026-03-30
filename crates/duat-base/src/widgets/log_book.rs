@@ -16,7 +16,7 @@ use duat_core::{
     hook::{self, FocusedOn, MsgLogged, OnMouseEvent, UnfocusedFrom},
     mode::{self, MouseButton, TwoPointsPlace},
     opts::PrintOpts,
-    text::{Point, SpawnTag, Text, TextMut, txt},
+    text::{Point, Spawn, Text, TextMut, txt},
     ui::{DynSpawnSpecs, Orientation, PushSpecs, PushTarget, Side, Widget},
 };
 
@@ -79,7 +79,7 @@ pub fn add_logbook_hooks() {
                 .binary_search_by(|(end, _)| end.cmp(&points.real));
 
             if let Some((_, location)) = lb.location_ranges.get(i) {
-                let spawn = SpawnTag::new(
+                let spawn = Spawn::new(
                     Info::new(txt!("[log_book.location]{location}")),
                     DynSpawnSpecs {
                         orientation: Orientation::VerLeftBelow,

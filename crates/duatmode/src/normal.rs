@@ -8,7 +8,7 @@ use duat_core::{
     buffer::Buffer,
     context::{self, Handle},
     data::Pass,
-    hook::{self, KeyTyped, ModeSwitched},
+    hook::{self, KeyTyped},
     mode::{self, Bindings, KeyEvent, KeyMod, Mode, VPoint, alt, ctrl, event, shift},
     opts::PrintOpts,
     text::{Strs, txt},
@@ -24,15 +24,6 @@ use crate::{
     opts::INSERT_TABS,
     select_to_end_of_line, set_anchor_if_needed,
 };
-
-pub fn add_normal_hook() {
-    hook::add::<ModeSwitched>(|pa, switch| {
-        if switch.new.is::<Normal>() {
-            let buffer = context::current_buffer(pa);
-            buffer.set_mask("Normal");
-        }
-    });
-}
 
 #[derive(Clone, Copy)]
 pub struct Normal {

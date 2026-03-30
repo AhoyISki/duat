@@ -50,7 +50,7 @@ mod global {
     pub use crate::__id_of__ as id_of;
     use crate::{
         context,
-        form::FormKind,
+        form::{FormKind, MaskId},
         hook::{self, ColorschemeSet},
     };
 
@@ -234,7 +234,7 @@ mod global {
         PALETTE.unset_extra_cursor();
     }
 
-    /// Creates a [`Painter`] with a mask.
+    /// Creates a [`Painter`].
     ///
     /// # Warning
     ///
@@ -248,16 +248,16 @@ mod global {
     ///
     /// [`RawUi`]: crate::ui::traits::RawUi
     /// [`RwLock`]: std::sync::RwLock
-    pub fn painter_with_mask(mask: &'static str) -> Painter {
-        PALETTE.painter(super::DEFAULT_ID, mask)
+    pub fn painter() -> Painter {
+        PALETTE.painter(super::DEFAULT_ID)
     }
 
-    /// Creates a [`Painter`] with a mask and a widget.
-    pub(crate) fn painter_with_widget_and_mask<W: ?Sized + 'static>(mask: &'static str) -> Painter {
-        PALETTE.painter(
-            default_id(TypeId::of::<W>(), crate::utils::duat_name::<W>()),
-            mask,
-        )
+    /// Creates a [`Painter`] with a widget.
+    pub(crate) fn painter_with_widget<W: ?Sized + 'static>() -> Painter {
+        PALETTE.painter(default_id(
+            TypeId::of::<W>(),
+            crate::utils::duat_name::<W>(),
+        ))
     }
 
     /// Enables the use of this mask.
@@ -333,6 +333,14 @@ mod global {
 
             inner.masks.push((mask.to_string().leak(), remaps));
         }
+    }
+
+    /// Returns the [`MaskId`] for a given mask.
+    pub(crate) fn mask_id_for(mask: &'static str) -> Option<MaskId> {
+        let inner = PALETTE.0.read().unwrap();
+        Some(MaskId(
+            inner.masks.iter().position(|(m, _)| *m == mask)? as u32
+        ))
     }
 
     /// Returns the [`FormId`] from the name of a [`Form`].
@@ -484,8 +492,13 @@ mod global {
     }
 
     /// The name of a form, given a [`FormId`].
-    pub(super) fn name_of(id: FormId) -> &'static str {
+    pub(super) fn name_of_form(id: FormId) -> &'static str {
         PALETTE.0.read().unwrap().forms[id.0 as usize].0
+    }
+
+    /// The name of a mask, given a [`MaskId`].
+    pub(super) fn name_of_mask(id: MaskId) -> &'static str {
+        PALETTE.0.read().unwrap().masks[id.0 as usize].0
     }
 
     /// The default [`FormId`] of a `Widget`.
@@ -544,13 +557,13 @@ impl FormId {
 
     /// The name of this [`FormId`].
     pub fn name(self) -> &'static str {
-        name_of(self)
+        name_of_form(self)
     }
 }
 
 impl std::fmt::Debug for FormId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "FormId({}: {})", self.0, name_of(*self))
+        write!(f, "FormId({}: {})", self.0, name_of_form(*self))
     }
 }
 
@@ -922,26 +935,18 @@ impl Palette {
     }
 
     /// Returns a [`Painter`].
-    fn painter(&'static self, default_id: FormId, mask: &str) -> Painter {
+    fn painter(&'static self, default_id: FormId) -> Painter {
         let inner = self.0.read().unwrap();
-        let mask_i = inner
-            .masks
-            .iter()
-            .position(|(m, _)| *m == mask)
-            .unwrap_or_default();
 
         let default = inner
             .forms
-            .get(match inner.masks[mask_i].1.get(default_id.0 as usize) {
-                Some(i) => *i as usize,
-                None => default_id.0 as usize,
-            })
+            .get(default_id.0 as usize)
             .map(|(_, f)| *f)
-            .unwrap_or(Form::new());
+            .unwrap_or_default();
 
         Painter {
             inner,
-            mask_i,
+            applied_masks: vec![0],
             default,
             forms: Vec::new(),
             set_fg: true,
@@ -1138,7 +1143,7 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
 /// [`Text`]: crate::text::Text
 pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
-    mask_i: usize,
+    applied_masks: Vec<usize>,
     default: Form,
     forms: Vec<(Form, FormId, u8)>,
     set_fg: bool,
@@ -1158,13 +1163,15 @@ impl Painter {
     /// won't, since it wasn't changed.
     #[inline(always)]
     pub fn apply(&mut self, id: FormId, prio: u8) {
-        let (_, mask) = &self.inner.masks[self.mask_i];
-        let id = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0));
+        let mask = get_mask(&self.inner.masks, &self.applied_masks);
 
-        let forms = &self.inner.forms;
         // SAFETY: When you create a form, it gets indexed, and never becomes
         // unindexed, so this should be fine.
-        let form = unsafe { forms.get(id.0 as usize).map(|(_, f)| *f).unwrap_unchecked() };
+        let form = unsafe {
+            let forms = &self.inner.forms;
+            let idx = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0)).0 as usize;
+            forms.get(idx).map(|(_, f)| *f).unwrap_unchecked()
+        };
 
         let gt = |(.., p): &&(_, _, u8)| *p > prio;
         let i = self.forms.len() - self.forms.iter().rev().take_while(gt).count();
@@ -1180,9 +1187,6 @@ impl Painter {
     /// result, given previous triggers.
     #[inline(always)]
     pub fn remove(&mut self, id: FormId) {
-        let mask = &self.inner.masks[self.mask_i].1;
-        let id = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0));
-
         let mut applied_forms = self.forms.iter().enumerate();
         if let Some((i, &(form, ..))) = applied_forms.rfind(|(_, (_, lhs, _))| *lhs == id) {
             self.forms.remove(i);
@@ -1332,6 +1336,46 @@ impl Painter {
         }
     }
 
+    /// Applies a given mask, mapping all [`Form`]s.
+    ///
+    /// This will also remap all currently applied `Form`s, so you
+    /// should reprint the style.
+    pub fn apply_mask(&mut self, id: MaskId) {
+        self.prev_style = None;
+        self.applied_masks.push(id.0 as usize);
+
+        let mask = get_mask(&self.inner.masks, &self.applied_masks);
+        for (form, id, _) in &mut self.forms {
+            // SAFETY: When you create a form, it gets indexed, and never becomes
+            // unindexed, so this should be fine.
+            *form = unsafe {
+                let forms = &self.inner.forms;
+                let idx = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0)).0 as usize;
+                forms.get(idx).map(|(_, f)| *f).unwrap_unchecked()
+            };
+        }
+    }
+
+    /// Removes a given mask, unmapping all [`Form`]s.
+    ///
+    /// This will also remap all currently applied `Form`s, so you
+    /// should reprint the style.
+    pub fn remove_mask(&mut self, id: MaskId) {
+        self.prev_style = None;
+        self.applied_masks.retain(|idx| *idx != id.0 as usize);
+
+        let mask = get_mask(&self.inner.masks, &self.applied_masks);
+        for (form, id, _) in &mut self.forms {
+            // SAFETY: When you create a form, it gets indexed, and never becomes
+            // unindexed, so this should be fine.
+            *form = unsafe {
+                let forms = &self.inner.forms;
+                let idx = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0)).0 as usize;
+                forms.get(idx).map(|(_, f)| *f).unwrap_unchecked()
+            };
+        }
+    }
+
     /// The [`Form`] "caret.extra", and its shape.
     pub fn main_cursor(&self) -> Option<CursorShape> {
         self.inner.main_cursor
@@ -1356,6 +1400,16 @@ enum FormKind {
     Ref(u16, ContentStyle),
     Weakest,
     WeakestRef(u16, ContentStyle),
+}
+
+/// The currently active mask.
+fn get_mask<'p>(masks: &'p [(&'static str, Vec<u16>)], applied: &[usize]) -> &'p [u16] {
+    &unsafe {
+        masks
+            .get(*applied.last().unwrap_unchecked())
+            .unwrap_unchecked()
+    }
+    .1
 }
 
 /// The position of each form that eventually references the `n`th.
@@ -1643,3 +1697,20 @@ pub const M_SEL_ID: FormId = FormId(4);
 pub const E_SEL_ID: FormId = FormId(5);
 /// The [`FormId`] of `"character.control"`.
 pub const CONTROL_CHAR_ID: FormId = FormId(7);
+
+/// An identifier for a mask, which maps [`Form`]s, given a suffix.
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MaskId(u32);
+
+impl MaskId {
+    /// The name of the mask.
+    pub fn name(&self) -> &'static str {
+        name_of_mask(*self)
+    }
+}
+
+impl std::fmt::Debug for MaskId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MaskId({})", name_of_mask(*self))
+    }
+}

@@ -71,7 +71,7 @@ impl Rect {
     ) -> (Self, Constraints) {
         let mut rect = Rect::new(p, false, Kind::Leaf(cache), Some(id), border);
 
-        // Wether the Rect is shown or not is dependent on the SpawnTag being
+        // Wether the Rect is shown or not is dependent on the Spawn being
         // printed or not, it's not a choice of the user.
         specs.hidden = true;
 

@@ -1128,7 +1128,7 @@ impl Frame {
                 }
             };
 
-            let painter = &mut duat_core::form::painter_with_mask("title");
+            let painter = &mut duat_core::form::painter();
             if let Some((lines, ..)) = print_text(
                 (&text, opts, painter),
                 (coords, max, false),

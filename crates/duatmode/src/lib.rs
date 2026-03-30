@@ -734,7 +734,6 @@ impl Plugin for DuatMode {
         hook::add::<SearchPerformed>(|_, search| *SEARCH.lock().unwrap() = search.to_string());
 
         normal::jump_list::add_jump_hook();
-        normal::add_normal_hook();
         insert::add_insert_hook();
 
         form::enable_mask("Insert");

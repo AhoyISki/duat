@@ -3,7 +3,7 @@
 //! These are used pretty much everywhere, and are essentially just an
 //! [`RwData<W>`] conjoined with an [`Area`].
 use std::sync::{
-    Arc, Mutex,
+    Arc,
     atomic::{AtomicBool, Ordering},
 };
 
@@ -153,7 +153,6 @@ use crate::{
 pub struct Handle<W: ?Sized = crate::buffer::Buffer> {
     widget: RwData<W>,
     pub(crate) area: RwArea,
-    mask: Arc<Mutex<&'static str>>,
     related: RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>>,
     is_closed: Arc<AtomicBool>,
     pub(crate) update_requested: Arc<AtomicBool>,
@@ -164,14 +163,12 @@ impl<W: Widget + ?Sized> Handle<W> {
     pub(crate) fn new(
         widget: RwData<W>,
         area: RwArea,
-        mask: Arc<Mutex<&'static str>>,
         main: Option<Handle<dyn Widget>>,
         is_closed: Arc<AtomicBool>,
     ) -> Self {
         Self {
             widget,
             area,
-            mask,
             related: RwData::new(
                 main.map(|handle| (handle, WidgetRelation::Main))
                     .into_iter()
@@ -277,7 +274,6 @@ impl<W: 'static + ?Sized> Handle<W> {
         Some(Handle {
             widget: self.widget.try_downcast()?,
             area: self.area.clone(),
-            mask: self.mask.clone(),
             related: self.related.clone(),
             is_closed: self.is_closed.clone(),
             update_requested: self.update_requested.clone(),
@@ -294,31 +290,6 @@ impl<W: 'static + ?Sized> Handle<W> {
     /// This [`Handle`]'s [`RwArea`]
     pub fn area(&self) -> &RwArea {
         &self.area
-    }
-
-    /// Gets this [`Handle`]'s mask.
-    ///
-    /// This mask is going to be used to map [`Form`]s to other
-    /// `Form`s when printing. To see more about how masks work, see
-    /// [`form::enable_mask`].
-    ///
-    /// [`Form`]: crate::form::Form
-    /// [`form::enable_mask`]: crate::form::enable_mask
-    pub fn mask(&self) -> &Arc<Mutex<&'static str>> {
-        &self.mask
-    }
-
-    /// Sets this [`Handle`]'s mask, returning the previous one.
-    ///
-    /// This mask is going to be used to map [`Form`]s to other
-    /// `Form`s when printing. To see more about how masks work, see
-    /// [`form::enable_mask`].
-    ///
-    /// [`Form`]: crate::form::Form
-    /// [`form::enable_mask`]: crate::form::enable_mask
-    pub fn set_mask(&self, mask: &'static str) -> &'static str {
-        self.widget.declare_written();
-        std::mem::replace(&mut self.mask.lock().unwrap(), mask)
     }
 
     /// Wether someone else called [`write`] or [`write_as`] since the
@@ -359,7 +330,7 @@ impl<W: 'static + ?Sized> Handle<W> {
     /// [`Handle::spawn_widget`], or if the [`Widget`] was [spawned]
     /// on the master's [`Text`].
     ///
-    /// [spawned]: crate::text::SpawnTag
+    /// [spawned]: crate::text::Spawn
     pub fn master(&self, pa: &Pass) -> Option<Handle<dyn Widget>> {
         self.related.read(pa).iter().find_map(|(handle, relation)| {
             (*relation == WidgetRelation::Main).then_some(handle.clone())
@@ -374,7 +345,7 @@ impl<W: 'static + ?Sized> Handle<W> {
     /// [`Handle::spawn_widget`], or if the [`Widget`] was [spawned]
     /// on the master's [`Text`].
     ///
-    /// [spawned]: crate::text::SpawnTag
+    /// [spawned]: crate::text::Spawn
     pub fn buffer(&self, pa: &Pass) -> Option<Handle> {
         self.related.read(pa).iter().find_map(|(handle, relation)| {
             handle
@@ -836,7 +807,6 @@ impl<W: Widget> Handle<W> {
         Handle {
             widget: self.widget.to_dyn_widget(),
             area: self.area.clone(),
-            mask: self.mask.clone(),
             related: self.related.clone(),
             is_closed: self.is_closed.clone(),
             update_requested: self.update_requested.clone(),
@@ -861,7 +831,6 @@ impl<W: ?Sized> Clone for Handle<W> {
         Self {
             widget: self.widget.clone(),
             area: self.area.clone(),
-            mask: self.mask.clone(),
             related: self.related.clone(),
             is_closed: self.is_closed.clone(),
             update_requested: self.update_requested.clone(),
@@ -871,9 +840,7 @@ impl<W: ?Sized> Clone for Handle<W> {
 
 impl<W: ?Sized> std::fmt::Debug for Handle<W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Handle")
-            .field("mask", &self.mask)
-            .finish_non_exhaustive()
+        f.debug_struct("Handle").finish_non_exhaustive()
     }
 }
 

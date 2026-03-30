@@ -14,12 +14,12 @@ use std::{
 use RawTag::*;
 use crossterm::event::{MouseButton, MouseEventKind};
 
-use super::{GhostId, SpawnId};
+use super::{GhostId, InnerTags, SpawnId};
 use crate::{
     Ns,
     context::{self, Handle},
     data::Pass,
-    form::{self, FormId},
+    form::{self, FormId, MaskId},
     mode::ToggleEvent,
     text::{Point, Text, TextRange, tags::ToggleId},
     ui::{DynSpawnSpecs, Widget},
@@ -50,9 +50,11 @@ use crate::{
 ///   the [`Buffer`] [`Widget`].
 /// - [`Toggle`]: Creates a region that can be interacted with through
 ///   the mouse pointer.
-/// - [`SpawnTag`]: Spawns a floating `Widget` on a position in
-///   `Text`. Said floating widget will move around as the position
-///   does the same.
+/// - [`Spawn`]: Spawns a floating `Widget` on a position in `Text`.
+///   Said floating widget will move around as the position does the
+///   same.
+/// - [`Mask`]: Maps all [`Form`]s in a region, given a certain `&str`
+///   suffix.
 ///
 /// [`Form`]: crate::form::Form
 /// [range]: TextRange
@@ -70,7 +72,7 @@ pub trait Tag<Index>: Sized {
     #[doc(hidden)]
     fn get_raw(
         &mut self,
-        tags: &super::InnerTags,
+        tags: &InnerTags,
         index: Index,
         max: usize,
         ns: Ns,
@@ -80,7 +82,7 @@ pub trait Tag<Index>: Sized {
     /// added.
     #[doc(hidden)]
     #[allow(unused_variables)]
-    fn on_insertion(self, tags: &mut super::InnerTags) {}
+    fn on_insertion(self, tags: &mut InnerTags) {}
 }
 
 ////////// Form-like InnerTags
@@ -119,7 +121,7 @@ impl<I: TextRange> Tag<I> for FormTag {
     #[track_caller]
     fn get_raw(
         &mut self,
-        _: &super::InnerTags,
+        _: &InnerTags,
         index: I,
         max: usize,
         ns: Ns,
@@ -177,7 +179,7 @@ impl Tag<usize> for Spacer {
     #[track_caller]
     fn get_raw(
         &mut self,
-        _: &super::InnerTags,
+        _: &InnerTags,
         byte: usize,
         max: usize,
         ns: Ns,
@@ -195,7 +197,7 @@ impl Tag<Point> for Spacer {
 
     fn get_raw(
         &mut self,
-        tags: &super::InnerTags,
+        tags: &InnerTags,
         point: Point,
         max: usize,
         ns: Ns,
@@ -224,7 +226,9 @@ impl Ghost {
     #[track_caller]
     pub fn inlay(value: impl Into<Text>) -> Self {
         let mut text = value.into();
-        text.0.tags.transform(text.len() - 1..text.len(), text.len() - 1);
+        text.0
+            .tags
+            .transform(text.len() - 1..text.len(), text.len() - 1);
 
         assert!(
             text.0.tags.ghosts.is_empty(),
@@ -269,7 +273,7 @@ impl Tag<usize> for Ghost {
     #[track_caller]
     fn get_raw(
         &mut self,
-        tags: &super::InnerTags,
+        tags: &InnerTags,
         byte: usize,
         max: usize,
         ns: Ns,
@@ -298,7 +302,7 @@ impl Tag<usize> for Ghost {
         }
     }
 
-    fn on_insertion(self, tags: &mut super::InnerTags) {
+    fn on_insertion(self, tags: &mut InnerTags) {
         if self.is_new {
             tags.ghosts.push((self.id.unwrap(), self.text.clone()))
         }
@@ -311,7 +315,7 @@ impl Tag<Point> for Ghost {
     #[track_caller]
     fn get_raw(
         &mut self,
-        tags: &super::InnerTags,
+        tags: &InnerTags,
         point: Point,
         max: usize,
         ns: Ns,
@@ -320,7 +324,7 @@ impl Tag<Point> for Ghost {
         self.get_raw(tags, byte, max, ns)
     }
 
-    fn on_insertion(self, tags: &mut super::InnerTags) {
+    fn on_insertion(self, tags: &mut InnerTags) {
         if self.is_new {
             tags.ghosts.push((self.id.unwrap(), self.text))
         }
@@ -342,7 +346,7 @@ impl<I: TextRange> Tag<I> for Conceal {
     #[track_caller]
     fn get_raw(
         &mut self,
-        _: &super::InnerTags,
+        _: &InnerTags,
         index: I,
         max: usize,
         ns: Ns,
@@ -466,7 +470,7 @@ impl<I: TextRange> Tag<I> for Toggle {
 
     fn get_raw(
         &mut self,
-        tags: &super::InnerTags,
+        tags: &InnerTags,
         index: I,
         max: usize,
         ns: Ns,
@@ -491,7 +495,7 @@ impl<I: TextRange> Tag<I> for Toggle {
         )
     }
 
-    fn on_insertion(self, tags: &mut super::InnerTags) {
+    fn on_insertion(self, tags: &mut InnerTags) {
         if self.is_new {
             tags.toggles.push((self.id.unwrap(), self.toggle_fn))
         }
@@ -503,16 +507,16 @@ impl<I: TextRange> Tag<I> for Toggle {
 /// [`Tag`]: Spawns a [`Widget`] in the [`Text`].
 ///
 /// The [`Widget`] will be placed according to the [`DynSpawnSpecs`],
-/// and should move automatically as the `SpawnTag` moves around the
+/// and should move automatically as the `Spawn` moves around the
 /// screen.
-pub struct SpawnTag {
+pub struct Spawn {
     id: SpawnId,
     spawn_fn: Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>,
     is_closed: Arc<AtomicBool>,
 }
 
-impl SpawnTag {
-    /// Returns a new instance of `SpawnTag`.
+impl Spawn {
+    /// Returns a new instance of `Spawn`.
     ///
     /// You can then place this [`Tag`] inside of the [`Text`] via
     /// [`Text::insert_tag`] or [`Tags::insert`], and the [`Widget`]
@@ -557,12 +561,12 @@ impl SpawnTag {
     }
 }
 
-impl Tag<Point> for SpawnTag {
+impl Tag<Point> for Spawn {
     const IS_META: bool = false;
 
     fn get_raw(
         &mut self,
-        _: &super::InnerTags,
+        _: &InnerTags,
         index: Point,
         max: usize,
         ns: Ns,
@@ -573,18 +577,18 @@ impl Tag<Point> for SpawnTag {
         )
     }
 
-    fn on_insertion(self, tags: &mut super::InnerTags) {
+    fn on_insertion(self, tags: &mut InnerTags) {
         tags.spawns.push(super::SpawnCell(self.id, self.is_closed));
         tags.spawn_fns.0.push((self.id, self.spawn_fn));
     }
 }
 
-impl Tag<usize> for SpawnTag {
+impl Tag<usize> for Spawn {
     const IS_META: bool = false;
 
     fn get_raw(
         &mut self,
-        _: &super::InnerTags,
+        _: &InnerTags,
         index: usize,
         max: usize,
         ns: Ns,
@@ -592,9 +596,45 @@ impl Tag<usize> for SpawnTag {
         ((index.min(max), RawTag::SpawnedWidget(ns, self.id)), None)
     }
 
-    fn on_insertion(self, tags: &mut super::InnerTags) {
+    fn on_insertion(self, tags: &mut InnerTags) {
         tags.spawns.push(super::SpawnCell(self.id, self.is_closed));
         tags.spawn_fns.0.push((self.id, self.spawn_fn));
+    }
+}
+
+/// [`Tag`]: A mask that maps [`Form`]s based on a suffix.
+///
+/// This works like this: If the form named `form.middle` was applied
+/// to a region, and said region had the `mask1` mask applied to it
+/// (via this struct), then instead of applying the `form.middle`
+/// form, duat would apply `form.middle.mask1`.
+///
+/// Unless `form.middle.mask1` is [explicitely set], then it is
+/// automatically defined as the same thing as `form.middle`.
+///
+/// [`Form`]: form::Form
+/// [explicitely set]: form::set
+pub struct Mask(pub &'static str);
+
+impl<I: TextRange> Tag<I> for Mask {
+    const IS_META: bool = false;
+
+    #[track_caller]
+    fn get_raw(
+        &mut self,
+        _: &InnerTags,
+        index: I,
+        max: usize,
+        ns: Ns,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        let range = index.to_range(max);
+        let Some(mask_id) = form::mask_id_for(self.0) else {
+            panic!("Mask not enabled: {}", self.0);
+        };
+
+        let s_tag = PushMask(ns, mask_id);
+        let e_tag = PopMask(ns, mask_id);
+        ((range.start, s_tag), Some((range.end, e_tag)))
     }
 }
 
@@ -644,8 +684,16 @@ pub enum RawTag {
     /// Ends a toggleable region of the [`Text`].
     EndToggle(Ns, ToggleId),
 
-    /// A spawned floating [`Widget`]
+    /// A spawned floating [`Widget`].
     SpawnedWidget(Ns, SpawnId),
+
+    /// Appends mask to map [`Form`]s given a suffix, to the stack.
+    ///
+    /// [`Form`]: crate::form::Form
+    PushMask(Ns, MaskId),
+    /// Removes a mask from the stack. It won't always be the last
+    /// one.
+    PopMask(Ns, MaskId),
 }
 
 impl RawTag {
@@ -727,7 +775,9 @@ impl RawTag {
             | Self::EndConceal(ns)
             | Self::StartToggle(ns, _)
             | Self::EndToggle(ns, _)
-            | Self::SpawnedWidget(ns, _) => Some(*ns),
+            | Self::SpawnedWidget(ns, _)
+            | Self::PushMask(ns, _)
+            | Self::PopMask(ns, _) => Some(*ns),
             Self::ConcealUntil(_) => None,
         }
     }
@@ -739,10 +789,10 @@ impl RawTag {
     pub(super) fn priority(&self) -> u8 {
         match self {
             Self::PushForm(.., priority) => *priority + 5,
-            Self::PopForm(..) | Self::Inlay(..) | Self::EndToggle(..) => 1,
+            Self::PopForm(..) | Self::Inlay(..) | Self::EndToggle(..) | Self::PushMask(..) => 1,
             Self::StartConceal(..) | Self::StartToggle(..) | Self::SpawnedWidget(..) => 3,
             Self::Spacer(..) | Self::EndConceal(..) => 0,
-            Self::Overlay(..) => 2,
+            Self::Overlay(..) | Self::PopMask(..) => 2,
             Self::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
         }
     }
@@ -816,6 +866,8 @@ impl std::fmt::Debug for RawTag {
             Self::StartToggle(ns, id) => write!(f, "StartToggle({ns:?}, {id:?}"),
             Self::EndToggle(ns, id) => write!(f, "EndToggle({ns:?}, {id:?}"),
             Self::SpawnedWidget(ns, id) => write!(f, "SpawnedWidget({ns:?}, {id:?}"),
+            Self::PushMask(ns, id) => write!(f, "PushMask({ns:?}, {})", id.name()),
+            Self::PopMask(ns, id) => write!(f, "PopMask({ns:?}, {})", id.name()),
         }
     }
 }

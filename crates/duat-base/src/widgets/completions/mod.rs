@@ -27,7 +27,7 @@ use duat_core::{
     data::Pass,
     hook::{self, FocusChanged, KeySent, OnMouseEvent, WidgetOpened},
     mode::MouseEventKind,
-    text::{Point, SpawnTag, Strs, Text, TextMut, txt},
+    text::{Point, Spawn, Strs, Text, TextMut, txt},
     ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
 };
 use duat_term::Frame;
@@ -208,7 +208,7 @@ impl CompletionsBuilder {
         };
 
         let mut text = handle.text_mut(pa);
-        text.insert_tag(*NS, start_byte, SpawnTag::new(completions, SPAWN_SPECS));
+        text.insert_tag(*NS, start_byte, Spawn::new(completions, SPAWN_SPECS));
     }
 
     /// Adds a new [`CompletionsProvider`] to be prioritized over
@@ -491,7 +491,7 @@ impl Completions {
                 };
 
                 let mut text = master_handle.text_mut(pa);
-                text.insert_tag(*NS, start_byte, SpawnTag::new(new_comp, SPAWN_SPECS));
+                text.insert_tag(*NS, start_byte, Spawn::new(new_comp, SPAWN_SPECS));
                 _ = completions.close(pa);
                 return main_replacement;
             } else {

@@ -40,7 +40,7 @@
 //! [Ui]: traits::RawUi
 //! [`Ui::Area`]: traits::RawUi::Area
 //! [on `Handle`]: Handle::spawn_widget
-//! [on `Text`]: crate::text::SpawnTag
+//! [on `Text`]: crate::text::Spawn
 //! [`context::windows`]: crate::context::windows
 use std::{
     fmt::Debug,
@@ -299,7 +299,7 @@ impl PushSpecs {
 /// [`Coord`] on screen.
 ///
 /// [`Handle`]: Handle::push_outer_widget
-/// [`Text`]: crate::text::SpawnTag
+/// [`Text`]: crate::text::Spawn
 #[derive(Default, Debug, Clone, Copy)]
 pub struct DynSpawnSpecs {
     /// The orientation to place this [`Widget`] in.

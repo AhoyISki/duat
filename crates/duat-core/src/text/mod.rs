@@ -103,7 +103,7 @@ pub use crate::{
         iter::{FwdIter, RevIter, TextPart, TextPlace},
         search::{Matches, RegexHaystack, RegexPattern},
         strs::{Lines, Strs},
-        tags::{Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, Tag, Tags, Toggle},
+        tags::{Conceal, FormTag, Ghost, GhostId, Mask, RawTag, Spacer, Spawn, Tag, Tags, Toggle},
         utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     },
     txt,
@@ -883,7 +883,7 @@ impl<'t> TextMut<'t> {
     ///
     /// This function should only be called right before printing,
     /// where it is "known" that `Widget`s can no longer get rid of
-    /// the [`SpawnTag`]s
+    /// the [`Spawn`]s
     ///
     /// [`Widget`]: crate::ui::Widget
     pub(crate) fn get_widget_spawns(

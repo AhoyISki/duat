@@ -1030,6 +1030,14 @@ pub fn print_text(
             }
             TextPart::ResetState => print_style(lines, painter.reset()),
             TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
+            TextPart::PushMask(id) => {
+                painter.apply_mask(id);
+                style_was_set = true;
+            }
+            TextPart::PopMask(id) => {
+                painter.remove_mask(id);
+                style_was_set = true;
+            }
             TextPart::Overlay(overlay) => {
                 let opts = PrintOpts { print_new_line: false, ..opts };
                 let overlay_coords =
@@ -1252,6 +1260,14 @@ pub fn print_overlay(
             }
             TextPart::ResetState => print_style(lines, painter.reset()),
             TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
+            TextPart::PushMask(id) => {
+                painter.apply_mask(id);
+                style_was_set = true;
+            }
+            TextPart::PopMask(id) => {
+                painter.remove_mask(id);
+                style_was_set = true;
+            }
             TextPart::Overlay(_) => unreachable!(),
         }
     }

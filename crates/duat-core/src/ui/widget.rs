@@ -11,7 +11,7 @@
 //! - Pushed to the [`Window`]'s edges of a window via
 //!   [`Window::push_inner`] and [`Window::push_outer`].
 //! - Spawned on [`Handle`]s via [`Handle::spawn_widget`].
-//! - Spawned on [`Text`] via the [`SpawnTag`] [tag].
+//! - Spawned on [`Text`] via the [`Spawn`] [tag].
 //!
 //! They can be pushed to all 4 sides of other widgets through the
 //! use of [`PushSpecs`]. Or they can be spawned with
@@ -20,7 +20,7 @@
 //! [`Area`] should adapt to changes in the layout.
 //!
 //! For example, if you spawn a [`Widget`] on [`Text`] via the
-//! [`SpawnTag`], then any movements and modifications on said `Text`
+//! [`Spawn`], then any movements and modifications on said `Text`
 //! will also move the `Widget` around.
 //!
 //! The only [`Widget`] that is defined in `duat-core` is the
@@ -30,13 +30,13 @@
 //! [`Window`]: super::Window
 //! [`Window::push_inner`]: super::Window::push_inner
 //! [`Window::push_outer`]: super::Window::push_outer
-//! [`SpawnTag`]: crate::text::SpawnTag
+//! [`Spawn`]: crate::text::Spawn
 //! [tag]: crate::text::Tag
 //! [`PushSpecs`]: super::PushSpecs
 //! [`DynSpawnSpecs`]: super::DynSpawnSpecs
 //! [`Area`]: super::Area
 use std::sync::{
-    Arc, Mutex,
+    Arc,
     atomic::{AtomicBool, Ordering},
 };
 
@@ -99,13 +99,7 @@ impl Node {
         master: Option<Handle<dyn Widget>>,
         is_closed: Arc<AtomicBool>,
     ) -> Self {
-        Self::from_handle(Handle::new(
-            widget,
-            area,
-            Arc::new(Mutex::new("")),
-            master,
-            is_closed,
-        ))
+        Self::from_handle(Handle::new(widget, area, master, is_closed))
     }
 
     /// Returns a `Node` from an existing [`Handle`]
@@ -118,12 +112,12 @@ impl Node {
 
                 Arc::new(move |pa, orig_handle| {
                     Buffer::update(pa, &buffer);
-                    let painter =
-                        form::painter_with_widget_and_mask::<W>(*handle.mask().lock().unwrap());
-
-                    handle
-                        .area
-                        .print(pa, handle.text(pa), handle.opts(pa), painter);
+                    handle.area.print(
+                        pa,
+                        handle.text(pa),
+                        handle.opts(pa),
+                        form::painter_with_widget::<W>(),
+                    );
 
                     if let Some(buf_handle) = buf_handle.clone() {
                         hook::trigger(pa, BufferPrinted(buf_handle));
@@ -136,12 +130,12 @@ impl Node {
                 let buf_handle = handle.try_downcast();
 
                 Arc::new(move |pa, orig_handle| {
-                    let painter =
-                        form::painter_with_widget_and_mask::<W>(*handle.mask().lock().unwrap());
-
-                    handle
-                        .area
-                        .print(pa, handle.text(pa), handle.opts(pa), painter);
+                    handle.area.print(
+                        pa,
+                        handle.text(pa),
+                        handle.opts(pa),
+                        form::painter_with_widget::<W>(),
+                    );
 
                     if let Some(buf_handle) = buf_handle.clone() {
                         hook::trigger(pa, BufferPrinted(buf_handle));
@@ -167,20 +161,26 @@ impl Node {
 
                     let points = handle.area().points_at_coord(pa, text, event.coord, opts);
 
-                    hook::trigger(pa, OnMouseEvent {
-                        handle: dyn_handle.clone(),
-                        points,
-                        coord: event.coord,
-                        kind: event.kind,
-                        modifiers: event.modifiers,
-                    });
-                    hook::trigger(pa, OnMouseEvent {
-                        handle: handle.clone(),
-                        points,
-                        coord: event.coord,
-                        kind: event.kind,
-                        modifiers: event.modifiers,
-                    });
+                    hook::trigger(
+                        pa,
+                        OnMouseEvent {
+                            handle: dyn_handle.clone(),
+                            points,
+                            coord: event.coord,
+                            kind: event.kind,
+                            modifiers: event.modifiers,
+                        },
+                    );
+                    hook::trigger(
+                        pa,
+                        OnMouseEvent {
+                            handle: handle.clone(),
+                            points,
+                            coord: event.coord,
+                            kind: event.kind,
+                            modifiers: event.modifiers,
+                        },
+                    );
 
                     if let Some(TwoPointsPlace::Within(points)) = points {
                         let event = ToggleEvent {
