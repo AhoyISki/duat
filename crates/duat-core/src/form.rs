@@ -1201,15 +1201,9 @@ impl Painter {
     /// won't, since it wasn't changed.
     #[inline(always)]
     pub fn apply(&mut self, id: FormId, prio: u8) {
-        let mask = get_mask(&self.inner.masks, &self.applied_masks);
+        let forms = &self.inner.forms;
 
-        // SAFETY: When you create a form, it gets indexed, and never becomes
-        // unindexed, so this should be fine.
-        let form = unsafe {
-            let forms = &self.inner.forms;
-            let idx = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0)).0 as usize;
-            forms.get(idx).map(|(_, f)| *f).unwrap_unchecked()
-        };
+        let form = get_form_for(id, &self.applied_masks, forms, &self.inner.masks);
 
         let gt = |(.., p): &&(_, _, u8)| *p > prio;
         let i = self.forms.len() - self.forms.iter().rev().take_while(gt).count();
@@ -1382,17 +1376,12 @@ impl Painter {
         self.reset_prev_style();
         self.applied_masks.push(id.0 as usize);
 
-        let mask = get_mask(&self.inner.masks, &self.applied_masks);
+        let forms = &self.inner.forms;
+
         for (form, id) in std::iter::once((&mut self.default.0, &mut self.default.1))
             .chain(self.forms.iter_mut().map(|(form, id, _)| (form, id)))
         {
-            // SAFETY: When you create a form, it gets indexed, and never becomes
-            // unindexed, so this should be fine.
-            *form = unsafe {
-                let forms = &self.inner.forms;
-                let idx = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0)).0 as usize;
-                forms.get(idx).map(|(_, f)| *f).unwrap_unchecked()
-            };
+            *form = get_form_for(*id, &self.applied_masks, forms, &self.inner.masks);
         }
     }
 
@@ -1404,17 +1393,12 @@ impl Painter {
         self.reset_prev_style();
         self.applied_masks.retain(|idx| *idx != id.0 as usize);
 
-        let mask = get_mask(&self.inner.masks, &self.applied_masks);
+        let forms = &self.inner.forms;
+
         for (form, id) in std::iter::once((&mut self.default.0, &mut self.default.1))
             .chain(self.forms.iter_mut().map(|(form, id, _)| (form, id)))
         {
-            // SAFETY: When you create a form, it gets indexed, and never becomes
-            // unindexed, so this should be fine.
-            *form = unsafe {
-                let forms = &self.inner.forms;
-                let idx = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0)).0 as usize;
-                forms.get(idx).map(|(_, f)| *f).unwrap_unchecked()
-            };
+            *form = get_form_for(*id, &self.applied_masks, forms, &self.inner.masks);
         }
     }
 
@@ -1444,14 +1428,28 @@ enum FormKind {
     WeakestRef(u16, ContentStyle),
 }
 
-/// The currently active mask.
-fn get_mask<'p>(masks: &'p [(&'static str, Vec<u16>)], applied: &[usize]) -> &'p [u16] {
-    &unsafe {
-        masks
-            .get(*applied.last().unwrap_unchecked())
-            .unwrap_unchecked()
+fn get_form_for(
+    id: FormId,
+    applied_masks: &[usize],
+    forms: &[(&str, Form)],
+    masks: &[(&'static str, Vec<u16>)],
+) -> Form {
+    // SAFETY: When you create a form, it gets indexed, and never becomes
+    // unindexed, so this should be fine.
+    unsafe {
+        applied_masks
+            .iter()
+            .rev()
+            .find_map(|mask_id| {
+                let (_, mask) = masks.get(*mask_id).unwrap_unchecked();
+                let idx = mask
+                    .get(id.0 as usize)
+                    .copied()
+                    .filter(|idx| *idx != id.0)?;
+                Some(forms.get(idx as usize).unwrap_unchecked().1)
+            })
+            .unwrap_or(forms.get(id.0 as usize).unwrap_unchecked().1)
     }
-    .1
 }
 
 /// The position of each form that eventually references the `n`th.
