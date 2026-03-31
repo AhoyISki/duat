@@ -110,21 +110,23 @@ impl Gutter {
                     });
 
                 for entry in entries {
-                    let point = buf.text().point_at_byte(entry.range.start);
+                    let Some(line) = buf.text()[entry.range.clone()].lines().last() else {
+                        continue;
+                    };
+
+                    let range = line.range();
+                    let lnum = range.start.line();
                     let Some(columns) =
-                        area.columns_at(buf.text(), TwoPoints::new_after_ghost(point), opts)
+                        area.columns_at(buf.text(), TwoPoints::new_after_ghost(range.start), opts)
                     else {
                         continue;
                     };
 
                     let mut parts = buf.text_parts();
-                    let line = parts.strs.line(point.line());
 
-                    parts.tags.insert(
-                        msg_ns,
-                        line.byte_range().end,
-                        Ghost::inlay(txt!("{}{entry.msg}\n", " ".repeat(columns.wrapped))),
-                    )
+                    let inlay = Ghost::inlay(txt!("{}{entry.msg}\n", " ".repeat(columns.wrapped)));
+                    let line_end = parts.strs.line(lnum).byte_range().end;
+                    parts.tags.insert(msg_ns, line_end, inlay)
                 }
             })
             .priority(100_000_000);

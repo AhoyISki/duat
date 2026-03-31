@@ -31,8 +31,9 @@ pub fn add_logbook_hooks() {
 
         let (lb, area) = logbook.write_with_area(pa);
 
-        let mut fmt_recs = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
+        let mut fmt_rec = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
             if let Some(rec_text) = fmt(rec.clone()) {
+                duat_core::log_to_file!("{}", rec_text.to_string());
                 lb.text.insert_text(lb.text.len(), &rec_text);
                 lb.location_ranges
                     .push((lb.text.last_point(), rec.location()));
@@ -42,11 +43,11 @@ pub fn add_logbook_hooks() {
         let mut global_fmt = GLOBAL_FMT.lock().unwrap();
 
         if let Some(fmt) = lb.fmt.as_mut() {
-            fmt_recs(fmt);
+            fmt_rec(fmt);
         } else if let Some(fmt) = global_fmt.as_mut() {
-            fmt_recs(fmt);
+            fmt_rec(fmt);
         } else {
-            fmt_recs(&mut default_fmt);
+            fmt_rec(&mut default_fmt);
         }
 
         area.scroll_ver(&lb.text, i32::MAX, lb.print_opts());

@@ -116,7 +116,7 @@ impl Variables {
                     None => unreachable!(),
                 };
 
-                for y in (coords.tl.y)..=coords.br.y {
+                for y in coords.tl.y..coords.br.y {
                     queue!(
                         stdout,
                         cursor::MoveTo(coords.tl.x as u16, y as u16),

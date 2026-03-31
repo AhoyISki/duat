@@ -647,6 +647,7 @@ impl RawArea for Area {
             .unwrap_or_default()
     }
 
+	#[track_caller]
     fn points_at_coord(
         &self,
         _: UiPass,
