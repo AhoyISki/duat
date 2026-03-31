@@ -16,7 +16,7 @@ use duat_base::{
 };
 use duat_core::{
     Ns,
-    buffer::{BufferOpts, History},
+    buffer::{BufferOpts, History, PathKind},
     context::{self, cache},
     data::Pass,
     hook::{BufferOpened, KeyTyped, ModeSwitched},
@@ -71,6 +71,7 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, Vec<TypeId>, BufferOpts) {
     form::enable_mask("warn");
     form::enable_mask("info");
     form::enable_mask("inactive");
+    form::enable_mask("current_line");
 
     let mut opts = OPTS.lock().unwrap();
     duat_core::utils::catch_panic(|| setup(&mut opts));
@@ -302,7 +303,7 @@ fn enable_buffer_hooks(opts: &Opts) {
 
     if opts.enabled_hooks.auto_reload_buffers {
         hook::add::<BufferOpened>(|pa, handle| {
-            if let Some(path) = handle.read(pa).path_set()
+            if let PathKind::SetExists(path) = handle.read(pa).path_kind()
                 && let Err(err) = BUFFER_WATCHER.watch(&path)
             {
                 context::warn!("{err}");
