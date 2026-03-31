@@ -464,7 +464,7 @@ mod global {
                 context::error!("Failed to set [a]{name}[] colorscheme");
                 return;
             };
-            
+
             set_many(pairs.iter().cloned().map(|(name, form)| (name, Some(form))));
             context::queue(move |pa| {
                 _ = hook::trigger(pa, ColorschemeSet((name.to_string(), pairs)))
@@ -838,7 +838,7 @@ impl Form {
     /// that is, a final color would be calculated like this:
     ///
     /// ```
-    /// # let (mut fg_final, fg_self, fg_other, factor) = (None, None, None, 50);
+    /// # let (mut fg_final, fg_self, fg_other, factor) = (None::<usize>, None, None::<usize>, 50);
     /// fg_final = if let Some(fg_other) = fg_other
     ///     && let Some(fg_self) = fg_self
     /// {
@@ -868,7 +868,7 @@ impl Form {
                 color
             }
         }
-        
+
         assert!(factor <= 100, "factor must be between 0 and 100");
 
         if let (Some(other_fg), Some(self_fg)) = (other.fg(), &mut self.style.foreground_color) {
