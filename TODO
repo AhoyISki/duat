@@ -1,5 +1,5 @@
 FOR NEXT UPDATE:
-[ ] Start work on duat-lsp.
+[x] Start work on duat-lsp.
   [x] Start process comunications.
   [x] Send messages back and forth.
   [x] Send changes.
@@ -33,6 +33,10 @@ FOR NEXT UPDATE:
 [x] Opts should be given as argument.
 [x] Move all hook removal options to Opts.
 [x] Get rid of Taggers, GroupIds and Gutterers.
+[ ] Gutter initial steps.
+  [x] Accept hints, warnings and errors.
+  [x] Process changes.
+  [ ] Print formatted text.
 
 KNOWN BUGS:
  HIGH PRIORITY:

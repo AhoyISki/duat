@@ -799,10 +799,10 @@ impl RawTag {
     pub(super) fn priority(&self) -> u8 {
         match self {
             Self::PushForm(.., priority) => *priority + 5,
-            Self::PopForm(..) | Self::Inlay(..) | Self::EndToggle(..) | Self::PushMask(..) => 1,
-            Self::StartConceal(..) | Self::StartToggle(..) | Self::SpawnedWidget(..) => 3,
             Self::Spacer(..) | Self::EndConceal(..) => 0,
+            Self::PopForm(..) | Self::Inlay(..) | Self::EndToggle(..) | Self::PushMask(..) => 1,
             Self::Overlay(..) | Self::PopMask(..) => 2,
+            Self::StartConceal(..) | Self::StartToggle(..) | Self::SpawnedWidget(..) => 3,
             Self::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
         }
     }

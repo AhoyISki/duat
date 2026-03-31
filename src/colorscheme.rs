@@ -323,6 +323,7 @@ pub(crate) fn add_default() {
                 // And the selection is the rest.
                 ("selection.main", Form::new().on(c.surface1)),
                 ("selection.extra", Form::new().on(c.surface0)),
+                // This is to hide selected indent guides.
                 ("selection.main.indent", Form::new().with_on(c.surface1)),
                 ("selection.extra.indent", Form::new().with_on(c.surface0)),
                 // A utility form, mostly used to cover all other forms on screen.
@@ -356,6 +357,7 @@ pub(crate) fn add_default() {
                 // The colon that separates the prompt from the input.
                 ("prompt.colon", Form::new().with(c.subtext0)),
                 // Various default forms for specific Widgets.
+                ("default.Buffer.current_line", default.on(c.surface0)),
                 ("default.StatusLine", default.on(c.mantle)),
                 ("default.LogBook", default.on(c.mantle)),
                 ("default.VertRule", default.with(c.surface0)),

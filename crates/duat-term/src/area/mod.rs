@@ -1,7 +1,7 @@
 mod iter;
 mod print_info;
 
-use std::{io::Write, sync::Arc};
+use std::{io::Write, iter::Peekable, sync::Arc};
 
 use crossterm::{
     cursor, queue,
@@ -878,22 +878,33 @@ pub fn print_text(
     let mut y = tl_y;
     let mut last_x = 0;
 
-    // For specific Tags
+    // For spawns.
     let mut spawns_for_next: Vec<SpawnId> = Vec::new();
-    let mut observed_spawns = Vec::new();
+    let mut spawns = Vec::new();
+    // For Forms and Masks.
     let mut style_was_set = false;
-    let mut overlay_liness = Vec::new();
+    // For Overlays.
+    let mut overlays = Vec::new();
+    let mut minimum_x;
 
-    let end_line = |lines: &mut Lines, painter: &mut Painter, last_x, overlay_liness: Vec<_>| {
+    let endl = |lines: &mut _, painter: &mut Painter, x, overlays: &mut Vec<_>, spawns: &mut _| {
         let mut default = painter.get_default();
         default.style.foreground_color = None;
         default.style.underline_color = None;
         default.style.attributes = Attributes::from(Attribute::Reset);
         print_style(lines, default.style);
-        end_line(lines, last_x, max.x);
+        end_line(lines, x, max.x);
 
-        for overlay_lines in overlay_liness {
-            lines.add_overlay(overlay_lines);
+        if !overlays.is_empty() {
+            let coords = lines.coords();
+            painter.reset_prev_style();
+            continue_overlays(
+                (lines, overlays),
+                (coords.br.x, x_shift, u32::MAX, &mut true),
+                (painter, spawns),
+            );
+            write!(lines, "\x1b[{}G", lines.coords().br.x + 1).unwrap();
+            overlays.clear();
         }
 
         lines.flush().unwrap();
@@ -910,8 +921,10 @@ pub fn print_text(
                 break;
             }
             if y > lines.coords().tl.y {
-                end_line(lines, painter, last_x, std::mem::take(&mut overlay_liness));
+                endl(lines, painter, last_x, &mut overlays, &mut spawns);
+                overlays.clear();
             }
+
             let initial_space = x.saturating_sub(x_shift).min(lines.coords().width());
             if initial_space > 0 {
                 let mut default_style = painter.get_default().style;
@@ -934,6 +947,12 @@ pub fn print_text(
                 let cursor_style = next_cursor_end(lines, painter, real, ghost);
                 style_was_set |= cursor_style.is_some();
 
+                minimum_x = continue_overlays(
+                    (lines, &mut overlays),
+                    (x, x_shift, x + len, &mut style_was_set),
+                    (painter, &mut spawns),
+                );
+
                 if let Some(str) = get_control_str(char) {
                     painter.apply(CONTROL_CHAR_ID, 100);
                     if let Some(style) = painter.relative_style() {
@@ -947,14 +966,19 @@ pub fn print_text(
                     }
 
                     let mut bytes = [0; 4];
-
                     match char {
                         '\t' => {
                             let truncated_start = x_shift.saturating_sub(x);
                             let truncated_end =
                                 (x + len).saturating_sub(lines.coords().width() + x_shift);
-                            let tab_len = len - (truncated_start + truncated_end);
+                            let tab_len = (len - (truncated_start + truncated_end))
+                                .saturating_sub(minimum_x.saturating_sub(x));
                             lines.write_all(&SPACES[..tab_len as usize]).unwrap()
+                        }
+                        _ if minimum_x >= x + len => {}
+                        _ if minimum_x > x => {
+                            let range = minimum_x as usize..(x + len) as usize;
+                            lines.write_all(&SPACES[range]).unwrap()
                         }
                         '\n' if len == 1 => lines.write_all(b" ").unwrap(),
                         '\n' | '\r' => {}
@@ -980,7 +1004,7 @@ pub fn print_text(
                 }
 
                 for id in spawns_for_next.drain(..) {
-                    observed_spawns.push((
+                    spawns.push((
                         id,
                         Coord::new(lines.coords().tl.x + x - x_shift, y - 1),
                         len,
@@ -1043,117 +1067,53 @@ pub fn print_text(
                 let overlay_coords =
                     Coords::new(Coord::new(coords.tl.x + x, 0), Coord::new(coords.br.x, 1));
 
-                let mut overlay_lines = Lines::new(overlay_coords, false);
-
-                // Since we're printing after moving, the context for the original
-                // style will be lost, so we need to print it again.
-                painter.reset_prev_style();
-                write!(overlay_lines, "\x1b[{}G", overlay_coords.tl.x + 1).unwrap();
-                if let Some(overlay_observed_spawns) = print_overlay(
-                    (overlay, opts, painter, &mut overlay_lines),
-                    (real, text),
-                    overlay_coords,
-                    (is_active, TwoPoints::default(), x_shift),
-                    |lines: &mut Lines, len| {
-                        if len > 0 {
-                            write!(lines, "\x1b[{len}C").unwrap()
-                        }
-                    },
-                ) {
-                    observed_spawns.extend(overlay_observed_spawns);
-                }
-                painter.reset_prev_style();
-                write!(overlay_lines, "\x1b[{}G", overlay_coords.br.x + 1).unwrap();
-
-                overlay_liness.push(overlay_lines);
+                overlays.push(
+                    print_iter(overlay, TwoPoints::default(), overlay_coords.width(), opts)
+                        .map(move |(mut place, item)| {
+                            place.x += x;
+                            (place, item)
+                        })
+                        .peekable(),
+                );
             }
         }
     }
 
-    end_line(&mut lines, painter, last_x, overlay_liness);
+    endl(&mut lines, painter, last_x, &mut overlays, &mut spawns);
 
     for _ in 0..lines.coords().br.y - y {
-        end_line(&mut lines, painter, 0, Vec::new());
+        endl(&mut lines, painter, 0, &mut Vec::new(), &mut spawns);
     }
 
-    Some((lines, observed_spawns))
+    Some((lines, spawns))
 }
 
-/// The [`Text`] printing function
-#[allow(clippy::type_complexity)]
-pub fn print_overlay(
-    (text, opts, painter, lines): (&Text, PrintOpts, &mut Painter, &mut Lines),
-    (point, parent_text): (Point, &Text),
-    coords: Coords,
-    (is_active, s_points, x_shift): (bool, TwoPoints, u32),
-    print_spacer: impl Fn(&mut Lines, u32),
-) -> Option<Vec<(SpawnId, Coord, u32)>> {
-    if coords.width() == 0 || coords.height() == 0 {
-        return None;
+#[inline(always)]
+fn continue_overlays<'t, Iter: Iterator<Item = (PrintedPlace, TextPlace<'t>)>>(
+    (lines, overlays): (&mut Lines, &mut Vec<Peekable<Iter>>),
+    (original_x, x_shift, until_x, style_was_set): (u32, u32, u32, &mut bool),
+    (painter, spawns): (&mut Painter, &mut Vec<(SpawnId, Coord, u32)>),
+) -> u32 {
+    if overlays.is_empty() {
+        return original_x;
     }
-
-    let mut main_selection_was_printed = false;
-    let mut extra_selections_print_count = 0;
-
-    let (iter, mut next_cursor_end) = {
-        let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
-        let iter = print_iter(text, s_points, width, opts);
-        let mut selections = iter_selections(parent_text, point).peekable();
-
-        let main_selection_was_printed = &mut main_selection_was_printed;
-        let extra_selections_print_count = &mut extra_selections_print_count;
-        let next_c = move |lines: &mut Lines, painter: &mut Painter, real: Point| {
-            let mut last_found = None;
-            // Compare chars because the byte indices of cursors may not match up
-            // when overlays contain non ascii text.
-            // Line comparisons are necessary in order to not print cursors on
-            // different lines that have the same byte due to a longer overlay
-            // than the size of the line itself.
-            while let Some(sel) = selections.next_if(|parts| {
-                parts.point.char() <= real.char() + point.char()
-                    && parts.point.line() <= real.line() + point.line()
-            }) {
-                last_found = Some(sel)
-            }
-
-            if let Some(parts) = last_found {
-                let print_caret =
-                    parts.is_caret && parts.point.char() == real.char() + point.char();
-                let is_range_start = parts.is_start == Some(true);
-                let is_range_end = parts.is_start == Some(false);
-
-                if parts.is_main {
-                    if let Some(shape) = painter.main_cursor()
-                        && is_active
-                    {
-                        lines.show_real_cursor();
-                        queue!(lines, shape, cursor::SavePosition).unwrap();
-                    } else {
-                        lines.hide_real_cursor();
-                        painter.apply_main_selection(print_caret, is_range_start);
-                    }
-                    *main_selection_was_printed = is_range_start;
-                    Some(Cursor::Main(print_caret, is_range_end))
-                } else {
-                    painter.apply_extra_selection(print_caret, is_range_start);
-                    *extra_selections_print_count += is_range_start as usize;
-                    *extra_selections_print_count -= is_range_end as usize;
-                    Some(Cursor::Extra(print_caret, is_range_end))
-                }
-            } else {
-                None
-            }
-        };
-
-        (iter, next_c)
-    };
 
     // For specific Tags
     let mut spawns_for_next: Vec<SpawnId> = Vec::new();
-    let mut observed_spawns = Vec::new();
-    let mut style_was_set = false;
+    let mut current_x = original_x;
 
-    for (place, item) in iter {
+    while let Some((place, item)) = {
+        let mut min = None;
+        for (i, overlay) in overlays.iter_mut().enumerate() {
+            if let Some((place, _)) = overlay.peek()
+                && min.is_none_or(|(x, _)| place.x < x)
+            {
+                min = Some((place.x, i));
+            }
+        }
+
+        min.and_then(|(_, i)| overlays[i].next_if(|(place, _)| place.x < until_x))
+    } {
         let PrintedPlace { x, len, wrap } = place;
         let TextPlace { part, real, .. } = item;
 
@@ -1165,8 +1125,9 @@ pub fn print_overlay(
 
         match part {
             TextPart::Char(char) if is_contained => {
-                let cursor_style = next_cursor_end(lines, painter, real);
-                style_was_set |= cursor_style.is_some();
+                if x != original_x {
+                    write!(lines, "\x1b[{}G", lines.coords().tl.x + x + 1).unwrap();
+                }
 
                 if let Some(str) = get_control_str(char) {
                     painter.apply(CONTROL_CHAR_ID, 100);
@@ -1176,10 +1137,9 @@ pub fn print_overlay(
                     lines.write_all(str.as_bytes()).unwrap();
                     painter.remove(CONTROL_CHAR_ID)
                 } else {
-                    if style_was_set && let Some(style) = painter.relative_style() {
+                    if *style_was_set && let Some(style) = painter.relative_style() {
                         print_style(lines, style);
                     }
-
                     let mut bytes = [0; 4];
 
                     match char {
@@ -1199,87 +1159,50 @@ pub fn print_overlay(
                     }
                 }
 
-                if let Some(cursor) = cursor_style {
-                    match cursor {
-                        Cursor::Main(is_caret, is_range_end) => {
-                            painter.remove_main_selection(is_caret, is_range_end)
-                        }
-                        Cursor::Extra(is_caret, is_range_end) => {
-                            painter.remove_extra_selection(is_caret, is_range_end)
-                        }
-                    }
-                    if let Some(style) = painter.relative_style() {
-                        print_style(lines, style)
-                    }
-                }
-
                 for id in spawns_for_next.drain(..) {
-                    observed_spawns.push((
+                    spawns.push((
                         id,
                         Coord::new(lines.coords().tl.x + x - x_shift, lines.coords().tl.y),
                         len,
                     ));
                 }
 
-                style_was_set = false;
+                current_x = x + len;
+                *style_was_set = false;
             }
-            TextPart::Char(_) => {
-                let cursor_style = next_cursor_end(lines, painter, real);
-                style_was_set |= cursor_style.is_some();
-
-                match cursor_style {
-                    Some(Cursor::Main(is_caret, end_range)) => {
-                        painter.remove_main_selection(is_caret, end_range)
-                    }
-                    Some(Cursor::Extra(is_caret, end_range)) => {
-                        painter.remove_extra_selection(is_caret, end_range)
-                    }
-                    None => {}
-                }
-                spawns_for_next.clear();
-            }
+            TextPart::Char(_) => spawns_for_next.clear(),
             TextPart::PushForm(id, prio) => {
                 painter.apply(id, prio);
-                style_was_set = true;
+                *style_was_set = true;
             }
             TextPart::PopForm(id) => {
                 painter.remove(id);
-                style_was_set = true;
+                *style_was_set = true;
             }
-            TextPart::Spacer => {
-                if style_was_set && let Some(style) = painter.relative_style() {
-                    print_style(lines, style);
-                }
-                style_was_set = false;
-                let truncated_start = x_shift.saturating_sub(x).min(len);
-                let truncated_end = (x + len)
-                    .saturating_sub(lines.coords().width().saturating_sub(x_shift))
-                    .min(len);
-                let spacer_len = len - (truncated_start + truncated_end);
-                print_spacer(lines, spacer_len);
-            }
+            TextPart::Spacer => {}
             TextPart::ResetState => print_style(lines, painter.reset()),
             TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
             TextPart::PushMask(id) => {
                 painter.apply_mask(id);
-                style_was_set = true;
+                *style_was_set = true;
             }
             TextPart::PopMask(id) => {
                 painter.remove_mask(id);
-                style_was_set = true;
+                *style_was_set = true;
             }
             TextPart::Overlay(_) => unreachable!(),
         }
     }
 
-    if main_selection_was_printed {
-        painter.remove_main_selection(false, true);
+    if current_x < original_x
+        && let Some(column) = (lines.coords().tl.x + original_x).checked_sub(x_shift)
+        && column < lines.coords().br.x
+    {
+        write!(lines, "\x1b[{}G", column + 1).unwrap();
     }
-    for _ in 0..extra_selections_print_count {
-        painter.remove_extra_selection(false, true);
-    }
+    overlays.retain_mut(|iter| iter.peek().is_some());
 
-    Some(observed_spawns)
+    current_x
 }
 
 fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPoint {
