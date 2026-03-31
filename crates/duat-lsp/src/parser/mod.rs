@@ -106,7 +106,7 @@ pub fn setup_hooks() {
     hook::add::<BufferUpdated>(|pa, handle| {
         if let Some((parser, buf)) = PARSERS.write(pa, handle)
             && let moment = buf.moment_for(parser.ns)
-            && moment.is_empty()
+            && !moment.is_empty()
         {
             for server in &parser.servers {
                 let bytes = server
