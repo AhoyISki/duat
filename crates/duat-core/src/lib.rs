@@ -1299,7 +1299,7 @@ pub const fn priority(priority: &str) -> u8 {
         bytes = rest;
     }
 
-    assert!(val <= 250, "priority cannot exceed 250");
+    assert!(val <= 240, "priority cannot exceed 240");
 
     val as u8
 }

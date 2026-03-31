@@ -108,10 +108,10 @@ impl Node {
             handle: handle.to_dyn(),
             print: if let Some(buffer) = handle.try_downcast::<Buffer>() {
                 let handle = handle.clone();
-                let buf_handle = handle.try_downcast();
 
                 Arc::new(move |pa, orig_handle| {
                     Buffer::update(pa, &buffer);
+
                     handle.area.print(
                         pa,
                         handle.text(pa),
@@ -119,29 +119,19 @@ impl Node {
                         form::painter_with_widget::<W>(),
                     );
 
-                    if let Some(buf_handle) = buf_handle.clone() {
-                        hook::trigger(pa, BufferPrinted(buf_handle));
-                        orig_handle.declare_as_read();
-                        orig_handle.area().0.declare_as_read();
-                    }
+                    hook::trigger(pa, BufferPrinted(buffer.clone()));
+                    orig_handle.declare_as_read();
+                    orig_handle.area().0.declare_as_read();
                 })
             } else {
                 let handle = handle.clone();
-                let buf_handle = handle.try_downcast();
-
-                Arc::new(move |pa, orig_handle| {
+                Arc::new(move |pa, _| {
                     handle.area.print(
                         pa,
                         handle.text(pa),
                         handle.opts(pa),
                         form::painter_with_widget::<W>(),
                     );
-
-                    if let Some(buf_handle) = buf_handle.clone() {
-                        hook::trigger(pa, BufferPrinted(buf_handle));
-                        orig_handle.declare_as_read();
-                        orig_handle.area().0.declare_as_read();
-                    }
                 })
             },
             on_focus: Arc::new({
@@ -161,26 +151,20 @@ impl Node {
 
                     let points = handle.area().points_at_coord(pa, text, event.coord, opts);
 
-                    hook::trigger(
-                        pa,
-                        OnMouseEvent {
-                            handle: dyn_handle.clone(),
-                            points,
-                            coord: event.coord,
-                            kind: event.kind,
-                            modifiers: event.modifiers,
-                        },
-                    );
-                    hook::trigger(
-                        pa,
-                        OnMouseEvent {
-                            handle: handle.clone(),
-                            points,
-                            coord: event.coord,
-                            kind: event.kind,
-                            modifiers: event.modifiers,
-                        },
-                    );
+                    hook::trigger(pa, OnMouseEvent {
+                        handle: dyn_handle.clone(),
+                        points,
+                        coord: event.coord,
+                        kind: event.kind,
+                        modifiers: event.modifiers,
+                    });
+                    hook::trigger(pa, OnMouseEvent {
+                        handle: handle.clone(),
+                        points,
+                        coord: event.coord,
+                        kind: event.kind,
+                        modifiers: event.modifiers,
+                    });
 
                     if let Some(TwoPointsPlace::Within(points)) = points {
                         let event = ToggleEvent {

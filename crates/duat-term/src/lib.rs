@@ -69,7 +69,7 @@ impl RawUi for Ui {
         // Initial terminal setup
         // Some key chords (like alt+shift+o for some reason) don't work
         // without this.
-        execute!(
+        queue!(
             io::stdout(),
             terminal::EnterAlternateScreen,
             terminal::Clear(ClearType::All),
@@ -80,7 +80,7 @@ impl RawUi for Ui {
         .unwrap();
 
         if let Ok(true) = terminal::supports_keyboard_enhancement() {
-            execute!(
+            queue!(
                 io::stdout(),
                 PushKeyboardEnhancementFlags(
                     KEF::DISAMBIGUATE_ESCAPE_CODES | KEF::REPORT_ALTERNATE_KEYS

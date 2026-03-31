@@ -319,10 +319,9 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// Now, let's take a look at some [`Widget`] methods that are used
 /// when the [`Widget`] is supposed to be handled by [`Mode`]s.
 ///
-/// ```rust,ignore
+/// ```rust
 /// # duat_core::doc_duat!(duat);
 /// # use duat::prelude::*;
-/// # use duat::text::Mask;
 /// # #[derive(Default)]
 /// # struct Menu {
 /// #     text: Text,
@@ -330,16 +329,16 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// #     active_entry: Option<usize>,
 /// # }
 /// fn add_menu_hooks() {
-///     let active_mask = Ns::new();
+///     let mask_ns = Ns::new();
 ///
 ///     hook::add::<FocusedOn<Menu>>(move |pa, (_, menu)| {
-///         menu.text_parts(pa).tags.remove(active_mask, ..);
-///         menu.text_parts(pa).tags.insert(active_mask, .., Mask("active"));
+///         menu.text_parts(pa).tags.remove(mask_ns, ..);
+///         menu.text_parts(pa).tags.insert(mask_ns, .., Mask("active"));
 ///     });
 ///
 ///     hook::add::<UnfocusedFrom<Menu>>(move |pa, (menu, _)| {
-///         menu.text_parts(pa).tags.remove(active_mask, ..);
-///         menu.text_parts(pa).tags.insert(active_mask, .., Mask("inactive"));
+///         menu.text_parts(pa).tags.remove(mask_ns, ..);
+///         menu.text_parts(pa).tags.insert(mask_ns, .., Mask("inactive"));
 ///     });
 /// }
 /// # impl Widget for Menu {

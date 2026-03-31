@@ -1751,6 +1751,6 @@ impl MaskId {
 
 impl std::fmt::Debug for MaskId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "MaskId({})", name_of_mask(*self))
+        write!(f, "MaskId({:?})", name_of_mask(*self))
     }
 }

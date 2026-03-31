@@ -20,7 +20,7 @@ use RawTag::*;
 use self::{bounds::Bounds, extents::NsExtents};
 pub use self::{
     ids::*,
-    types::{Conceal, FormTag, Ghost, RawTag, Spacer, Spawn, Tag, Toggle, ToggleFn, Mask},
+    types::{Conceal, FormTag, Ghost, Mask, RawTag, Spacer, Spawn, Tag, Toggle, ToggleFn},
 };
 use crate::{
     Ns,
@@ -253,7 +253,9 @@ impl InnerTags {
                     self.list.find_by_key((s_b as i32, s_tag), |t| t),
                     self.list.find_by_key((e_b as i32, e_tag), |t| t),
                 ) {
-                    (Ok(_), Ok(_)) => return false,
+                    (Ok(_), Ok(_)) => {
+                        return false;
+                    }
                     (Ok(s_i), Err(e_i)) | (Err(s_i), Ok(e_i)) | (Err(s_i), Err(e_i)) => {
                         (s_i, e_i + 1)
                     }
@@ -743,7 +745,11 @@ impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
 
             f.write_str("[\n")?;
 
-            for (i, (b, tag)) in self.0.list.iter_fwd(..) {
+            for (i, (b, tag)) in
+                self.0.list.iter_fwd(..).filter(|(_, (_, tag))| {
+                    matches!(tag, RawTag::PushMask(..) | RawTag::PopMask(..))
+                })
+            {
                 nesting = nesting.saturating_sub(tag.is_end() as usize);
                 if (range.start as u32..=range.end as u32).contains(&(b as u32)) {
                     let space = " ".repeat(nesting);
@@ -794,6 +800,8 @@ impl PartialEq for InnerTags {
                 (Spacer(_), Spacer(_))
                 | (StartConceal(_), StartConceal(_))
                 | (EndConceal(_), EndConceal(_)) => l_b == r_b,
+                (PushMask(_, l_id), PushMask(_, r_id)) => l_id == r_id && l_b == r_b,
+                (PopMask(_, lhs), PopMask(_, rhs)) => lhs == rhs && l_b == r_b,
                 _ => false,
             },
         )

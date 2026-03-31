@@ -18,7 +18,7 @@ use duat_core::{
 };
 
 pub(crate) use self::{
-    completions::setup_completions, info::add_info_hooks, log_book::add_logbook_hooks,
+    completions::setup_completions, info::add_info_hooks, logbook::add_logbook_hooks,
     notifications::add_notifications_hook, promptline::add_promptline_hooks,
     whichkey::add_whichkey_hooks,
 };
@@ -27,7 +27,7 @@ pub use self::{
     gutter::{GetGuttered, Gutter, GutterEntryBuilder, GutteredBuffer},
     info::Info,
     line_numbers::{LineNumbers, LineNumbersOpts},
-    log_book::{LogBook, LogBookOpts},
+    logbook::{LogBook, LogBookOpts},
     notifications::{Notifications, NotificationsOpts},
     promptline::{PromptLine, PromptLineBuilder},
     status_line::{State, StatusLine, StatusLineFmt, status},
@@ -38,7 +38,7 @@ mod completions;
 mod gutter;
 mod info;
 mod line_numbers;
-mod log_book;
+mod logbook;
 mod notifications;
 mod promptline;
 mod status_line;

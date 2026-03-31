@@ -128,17 +128,16 @@ impl<I: TextRange> Tag<I> for FormTag {
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         let FormTag { id, priority } = *self;
         let range = index.to_range(max);
-        {
-            let s_tag = PushForm(ns, id, priority);
-            let e_tag = PopForm(ns, id);
-            ((range.start, s_tag), Some((range.end, e_tag)))
-        }
+
+        let s_tag = PushForm(ns, id, priority);
+        let e_tag = PopForm(ns, id);
+        ((range.start, s_tag), Some((range.end, e_tag)))
     }
 }
 
 ////////// Meta Tags
 
-/// [`Tag`]: A spacer for more advanced alignment.
+/// [`Tag`]: A spacer for more advanced alkignment.
 ///
 /// When printing this screen line (one row on screen, i.e. until
 /// it wraps), Instead of following the current alignment, will
@@ -716,6 +715,8 @@ impl RawTag {
             Self::EndConceal(ns) => Some(Self::StartConceal(*ns)),
             Self::StartToggle(ns, id) => Some(Self::EndToggle(*ns, *id)),
             Self::EndToggle(ns, id) => Some(Self::StartToggle(*ns, *id)),
+            Self::PushMask(ns, id) => Some(Self::PopMask(*ns, *id)),
+            Self::PopMask(ns, id) => Some(Self::PushMask(*ns, *id)),
             _ => None,
         }
     }
@@ -730,6 +731,7 @@ impl RawTag {
             (Self::StartToggle(l_ns, l_id), Self::EndToggle(r_ns, r_id)) => {
                 l_id == r_id && l_ns == r_ns
             }
+            (Self::PushMask(l_ns, l_id), Self::PopMask(r_ns, r_id)) => l_id == r_id && l_ns == r_ns,
             _ => false,
         }
     }
@@ -738,7 +740,7 @@ impl RawTag {
     pub fn is_start(&self) -> bool {
         matches!(
             self,
-            Self::PushForm(..) | Self::StartConceal(_) | Self::StartToggle(..)
+            Self::PushForm(..) | Self::StartConceal(_) | Self::StartToggle(..) | Self::PushMask(..)
         )
     }
 
@@ -746,7 +748,7 @@ impl RawTag {
     pub fn is_end(&self) -> bool {
         matches!(
             self,
-            Self::PopForm(..) | Self::EndConceal(_) | Self::EndToggle(..)
+            Self::PopForm(..) | Self::EndConceal(_) | Self::EndToggle(..) | Self::PopMask(..)
         )
     }
 
@@ -799,10 +801,17 @@ impl RawTag {
     pub(super) fn priority(&self) -> u8 {
         match self {
             Self::PushForm(.., priority) => *priority + 5,
-            Self::Spacer(..) | Self::EndConceal(..) => 0,
-            Self::PopForm(..) | Self::Inlay(..) | Self::EndToggle(..) | Self::PushMask(..) => 1,
-            Self::Overlay(..) | Self::PopMask(..) => 2,
-            Self::StartConceal(..) | Self::StartToggle(..) | Self::SpawnedWidget(..) => 3,
+            Self::Spacer(..) => 0,
+            Self::EndConceal(..) => 1,
+            Self::PopForm(..) => 2,
+            Self::Inlay(..) => 3,
+            Self::EndToggle(..) => 4,
+            Self::PushMask(..) => 5,
+            Self::Overlay(..) => 6,
+            Self::PopMask(..) => 7,
+            Self::StartConceal(..) => 8,
+            Self::StartToggle(..) => 9,
+            Self::SpawnedWidget(..) => 10,
             Self::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
         }
     }
@@ -827,6 +836,10 @@ impl PartialEq for RawTag {
             (Self::EndToggle(l_ns, l_id), Self::EndToggle(r_ns, r_id)) => {
                 l_ns == r_ns && l_id == r_id
             }
+            (Self::PushMask(l_ns, l_id), Self::PushMask(r_ns, r_id)) => {
+                l_ns == r_ns && l_id == r_id
+            }
+            (Self::PopMask(l_ns, l_id), Self::PopMask(r_ns, r_id)) => l_ns == r_ns && l_id == r_id,
             _ => false,
         }
     }
@@ -849,6 +862,8 @@ impl PartialOrd for RawTag {
             (ConcealUntil(l_byte), ConcealUntil(r_byte)) => l_byte.cmp(r_byte),
             (StartToggle(l_ns, l_id), StartToggle(r_ns, r_id))
             | (EndToggle(l_ns, l_id), EndToggle(r_ns, r_id)) => l_id.cmp(r_id).then(l_ns.cmp(r_ns)),
+            (PushMask(l_ns, l_id), PushMask(r_ns, r_id)) => l_id.cmp(r_id).then(l_ns.cmp(r_ns)),
+            (PopMask(l_ns, l_id), PopMask(r_ns, r_id)) => l_id.cmp(r_id).then(l_ns.cmp(r_ns)),
             _ => self.priority().cmp(&other.priority()),
         })
     }

@@ -225,7 +225,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut first_time = "true";
     let mut initial_state = Some(InitialState {
-        buffers: get_buffers(args, crate_dir, &profile)?,
+        buffers,
         structs: HashMap::new(),
         clipb: ipc::get_clipboard(),
         reload_start: None,

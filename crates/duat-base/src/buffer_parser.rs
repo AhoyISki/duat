@@ -40,30 +40,28 @@ pub fn enable_parser(ns: Ns) {
     let indent_ns = Ns::new();
     let replacement_ns = Ns::new();
 
-    hook::add::<BufferUpdated>(move |pa, handle| {
-        let printed_line_ranges = handle.printed_line_ranges(pa);
-        let (parser, buf) = PARSERS.write(pa, handle).unwrap();
+    hook::add::<BufferUpdated>(move |pa, buffer| {
+        let printed_line_ranges = buffer.printed_line_ranges(pa);
+        let (parser, buf) = PARSERS.write(pa, buffer).unwrap();
 
         let opts_changed = buf.opts != parser.opts;
         parser.opts = buf.opts;
 
         let moment = buf.moment_for(replacement_ns);
 
-        if parser.opts.highlight_current_line {
-            hightlight_current_line(buf, cur_line_ns);
-        }
-
         let nss = [nl_ns, space_ns];
         replace_chars(buf, &moment, &printed_line_ranges, nss, opts_changed);
 
         show_indents(buf, &moment, &printed_line_ranges, indent_ns, opts_changed);
+
+        if parser.opts.highlight_current_line {
+            hightlight_current_line(buf, cur_line_ns);
+        }
     })
     .grouped(ns);
 
-    hook::add::<BufferPrinted>(move |pa, handle| {
-        handle.text_mut(pa).remove_tags(cur_line_ns, ..);
-    })
-    .grouped(ns);
+    hook::add::<BufferPrinted>(move |pa, buffer| buffer.text_mut(pa).remove_tags(cur_line_ns, ..))
+        .grouped(ns);
 
     form::enable_mask("indent");
 }
