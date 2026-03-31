@@ -459,8 +459,12 @@ mod global {
     pub fn set_colorscheme(name: &str) {
         let name = name.to_string();
         let mut colorschemes = COLORSCHEMES.lock().unwrap();
-        if let Some(pairs) = colorschemes.get_mut(name.as_str()) {
-            let pairs = pairs();
+        if let Some(pairs_fn) = colorschemes.get_mut(name.as_str()) {
+            let Some(pairs) = crate::utils::catch_panic(pairs_fn) else {
+                context::error!("Failed to set [a]{name}[] colorscheme");
+                return;
+            };
+            
             set_many(pairs.iter().cloned().map(|(name, form)| (name, Some(form))));
             context::queue(move |pa| {
                 _ = hook::trigger(pa, ColorschemeSet((name.to_string(), pairs)))

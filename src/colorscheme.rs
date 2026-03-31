@@ -372,7 +372,7 @@ pub(crate) fn add_default() {
                     Form::new().with(c.peach).on(c.surface1).bold(),
                 ),
                 // Form used on the location a log message came from.
-                ("log_book.location", Form::new().with(c.subtext1)),
+                ("logbook.location", Form::new().with(c.subtext1)),
                 (
                     "selected.Completions",
                     Form::new().with(c.base).on(c.overlay0),
@@ -556,7 +556,11 @@ pub(crate) fn add_default() {
                     "matched_pair",
                     Form::new().with(c.orange).on(c.terminal_black).bold(),
                 ),
-                ("log_book.location", Form::new().with(c.fg_dark)),
+                ("logbook.location", Form::new().with(c.fg_dark)),
+                (
+                    "default.Buffer.current_line",
+                    default.on(c.bg_highlight).interpolate(default, 50),
+                ),
                 ("default.Completions", default.on(c.terminal_black)),
                 ("selected.Completions", Form::new().with(c.bg).on(c.dark5)),
                 ("default.WhichKey", default.with(c.text)),
@@ -715,7 +719,11 @@ pub(crate) fn add_default() {
                     "matched_pair",
                     Form::new().with(c.orange).on(c.bg_subtle).bold(),
                 ),
-                ("log_book.location", Form::new().with(c.text_muted)),
+                ("logbook.location", Form::new().with(c.text_muted)),
+                (
+                    "default.Buffer.current_line",
+                    default.on(c.bg_subtle).interpolate(default, 50),
+                ),
                 ("default.Completions", default.on(c.bg_overlay)),
                 ("selected.Completions", Form::new().with(c.bg).on(c.blue)),
                 ("default.WhichKey", default.with(c.text)),
@@ -863,7 +871,11 @@ pub(crate) fn add_default() {
                     "matched_pair",
                     Form::new().with(c.orange).on(c.surface_highlight).bold(),
                 ),
-                ("log_book.location", Form::new().with(c.text_muted)),
+                ("logbook.location", Form::new().with(c.text_muted)),
+                (
+                    "default.Buffer.current_line",
+                    default.on(c.surface_highlight).interpolate(default, 50),
+                ),
                 ("default.Completions", default.on(c.surface_panel)),
                 (
                     "selected.Completions",
@@ -934,20 +946,38 @@ pub(crate) fn add_default() {
         }
     );
 
+    // Dracula theme — https://github.com/dracula/dracula-theme
     add_colorschemes!(
-        [("dracula", [
-            (bg, "#282a36"),
-            (current_line, "#44475a"),
-            (fg, "#f8f8f2"),
-            (comment, "#6272a4"),
-            (cyan, "#8be9fd"),
-            (green, "#50fa7b"),
-            (orange, "#ffb86c"),
-            (pink, "#ff79c6"),
-            (purple, "#bd93f9"),
-            (red, "#ff5555"),
-            (yellow, "#f1fa8c"),
-        ]),],
+        [
+            ("dracula", [
+                (bg, "#282a36"),
+                (current_line, "#44475a"),
+                (selection, "#44475a"),
+                (fg, "#f8f8f2"),
+                (comment, "#6272a4"),
+                (cyan, "#8be9fd"),
+                (green, "#50fa7b"),
+                (orange, "#ffb86c"),
+                (pink, "#ff79c6"),
+                (purple, "#bd93f9"),
+                (red, "#ff5555"),
+                (yellow, "#f1fa8c"),
+            ]),
+            ("dracula-alucard", [
+                (bg, "#fffbeb"),
+                (current_line, "#6c664b"),
+                (selection, "#cfcfde"),
+                (fg, "#1f1f1f"),
+                (comment, "#6c664b"),
+                (cyan, "#036a96"),
+                (green, "#14710a"),
+                (orange, "#a34d14"),
+                (pink, "#a3144d"),
+                (purple, "#644ac9"),
+                (red, "#cb3a2a"),
+                (yellow, "#846e15"),
+            ])
+        ],
         |c, has_background| {
             let default = if has_background {
                 Form::new().with(c.fg).on(c.bg)
@@ -966,14 +996,17 @@ pub(crate) fn add_default() {
                 ("accent.info", Form::new().with(c.cyan).bold()),
                 ("default.debug", Form::new().with(c.comment)),
                 ("accent.debug", Form::new().with(c.purple).bold()),
-                ("caret.main", Form::new().reverse()),
-                ("caret.extra", Form::new().reverse()),
-                ("selection.main", Form::new().with(c.fg).on(c.current_line)),
-                ("selection.extra", Form::new().with(c.fg).on(c.current_line)),
-                ("selection.main.indent", Form::new().with_on(c.current_line)),
+                ("caret.main", Form::new().with(c.bg).on(c.yellow)),
+                ("caret.extra", Form::new().with(c.bg).on(c.fg)),
+                ("selection.main", Form::new().on(c.selection)),
+                (
+                    "selection.extra",
+                    Form::new().on(c.selection).interpolate(default, 50),
+                ),
+                ("selection.main.indent", Form::new().with_on(c.selection)),
                 (
                     "selection.extra.indent",
-                    Form::new().with_on(c.current_line),
+                    Form::new().with_on(c.selection).interpolate(default, 50),
                 ),
                 ("cloak", Form::new().with(c.comment).on(c.bg)),
                 ("replace", Form::new().with(c.current_line)),
@@ -984,7 +1017,7 @@ pub(crate) fn add_default() {
                 ("toggle.hover", Form::new().on(c.current_line)),
                 ("toggle.click", Form::new().on(c.comment)),
                 // duat-base forms
-                ("linenum.main", Form::new().with(c.purple)),
+                ("linenum.main", Form::new().with(c.current_line)),
                 ("linenum.wrapped", Form::new().with(c.cyan)),
                 ("file", Form::new().with(c.yellow)),
                 ("selections", Form::new().with(c.purple)),
@@ -1004,7 +1037,11 @@ pub(crate) fn add_default() {
                     "matched_pair",
                     Form::new().with(c.orange).on(c.current_line).bold(),
                 ),
-                ("log_book.location", Form::new().with(c.comment)),
+                ("logbook.location", Form::new().with(c.comment)),
+                (
+                    "default.Buffer.current_line",
+                    default.on(c.current_line).interpolate(default, 50),
+                ),
                 ("default.Completions", default.on(c.current_line)),
                 ("selected.Completions", Form::new().with(c.bg).on(c.purple)),
                 ("default.WhichKey", default.with(c.fg)),
@@ -1147,7 +1184,11 @@ pub(crate) fn add_default() {
                     "matched_pair",
                     Form::new().with(c.nord12).on(c.nord2).bold(),
                 ),
-                ("log_book.location", Form::new().with(c.nord3)),
+                ("logbook.location", Form::new().with(c.nord3)),
+                (
+                    "default.Buffer.current_line",
+                    default.on(c.nord1).interpolate(default, 50),
+                ),
                 ("default.Completions", default.on(c.nord1)),
                 (
                     "selected.Completions",

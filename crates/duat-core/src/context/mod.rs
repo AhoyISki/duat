@@ -280,19 +280,19 @@ impl DuatSender {
     /// Sends a [`KeyEvent`].
     pub fn send_key(&self, key: KeyEvent) {
         self.1.fetch_add(1, Relaxed);
-        self.0.send(DuatEvent::KeyEventSent(key)).unwrap();
+        _ = self.0.send(DuatEvent::KeyEventSent(key));
     }
 
     /// Sends an [`UiMouseEvent`].
     pub fn send_mouse(&self, mouse: UiMouseEvent) {
         self.1.fetch_add(1, Relaxed);
-        self.0.send(DuatEvent::MouseEventSent(mouse)).unwrap();
+        _ = self.0.send(DuatEvent::MouseEventSent(mouse));
     }
 
     /// Sends a notice that the app has resized.
     pub fn send_resize(&self) {
         self.1.fetch_add(1, Relaxed);
-        self.0.send(DuatEvent::Resized).unwrap();
+        _ = self.0.send(DuatEvent::Resized);
     }
 
     /// Triggers the [`FocusedOnDuat`] [`hook`].
@@ -301,7 +301,7 @@ impl DuatSender {
     /// [`hook`]: crate::hook
     pub fn send_focused(&self) {
         self.1.fetch_add(1, Relaxed);
-        self.0.send(DuatEvent::FocusedOnDuat).unwrap();
+        _ = self.0.send(DuatEvent::FocusedOnDuat);
     }
 
     /// Triggers the [`UnfocusedFromDuat`] [`hook`].
@@ -310,14 +310,14 @@ impl DuatSender {
     /// [`hook`]: crate::hook
     pub fn send_unfocused(&self) {
         self.1.fetch_add(1, Relaxed);
-        self.0.send(DuatEvent::UnfocusedFromDuat).unwrap();
+        _ = self.0.send(DuatEvent::UnfocusedFromDuat);
     }
 
     /// Sends any [`DuatEvent`].
     #[track_caller]
     pub(crate) fn send(&self, event: DuatEvent) {
         self.1.fetch_add(1, Relaxed);
-        self.0.send(event).unwrap();
+        _ = self.0.send(event);
     }
 }
 
