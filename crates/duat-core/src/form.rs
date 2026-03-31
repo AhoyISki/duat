@@ -472,12 +472,15 @@ mod global {
 
     /// Gets all available colorscheme names.
     pub fn colorscheme_list() -> Vec<String> {
-        COLORSCHEMES
-            .lock()
-            .unwrap()
-            .keys()
-            .map(|name| name.to_string())
-            .collect()
+        let mut list = Vec::from_iter(
+            COLORSCHEMES
+                .lock()
+                .unwrap()
+                .keys()
+                .map(|name| name.to_string()),
+        );
+        list.sort_unstable();
+        list
     }
 
     /// Wether or not a specific [`Form`] has been set.
