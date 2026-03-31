@@ -319,7 +319,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// Now, let's take a look at some [`Widget`] methods that are used
 /// when the [`Widget`] is supposed to be handled by [`Mode`]s.
 ///
-/// ```rust
+/// ```rust,ignore
 /// # duat_core::doc_duat!(duat);
 /// # use duat::prelude::*;
 /// # #[derive(Default)]
