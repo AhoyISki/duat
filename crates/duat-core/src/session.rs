@@ -157,7 +157,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
 
     let mut reload_requested = false;
     let mut reprint_screen = false;
-    let mut chain_events_instant = Instant::now();
+    let mut chain_events_instant = None;
 
     ui.flush_layout();
 
@@ -217,7 +217,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
     print_screen(pa, true);
 
     loop {
-        if let Some(event) = duat_rx.recv(chain_events_instant) {
+        if let Some(event) = duat_rx.recv(&mut chain_events_instant) {
             match event {
                 DuatEvent::KeyEventSent(key_event) => {
                     mode::send_key_event(pa, key_event);
@@ -241,10 +241,16 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
                         continue;
                     }
                 }
-                DuatEvent::QueuedFunction(f) => _ = catch_panic(|| f(pa)),
+                DuatEvent::QueuedFunction(f) => {
+                    if chain_events_instant.is_none() {
+                        chain_events_instant = Some(Instant::now());
+                    }
+                    _ = catch_panic(|| f(pa));
+                    continue;
+                }
                 DuatEvent::Resized | DuatEvent::FormChange => {
-                    if !reprint_screen {
-                        chain_events_instant = Instant::now();
+                    if chain_events_instant.is_none() {
+                        chain_events_instant = Some(Instant::now());
                     }
                     reprint_screen = true;
                     continue;

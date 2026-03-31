@@ -333,12 +333,17 @@ impl DuatReceiver {
     /// timeout.
     ///
     /// Otherwise, it will wait until an event shows up.
-    pub(crate) fn recv(&self, instant: Instant) -> Option<DuatEvent> {
-        if let Some(duration) = Duration::from_millis(5).checked_sub(instant.elapsed()) {
-            self.0
-                .recv_timeout(duration)
-                .inspect(|_| _ = self.1.fetch_sub(1, Relaxed))
-                .ok()
+    pub(crate) fn recv(&self, chain_instant: &mut Option<Instant>) -> Option<DuatEvent> {
+        if let Some(instant) = chain_instant {
+            if let Some(duration) = Duration::from_micros(500).checked_sub(instant.elapsed()) {
+                self.0
+                    .recv_timeout(duration)
+                    .inspect(|_| _ = self.1.fetch_sub(1, Relaxed))
+                    .ok()
+            } else {
+                *chain_instant = None;
+                None
+            }
         } else {
             self.0
                 .recv()
