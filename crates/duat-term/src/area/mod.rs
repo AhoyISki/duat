@@ -400,8 +400,9 @@ impl RawArea for Area {
             .find_map(|(place, item)| place.wrap.then_some(item.points()))
             .map(|points| points.real.line());
 
-        let mut printed_lines = Vec::new();
+        let mut printed_lines = Vec::<PrintedLine>::new();
         let mut y = coords.tl.y;
+        let mut is_ghost = true;
 
         for (place, item) in print_iter(text, points, coords.width(), opts) {
             if y == coords.br.y || item.line() == text.end_point().line() {
@@ -409,12 +410,25 @@ impl RawArea for Area {
             }
             y += place.wrap as u32;
 
+            if item.as_real_char().is_some() {
+                is_ghost = false;
+            }
+
             if place.wrap {
+                if let Some(last) = printed_lines.last_mut() {
+                    last.is_ghost = is_ghost;
+                }
+                is_ghost = true;
+
                 let number = item.line();
                 let is_wrapped = prev_point.is_some_and(|ll| ll == number);
                 prev_point = Some(number);
-                printed_lines.push(PrintedLine { number, is_wrapped });
+                printed_lines.push(PrintedLine { number, is_wrapped, is_ghost: true });
             }
+        }
+
+        if let Some(last) = printed_lines.last_mut() {
+            last.is_ghost = is_ghost;
         }
 
         Some(printed_lines)
@@ -647,7 +661,7 @@ impl RawArea for Area {
             .unwrap_or_default()
     }
 
-	#[track_caller]
+    #[track_caller]
     fn points_at_coord(
         &self,
         _: UiPass,

@@ -83,8 +83,15 @@ impl LineNumbers {
         };
 
         let mut builder = Text::builder();
+        let mut last_was_ghost = false;
 
         for (idx, line) in printed_line_numbers.iter().enumerate() {
+            if line.is_ghost {
+                last_was_ghost = true;
+                builder.push("\n");
+                continue;
+            }
+
             let align = if line.number == main_line_num {
                 self.main_align
             } else {
@@ -95,14 +102,14 @@ impl LineNumbers {
                 builder.push(Spacer);
             }
 
-            match (line.number == main_line_num, line.is_wrapped) {
+			let is_wrapped = line.is_wrapped && idx > 0 && !last_was_ghost;
+            match (line.number == main_line_num, is_wrapped) {
                 (false, false) => {}
                 (true, false) => builder.push(form::id_of!("linenum.main")),
                 (false, true) => builder.push(form::id_of!("linenum.wrapped")),
                 (true, true) => builder.push(form::id_of!("linenum.wrapped.main")),
             }
-
-            let is_wrapped = line.is_wrapped && idx > 0;
+            
             push_text(&mut builder, line.number, main_line_num, is_wrapped, self);
 
             if align == Alignment::Center {
@@ -111,6 +118,7 @@ impl LineNumbers {
 
             builder.push("\n");
             builder.push(form::DEFAULT_ID);
+            last_was_ghost = false;
         }
 
         builder.build()

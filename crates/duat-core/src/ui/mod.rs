@@ -729,6 +729,8 @@ pub struct PrintedLine {
     pub number: usize,
     /// Wether the line is wrapped.
     pub is_wrapped: bool,
+    /// Wether the wrapped line was entirely a ghost line.
+    pub is_ghost: bool
 }
 
 /// Information about the horizontal place of a [`TwoPoints`]

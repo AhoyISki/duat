@@ -157,15 +157,15 @@ impl Gutter {
         GutterOpts {
             hint: GutterSymbolOpts {
                 symbol: 'i',
-                display: GutterDisplay::Spawn(true),
+                display: GutterDisplay::OwnLines(false),
             },
             warning: GutterSymbolOpts {
                 symbol: '!',
-                display: GutterDisplay::Spawn(true),
+                display: GutterDisplay::OwnLines(false),
             },
             error: GutterSymbolOpts {
                 symbol: '*',
-                display: GutterDisplay::OwnLines(false),
+                display: GutterDisplay::OwnLines(true),
             },
             renderer: Some(Box::new(default_renderer)),
         }
