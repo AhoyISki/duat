@@ -16,7 +16,7 @@ use duat_core::{
     buffer::{Buffer, BufferOpts, Moment, PerBuffer},
     form::{self, FormId},
     hook::{self, BufferClosed, BufferOpened, BufferPrinted, BufferUpdated},
-    text::{Ghost, Mask, RegexHaystack, Spacer, Strs, Tags, txt},
+    text::{Ghost, Mask, RegexHaystack, Strs, Tags, txt},
     utils::Memoized,
 };
 
@@ -69,20 +69,12 @@ pub fn enable_parser(ns: Ns) {
 }
 
 fn hightlight_current_line(buf: &mut Buffer, ns: Ns) {
-    static CUR_LINE_INLAY: LazyLock<Ghost> =
-        LazyLock::new(|| Ghost::overlay(txt!("[current_line] {Spacer}")));
-
     let mut parts = buf.text_parts();
 
     let caret = parts.selections.main().caret();
     let line_range = parts.strs.line(caret.line()).byte_range();
 
-    let cur_line_form = form::id_of!("current_line").to_tag(50);
-
-    parts
-        .tags
-        .insert(ns, line_range.start, CUR_LINE_INLAY.clone());
-    parts.tags.insert(ns, line_range, cur_line_form);
+    parts.tags.insert(ns, line_range, Mask("current_line"));
 }
 
 fn replace_chars(
@@ -331,8 +323,7 @@ impl IndentState {
                 .flat_map(|len| indent_str.chars().chain(std::iter::repeat(' ')).take(len))
                 .collect();
 
-            let mask = Mask("indent");
-            Ghost::overlay(txt!("{mask}{indent_form}{ghost}"))
+            Ghost::overlay(txt!("{}{indent_form}{ghost}", Mask("indent")))
         });
 
         tags.insert(ns, range.start, overlay);
