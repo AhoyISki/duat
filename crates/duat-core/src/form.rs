@@ -982,7 +982,7 @@ impl Palette {
         Painter {
             inner,
             applied_masks: vec![0],
-            default,
+            default: (default, default_id),
             forms: Vec::new(),
             set_fg: true,
             set_bg: true,
@@ -1179,7 +1179,7 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
 pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
     applied_masks: Vec<usize>,
-    default: Form,
+    default: (Form, FormId),
     forms: Vec<(Form, FormId, u8)>,
     set_fg: bool,
     set_bg: bool,
@@ -1250,7 +1250,7 @@ impl Painter {
     /// carried over, i.e., we're styling from scratch.
     #[inline(always)]
     pub fn absolute_style(&self) -> ContentStyle {
-        let mut style = self.default.style;
+        let mut style = self.default.0.style;
 
         for &(form, ..) in &self.forms {
             style.foreground_color = form.fg().or(style.foreground_color);
@@ -1376,11 +1376,13 @@ impl Painter {
     /// This will also remap all currently applied `Form`s, so you
     /// should reprint the style.
     pub fn apply_mask(&mut self, id: MaskId) {
-        self.prev_style = None;
+        self.reset_prev_style();
         self.applied_masks.push(id.0 as usize);
 
         let mask = get_mask(&self.inner.masks, &self.applied_masks);
-        for (form, id, _) in &mut self.forms {
+        for (form, id) in std::iter::once((&mut self.default.0, &mut self.default.1))
+            .chain(self.forms.iter_mut().map(|(form, id, _)| (form, id)))
+        {
             // SAFETY: When you create a form, it gets indexed, and never becomes
             // unindexed, so this should be fine.
             *form = unsafe {
@@ -1396,11 +1398,13 @@ impl Painter {
     /// This will also remap all currently applied `Form`s, so you
     /// should reprint the style.
     pub fn remove_mask(&mut self, id: MaskId) {
-        self.prev_style = None;
+        self.reset_prev_style();
         self.applied_masks.retain(|idx| *idx != id.0 as usize);
 
         let mask = get_mask(&self.inner.masks, &self.applied_masks);
-        for (form, id, _) in &mut self.forms {
+        for (form, id) in std::iter::once((&mut self.default.0, &mut self.default.1))
+            .chain(self.forms.iter_mut().map(|(form, id, _)| (form, id)))
+        {
             // SAFETY: When you create a form, it gets indexed, and never becomes
             // unindexed, so this should be fine.
             *form = unsafe {
@@ -1423,7 +1427,7 @@ impl Painter {
 
     /// The `"default"` form's [`Form`].
     pub fn get_default(&self) -> Form {
-        self.default
+        self.default.0
     }
 }
 
