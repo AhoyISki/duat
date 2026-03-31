@@ -324,6 +324,8 @@ pub(crate) fn add_default() {
                 ("selection.main", Form::new().on(c.surface1)),
                 ("selection.extra", Form::new().on(c.surface0)),
                 // This is to hide selected indent guides.
+                ("caret.main.indent", Form::new().with_on(c.rosewater)),
+                ("caret.extra.indent", Form::new().with_on(c.teal)),
                 ("selection.main.indent", Form::new().with_on(c.surface1)),
                 ("selection.extra.indent", Form::new().with_on(c.surface0)),
                 // A utility form, mostly used to cover all other forms on screen.
@@ -381,11 +383,6 @@ pub(crate) fn add_default() {
                 ("key", Form::new().with(c.peach)),
                 ("key.special", Form::new().with(c.teal)),
                 // Same as before, but on specific Modes.
-                ("caret.main.Normal", Form::new().with(c.base).on(c.text)),
-                (
-                    "caret.extra.Normal",
-                    Form::new().with(c.base).on(c.sapphire),
-                ),
                 ("caret.main.Insert", Form::new().with(c.base).on(c.mauve)),
                 ("caret.extra.Insert", Form::new().with(c.base).on(c.yellow)),
                 // Used when typing arguments to commands.
@@ -525,6 +522,8 @@ pub(crate) fn add_default() {
                 ("caret.extra", Form::new().with(c.bg).on(c.teal)),
                 ("selection.main", Form::new().on(c.blue0)),
                 ("selection.extra", Form::new().on(c.fg_gutter)),
+                ("caret.main.indent", Form::new().with_on(c.text)),
+                ("caret.extra.indent", Form::new().with_on(c.teal)),
                 ("selection.main.indent", Form::new().with_on(c.blue0)),
                 ("selection.extra.indent", Form::new().with_on(c.fg_gutter)),
                 ("cloak", Form::new().with(c.dark5).on(c.bg)),
@@ -567,8 +566,6 @@ pub(crate) fn add_default() {
                 ("key", Form::new().with(c.orange)),
                 ("key.special", Form::new().with(c.teal)),
                 // For duatmode
-                ("caret.main.Normal", Form::new().with(c.bg).on(c.text)),
-                ("caret.extra.Normal", Form::new().with(c.bg).on(c.blue1)),
                 ("caret.main.Insert", Form::new().with(c.bg).on(c.magenta)),
                 ("caret.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
@@ -688,6 +685,8 @@ pub(crate) fn add_default() {
                 ("caret.extra", Form::new().with(c.bg).on(c.text_muted)),
                 ("selection.main", Form::new().on(c.bg_subtle)),
                 ("selection.extra", Form::new().on(c.bg_overlay)),
+                ("caret.main.indent", Form::new().with_on(c.text)),
+                ("caret.extra.indent", Form::new().with_on(c.text_muted)),
                 ("selection.main.indent", Form::new().with_on(c.bg_subtle)),
                 ("selection.extra.indent", Form::new().with_on(c.bg_overlay)),
                 ("cloak", Form::new().with(c.text_subtle).on(c.bg)),
@@ -730,8 +729,6 @@ pub(crate) fn add_default() {
                 ("key", Form::new().with(c.orange)),
                 ("key.special", Form::new().with(c.teal)),
                 // For duatmode
-                ("caret.main.Normal", Form::new().with(c.bg).on(c.text)),
-                ("caret.extra.Normal", Form::new().with(c.bg).on(c.teal)),
                 ("caret.main.Insert", Form::new().with(c.bg).on(c.purple)),
                 ("caret.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
@@ -838,6 +835,8 @@ pub(crate) fn add_default() {
                 ("caret.extra", Form::new().with(c.bg).on(c.teal)),
                 ("selection.main", Form::new().on(c.surface_highlight)),
                 ("selection.extra", Form::new().on(c.surface)),
+                ("caret.main.indent", Form::new().with_on(c.text)),
+                ("caret.extra.indent", Form::new().with_on(c.teal)),
                 (
                     "selection.main.indent",
                     Form::new().with_on(c.surface_highlight),
@@ -884,8 +883,6 @@ pub(crate) fn add_default() {
                 ("default.WhichKey", default.with(c.text)),
                 ("key", Form::new().with(c.orange)),
                 ("key.special", Form::new().with(c.teal)),
-                ("caret.main.Normal", Form::new().with(c.bg).on(c.text)),
-                ("caret.extra.Normal", Form::new().with(c.bg).on(c.teal)),
                 ("caret.main.Insert", Form::new().with(c.bg).on(c.purple)),
                 ("caret.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
@@ -1003,6 +1000,8 @@ pub(crate) fn add_default() {
                     "selection.extra",
                     Form::new().on(c.selection).interpolate(default, 50),
                 ),
+                ("caret.main.indent", Form::new().with_on(c.yellow)),
+                ("caret.extra.indent", Form::new().with_on(c.fg)),
                 ("selection.main.indent", Form::new().with_on(c.selection)),
                 (
                     "selection.extra.indent",
@@ -1048,8 +1047,6 @@ pub(crate) fn add_default() {
                 ("key", Form::new().with(c.orange)),
                 ("key.special", Form::new().with(c.cyan)),
                 // For duatmode
-                ("caret.main.Normal", Form::new().with(c.bg).on(c.fg)),
-                ("caret.extra.Normal", Form::new().with(c.bg).on(c.cyan)),
                 ("caret.main.Insert", Form::new().with(c.bg).on(c.pink)),
                 ("caret.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
@@ -1154,6 +1151,8 @@ pub(crate) fn add_default() {
                 ("caret.extra", Form::new().with(c.nord0).on(c.nord7)),
                 ("selection.main", Form::new().on(c.nord2)),
                 ("selection.extra", Form::new().on(c.nord1)),
+                ("caret.main.indent", Form::new().with_on(c.nord4)),
+                ("caret.extra.indent", Form::new().with_on(c.nord7)),
                 ("selection.main.indent", Form::new().with_on(c.nord2)),
                 ("selection.extra.indent", Form::new().with_on(c.nord1)),
                 ("cloak", Form::new().with(c.nord3).on(c.nord0)),
@@ -1197,8 +1196,6 @@ pub(crate) fn add_default() {
                 ("default.WhichKey", default.with(c.nord4)),
                 ("key", Form::new().with(c.nord12)),
                 ("key.special", Form::new().with(c.nord7)),
-                ("caret.main.Normal", Form::new().with(c.nord0).on(c.nord4)),
-                ("caret.extra.Normal", Form::new().with(c.nord0).on(c.nord8)),
                 ("caret.main.Insert", Form::new().with(c.nord0).on(c.nord15)),
                 ("caret.extra.Insert", Form::new().with(c.nord0).on(c.nord13)),
                 ("param", Form::new().with(c.nord15)),

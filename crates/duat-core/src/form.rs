@@ -855,6 +855,7 @@ impl Form {
     /// If this `Form` was created via [`Form::mimic`], then the other
     /// attributes will change as the mimicked color does, but the
     /// underline color won't.
+    #[track_caller]
     pub const fn interpolate(mut self, other: Self, factor: u8) -> Self {
         const fn interpolate(color: Color, other: Color, factor: u8) -> Color {
             if let (Color::Rgb { r, g, b }, Color::Rgb { r: or, g: og, b: ob }) = (color, other) {
