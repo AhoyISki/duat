@@ -322,6 +322,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// ```rust
 /// # duat_core::doc_duat!(duat);
 /// # use duat::prelude::*;
+/// # use duat::text::Mask;
 /// # #[derive(Default)]
 /// # struct Menu {
 /// #     text: Text,
@@ -329,8 +330,17 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// #     active_entry: Option<usize>,
 /// # }
 /// fn add_menu_hooks() {
-///     hook::add::<FocusedOn<Menu>>(|_, (_, menu)| _ = menu.set_mask("active"));
-///     hook::add::<UnfocusedFrom<Menu>>(|_, (menu, _)| _ = menu.set_mask("inactive"));
+///     let active_mask = Ns::new();
+///
+///     hook::add::<FocusedOn<Menu>>(move |pa, (_, menu)| {
+///         menu.text_parts(pa).tags.remove(active_mask, ..);
+///         menu.text_parts(pa).tags.insert(active_mask, .., Mask("active"));
+///     });
+///
+///     hook::add::<UnfocusedFrom<Menu>>(move |pa, (menu, _)| {
+///         menu.text_parts(pa).tags.remove(active_mask, ..);
+///         menu.text_parts(pa).tags.insert(active_mask, .., Mask("inactive"));
+///     });
 /// }
 /// # impl Widget for Menu {
 /// #     fn text(&self) -> &Text { todo!() }
@@ -402,7 +412,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// [Kakoune]: https://github.com/mawww/kakoune
 /// [`Text`]: crate::text::Text
 /// [`&mut Selections`]: Selections
-/// [mask]: Handle::set_mask
+/// [mask]: crate::text::Mask
 #[allow(unused_variables)]
 pub trait Mode: Sized + Send + 'static {
     /// The [`Widget`] that this [`Mode`] controls

@@ -782,6 +782,155 @@ pub(crate) fn add_default() {
         }
     );
 
+    // Night Owl theme — https://github.com/sdras/night-owl-vscode-theme
+    add_colorschemes!(
+        [("night-owl", [
+            (bg, "#011627"),
+            (surface, "#0b253a"),
+            (surface_highlight, "#1d3b53"),
+            (surface_panel, "#202431"),
+            (surface_inactive, "#01111d"),
+            (text, "#d6deeb"),
+            (text_muted, "#5f7e97"),
+            (text_subtle, "#4b6479"),
+            (comment, "#637777"),
+            (red, "#EF5350"),
+            (orange, "#F78C6C"),
+            (yellow, "#ecc48d"),
+            (sand, "#ffcb8b"),
+            (green, "#c5e478"),
+            (teal, "#7fdbca"),
+            (aqua, "#baebe2"),
+            (blue, "#82AAFF"),
+            (purple, "#c792ea"),
+            (gold, "#faf39f"),
+        ]),],
+        |c, has_background| {
+            let default = if has_background {
+                Form::new().with(c.text).on(c.bg)
+            } else {
+                Form::new().with(c.text)
+            };
+
+            [
+                ("default", default),
+                ("accent", Form::new().with(c.teal).bold()),
+                ("default.error", Form::new().with(c.red)),
+                ("accent.error", Form::new().with(c.red).bold()),
+                ("default.warning", Form::new().with(c.yellow)),
+                ("accent.warning", Form::new().with(c.orange).bold()),
+                ("default.info", Form::new().with(c.blue)),
+                ("accent.info", Form::new().with(c.teal).bold()),
+                ("default.debug", Form::new().with(c.text_muted)),
+                ("accent.debug", Form::new().with(c.purple).bold()),
+                ("caret.main", Form::new().with(c.bg).on(c.text)),
+                ("caret.extra", Form::new().with(c.bg).on(c.teal)),
+                ("selection.main", Form::new().on(c.surface_highlight)),
+                ("selection.extra", Form::new().on(c.surface)),
+                (
+                    "selection.main.indent",
+                    Form::new().with_on(c.surface_highlight),
+                ),
+                ("selection.extra.indent", Form::new().with_on(c.surface)),
+                ("cloak", Form::new().with(c.text_subtle).on(c.bg)),
+                ("replace", Form::new().with(c.surface)),
+                (
+                    "replace.newline.trailing",
+                    Form::new().with(c.red).on(c.surface_highlight),
+                ),
+                ("toggle.hover", Form::new().on(c.surface_inactive)),
+                ("toggle.click", Form::new().on(c.surface_highlight)),
+                ("linenum.main", Form::new().with(c.yellow)),
+                ("linenum.wrapped", Form::new().with(c.teal)),
+                ("file", Form::new().with(c.yellow)),
+                ("selections", Form::new().with(c.blue)),
+                ("coord", Form::new().with(c.orange)),
+                ("separator", Form::mimic("punctuation.delimiter")),
+                ("mode", Form::new().with(c.green)),
+                ("terminal.border", Form::new().with(c.surface).on(c.bg)),
+                ("terminal.frame", Form::new().with(c.text).on(c.bg)),
+                ("notifs.colon", Form::new().with(c.text_muted)),
+                ("prompt", Form::new().with(c.green)),
+                ("prompt.colon", Form::new().with(c.text_muted)),
+                ("default.StatusLine", default.on(c.surface_panel)),
+                ("default.LogBook", default.on(c.surface_panel)),
+                ("default.VertRule", default.with(c.surface)),
+                ("default.LineNumbers", default.with(c.text_subtle)),
+                (
+                    "matched_pair",
+                    Form::new().with(c.orange).on(c.surface_highlight).bold(),
+                ),
+                ("log_book.location", Form::new().with(c.text_muted)),
+                ("default.Completions", default.on(c.surface_panel)),
+                (
+                    "selected.Completions",
+                    Form::new().with(c.text).on(c.surface_highlight),
+                ),
+                ("default.WhichKey", default.with(c.text)),
+                ("key", Form::new().with(c.orange)),
+                ("key.special", Form::new().with(c.teal)),
+                ("caret.main.Normal", Form::new().with(c.bg).on(c.text)),
+                ("caret.extra.Normal", Form::new().with(c.bg).on(c.teal)),
+                ("caret.main.Insert", Form::new().with(c.bg).on(c.purple)),
+                ("caret.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
+                ("param", Form::new().with(c.purple)),
+                ("param.flag", Form::new().with(c.teal)),
+                ("variable", Form::new().with(c.text)),
+                ("variable.builtin", Form::new().with(c.teal)),
+                ("variable.member", Form::new().with(c.aqua)),
+                ("constant", Form::new().with(c.blue)),
+                ("constant.builtin", Form::new().with(c.blue)),
+                ("static", Form::new().with(c.blue).reset()),
+                ("module", Form::new().with(c.blue).italic()),
+                ("label", Form::new().with(c.teal)),
+                ("string", Form::new().with(c.yellow)),
+                ("string.escape", Form::new().with(c.orange)),
+                ("string.special.path", Form::new().with(c.blue).underlined()),
+                ("character", Form::new().with(c.orange)),
+                ("boolean", Form::new().with(c.blue)),
+                ("number", Form::new().with(c.orange)),
+                ("type", Form::new().with(c.green).italic()),
+                ("type.builtin", Form::new().with(c.green).reset()),
+                ("type.enum", Form::new().with(c.green).reset()),
+                ("type.enum.variant", Form::new().with(c.orange).italic()),
+                ("attribute", Form::new().with(c.green).italic()),
+                ("property", Form::new().with(c.gold).italic()),
+                ("function", Form::new().with(c.blue).reset()),
+                ("function.macro", Form::new().with(c.purple).italic()),
+                ("constructor", Form::new().with(c.sand)),
+                ("operator", Form::new().with(c.teal)),
+                ("keyword", Form::new().with(c.purple).italic()),
+                ("punctuation.bracket", Form::new().with(c.text_subtle)),
+                ("punctuation.delimiter", Form::new().with(c.text_subtle)),
+                ("comment", Form::new().with(c.comment).italic()),
+                (
+                    "comment.documentation",
+                    Form::new().with(c.comment).bold().italic(),
+                ),
+                ("markup", Form::new()),
+                ("markup.strong", Form::new().with(c.orange).bold()),
+                ("markup.italic", Form::new().with(c.yellow).italic()),
+                ("markup.strikethrough", Form::new().crossed_out()),
+                ("markup.underline", Form::new().underlined()),
+                ("markup.heading", Form::new().with(c.blue).bold()),
+                ("markup.math", Form::new().with(c.teal)),
+                ("markup.quote", Form::new().with(c.green).bold()),
+                ("markup.environment", Form::new().with(c.purple)),
+                ("markup.environment.name", Form::new().with(c.blue)),
+                ("markup.link", Form::new().with(c.teal).underlined()),
+                ("markup.raw", Form::new().with(c.yellow)),
+                ("markup.list", Form::new().with(c.yellow)),
+                ("markup.list.checked", Form::new().with(c.green)),
+                ("markup.list.unchecked", Form::new().with(c.text_subtle)),
+                ("diff.plus", Form::new().with(c.green)),
+                ("diff.delta", Form::new().with(c.blue)),
+                ("diff.delta.renamed", Form::new().with(c.yellow)),
+                ("diff.minus", Form::new().with(c.red)),
+                ("unresolved", Form::new().underlined().underline(c.red)),
+            ]
+        }
+    );
+
     add_colorschemes!(
         [("dracula", [
             (bg, "#282a36"),
@@ -1060,4 +1209,15 @@ pub(crate) fn add_default() {
             ]
         }
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{add_default, list};
+
+    #[test]
+    fn night_owl_is_registered() {
+        add_default();
+        assert!(list().iter().any(|scheme| scheme == "night-owl"));
+    }
 }
