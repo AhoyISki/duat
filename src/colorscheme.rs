@@ -357,7 +357,10 @@ pub(crate) fn add_default() {
                 // The colon that separates the prompt from the input.
                 ("prompt.colon", Form::new().with(c.subtext0)),
                 // Various default forms for specific Widgets.
-                ("default.Buffer.current_line", default.on(c.surface0)),
+                (
+                    "default.Buffer.current_line",
+                    default.on(c.surface0).interpolate(default, 50),
+                ),
                 ("default.StatusLine", default.on(c.mantle)),
                 ("default.LogBook", default.on(c.mantle)),
                 ("default.VertRule", default.with(c.surface0)),
@@ -1146,7 +1149,10 @@ pub(crate) fn add_default() {
                 ),
                 ("log_book.location", Form::new().with(c.nord3)),
                 ("default.Completions", default.on(c.nord1)),
-                ("selected.Completions", Form::new().with(c.nord0).on(c.nord3)),
+                (
+                    "selected.Completions",
+                    Form::new().with(c.nord0).on(c.nord3),
+                ),
                 ("default.WhichKey", default.with(c.nord4)),
                 ("key", Form::new().with(c.nord12)),
                 ("key.special", Form::new().with(c.nord7)),
@@ -1167,7 +1173,10 @@ pub(crate) fn add_default() {
                 ("label", Form::new().with(c.nord7)),
                 ("string", Form::new().with(c.nord14)),
                 ("string.escape", Form::new().with(c.nord13)),
-                ("string.special.path", Form::new().with(c.nord8).underlined()),
+                (
+                    "string.special.path",
+                    Form::new().with(c.nord8).underlined(),
+                ),
                 ("character", Form::new().with(c.nord14)),
                 ("boolean", Form::new().with(c.nord12)),
                 ("number", Form::new().with(c.nord15)),

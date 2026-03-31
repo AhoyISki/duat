@@ -668,7 +668,7 @@ impl Form {
     }
 
     /// A `Form` value, from the name of the form.
-    pub fn of(form_name: impl AsRef<str>) -> Form {
+    pub fn of(form_name: impl AsRef<str>) -> Self {
         let mut form = from_id(id_of_non_static(form_name.as_ref()));
         form.kind = FormKind::Normal;
         form
@@ -689,7 +689,7 @@ impl Form {
     ///
     /// [`form::id_of!`]: id_of
     /// [`txt!`]: crate::txt
-    pub fn mimic(form_name: impl AsRef<str>) -> Form {
+    pub fn mimic(form_name: impl AsRef<str>) -> Self {
         let id = id_of_non_static(form_name.as_ref());
         let mut form = from_id(id);
         form.kind = FormKind::Ref(id.0, default_style());
@@ -702,7 +702,7 @@ impl Form {
     /// [`Attribute`]s, not any of the colors in use.
     ///
     /// [`Reset`]: Attribute::Reset
-    pub const fn reset(mut self) -> Form {
+    pub const fn reset(mut self) -> Self {
         self.style.attributes = self.style.attributes.with(Attribute::Reset);
 
         if let FormKind::Ref(_, style) = &mut self.kind {
@@ -725,7 +725,7 @@ impl Form {
     /// attributes will change as the mimicked color does, but the
     /// foreground won't.
     #[track_caller]
-    pub const fn with(mut self, color: &str) -> Form {
+    pub const fn with(mut self, color: &str) -> Self {
         self.style.foreground_color = match str_to_color(color) {
             Ok(color) => Some(color),
             Err(_) => panic!("Ill-formed color"),
@@ -751,7 +751,7 @@ impl Form {
     /// attributes will change as the mimicked color does, but the
     /// background won't.
     #[track_caller]
-    pub const fn on(mut self, color: &str) -> Form {
+    pub const fn on(mut self, color: &str) -> Self {
         self.style.background_color = match str_to_color(color) {
             Ok(color) => Some(color),
             Err(_) => panic!("Ill-formed color"),
@@ -780,7 +780,7 @@ impl Form {
     /// attributes will change as the mimicked color does, but the
     /// background and foreground won't.
     #[track_caller]
-    pub const fn with_on(mut self, color: &str) -> Form {
+    pub const fn with_on(mut self, color: &str) -> Self {
         let color = match str_to_color(color) {
             Ok(color) => color,
             Err(_) => panic!("Ill-formed color"),
@@ -814,7 +814,7 @@ impl Form {
     /// attributes will change as the mimicked color does, but the
     /// underline color won't.
     #[track_caller]
-    pub fn underline(mut self, color: &str) -> Form {
+    pub fn underline(mut self, color: &str) -> Self {
         self.style.underline_color = match str_to_color(color) {
             Ok(color) => Some(color),
             Err(_) => panic!("Ill-formed color"),
@@ -822,6 +822,68 @@ impl Form {
 
         if let FormKind::Ref(_, style) = &mut self.kind {
             style.underline_color = self.style.underline_color;
+        }
+
+        self
+    }
+
+    /// Interpolate the foreground, background, and underline colors
+    /// of this `Form` with those of another.
+    ///
+    /// The `factor` argument is a percentage bias towards this form,
+    /// that is, a final color would be calculated like this:
+    ///
+    /// ```
+    /// # let (mut fg_final, fg_self, fg_other, factor) = (None, None, None, 50);
+    /// fg_final = if let Some(fg_other) = fg_other
+    ///     && let Some(fg_self) = fg_self
+    /// {
+    ///     Some((fg_self * factor + fg_other * (100 - factor)) / 100)
+    /// } else {
+    ///     fg_self
+    /// };
+    /// ```
+    ///
+    /// If any of the attributes was set to a terminal color (i.e.,
+    /// not RGB), then it will be ignored for the purposes of this
+    /// function.
+    ///
+    /// If this `Form` was created via [`Form::mimic`], then the other
+    /// attributes will change as the mimicked color does, but the
+    /// underline color won't.
+    pub const fn interpolate(mut self, other: Self, factor: u8) -> Self {
+        const fn interpolate(color: Color, other: Color, factor: u8) -> Color {
+            if let (Color::Rgb { r, g, b }, Color::Rgb { r: or, g: og, b: ob }) = (color, other) {
+                let factor = factor as usize;
+                Color::Rgb {
+                    r: ((r as usize * factor + or as usize * (100 - factor)) / 100) as u8,
+                    g: ((g as usize * factor + og as usize * (100 - factor)) / 100) as u8,
+                    b: ((b as usize * factor + ob as usize * (100 - factor)) / 100) as u8,
+                }
+            } else {
+                color
+            }
+        }
+        
+        assert!(factor <= 100, "factor must be between 0 and 100");
+
+        if let (Some(other_fg), Some(self_fg)) = (other.fg(), &mut self.style.foreground_color) {
+            *self_fg = interpolate(*self_fg, other_fg, factor);
+            if let FormKind::Ref(_, style) = &mut self.kind {
+                style.foreground_color = self.style.foreground_color;
+            }
+        }
+        if let (Some(other_bg), Some(self_bg)) = (other.bg(), &mut self.style.background_color) {
+            *self_bg = interpolate(*self_bg, other_bg, factor);
+            if let FormKind::Ref(_, style) = &mut self.kind {
+                style.background_color = self.style.background_color;
+            }
+        }
+        if let (Some(other_ul), Some(self_ul)) = (other.ul(), &mut self.style.underline_color) {
+            *self_ul = interpolate(*self_ul, other_ul, factor);
+            if let FormKind::Ref(_, style) = &mut self.kind {
+                style.underline_color = self.style.underline_color;
+            }
         }
 
         self
