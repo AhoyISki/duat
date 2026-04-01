@@ -414,7 +414,20 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         }
 
         if self.selections[self.sels_i].as_ref().unwrap().was_main {
-            self.widget.text_mut().selections_mut().rotate_main(-1);
+            // If there were no selections on the list, the previous one added
+            // will be set as the main selection.
+            if self.widget.text().selections().is_empty() {
+                let len = self.selections.len();
+                let ranges = self
+                    .selections
+                    .get_disjoint_mut([self.sels_i..len, 0..self.sels_i])
+                    .unwrap();
+
+                let next_sel = ranges.into_iter().flatten().rev().flatten().next().unwrap();
+                next_sel.was_main = true;
+            } else {
+                self.widget.text_mut().selections_mut().rotate_main(-1);
+            }
         }
 
         self.selections[self.sels_i] = None;

@@ -734,7 +734,7 @@ impl Opts {
 impl Default for Opts {
     fn default() -> Self {
         Self {
-            highlight_current_line: false,
+            highlight_current_line: true,
             wrap_lines: true,
             wrap_on_word: false,
             wrapping_cap: None,

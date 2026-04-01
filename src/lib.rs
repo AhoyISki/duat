@@ -49,8 +49,11 @@
 //!
 //! ```bash
 //! cargo install --git https://github.com/AhoyISki/duat
-//! duat --init-config --git-deps
+//! duat --init-config
 //! ```
+//!
+//! And in the prompt, you will say `y` to the question about depending
+//! on the git version of Duat.
 //!
 //! ## Configuration
 //!

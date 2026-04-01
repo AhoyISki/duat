@@ -65,8 +65,6 @@ struct Args {
     #[arg(long)]
     init_config: bool,
     #[arg(long, requires = "init_config")]
-    /// Use github dependencies instead of crates.io
-    git_deps: bool,
     /// Initializes a new Duat Plugin
     #[arg(long, value_name = "NAME", global = true)]
     init_plugin: Option<String>,
@@ -146,7 +144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    if decide_on_new_config(args.init_config, args.git_deps, crate_dir)? {
+    if decide_on_new_config(args.init_config, crate_dir)? {
         return Ok(());
     };
 
@@ -421,7 +419,6 @@ fn try_reload(
 /// Returns `true` if Duat shouldn't start.
 fn decide_on_new_config(
     init_config: bool,
-    git_deps: bool,
     crate_dir: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let config_is_empty = match std::fs::read_dir(crate_dir) {
@@ -434,22 +431,19 @@ fn decide_on_new_config(
         const MANIFEST: &str = include_str!("../templates/config/Cargo_.toml");
 
         if config_is_empty ^ init_config {
-            if config_is_empty {
-                println!(
+            let msg = if config_is_empty {
+                format!(
                     "Do you want to start a new config in {}? [y/N]",
                     crate_dir.to_string_lossy()
-                );
+                )
             } else {
-                println!(
+                format!(
                     "Are you sure you want to remove your current configuration at {}? [y/N]",
                     crate_dir.to_string_lossy()
-                );
-            }
+                )
+            };
 
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input)?;
-            // I hate windows...
-            let ("y\n" | "Y\n" | "y\r\n" | "Y\r\n") = input.as_str() else {
+            if !ask(&msg)? {
                 println!("Operation cancelled");
                 return Ok(true);
             };
@@ -459,12 +453,42 @@ fn decide_on_new_config(
         std::fs::create_dir_all(crate_dir.join("src"))?;
         std::fs::write(crate_dir.join("src").join("main.rs"), SRC_LIB_RS)?;
 
-        if git_deps {
+        if ask("Do you want to depend on the git version of duat? [y/N]")? {
             std::fs::write(crate_dir.join("Cargo.toml"), MANIFEST)?;
         } else {
+            let local_duat = if ask("What about a local version of duat? [y/N]")? {
+                println!("Write the path to the directory containing the Cargo.toml:");
+
+                let mut path = String::new();
+                std::io::stdin().read_line(&mut path)?;
+                let path = path.trim();
+                Some(format!("path = {:?}\n", {
+                    let path = PathBuf::from(duat_core::utils::expand_path(&path)?.to_string())
+                        .canonicalize()?;
+
+                    let mut children = path.read_dir()?;
+                    assert!(
+                        children.any(|child| {
+                            child.is_ok_and(|child| child.path().ends_with("Cargo.toml"))
+                        }),
+                        "{path:?} doesn't contain a Cargo.toml within"
+                    );
+
+                    path
+                }))
+            } else {
+                None
+            };
+
             let manifest: String = MANIFEST
                 .split_inclusive("\n")
-                .filter(|line| !line.starts_with("git = \""))
+                .filter_map(|line| {
+                    if line.starts_with("git = \"") {
+                        local_duat.as_deref()
+                    } else {
+                        Some(line)
+                    }
+                })
                 .collect();
             std::fs::write(crate_dir.join("Cargo.toml"), manifest)?;
         }
@@ -511,6 +535,16 @@ fn config_dir() -> Option<PathBuf> {
 #[cfg(target_os = "macos")]
 fn config_dir() -> Option<PathBuf> {
     dirs_next::home_dir().map(|dir| dir.join(".config"))
+}
+
+fn ask(msg: &str) -> std::io::Result<bool> {
+    println!("{msg}");
+    let mut confirm = String::new();
+    std::io::stdin().read_line(&mut confirm)?;
+    Ok(matches!(
+        confirm.as_str(),
+        "y\n" | "Y\n" | "y\r\n" | "Y\r\n"
+    ))
 }
 
 fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error>> {

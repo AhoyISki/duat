@@ -40,24 +40,28 @@ pub(crate) struct Split;
 impl IncSearcher for Split {
     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
         handle.edit_all(pa, |mut c| {
-            c.set_caret_on_start();
-            let Some(anchor) = c.anchor() else { return };
+            let range = c.range();
+            if range.is_empty() {
+                return;
+            }
 
-            let range = c.caret()..anchor;
             let ranges: Vec<usize> = c
                 .search(pat)
-                .range(range)
+                .range(range.clone())
                 .flat_map(|r| [r.start, r.end])
                 .collect();
 
-            let mut iter = [c.caret().byte()]
+            duat_core::debug!("{ranges:#?}");
+
+            let mut iter = [range.start.byte()]
                 .into_iter()
                 .chain(ranges)
-                .chain([anchor.byte()]);
+                .chain([range.end.byte()]);
 
             while let Some(p0) = iter.next()
                 && let Some(p1) = iter.next()
             {
+                duat_core::debug!("inserting on {p0:?}, {p1:?}");
                 c.move_to(p0..p1);
                 c.copy();
             }

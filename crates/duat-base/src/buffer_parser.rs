@@ -27,6 +27,7 @@ struct BufferOptsParser {
 static PARSERS: PerBuffer<BufferOptsParser> = PerBuffer::new();
 
 pub fn enable_parser(ns: Ns) {
+    return;
     hook::add::<BufferOpened>(move |pa, handle| {
         let opts_parser = BufferOptsParser { opts: handle.read(pa).opts };
         PARSERS.register(pa, handle, opts_parser);

@@ -73,7 +73,9 @@ impl Selections {
 
     /// Rotates the main [`Selection`] by an amount
     pub fn rotate_main(&mut self, amount: i32) {
-        self.main_i = (self.main_i as i32 + amount).rem_euclid(self.buf.len() as i32) as usize
+        if !self.buf.is_empty() {
+            self.main_i = (self.main_i as i32 + amount).rem_euclid(self.buf.len() as i32) as usize
+        }
     }
 
     /// Removes all [`Selection`]s
