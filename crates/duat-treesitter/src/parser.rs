@@ -559,8 +559,7 @@ impl Parser {
                 // Unless the whole line is a comment, try to find the last node
                 // before the comment.
                 // This technically fails if there are multiple block comments.
-                let first_node = descendant_in(root, prev_lnum, 0);
-                if first_node.id() != node.id() {
+                if node.start_position().column > line.indent(opts) {
                     node = descendant_in(root, prev_lnum, node.start_position().column - 1)
                 }
             }

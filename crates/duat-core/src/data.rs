@@ -875,9 +875,8 @@ impl Pass {
     pub fn try_write_many<'p, Tup: WriteableTuple<'p, impl std::any::Any>>(
         &'p mut self,
         tup: Tup,
-    ) -> Result<Tup::Return, crate::text::Text> {
+    ) -> Option<Tup::Return> {
         tup.write_all(self)
-            .ok_or_else(|| crate::text::txt!("Tried writing to the same data multiple times"))
     }
 }
 

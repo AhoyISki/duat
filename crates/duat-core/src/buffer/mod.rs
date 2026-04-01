@@ -1017,7 +1017,7 @@ impl<T: 'static> PerBuffer<T> {
         handle: &'p Handle,
         tup: Tup,
     ) -> Option<(&'p mut T, &'p mut Buffer, Tup::Return)> {
-        let (list, buffer, ret) = pa.try_write_many((&*self.0, handle, tup)).ok()?;
+        let (list, buffer, ret) = pa.try_write_many((&*self.0, handle, tup))?;
         Some((list.get_mut(&buffer.buffer_id())?, buffer, ret))
     }
 
@@ -1035,7 +1035,7 @@ impl<T: 'static> PerBuffer<T> {
         pa: &'p mut Pass,
         handles: [&'p Handle; N],
     ) -> Option<[(&'p mut T, &'p mut Buffer); N]> {
-        let (list, buffers) = pa.try_write_many((&*self.0, handles)).ok()?;
+        let (list, buffers) = pa.try_write_many((&*self.0, handles))?;
         let buf_ids = buffers.each_ref().map(|buf| buf.buffer_id());
         let values = list.get_disjoint_mut(buf_ids.each_ref());
 
@@ -1064,7 +1064,7 @@ impl<T: 'static> PerBuffer<T> {
         handles: [&'p Handle; N],
         tup: Tup,
     ) -> Option<([(&'p mut T, &'p mut Buffer); N], Tup::Return)> {
-        let (list, buffers, ret) = pa.try_write_many((&*self.0, handles, tup)).ok()?;
+        let (list, buffers, ret) = pa.try_write_many((&*self.0, handles, tup))?;
         let buf_ids = buffers.each_ref().map(|buf| buf.buffer_id());
         let values = list.get_disjoint_mut(buf_ids.each_ref());
 
