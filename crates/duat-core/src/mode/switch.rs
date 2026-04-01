@@ -105,8 +105,8 @@ pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
 
     // This is the case if we're not in a send_key call.
     let new_mode = if let Some(old_mode) = mode_opt {
-        let new = (new_name, old_mode);
-        let old = (old_name, Box::new(mode) as Box<dyn Any + Send>);
+        let new = (new_name, Box::new(mode) as Box<dyn Any + Send>);
+        let old = (old_name, old_mode);
         let ms = hook::trigger(pa, ModeSwitched { old, new });
         ms.new.1
     } else {
