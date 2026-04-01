@@ -187,20 +187,17 @@ where
                 let indent = (&mut indent, &mut on_indent);
                 let len = process_part(item, x, opts, indent, &mut spacers);
 
+                let must_wrap = (x >= cap || x + len > cap) && opts.wrap_lines;
                 x += len;
 
-                let must_wrap = x > cap && opts.wrap_lines;
-
-                if let TextPart::Char(char) = item.part
-                    && (must_wrap || char == '\n')
-                {
+                if item.part == TextPart::Char('\n') || must_wrap {
                     printed_x = initial_printed_x.max(wrapped_indent);
                     space_line(spacers, &mut line, cap, x);
                     spacers = 0;
 
                     let leftover = x.saturating_sub(cap);
-                    wrapped_indent = match char {
-                        '\t' if leftover > 0 => {
+                    wrapped_indent = match item.part {
+                        TextPart::Char('\t') if leftover > 0 => {
                             line.push((len - leftover, item));
                             next();
                             if old_indent + leftover < max_indent && opts.indent_wraps {
@@ -209,7 +206,7 @@ where
                                 leftover
                             }
                         }
-                        '\n' => {
+                        TextPart::Char('\n') => {
                             if len > 0 && must_wrap {
                                 let position = old_indent
                                     * (old_indent < max_indent && opts.indent_wraps) as u32;
