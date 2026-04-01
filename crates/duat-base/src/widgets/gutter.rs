@@ -71,13 +71,16 @@ impl Gutter {
                 buf.text_parts().tags.remove(msg_ns, ..);
                 let opts = buf.print_opts();
 
-                let mouse_point = gt.mouse_coord.and_then(|coord| {
-                    Some(
-                        area.points_at_coord(buf.text(), coord, opts)?
-                            .as_within()?
-                            .real,
-                    )
-                });
+                let mouse_point = gt
+                    .mouse_coord
+                    .filter(|&coord| coord >= area.top_left() && coord < area.bottom_right())
+                    .and_then(|coord| {
+                        Some(
+                            area.points_at_coord(buf.text(), coord, opts)?
+                                .as_within()?
+                                .real,
+                        )
+                    });
 
                 let entries = gt
                     .entries
