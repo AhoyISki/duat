@@ -112,7 +112,6 @@ impl ServerBridge {
 
         std::thread::spawn(move || {
             if let Err(err) = stdin_loop(server_rx, &mut stdin) {
-                duat_core::log_to_file!("{err}");
                 context::error!("{err}");
             }
             stdin

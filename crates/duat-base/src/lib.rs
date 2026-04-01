@@ -193,8 +193,8 @@ impl Plugin for DuatBase {
         form::set_weak("key.special", Form::new().yellow());
         form::set_weak("remap", Form::new().italic());
 
-        cmd::add("logs", |_: &mut _| {
-            mode::set(Pager::<LogBook>::new());
+        cmd::add("logs", |pa: &mut _| {
+            mode::set(pa, Pager::<LogBook>::new());
             Ok(None)
         })
         .doc(

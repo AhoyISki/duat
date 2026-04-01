@@ -410,10 +410,6 @@ impl RawArea for Area {
             }
             y += place.wrap as u32;
 
-            if item.as_real_char().is_some() {
-                is_ghost = false;
-            }
-
             if place.wrap {
                 if let Some(last) = printed_lines.last_mut() {
                     last.is_ghost = is_ghost;
@@ -424,6 +420,10 @@ impl RawArea for Area {
                 let is_wrapped = prev_point.is_some_and(|ll| ll == number);
                 prev_point = Some(number);
                 printed_lines.push(PrintedLine { number, is_wrapped, is_ghost: true });
+            }
+            
+            if item.as_real_char().is_some() {
+                is_ghost = false;
             }
         }
 

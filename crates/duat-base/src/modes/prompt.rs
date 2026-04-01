@@ -128,7 +128,7 @@ pub struct Prompt {
     mode: Box<dyn PromptMode>,
     starting_text: String,
     ty: TypeId,
-    reset_fn: fn(),
+    reset_fn: fn(&mut Pass),
     history_index: Option<usize>,
 }
 
@@ -143,7 +143,7 @@ impl Prompt {
             mode: Box::new(mode),
             starting_text: String::new(),
             ty: TypeId::of::<M>(),
-            reset_fn: || mode::reset::<M::ExitWidget>(),
+            reset_fn: |pa| mode::reset::<M::ExitWidget>(pa),
             history_index: None,
         }
     }
@@ -159,7 +159,7 @@ impl Prompt {
             mode: Box::new(mode),
             starting_text: initial.to_string(),
             ty: TypeId::of::<M>(),
-            reset_fn: || mode::reset::<M::ExitWidget>(),
+            reset_fn: |pa| mode::reset::<M::ExitWidget>(pa),
             history_index: None,
         }
     }
@@ -210,7 +210,7 @@ impl mode::Mode for Prompt {
             if let Some(ret_handle) = prompt.mode.return_handle() {
                 mode::reset_to(pa, &ret_handle);
             } else {
-                (prompt.reset_fn)();
+                (prompt.reset_fn)(pa);
             }
         };
 
@@ -234,7 +234,7 @@ impl mode::Mode for Prompt {
                     if let Some(ret_handle) = self.mode.return_handle() {
                         mode::reset_to(pa, &ret_handle);
                     } else {
-                        (self.reset_fn)();
+                        (self.reset_fn)(pa);
                     }
                 } else {
                     promptline.edit_main(pa, |mut c| {

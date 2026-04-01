@@ -46,7 +46,7 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, Vec<TypeId>, BufferOpts) {
     }
 
     mode::set_default(Pager::<LogBook>::new());
-    mode::map::<mode::User>("L", |_: &mut _| mode::set(Pager::<LogBook>::new()))
+    mode::map::<mode::User>("L", |pa: &mut _| mode::set(pa, Pager::<LogBook>::new()))
         .doc(txt!("Open [mode]Logs"));
 
     // Cache hooks

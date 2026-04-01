@@ -12,7 +12,14 @@ use std::{
 };
 
 use duat_core::{
-    Ns, buffer::Buffer, context::{self, Handle}, data::Pass, form, hook, mode::{self, KeyEvent, Mode, alt, event, shift}, text::{RegexHaystack, Text, txt}, ui::{PrintInfo, RwArea, Widget}
+    Ns,
+    buffer::Buffer,
+    context::{self, Handle},
+    data::Pass,
+    form, hook,
+    mode::{self, KeyEvent, Mode, alt, event, shift},
+    text::{RegexHaystack, Text, txt},
+    ui::{PrintInfo, RwArea, Widget},
 };
 
 use crate::{
@@ -75,9 +82,9 @@ impl<W: Widget> Mode for Pager<W> {
             (event!('J') | shift!(Down), _) => handle.scroll_ver(pa, i32::MAX),
             (event!(Char('k') | Up), _) => handle.scroll_ver(pa, -1),
             (event!('K') | shift!(Up), _) => handle.scroll_ver(pa, i32::MIN),
-            (event!('/'), _) => mode::set(PagerSearch::new(pa, &handle, true)),
+            (event!('/'), _) => mode::set(pa, PagerSearch::new(pa, &handle, true)),
             (alt!('/'), true) | (event!('?'), false) => {
-                mode::set(PagerSearch::new(pa, &handle, false));
+                mode::set(pa, PagerSearch::new(pa, &handle, false));
             }
             (event!('n'), _) => {
                 let se = SEARCH.lock().unwrap();
@@ -107,8 +114,8 @@ impl<W: Widget> Mode for Pager<W> {
                 let point = handle.text(pa).point_at_byte(r.start);
                 handle.scroll_to_points(pa, point.to_two_points_after());
             }
-            (event!(Esc), _) => mode::reset::<Buffer>(),
-            (event!(':'), _) => mode::set(RunCommands::new()),
+            (event!(Esc), _) => mode::reset::<Buffer>(pa),
+            (event!(':'), _) => mode::set(pa, RunCommands::new()),
             _ => {}
         }
     }
@@ -189,11 +196,7 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
                 let span = err.span();
                 let id = form::id_of!("regex.error");
 
-                text.insert_tag(
-                    *PAGER_NS,
-                    span.start.offset..span.end.offset,
-                    id.to_tag(0),
-                );
+                text.insert_tag(*PAGER_NS, span.start.offset..span.end.offset, id.to_tag(0));
             }
         }
 

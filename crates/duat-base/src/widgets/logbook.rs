@@ -33,7 +33,6 @@ pub fn add_logbook_hooks() {
 
         let mut fmt_rec = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
             if let Some(rec_text) = fmt(rec.clone()) {
-                duat_core::log_to_file!("{}", rec_text.to_string());
                 lb.text.insert_text(lb.text.len(), &rec_text);
                 lb.location_ranges
                     .push((lb.text.last_point(), rec.location()));

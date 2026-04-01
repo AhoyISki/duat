@@ -537,10 +537,11 @@ pub mod prelude {
         data::{self, Pass, RwData},
         form::{self, CursorShape, Form},
         hook::{
-            self, BufferClosed, BufferOpened, BufferPrinted, BufferSaved, BufferUnloaded,
-            BufferUpdated, ColorschemeSet, ConfigLoaded, ConfigUnloaded, FocusChanged, FocusedOn,
-            FocusedOnDuat, FormSet, Hookable, KeySent, KeyTyped, ModeSwitched, SearchPerformed,
-            SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetOpened, WindowOpened,
+            self, BufferClosed, BufferOpened, BufferPrinted, BufferSaved, BufferSwitched,
+            BufferUnloaded, BufferUpdated, ColorschemeSet, ConfigLoaded, ConfigUnloaded,
+            FocusChanged, FocusedOn, FocusedOnDuat, FormSet, Hookable, KeySent, KeyTyped,
+            ModeSwitched, SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat,
+            WidgetOpened, WindowOpened,
         },
         mode::{
             self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,
