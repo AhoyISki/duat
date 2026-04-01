@@ -83,7 +83,7 @@ mod switch;
 ///     fn plug(self, plugins: &Plugins) {
 ///         //..
 ///         map::<User>("fb", |pa: &mut Pass| {
-///             mode::set(mode::RunCommands::new_with("frobnificate "));
+///             mode::set(pa, mode::RunCommands::new_with("frobnificate "));
 ///         });
 ///
 ///         cmd::add("frobnificate", |pa: &mut Pass, buf: Handle| {
@@ -338,7 +338,9 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///
 ///     hook::add::<UnfocusedFrom<Menu>>(move |pa, (menu, _)| {
 ///         menu.text_parts(pa).tags.remove(mask_ns, ..);
-///         menu.text_parts(pa).tags.insert(mask_ns, .., Mask("inactive"));
+///         menu.text_parts(pa)
+///             .tags
+///             .insert(mask_ns, .., Mask("inactive"));
 ///     });
 /// }
 /// # impl Widget for Menu {
@@ -390,7 +392,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///             event!(Down) => menu.shift_selection(1),
 ///             event!(Up) => menu.shift_selection(-1),
 ///             event!(Enter | Tab | Char(' ')) => menu.toggle(),
-///             event!(Esc) => mode::reset::<Buffer>(),
+///             event!(Esc) => mode::reset::<Buffer>(pa),
 ///             _ => {}
 ///         }
 ///     }

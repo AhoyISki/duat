@@ -575,7 +575,7 @@ use duat::prelude::*;
 
 fn setup(opts: &mut Opts) {
     map::<Normal>(" ", "");
-    map::<Normal>("\\", |_: &mut Pass| mode::set(User));
+    map::<Normal>("\\", |pa: &mut Pass| mode::set(pa, User));
 }
 ```
 

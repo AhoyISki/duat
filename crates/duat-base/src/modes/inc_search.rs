@@ -38,7 +38,7 @@ static NS: LazyLock<Ns> = LazyLock::new(Ns::new);
 ///
 ///     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) {
 ///         match event {
-///             ctrl!('s') => _ = mode::set(IncSearch::new(SearchFwd)),
+///             ctrl!('s') => _ = mode::set(pa, IncSearch::new(SearchFwd)),
 ///             other_keys_oh_god => todo!(),
 ///         }
 ///     }

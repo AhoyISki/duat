@@ -408,8 +408,8 @@ fn test(pa: &mut Pass, lhs: [&RwData<u32>; 2], rhs: &RwData<u32>) {
     // If you think this might happen, you can call this instead.
     let handled = pa.try_write_many(trouble);
 
-    // This function will return an `Err(text)` in the case of failure.
-    assert!(handled.is_err());
+    // This function will return `None` in the case of failure.
+    assert!(handled.is_none());
 }
 ```
 
