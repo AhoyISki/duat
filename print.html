@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d155f56c.js";
+            window.path_to_searchindex_js = "searchindex-41564a9c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-74f781a9.js"></script>
@@ -1083,7 +1083,7 @@ use duat::prelude::*;
 
 fn setup(opts: &amp;mut Opts) {
     map::&lt;Normal&gt;(" ", "");
-    map::&lt;Normal&gt;("\\", |_: &amp;mut Pass| mode::set(User));
+    map::&lt;Normal&gt;("\\", |pa: &amp;mut Pass| mode::set(pa, User));
 }</code></pre>
 <p>In this case, instead of putting a sequence of keys to replace the mapped ones,
 I’m passing in a function that will be called when this mapping is triggered.</p>
@@ -1781,8 +1781,8 @@ fn test(pa: &amp;mut Pass, lhs: [&amp;RwData&lt;u32&gt;; 2], rhs: &amp;RwData&lt
     // If you think this might happen, you can call this instead.
     let handled = pa.try_write_many(trouble);
 
-    // This function will return an `Err(text)` in the case of failure.
-    assert!(handled.is_err());
+    // This function will return `None` in the case of failure.
+    assert!(handled.is_none());
 }</code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-hook-module"><a class="header" href="#the-hook-module">The hook module</a></h1>
