@@ -1,6 +1,12 @@
 [package]
 name = "duat-lsp"
 version = "0.10.0"
+authors = ["AhoyISki"]
+description = "A duat plugin for LSP usage within Duat."
+repository = "https://github.com/AhoyISki/duat"
+license = "GPL-3.0-or-later"
+keywords = ["editor", "text", "plugin", "duat"]
+categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2024"
 publish = false
 
