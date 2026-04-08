@@ -347,7 +347,7 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
 name = "duat"
-version = "0.9.1"
+version = "0.10.0"
 dependencies = [
  "android_clipboard",
  "arboard",
@@ -398,7 +398,7 @@ dependencies = [
 
 [[package]]
 name = "duat-filetype"
-version = "0.4.0"
+version = "0.10.0"
 dependencies = [
  "dirs-next",
  "duat-core",
@@ -407,7 +407,7 @@ dependencies = [
 
 [[package]]
 name = "duat-jump-list"
-version = "0.5.0"
+version = "0.10.0"
 dependencies = [
  "duat-core",
  "gap-buf 0.6.1",
@@ -415,7 +415,7 @@ dependencies = [
 
 [[package]]
 name = "duat-lsp"
-version = "0.1.0"
+version = "0.10.0"
 dependencies = [
  "duat-core",
  "duat-filetype",
@@ -430,7 +430,7 @@ dependencies = [
 
 [[package]]
 name = "duat-match-pairs"
-version = "0.5.0"
+version = "0.10.0"
 dependencies = [
  "duat-core",
  "duat-filetype",
@@ -449,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "duat-treesitter"
-version = "0.6.0"
+version = "0.10.0"
 dependencies = [
  "duat-core",
  "duat-filetype",
