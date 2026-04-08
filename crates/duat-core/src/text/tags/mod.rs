@@ -20,7 +20,7 @@ use RawTag::*;
 use self::{bounds::Bounds, extents::NsExtents};
 pub use self::{
     ids::*,
-    types::{Conceal, FormTag, Ghost, Mask, RawTag, Spacer, Spawn, Tag, Toggle, ToggleFn},
+    types::{Conceal, FormTag, Inlay, Mask, Overlay, RawTag, Spacer, Spawn, Tag, Toggle, ToggleFn},
 };
 use crate::{
     Ns,
@@ -57,9 +57,9 @@ impl Tags<'_> {
     /// range which already has the exact same `Tag` with the exact
     /// same `Ns`.
     ///
-    /// For some `Tag`s (like [`Ghost`]) can return an id (like
-    /// [`GhostId`]). This id can then be used in order to insert the
-    /// same `Tag`. In the [`Ghost`] example, that would print the
+    /// For some `Tag`s (like [`Inlay`]) can return an id (like
+    /// [`InlayId`]). This id can then be used in order to insert the
+    /// same `Tag`. In the [`Inlay`] example, that would print the
     /// same ghost [`Text`] multiple times without needing to
     /// pointlessly copy the [`Text`] for every time you want to
     /// insert the same ghost.
@@ -175,11 +175,11 @@ impl std::fmt::Debug for Tags<'_> {
 
 /// The struct that holds the [`RawTag`]s of the [`Text`]
 ///
-/// It also holds the [`Text`]s of any [`Ghost`]s, and the
+/// It also holds the [`Text`]s of any [`Inlay`]s, and the
 /// functions of [`StartToggle`]s
 pub struct InnerTags {
     list: ShiftList<(i32, RawTag)>,
-    ghosts: Vec<(GhostId, Arc<Text>)>,
+    ghosts: Vec<(InlayId, Arc<Text>)>,
     toggles: Vec<(ToggleId, ToggleFn)>,
     spawns: Vec<SpawnCell>,
     pub(super) spawn_fns: SpawnFns,
@@ -650,7 +650,7 @@ impl InnerTags {
         self.list.max() as usize
     }
 
-    /// Returns the length of all [`Ghost`]s in a byte
+    /// Returns the length of all [`Inlay`]s in a byte
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             RawTag::Inlay(_, id) => {
@@ -661,8 +661,8 @@ impl InnerTags {
         })
     }
 
-    /// Return the [`Text`] of a given [`GhostId`]
-    pub fn get_ghost(&self, id: GhostId) -> Option<&Text> {
+    /// Return the [`Text`] of a given [`InlayId`]
+    pub fn get_ghost(&self, id: InlayId) -> Option<&Text> {
         self.ghosts
             .iter()
             .find_map(|(lhs, text)| (*lhs == id).then_some(text.as_ref()))
@@ -902,21 +902,21 @@ mod ids {
 
     /// The id of a [ghost text]
     ///
-    /// [ghost text]: super::Ghost
+    /// [ghost text]: super::Inlay
     #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct GhostId(u16);
+    pub struct InlayId(u16);
 
-    impl GhostId {
-        /// Creates a new [`GhostId`]
+    impl InlayId {
+        /// Creates a new [`InlayId`]
         pub(super) fn new() -> Self {
             static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
             Self(TEXT_COUNT.fetch_add(1, Ordering::Relaxed))
         }
     }
 
-    impl std::fmt::Debug for GhostId {
+    impl std::fmt::Debug for InlayId {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "GhostId({})", self.0)
+            write!(f, "InlayId({})", self.0)
         }
     }
 

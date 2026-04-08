@@ -369,7 +369,7 @@ dependencies = [
 
 [[package]]
 name = "duat-base"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "duat-core",
  "duat-filetype",
@@ -380,7 +380,7 @@ dependencies = [
 
 [[package]]
 name = "duat-core"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "bincode",
  "crossterm",
@@ -407,7 +407,7 @@ dependencies = [
 
 [[package]]
 name = "duat-jump-list"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "duat-core",
  "gap-buf 0.6.1",
@@ -430,7 +430,7 @@ dependencies = [
 
 [[package]]
 name = "duat-match-pairs"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "duat-core",
  "duat-filetype",
@@ -439,7 +439,7 @@ dependencies = [
 
 [[package]]
 name = "duat-term"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "crossterm",
  "duat-core",
@@ -449,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "duat-treesitter"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "duat-core",
  "duat-filetype",
@@ -464,7 +464,7 @@ dependencies = [
 
 [[package]]
 name = "duatmode"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "duat-base",
  "duat-core",

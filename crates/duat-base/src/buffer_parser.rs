@@ -16,7 +16,7 @@ use duat_core::{
     buffer::{Buffer, BufferOpts, Moment, PerBuffer},
     form::{self, FormId},
     hook::{self, BufferClosed, BufferOpened, BufferPrinted, BufferUpdated},
-    text::{Ghost, Mask, RegexHaystack, Strs, Tags, txt},
+    text::{Mask, Overlay, RegexHaystack, Strs, Tags, txt},
     utils::Memoized,
 };
 
@@ -79,7 +79,7 @@ fn replace_chars(
     nss: [Ns; 2],
     opts_changed: bool,
 ) {
-    static OVERLAYS: LazyLock<Mutex<HashMap<(char, FormId), Ghost>>> =
+    static OVERLAYS: LazyLock<Mutex<HashMap<(char, FormId), Overlay>>> =
         LazyLock::new(Mutex::default);
     let mut overlays = OVERLAYS.lock().unwrap();
 
@@ -88,7 +88,7 @@ fn replace_chars(
             let form = form::id_of!($form);
             overlays
                 .entry(($char, form))
-                .or_insert_with(|| Ghost::overlay(txt!("{}{}", form.to_tag(90), $char)))
+                .or_insert_with(|| Overlay::new(txt!("{}{}", form.to_tag(90), $char)))
                 .clone()
         }};
     }
@@ -294,7 +294,7 @@ impl IndentState {
     }
 
     fn indent_line(&self, line: &Strs, tags: &mut Tags, ns: Ns) {
-        static OVERLAYS: Memoized<IndentState, Ghost> = Memoized::new();
+        static OVERLAYS: Memoized<IndentState, Overlay> = Memoized::new();
 
         let range = line.byte_range();
         tags.remove_excl(ns, range.clone());
@@ -318,7 +318,7 @@ impl IndentState {
                 .flat_map(|len| indent_str.chars().chain(std::iter::repeat(' ')).take(len))
                 .collect();
 
-            Ghost::overlay(txt!("{}{indent_form}{ghost}", Mask("indent")))
+            Overlay::new(txt!("{}{indent_form}{ghost}", Mask("indent")))
         });
 
         tags.insert(ns, range.start, overlay);

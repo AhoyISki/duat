@@ -21,7 +21,7 @@ use crate::{
     Ns, context,
     data::{BulkDataWriter, Pass, RwData},
     mode::{self, Binding, Bindings},
-    text::{Ghost, Text, txt},
+    text::{Inlay, Text, txt},
     ui::Widget,
 };
 
@@ -163,7 +163,7 @@ mod global {
     /// "insert like" modes. You can also use any key in the input or
     /// output of this `alias`
     ///
-    /// [ghost text]: crate::text::Ghost
+    /// [ghost text]: crate::text::Inlay
     /// [form]: crate::form::Form
     pub fn alias<M: Mode>(takes: &str, gives: impl IntoMapsTo) -> RemapBuilder {
         let takes = str_to_keys(takes);
@@ -703,7 +703,7 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
                         widget.text_mut().insert_tag(
                             Ns::for_alias(),
                             main,
-                            Ghost::inlay(txt!("[alias]{}", keys_to_string(&mapped_seq))),
+                            Inlay::new(txt!("[alias]{}", keys_to_string(&mapped_seq))),
                         );
                     });
                 }

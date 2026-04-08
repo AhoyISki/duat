@@ -330,7 +330,7 @@ pub(crate) fn add_default() {
                 ("selection.main.indent", Form::new().with_on(c.surface1)),
                 ("selection.extra.indent", Form::new().with_on(c.surface0)),
                 // A utility form, mostly used to cover all other forms on screen.
-                ("cloak", Form::new().with(c.overlay1).on(c.base)),
+                ("cloak", Form::new().reset().with(c.overlay1).on(c.base)),
                 // Form for replacement characters (like indent guides).
                 ("replace", Form::new().with(c.surface0)),
                 // Same, but only for trailing newlines.
@@ -527,7 +527,7 @@ pub(crate) fn add_default() {
                 ("caret.extra.indent", Form::new().with_on(c.teal)),
                 ("selection.main.indent", Form::new().with_on(c.blue0)),
                 ("selection.extra.indent", Form::new().with_on(c.fg_gutter)),
-                ("cloak", Form::new().with(c.dark5).on(c.bg)),
+                ("cloak", Form::new().reset().with(c.dark5).on(c.bg)),
                 ("replace", Form::new().with(c.bg_highlight)),
                 (
                     "replace.newline.trailing",
@@ -690,7 +690,7 @@ pub(crate) fn add_default() {
                 ("caret.extra.indent", Form::new().with_on(c.text_muted)),
                 ("selection.main.indent", Form::new().with_on(c.bg_subtle)),
                 ("selection.extra.indent", Form::new().with_on(c.bg_overlay)),
-                ("cloak", Form::new().with(c.text_subtle).on(c.bg)),
+                ("cloak", Form::new().reset().with(c.text_subtle).on(c.bg)),
                 ("replace", Form::new().with(c.bg_subtle)),
                 (
                     "replace.newline.trailing",
@@ -843,7 +843,7 @@ pub(crate) fn add_default() {
                     Form::new().with_on(c.surface_highlight),
                 ),
                 ("selection.extra.indent", Form::new().with_on(c.surface)),
-                ("cloak", Form::new().with(c.text_subtle).on(c.bg)),
+                ("cloak", Form::new().reset().with(c.text_subtle).on(c.bg)),
                 ("replace", Form::new().with(c.surface)),
                 (
                     "replace.newline.trailing",
@@ -1008,7 +1008,7 @@ pub(crate) fn add_default() {
                     "selection.extra.indent",
                     Form::new().with_on(c.selection).interpolate(default, 50),
                 ),
-                ("cloak", Form::new().with(c.comment).on(c.bg)),
+                ("cloak", Form::new().reset().with(c.comment).on(c.bg)),
                 ("replace", Form::new().with(c.current_line)),
                 (
                     "replace.newline.trailing",
@@ -1156,7 +1156,7 @@ pub(crate) fn add_default() {
                 ("caret.extra.indent", Form::new().with_on(c.nord7)),
                 ("selection.main.indent", Form::new().with_on(c.nord2)),
                 ("selection.extra.indent", Form::new().with_on(c.nord1)),
-                ("cloak", Form::new().with(c.nord3).on(c.nord0)),
+                ("cloak", Form::new().reset().with(c.nord3).on(c.nord0)),
                 ("replace", Form::new().with(c.nord1)),
                 (
                     "replace.newline.trailing",

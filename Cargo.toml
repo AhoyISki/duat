@@ -1,6 +1,6 @@
 [package]
 name = "duat"
-version = "0.9.1"
+version = "0.10.0"
 edition = "2024"
 authors = ["AhoyISki"]
 description = "A modern, very customizable text editor, configured in rust."
@@ -16,14 +16,14 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.dependencies]
-duat-core = { path = "crates/duat-core", version = "0.9.0" }
-duat-base = { path = "crates/duat-base", version = "0.9.0" }
-duat-term = { path = "crates/duat-term", version = "0.9.0" }
-duat-filetype = { path = "crates/duat-filetype", version = "0.4.0" }
-duat-treesitter = { path = "crates/duat-treesitter", version = "0.5.0" }
-duat-match-pairs = { path = "crates/duat-match-pairs", version = "0.4.0" }
-duat-jump-list = { path = "crates/duat-jump-list", version = "0.4.0" }
-duatmode = { path = "crates/duatmode", version = "0.9.0" }
+duat-core = { path = "crates/duat-core", version = "0.10.0" }
+duat-base = { path = "crates/duat-base", version = "0.10.0" }
+duat-term = { path = "crates/duat-term", version = "0.10.0" }
+duat-filetype = { path = "crates/duat-filetype", version = "0.10.0" }
+duat-treesitter = { path = "crates/duat-treesitter", version = "0.10.0" }
+duat-match-pairs = { path = "crates/duat-match-pairs", version = "0.10.0" }
+duat-jump-list = { path = "crates/duat-jump-list", version = "0.10.0" }
+duatmode = { path = "crates/duatmode", version = "0.10.0" }
 
 [lints.rust]
 missing_docs = "warn"

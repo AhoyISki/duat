@@ -273,7 +273,7 @@ mod global {
         /// line numbers may now be wrong.
         ///
         /// The general wisdom is that, in order to not break things,
-        /// if your hook relies on meta `Tag`s ([`Ghost`], [`Conceal`]
+        /// if your hook relies on meta `Tag`s ([`Inlay`], [`Conceal`]
         /// or [`Spacer`]) or [edits the `Text`] of the [`Buffer`],
         /// you should make use of a lower lateness.
         ///
@@ -287,7 +287,7 @@ mod global {
         /// [`hook`]: super
         /// [`Tag`]: crate::text::Tag
         /// [`BufferUpdated`]: super::BufferUpdated
-        /// [`Ghost`]: crate::text::Ghost
+        /// [`Inlay`]: crate::text::Inlay
         /// [`Conceal`]: crate::text::Conceal
         /// [`Spacer`]: crate::text::Spacer
         /// [`FormTag`]: crate::text::FormTag

@@ -22,7 +22,7 @@ use duat_core::{
     context::{self, Handle},
     data::{DataMap, Pass, RwData},
     mode::{Selection, Selections},
-    text::{AsBuilderPart, Builder, Ghost, Spacer, Text},
+    text::{AsBuilderPart, Builder, Inlay, Spacer, Text},
     ui::{Area, Window},
 };
 
@@ -147,8 +147,8 @@ impl From<Spacer> for State<Spacer, Spacer> {
     }
 }
 
-impl From<Ghost> for State<(), Ghost> {
-    fn from(value: Ghost) -> Self {
+impl From<Inlay> for State<(), Inlay> {
+    fn from(value: Inlay) -> Self {
         Self {
             appender: Appender::Part(value, PhantomData),
             checker: None,

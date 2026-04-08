@@ -102,18 +102,18 @@ impl Point {
         Self { byte: b, char: c, line: l }
     }
 
-    /// Returns a new [`TwoPoints`] that includes the [`Ghost`]s in
+    /// Returns a new [`TwoPoints`] that includes the [`Inlay`]s in
     /// the same byte, if there is one.
     ///
-    /// [`Ghost`]: super::Ghost
+    /// [`Inlay`]: super::Inlay
     pub const fn to_two_points_before(self) -> TwoPoints {
         TwoPoints::new_before_ghost(self)
     }
 
-    /// Returns a new [`TwoPoints`] that skips the [`Ghost`]s in the
+    /// Returns a new [`TwoPoints`] that skips the [`Inlay`]s in the
     /// same byte, if there is one.
     ///
-    /// [`Ghost`]: super::Ghost
+    /// [`Inlay`]: super::Inlay
     pub const fn to_two_points_after(self) -> TwoPoints {
         TwoPoints::new_after_ghost(self)
     }
@@ -409,24 +409,24 @@ implTextRangeOrIndex!(RangeFrom);
 ///
 /// This struct has two inner components, a `real` [`Point`], and a
 /// `ghost` [`Option<Point>`]. The second component is used whenever
-/// you want to print a [`Ghost`] `Text`, either fully or partially.
+/// you want to print a [`Inlay`] `Text`, either fully or partially.
 ///
 /// The `ghost` component represents the "sum position" of all
-/// `Ghost`s in that same byte. For example if there are two ghosts in
+/// `Inlay`s in that same byte. For example if there are two ghosts in
 /// a single byte, if you pass `ghost == ghost1.len()`, then only the
 /// second ghost will be included in this iteration.
 ///
-/// [`TwoPoints::default`] will include the first [`Ghost`].
+/// [`TwoPoints::default`] will include the first [`Inlay`].
 ///
 /// [`Text`]: super::Text
-/// [`Ghost`]: super::Ghost
+/// [`Inlay`]: super::Inlay
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, Hash)]
 pub struct TwoPoints {
     /// The real `Point` in the [`Text`].
     ///
     /// [`Text`]: super::Text
     pub real: Point,
-    /// A possible point in a [`Ghost`].
+    /// A possible point in a [`Inlay`].
     ///
     /// A value of [`None`] means that this is either at the end of
     /// the ghosts at a byte (i.e. this `TwoPoints` represents a real
@@ -434,7 +434,7 @@ pub struct TwoPoints {
     ///
     /// A value of [`Some`] means that this `TwoPoints` does _not_
     /// represent a real character, so it points to a character
-    /// belonging to a [`Ghost`]
+    /// belonging to a [`Inlay`]
     ///
     /// If you don't know how to set this value, you should try to use
     /// the [`new`], [`new_before_ghost`] or [`new_after_ghost`]
@@ -443,7 +443,7 @@ pub struct TwoPoints {
     /// [`new`]: Self::new
     /// [`new_before_ghost`]: Self::new_before_ghost
     /// [`new_after_ghost`]: Self::new_after_ghost
-    /// [`Ghost`]: super::Ghost
+    /// [`Inlay`]: super::Inlay
     pub ghost: Option<Point>,
 }
 
@@ -460,18 +460,18 @@ impl TwoPoints {
         Self { real, ghost: Some(ghost) }
     }
 
-    /// Returns a new `TwoPoints` that will include the [`Ghost`]
+    /// Returns a new `TwoPoints` that will include the [`Inlay`]
     /// before the real [`Point`].
     ///
-    /// [`Ghost`]: super::Ghost
+    /// [`Inlay`]: super::Inlay
     pub const fn new_before_ghost(real: Point) -> Self {
         Self { real, ghost: Some(Point::new()) }
     }
 
-    /// Returns a new `TwoPoints` that will exclude the [`Ghost`]
+    /// Returns a new `TwoPoints` that will exclude the [`Inlay`]
     /// before the real [`Point`].
     ///
-    /// [`Ghost`]: super::Ghost
+    /// [`Inlay`]: super::Inlay
     pub const fn new_after_ghost(real: Point) -> Self {
         Self { real, ghost: None }
     }

@@ -723,7 +723,9 @@ pub mod prelude {
         opts::{Opts, ScrollOff, TabMode},
         plug, setup_duat,
         state::*,
-        text::{self, Conceal, Ghost, Point, RegexHaystack, Spacer, Spawn, Strs, Text, txt},
+        text::{
+            self, Conceal, Inlay, Overlay, Point, RegexHaystack, Spacer, Spawn, Strs, Text, txt,
+        },
         ui::{self, Area, Widget},
         widgets::{self, status},
     };

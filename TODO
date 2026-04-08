@@ -33,10 +33,11 @@ FOR NEXT UPDATE:
 [x] Opts should be given as argument.
 [x] Move all hook removal options to Opts.
 [x] Get rid of Taggers, GroupIds and Gutterers.
-[ ] Gutter initial steps.
+[x] Gutter initial steps.
   [x] Accept hints, warnings and errors.
   [x] Process changes.
-  [ ] Print formatted text.
+  [x] Print formatted text.
+[x] Split Ghost into Inlay and Overlay.
 
 KNOWN BUGS:
  HIGH PRIORITY:

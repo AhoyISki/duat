@@ -17,7 +17,7 @@ use duat_core::{
     data::Pass,
     form::{self, Form, FormId},
     hook::{self, BufferOpened, BufferUpdated, OnMouseEvent},
-    text::{Ghost, Text, TextParts, TextRange, TwoPoints},
+    text::{Inlay, Text, TextParts, TextRange, TwoPoints},
     txt,
     ui::{Coord, PushSpecs, Side, Widget},
 };
@@ -120,7 +120,7 @@ fn initial_setup() {
 
             let mut parts = buf.text_parts();
 
-            let inlay = Ghost::inlay(txt!("{}{entry.msg}\n", " ".repeat(columns.wrapped)));
+            let inlay = Inlay::new(txt!("{}{entry.msg}\n", " ".repeat(columns.wrapped)));
             let line_end = parts.strs.line(lnum).byte_range().end;
             parts.tags.insert(msg_ns, line_end, inlay)
         }
@@ -320,7 +320,7 @@ pub struct GutterOpts {
     /// invalid for some reason.
     ///
     /// By default, they are shown as `'*'` on the [`Gutter`], and the
-    /// hint's [`Text`] is shown as [`Ghost`] text on separate lines.
+    /// hint's [`Text`] is shown as [`Inlay`] text on separate lines.
     ///
     /// On the `Gutter`, it makes use of the `gutter.error`
     /// [`Form`], while on the [`Buffer`], it makes use of the
@@ -394,6 +394,7 @@ enum EntryKind {
 /// How to display the accompanying [`Text`] message to a [`Gutter`]
 /// entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(unused)]
 pub enum GutterDisplay {
     /// The [`Text`] will be shown at the end of the line, potentially
     /// running off out of screen.
@@ -419,7 +420,7 @@ pub enum GutterDisplay {
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
     SpawnCorner(OnlyOnHover, Corner, OnWindow),
-    /// The [`Text`] will be shown as [`Ghost`] lines under the
+    /// The [`Text`] will be shown as [`Inlay`] lines under the
     /// entry's range.
     ///
     /// If [`GutterEntryBuilder::only_on_hover`] is not called, this

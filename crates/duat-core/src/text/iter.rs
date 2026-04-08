@@ -9,7 +9,7 @@
 //! just [`Form`] changing `Tag`s
 //!
 //! [`Tag`]: super::Tag
-//! [ghost]: super::Ghost
+//! [ghost]: super::Inlay
 //! [concealment]: super::Conceal
 //! [`Form`]: crate::form::Form
 use std::{
@@ -58,7 +58,7 @@ impl<'t> FwdIter<'t> {
 
         // The second usize argument of ghost is the "distance traversed".
         // When iterating over this starting point, the Tags iterator will
-        // still iterate over prior Ghosts in the same byte, even if they were
+        // still iterate over prior Inlays in the same byte, even if they were
         // supposed to be skipped.
         // The "distance traversed" serves the purpose of skipping those
         // ghosts until the correct one is reached, hence why it starts at 0.
@@ -85,9 +85,9 @@ impl<'t> FwdIter<'t> {
 
     ////////// Querying functions
 
-    /// Wether the [`Iterator`] is on a [`Ghost`].
+    /// Wether the [`Iterator`] is on a [`Inlay`].
     ///
-    /// [`Ghost`]: super::Ghost
+    /// [`Inlay`]: super::Inlay
     #[inline(always)]
     pub fn is_on_ghost(&self) -> bool {
         self.main_iter.is_some()
@@ -265,9 +265,9 @@ impl<'t> RevIter<'t> {
         self.text
     }
 
-    /// Wether the [`Iterator`] is on a [`Ghost`].
+    /// Wether the [`Iterator`] is on a [`Inlay`].
     ///
-    /// [`Ghost`]: super::Ghost
+    /// [`Inlay`]: super::Inlay
     pub fn is_on_ghost(&self) -> bool {
         self.main_iter.is_some()
     }
@@ -389,24 +389,24 @@ fn buf_chars_rev(text: &Text, b: usize) -> RevChars<'_> {
 /// This struct is comprised of three parts:
 ///
 /// - A real [`Point`], representing a position on the real `Text`;
-/// - A ghost `Point`, which is a position in a [`Ghost`], [`None`] if
-///   not in a `Ghost`;
+/// - A ghost `Point`, which is a position in a [`Inlay`], [`None`] if
+///   not in a `Inlay`;
 /// - A [`TextPart`], which will either be a `char` or a [`Tag`];
 ///
-/// [`Ghost`]: super::Ghost
+/// [`Inlay`]: super::Inlay
 /// [`Tag`]: super::Tag
 #[derive(Debug, Clone, Copy)]
 pub struct TextPlace<'t> {
     /// The real [`Point`].
     pub real: Point,
-    /// The [`Point`] in a [`Ghost`].
+    /// The [`Point`] in a [`Inlay`].
     ///
-    /// If there are multiple `Ghost`s in the same character, this
+    /// If there are multiple `Inlay`s in the same character, this
     /// `Point` will point to a sum of the previous [`Text`]'s
-    /// [lengths] plus the position on this specific `Ghost`, so
+    /// [lengths] plus the position on this specific `Inlay`, so
     /// every `Point` should point to a specific position in a char.
     ///
-    /// [`Ghost`]: super::Ghost
+    /// [`Inlay`]: super::Inlay
     /// [lengths]: super::Strs::len
     pub ghost: Option<Point>,
     /// A [`TextPart`], which will either be a `char` or a [`Tag`];
@@ -423,16 +423,16 @@ impl<'t> TextPlace<'t> {
         Self { real, ghost, part }
     }
 
-    /// Whether this [`TextPlace`] is in a [`Ghost`].
+    /// Whether this [`TextPlace`] is in a [`Inlay`].
     ///
-    /// [`Ghost`]: super::Ghost
+    /// [`Inlay`]: super::Inlay
     pub const fn is_real(&self) -> bool {
         self.ghost.is_none()
     }
 
-    /// Returns the real position, if not on a [`Ghost`].
+    /// Returns the real position, if not on a [`Inlay`].
     ///
-    /// [`Ghost`]: super::Ghost
+    /// [`Inlay`]: super::Inlay
     pub const fn as_real_char(self) -> Option<(Point, char)> {
         let Some(char) = self.part.as_char() else {
             return None;
@@ -494,9 +494,9 @@ use crate::form::FormId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[doc(hidden)]
 pub enum TextPart<'t> {
-    /// A printed `char`, can be real or a [`Ghost`].
+    /// A printed `char`, can be real or a [`Inlay`].
     ///
-    /// [`Ghost`]: super::Ghost
+    /// [`Inlay`]: super::Inlay
     Char(char),
     /// Push a [`Form`] to the [`Painter`].
     ///

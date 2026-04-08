@@ -14,7 +14,7 @@ use std::{
 use RawTag::*;
 use crossterm::event::{MouseButton, MouseEventKind};
 
-use super::{GhostId, InnerTags, SpawnId};
+use super::{InlayId, InnerTags, SpawnId};
 use crate::{
     Ns,
     context::{self, Handle},
@@ -37,15 +37,12 @@ use crate::{
 ///   actual `caret` or just a temporary `Form`.
 /// - [`Spacer`]: Lets you put arbitrary equally sized spaces on a
 ///   line.
-/// - [`Ghost`] represents `Text` that "isn't really there", and is
-///   subdivided in two categories:
-///   - [`Ghost::inlay`]: Places ghost `Text` _inside_ the `Text`.
-///     When printing, this will move the regular `Text` around in
-///     order to fit. Example: diagnostics.
-///   - [`Ghost::overlay`]: Places  ghost `Text` _over_ the `Text`.
-///     When printing, this will be printed over the regularly printed
-///     `Text`. It will also "pass through" cursor positions. Example:
-///     indent lines.
+/// - [`Inlay`] represents `Text` that "isn't really there", and is
+///   placed in the middle of the rest of the `Text`, taking up space
+///   on screen
+/// - [`Overlay`]: Places  ghost `Text` _over_ the `Text`. Unlike
+///   `Inlay`, this `Text` will essentially "cover" up whatever was
+///   underneath it, not _actually_ taking up screen space.
 /// - [`Conceal`]: Hides a range in the `Text`, mostly only useful in
 ///   the [`Buffer`] [`Widget`].
 /// - [`Toggle`]: Creates a region that can be interacted with through
@@ -64,7 +61,7 @@ pub trait Tag<Index>: Sized {
     /// A meta `Tag` is one that changes the layout of the [`Text`]
     /// itself.
     ///
-    /// The only meta `Tag`s are [`Ghost`], [`Conceal`] and
+    /// The only meta `Tag`s are [`Inlay`], [`Conceal`] and
     /// [`Spacer`].
     const IS_META: bool;
 
@@ -206,24 +203,32 @@ impl Tag<Point> for Spacer {
     }
 }
 
-/// [`Builder`] part and [`Tag`]: Places ghost text.
+/// [`Builder`] part and [`Tag`]: Places ghost `Text` _within_ real `Text`.
 ///
 /// This is useful when, for example, creating command line prompts,
 /// since the text is non interactable.
 ///
 /// [`Builder`]: crate::text::Builder
 #[derive(Debug, Clone)]
-pub struct Ghost {
+pub struct Inlay {
     text: Arc<Text>,
-    id: Option<GhostId>,
+    id: Option<InlayId>,
     is_new: bool,
-    is_overlay: bool,
 }
 
-impl Ghost {
-    /// Returns a new `Ghost`, which can be inserted on [`Text`].
+impl Inlay {
+    /// Returns a new inlay type `Inlay`, which can be inserted on
+    /// [`Text`].
+    ///
+    /// This ghost `Text` will be placed as if it were regular text,
+    /// taking up space on screen, shifting the real text around to
+    /// accomodate itself. One of the most prominent uses of it is in
+    /// the prompt text of the `PromptLine`.
+    ///
+    /// If you want ghost `Text` that goes _over_ the real `Text`,
+    /// check out [`Overlay`].
     #[track_caller]
-    pub fn inlay(value: impl Into<Text>) -> Self {
+    pub fn new(value: impl Into<Text>) -> Self {
         let mut text = value.into();
         text.0
             .tags
@@ -231,42 +236,23 @@ impl Ghost {
 
         assert!(
             text.0.tags.ghosts.is_empty(),
-            "Can't place Ghosts inside of Ghosts"
+            "Can't place Inlays inside of Inlays"
         );
 
         Self {
             text: Arc::new(text),
             id: None,
             is_new: false,
-            is_overlay: false,
         }
     }
 
-    /// Returns a new "inlay" type `Ghost`.
-    ///
-    /// This `Ghost` type, instead of being printed in the same byte
-    /// that it was placed, will instead be printed at the end of the
-    /// line where it was placed. Inlay text will also never be
-    /// wrapped, if it is too long, it will simply be truncated when
-    /// printed.
-    ///
-    /// You can use this to place text on the right border of lines,
-    /// without interrupting the flow of other things.
-    ///
-    /// Note that earlier positioned inlay `Ghost`s are printed before
-    /// latter ones, when those are placed on the same line.
-    #[track_caller]
-    pub fn overlay(value: impl Into<Text>) -> Self {
-        Self { is_overlay: true, ..Self::inlay(value) }
-    }
-
-    /// The [`Text`] of this `Ghost`
+    /// The [`Text`] of this `Inlay`
     pub fn text(&self) -> &Text {
         &self.text
     }
 }
 
-impl Tag<usize> for Ghost {
+impl Tag<usize> for Inlay {
     const IS_META: bool = true;
 
     #[track_caller]
@@ -290,15 +276,11 @@ impl Tag<usize> for Ghost {
             *id
         } else {
             self.is_new = true;
-            GhostId::new()
+            InlayId::new()
         };
 
         self.id = Some(id);
-        if self.is_overlay {
-            ((byte, RawTag::Overlay(ns, id)), None)
-        } else {
-            ((byte, RawTag::Inlay(ns, id)), None)
-        }
+        ((byte, RawTag::Inlay(ns, id)), None)
     }
 
     fn on_insertion(self, tags: &mut InnerTags) {
@@ -308,8 +290,111 @@ impl Tag<usize> for Ghost {
     }
 }
 
-impl Tag<Point> for Ghost {
+impl Tag<Point> for Inlay {
     const IS_META: bool = true;
+
+    #[track_caller]
+    fn get_raw(
+        &mut self,
+        tags: &InnerTags,
+        point: Point,
+        max: usize,
+        ns: Ns,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        let byte = point.byte();
+        self.get_raw(tags, byte, max, ns)
+    }
+
+    fn on_insertion(self, tags: &mut InnerTags) {
+        if self.is_new {
+            tags.ghosts.push((self.id.unwrap(), self.text))
+        }
+    }
+}
+
+/// [`Builder`] part and [`Tag`]: Places ghost `Text` _within_ real `Text`.
+///
+/// This is useful when, for example, creating command line prompts,
+/// since the text is non interactable.
+///
+/// [`Builder`]: crate::text::Builder
+#[derive(Debug, Clone)]
+pub struct Overlay {
+    text: Arc<Text>,
+    id: Option<InlayId>,
+    is_new: bool,
+}
+
+impl Overlay {
+    /// Returns a new "overlay" type `Inlay`, which can be inserted on
+    /// [`Text`].
+    ///
+    /// This ghost `Text` will cover up the real text, while still
+    /// letting the `Form` tags of the real text affect it. One of the
+    /// most prominent uses of it is in the indent guides.
+    ///
+    /// If you want ghost `Text` that goes _over_ the real `Text`,
+    /// check out [`Overlay`].
+    #[track_caller]
+    pub fn new(value: impl Into<Text>) -> Self {
+        let mut text = value.into();
+        text.0
+            .tags
+            .transform(text.len() - 1..text.len(), text.len() - 1);
+
+        assert!(
+            text.0.tags.ghosts.is_empty(),
+            "Can't place Inlays inside of Inlays"
+        );
+
+        Self {
+            text: Arc::new(text),
+            id: None,
+            is_new: false,
+        }
+    }
+}
+
+impl Tag<usize> for Overlay {
+    const IS_META: bool = false;
+
+    #[track_caller]
+    fn get_raw(
+        &mut self,
+        tags: &InnerTags,
+        byte: usize,
+        max: usize,
+        ns: Ns,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        assert!(
+            byte <= max,
+            "index out of bounds: the len is {max}, but the index is {byte}",
+        );
+        let id = if let Some((id, _)) = tags
+            .ghosts
+            .iter()
+            .find(|(_, arc)| Arc::ptr_eq(arc, &self.text))
+        {
+            self.is_new = false;
+            *id
+        } else {
+            self.is_new = true;
+            InlayId::new()
+        };
+
+        self.id = Some(id);
+        ((byte, RawTag::Overlay(ns, id)), None)
+    }
+
+    fn on_insertion(self, tags: &mut InnerTags) {
+        if self.is_new {
+            tags.ghosts.push((self.id.unwrap(), self.text.clone()))
+        }
+    }
+}
+
+impl Tag<Point> for Overlay {
+    const IS_META: bool = false;
 
     #[track_caller]
     fn get_raw(
@@ -665,9 +750,9 @@ pub enum RawTag {
     Spacer(Ns),
 
     /// Text that shows up on screen, but is ignored otherwise.
-    Overlay(Ns, GhostId),
+    Overlay(Ns, InlayId),
     /// Text that shows up on screen, after the end of the line.
-    Inlay(Ns, GhostId),
+    Inlay(Ns, InlayId),
 
     /// Starts concealing the [`Text`], skipping all [`Tag`]s and
     /// [`char`]s until the [`EndConceal`] tag shows up.

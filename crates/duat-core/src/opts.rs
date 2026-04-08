@@ -123,7 +123,7 @@ pub struct PrintOpts {
     /// This is just a switch to decide if you want ghosts or not.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    /// [ghoxt text]: crate::text::Ghost
+    /// [ghoxt text]: crate::text::Inlay
     pub show_ghosts: bool,
     /// Wether to allow the [`Text`] to scroll until only
     /// `scrolloff.y` line are on screen

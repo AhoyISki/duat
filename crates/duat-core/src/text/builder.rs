@@ -18,7 +18,7 @@ use super::{Change, Ns, Text};
 use crate::{
     buffer::PathKind,
     form::FormId,
-    text::{FormTag, Ghost, Mask, Spacer},
+    text::{FormTag, Inlay, Mask, Spacer},
 };
 
 /// Builds and modifies a [`Text`], based on replacements applied
@@ -163,7 +163,7 @@ impl Builder {
                     }
                 }
                 BP::Spacer(_) => builder.text.insert_tag(ns, end, Spacer),
-                BP::Ghost(ghost) => builder.text.insert_tag(ns, end, ghost.clone()),
+                BP::Inlay(ghost) => builder.text.insert_tag(ns, end, ghost.clone()),
                 BP::ToString(_) => unsafe { std::hint::unreachable_unchecked() },
                 BP::Mask(mask) => {
                     let last_form = if mask == Mask::no_mask() {
@@ -311,8 +311,8 @@ pub enum BuilderPart<'a, D: Display = String, _T = ()> {
     Form(FormTag),
     /// A spacer for more advanced alignment
     Spacer(PhantomData<_T>),
-    /// Ghost [`Text`] that is separate from the real thing
-    Ghost(&'a Ghost),
+    /// Inlay [`Text`] that is separate from the real thing
+    Inlay(&'a Inlay),
     /// A mask, which maps applied [`Form`]s.
     ///
     /// [`Form`]: crate::form::Form
@@ -329,7 +329,7 @@ impl<'a, D: Display, _T> BuilderPart<'a, D, _T> {
             Self::PathKind(text) => Ok(BuilderPart::PathKind(text)),
             Self::Form(form_id) => Ok(BuilderPart::Form(form_id)),
             Self::Spacer(_) => Ok(BuilderPart::Spacer(PhantomData)),
-            Self::Ghost(ghost) => Ok(BuilderPart::Ghost(ghost)),
+            Self::Inlay(ghost) => Ok(BuilderPart::Inlay(ghost)),
             Self::Mask(mask) => Ok(BuilderPart::Mask(mask)),
         }
     }
@@ -361,7 +361,7 @@ implAsBuilderPart!(Builder, builder, BuilderPart::Builder(builder));
 implAsBuilderPart!(FormId, form_id, BuilderPart::Form(form_id.to_tag(0)));
 implAsBuilderPart!(FormTag, form_tag, BuilderPart::Form(*form_tag));
 implAsBuilderPart!(Spacer, _spacer, BuilderPart::Spacer(PhantomData));
-implAsBuilderPart!(Ghost, ghost, BuilderPart::Ghost(ghost));
+implAsBuilderPart!(Inlay, ghost, BuilderPart::Inlay(ghost));
 implAsBuilderPart!(Text, text, BuilderPart::Text(text));
 implAsBuilderPart!(Path, path, BuilderPart::Path(path));
 implAsBuilderPart!(PathKind, path, BuilderPart::PathKind(path.name_txt()));

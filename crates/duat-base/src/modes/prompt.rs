@@ -39,7 +39,7 @@ use duat_core::{
     form::{self, Form},
     hook::{self, ModeSwitched},
     mode::{self, KeyEvent, event, shift},
-    text::{Ghost, Text, txt},
+    text::{Inlay, Text, txt},
     ui::{RwArea, Widget},
 };
 
@@ -63,7 +63,7 @@ pub fn add_prompt_hook() {
                 pl.text = Text::with_default_main_selection();
                 pl.text_mut().replace_range(0..0, &prompt.starting_text);
 
-                let tag = Ghost::inlay(match pl.prompt_of_id(prompt.ty) {
+                let tag = Inlay::new(match pl.prompt_of_id(prompt.ty) {
                     Some(text) => txt!("{text}[prompt.colon]:"),
                     None => txt!("{}[prompt.colon]:", prompt.mode.prompt()),
                 });
@@ -164,7 +164,7 @@ impl Prompt {
         }
     }
 
-    /// Shows the preview [`Ghost`]
+    /// Shows the preview [`Inlay`]
     fn show_preview(&mut self, pa: &mut Pass, handle: Handle<PromptLine>) {
         let history = HISTORY.lock().unwrap();
         if handle.text(pa).is_empty()
@@ -173,7 +173,7 @@ impl Prompt {
             handle.text_mut(pa).insert_tag_after(
                 *PREVIEW_TAGGER,
                 0,
-                Ghost::inlay(txt!("[prompt.preview]{}", ty_history.last().unwrap())),
+                Inlay::new(txt!("[prompt.preview]{}", ty_history.last().unwrap())),
             );
         }
     }
@@ -433,7 +433,7 @@ pub trait PromptMode: Send + 'static {
     /// What to do when switchin onto this [`PromptMode`]
     ///
     /// The initial [`Text`] is always empty, except for the [prompt]
-    /// [`Ghost`] at the beginning of the line.
+    /// [`Inlay`] at the beginning of the line.
     ///
     /// [prompt]: PromptMode::prompt
     fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &RwArea) -> Text {
@@ -460,7 +460,7 @@ pub trait PromptMode: Send + 'static {
     fn post_update(&mut self, pa: &mut Pass, handle: &Handle<PromptLine>) {}
 
     /// What text should be at the beginning of the [`PromptLine`], as
-    /// a [`Ghost`]
+    /// a [`Inlay`]
     fn prompt(&self) -> Text;
 
     /// An optional returning [`Handle`] for the [`ExitWidget`]

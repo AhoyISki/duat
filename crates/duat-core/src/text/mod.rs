@@ -76,7 +76,7 @@
 //! [Spacers]: Spacer
 //! [gap buffers]: gap_buf::GapBuffer
 //! [colored]: crate::form::Form
-//! [ghost text]: Ghost
+//! [ghost text]: Inlay
 //! [Ui]: crate::ui::traits::RawUi
 //! [`Buffer`]: crate::buffer::Buffer
 //! [`Widget`]: crate::ui::Widget
@@ -103,7 +103,10 @@ pub use crate::{
         iter::{FwdIter, RevIter, TextPart, TextPlace},
         search::{Matches, RegexHaystack, RegexPattern},
         strs::{Lines, Strs},
-        tags::{Conceal, FormTag, Ghost, GhostId, Mask, RawTag, Spacer, Spawn, Tag, Tags, Toggle},
+        tags::{
+            Conceal, FormTag, InlayId, Inlay, Mask, Overlay, RawTag, Spacer, Spawn, Tag, Tags,
+            Toggle,
+        },
         utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     },
     txt,
@@ -199,7 +202,7 @@ impl Text {
     ///
     /// # Note
     ///
-    /// This does not check for tags, so with a [`Ghost`],
+    /// This does not check for tags, so with a [`Inlay`],
     /// there could actually be a "string" of characters on the
     /// [`Text`], it just wouldn't be considered real "text". If you
     /// want to check for the `InnerTags`'b possible emptyness as
@@ -215,7 +218,7 @@ impl Text {
     /// always there no matter what.
     ///
     /// If you only want to check for the [`Strs`], ignoring possible
-    /// [`Ghost`]s, see [`is_empty`].
+    /// [`Inlay`]s, see [`is_empty`].
     ///
     /// [`is_empty`]: Strs::is_empty
     pub fn is_empty_empty(&self) -> bool {
@@ -258,7 +261,7 @@ impl Text {
     /// The maximum [points] in the `at`th byte.
     ///
     /// This point is essentially the [point] at that byte, plus the
-    /// last possible [`Point`] of any [`Ghost`]s in that
+    /// last possible [`Point`] of any [`Inlay`]s in that
     /// position.
     ///
     /// [points]: TwoPoints
@@ -276,7 +279,7 @@ impl Text {
     /// The [points] at the end of the text.
     ///
     /// This will essentially return the [last point] of the text,
-    /// alongside the last possible [`Point`] of any [`Ghost`] at the
+    /// alongside the last possible [`Point`] of any [`Inlay`] at the
     /// end of the text.
     ///
     /// [points]: TwoPoints
@@ -332,8 +335,8 @@ impl Text {
         points
     }
 
-    /// Gets the [`Ghost`] of a given [`GhostId`]
-    pub fn get_ghost(&self, id: GhostId) -> Option<&Text> {
+    /// Gets the [`Inlay`] of a given [`InlayId`]
+    pub fn get_ghost(&self, id: InlayId) -> Option<&Text> {
         self.0.tags.get_ghost(id)
     }
 
@@ -1056,7 +1059,7 @@ impl TextVersion {
     /// A `Text` has structurally changed when printing it from the
     /// same point could result in a different characters being
     /// printed. This not only happens when the [`Strs`] change, but
-    /// also with certain [`Tag`]s, like [`Ghost`] and [`Conceal`],
+    /// also with certain [`Tag`]s, like [`Inlay`] and [`Conceal`],
     /// which also add and remove characters to be printed.
     ///
     /// These `Tag`s are called "meta tags" internally, since they
