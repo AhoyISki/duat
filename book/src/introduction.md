@@ -16,8 +16,8 @@ use duat::prelude::*;
 
 pub struct HighlightMatches;
 
-impl Plugin for HighlightMatches {
-    fn plug(self, _: &Plugins) {
+impl duat::Plugin for HighlightMatches {
+    fn plug(self, opts: &mut Opts, _: &duat::Plugins) {
         form::set_weak("same_word", Form::new().underlined());
         let ns = Ns::new();
 

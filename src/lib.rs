@@ -302,7 +302,10 @@
 #[doc(inline)]
 pub use duat_core::{Ns, buffer, clipboard, cmd, context, data, notify, process, text, ui, utils};
 
-pub use crate::plugins::{Plugin, Plugins, plug};
+pub use crate::{
+    opts::Opts,
+    plugins::{Plugin, Plugins, plug},
+};
 
 mod plugins {
     use std::{any::TypeId, sync::Mutex};

@@ -398,7 +398,7 @@ macro_rules! doc_duat {
         mod $duat {
             pub use $crate::{clipboard, notify, process};
             
-            pub struct StartOpts {
+            pub struct Opts {
                 pub wrap_lines: bool,
                 pub wrap_on_word: bool,
                 pub wrapping_cap: Option<u32>,
@@ -434,7 +434,7 @@ macro_rules! doc_duat {
             pub mod opts {
                 use super::prelude::*;
                 pub use $crate::opts::{self, PrintOpts};
-                pub fn set(set: impl FnOnce(&mut super::StartOpts)) {}
+                pub fn set(set: impl FnOnce(&mut super::Opts)) {}
                 pub fn fmt_status<T>(set: impl FnMut(&mut Pass) -> T) {}
             }
 
@@ -469,9 +469,7 @@ macro_rules! doc_duat {
                 pub use $crate::try_or_log_err;
                 
                 pub use $crate::{
-                    Ns, Plugin, Plugins,
-                    buffer::Buffer,
-                    cmd,
+                    Ns, buffer::Buffer, cmd,
                     context::{self, Handle},
                     data::{self, Pass},
                     form::{self, CursorShape, Form},
@@ -494,7 +492,7 @@ macro_rules! doc_duat {
                         self, KeyCode, KeyEvent, Mode, Prompt, Pager, User, alias, alt, ctrl, event,
                         map, shift,
                     },
-                    state::*, widgets::*, PassFileType, FileType, opts, plug
+                    state::*, widgets::*, PassFileType, FileType, opts, Opts
                 };
 
                 #[macro_export]
@@ -630,7 +628,7 @@ macro_rules! doc_duat {
             impl PassFileType for prelude::data::RwData<prelude::Buffer> {}
             impl PassFileType for prelude::Handle {}
 
-            pub fn plug<P: $crate::Plugin>(plugin: P) {}
+            
         }
     }
 }

@@ -24,8 +24,8 @@ impl PluginName {
     }
 }
 
-impl Plugin for PluginName {
-    fn plug(self, plugins: &Plugins) {
+impl duat::Plugin for PluginName {
+    fn plug(self, opts: &mut Opts, plugins: &duat::Plugins) {
         // Plugin requirement example:
         // plugins.require::<SomeOtherPlugin>();
 

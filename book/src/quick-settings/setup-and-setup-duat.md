@@ -24,19 +24,19 @@ that will look cleaner:
 #     use duat::prelude::*;
 #     #[derive(Default)]
 #     pub struct Hop;
-#     impl Plugin for Hop {
-#         fn plug(self, _: &Plugins) { todo!() }
+#     impl duat::Plugin for Hop {
+#         fn plug(self, _: &mut Opts, _: &duat::Plugins) { todo!() }
 #     }
 # }
 setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup(opts: &mut Opts) {
-    add_plugins();
+    add_plugins(opts);
 }
 
-fn add_plugins() {
-    plug(duat_hop::Hop::default());
+fn add_plugins(opts: &mut Opts) {
+    plug(opts, duat_hop::Hop::default());
 }
 ```
 

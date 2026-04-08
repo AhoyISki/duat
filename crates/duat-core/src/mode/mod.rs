@@ -76,22 +76,15 @@ mod switch;
 /// ```
 /// # duat_core::doc_duat!(duat);
 /// use duat::prelude::*;
+/// 
+/// map::<User>("fb", |pa: &mut Pass| {
+///     mode::set(pa, mode::RunCommands::new_with("frobnificate "));
+/// });
 ///
-/// struct MyPlugin;
-///
-/// impl Plugin for MyPlugin {
-///     fn plug(self, plugins: &Plugins) {
-///         //..
-///         map::<User>("fb", |pa: &mut Pass| {
-///             mode::set(pa, mode::RunCommands::new_with("frobnificate "));
-///         });
-///
-///         cmd::add("frobnificate", |pa: &mut Pass, buf: Handle| {
-///             // Do stuff
-///             Ok(None)
-///         });
-///     }
-/// }
+/// cmd::add("frobnificate", |pa: &mut Pass, buf: Handle| {
+///     // Do stuff
+///     Ok(None)
+/// });
 /// ```
 ///
 /// [`Plugin`]: crate::Plugin
