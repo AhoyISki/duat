@@ -426,7 +426,7 @@ impl Mode for Normal {
                     c.move_to(if move_to_match { b1 } else { b0 });
 
                     let range = c
-                        .search(word_or_space(alt, false, popts))
+                        .search(word_and_space(alt, popts))
                         .from_caret()
                         .nth(param - 1);
                     if let Some(range) = range {
@@ -450,7 +450,7 @@ impl Mode for Normal {
                     }
 
                     let range = c
-                        .search(word_or_space(alt, true, popts))
+                        .search(word_and_space(alt, popts))
                         .to_caret()
                         .nth_back(param - 1);
                     if let Some(range) = range {
@@ -465,7 +465,7 @@ impl Mode for Normal {
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
                 if let Some(range) = {
-                    c.search(word_or_space(alt, false, popts))
+                    c.search(word_and_space(alt, popts))
                         .from_caret()
                         .nth(param - 1)
                 } {
@@ -477,7 +477,7 @@ impl Mode for Normal {
                 let alt = char == 'V';
                 set_anchor_if_needed(true, &mut c);
                 if let Some(range) = {
-                    c.search(word_or_space(alt, true, popts))
+                    c.search(word_and_space(alt, popts))
                         .to_caret()
                         .nth_back(param - 1)
                 } {
@@ -1243,19 +1243,12 @@ fn no_nl_pair(iter: impl Iterator<Item = (usize, char)>) -> Option<[(usize, char
     None
 }
 
-fn word_or_space(alt_word: bool, backwards: bool, opts: PrintOpts) -> String {
+fn word_and_space(alt_word: bool, opts: PrintOpts) -> String {
     if alt_word {
-        if backwards {
-            "[^ \t\n]+[ \t]*".to_string()
-        } else {
-            "[ \t]*[^ \t\n]+".to_string()
-        }
-    } else if backwards {
-        let cat = opts.word_chars_regex();
-        format!("([{cat}]+|[^{cat} \t\n]+)[ \t]*|[ \t]+")
+        "[^ \t\n]+[ \t]*|[ \t]+".to_string()
     } else {
         let cat = opts.word_chars_regex();
-        format!("[ \t]*([{cat}]+|[^{cat} \t\n]+)|[ \t]+")
+        format!("([{cat}]+|[^{cat} \t\n]+)[ \t]*|[ \t]+")
     }
 }
 
