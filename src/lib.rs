@@ -52,8 +52,8 @@
 //! duat --init-config
 //! ```
 //!
-//! And in the prompt, you will say `y` to the question about depending
-//! on the git version of Duat.
+//! And in the prompt, you will say `y` to the question about
+//! depending on the git version of Duat.
 //!
 //! ## Configuration
 //!
@@ -299,15 +299,182 @@
 //! [windows]: crate::hook::WindowOpened
 //! [`Buffer`]: crate::prelude::Buffer
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
-
 #[doc(inline)]
-pub use duat_core::{
-    Ns, Plugin, Plugins, buffer, clipboard, cmd, context, data, notify, process, text, ui, utils,
-};
+pub use duat_core::{Ns, buffer, clipboard, cmd, context, data, notify, process, text, ui, utils};
+
+pub use crate::plugins::{Plugin, Plugins, plug};
+
+mod plugins {
+    use std::{any::TypeId, sync::Mutex};
+
+    use crate::opts::Opts;
+
+    static PLUGINS: Plugins = Plugins(Mutex::new(Vec::new()));
+    static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
+
+    // SAFETY: The !Send functions are only accessed from the main thread
+    unsafe impl Send for Plugins {}
+    unsafe impl Sync for Plugins {}
+
+    /// Adds a plugin to Duat
+    ///
+    /// These plugins should use the builder construction pattern,
+    /// i.e., they should look like this:
+    ///
+    /// ```rust
+    /// #[derive(Default)]
+    /// pub struct MyPlugin {
+    ///     // ..options
+    /// }
+    ///
+    /// impl MyPlugin {
+    ///     pub fn new() -> Self {
+    ///         // ...
+    ///         # todo!();
+    ///     }
+    ///
+    ///     pub fn modify1(self, parameter: bool) -> Self {
+    ///         // ...
+    ///         # todo!();
+    ///     }
+    ///
+    ///     pub fn modify2(self, parameter: i32) -> Self {
+    ///         // ...
+    ///         # todo!();
+    ///     }
+    /// }
+    /// ```
+    pub fn plug<P: Plugin>(opts: &mut Opts, plugin: P) {
+        let mut already_plugged = ALREADY_PLUGGED.lock().unwrap();
+        if !already_plugged.contains(&TypeId::of::<P>()) {
+            already_plugged.push(TypeId::of::<P>());
+            drop(already_plugged);
+            crate::utils::catch_panic(|| plugin.plug(opts, &PLUGINS));
+        }
+    }
+
+    /// Finishes adding the required plugins.
+    #[cfg(feature = "term-ui")]
+    pub(crate) fn finish(opts: &mut Opts) {
+        while let plugins = std::mem::take(&mut *PLUGINS.0.lock().unwrap())
+            && !plugins.is_empty()
+        {
+            for (plugin, _) in plugins {
+                plugin(opts, &PLUGINS)
+            }
+        }
+    }
+
+    /// A plugin for Duat.
+    ///
+    /// Plugins should mostly follow the builder pattern, but you can
+    /// use fields if you wish to. When calling [`Plugin::plug`],
+    /// the plugin's settings should be taken into account, and
+    /// all of its setup should be done:
+    ///
+    /// ```rust
+    /// use duat::{Opts, Plugin, Plugins};
+    /// // It's not a supertrait of Plugin, but you must implement
+    /// // Default in order to use the plugin.
+    /// #[derive(Default)]
+    /// struct MyPlugin(bool);
+    ///
+    /// impl Plugin for MyPlugin {
+    ///     // With the Plugins struct, you can require other plugins
+    ///     // within your plugin.
+    ///     fn plug(self, opts: &mut Opts, plugins: &Plugins) {
+    ///         //..
+    ///     }
+    /// }
+    ///
+    /// impl MyPlugin {
+    ///     /// Returns a new instance of the [`MyPlugin`] plugin
+    ///     pub fn new() -> Self {
+    ///         Self(false)
+    ///     }
+    ///
+    ///     /// Modifies [`MyPlugin`]
+    ///     pub fn modify(self) -> Self {
+    ///         //..
+    /// #       self
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// [plugged]: Plugin::plug
+    /// [`PhantomData`]: std::marker::PhantomData
+    pub trait Plugin: 'static {
+        /// Sets up the [`Plugin`].
+        fn plug(self, opts: &mut Opts, plugins: &Plugins);
+    }
+
+    /// A struct for [`Plugin`]s to declare dependencies on other
+    /// [`Plugin`]s.
+    pub struct Plugins(Mutex<Vec<(PluginFn, TypeId)>>);
+
+    impl Plugins {
+        /// Require that a [`Plugin`] be added.
+        ///
+        /// This plugin may have already been added, or it might be
+        /// added by this call.
+        ///
+        /// For built-in [`Plugin`]s, if they are required by some
+        /// `Plugin`, then they will be added before that `Plugin` is
+        /// added. Otherwise, they will be added at the end of the
+        /// `setup` function.
+        pub fn require<P: Plugin + Default>(&self) {
+            // SAFETY: This function can only push new elements to the list, not
+            // accessing the !Send functions within.
+            let mut plugins = self.0.lock().unwrap();
+            if !plugins.iter().any(|(_, ty)| *ty == TypeId::of::<P>()) {
+                plugins.push((
+                    Box::new(|opts, plugins| P::default().plug(opts, plugins)),
+                    TypeId::of::<P>(),
+                ));
+            };
+        }
+    }
+
+    impl Plugin for duat_base::DuatBase {
+        fn plug(mut self, opts: &mut Opts, _: &Plugins) {
+            self.default_opts_parser = opts.enabled_hooks.default_opts_parser;
+            self._plug();
+        }
+    }
+
+    impl Plugin for duat_match_pairs::MatchPairs {
+        fn plug(self, _: &mut Opts, _: &Plugins) {
+            self._plug(adhoc_require);
+        }
+    }
+
+    impl Plugin for duatmode::DuatMode {
+        fn plug(self, _: &mut Opts, _: &Plugins) {
+            self._plug(adhoc_require);
+        }
+    }
+
+    #[cfg(feature = "treesitter")]
+    impl Plugin for duat_treesitter::TreeSitter {
+        fn plug(self, _: &mut Opts, _: &Plugins) {
+            self._plug()
+        }
+    }
+
+    fn adhoc_require(req_ty: TypeId, func: fn()) {
+        let mut plugins = PLUGINS.0.lock().unwrap();
+        if !plugins.iter().any(|(_, ty)| *ty == req_ty) {
+            plugins.push((Box::new(move |_, _| func()), req_ty));
+        };
+    }
+
+    type PluginFn = Box<dyn FnOnce(&mut Opts, &Plugins)>;
+}
 
 pub mod colorscheme;
 pub mod opts;
 mod regular;
+#[cfg(feature = "term-ui")]
 mod setup;
 
 pub mod cursor {
@@ -495,6 +662,7 @@ pub mod widgets {
 }
 
 #[doc(hidden)]
+#[cfg(feature = "term-ui")]
 pub mod private_exports {
     //! Exports from duat, not meant for direct use.
     pub use duat_core::{
@@ -524,15 +692,14 @@ macro_rules! setup_duat {
 /// The prelude of Duat
 pub mod prelude {
     pub use std::ops::Range;
-    use std::{any::TypeId, process::Output};
+    use std::process::Output;
 
     pub use duat_filetype::*;
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as term};
 
-    use crate::setup::ALREADY_PLUGGED;
     pub use crate::{
-        Ns, Plugin, Plugins,
+        Ns,
         buffer::Buffer,
         cmd, colorscheme,
         context::{self, Handle},
@@ -551,54 +718,12 @@ pub mod prelude {
             User, alias, alt, ctrl, event, map, shift,
         },
         opts::{Opts, ScrollOff, TabMode},
-        setup_duat,
+        plug, setup_duat,
         state::*,
         text::{self, Conceal, Ghost, Point, RegexHaystack, Spacer, Spawn, Strs, Text, txt},
         ui::{self, Area, Widget},
         widgets::{self, status},
     };
-
-    /// Adds a plugin to Duat
-    ///
-    /// These plugins should use the builder construction pattern,
-    /// i.e., they should look like this:
-    ///
-    /// ```rust
-    /// #[derive(Default)]
-    /// pub struct MyPlugin {
-    ///     // ..options
-    /// }
-    ///
-    /// impl MyPlugin {
-    ///     pub fn new() -> Self {
-    ///         // ...
-    ///         # todo!();
-    ///     }
-    ///
-    ///     pub fn modify1(self, parameter: bool) -> Self {
-    ///         // ...
-    ///         # todo!();
-    ///     }
-    ///
-    ///     pub fn modify2(self, parameter: i32) -> Self {
-    ///         // ...
-    ///         # todo!();
-    ///     }
-    /// }
-    /// ```
-    pub fn plug<P: Plugin>(plugin: P) {
-        let mut already_plugged = ALREADY_PLUGGED.lock().unwrap();
-        if already_plugged.contains(&TypeId::of::<P>()) {
-            context::warn!(
-                "Plugin {} was added multiple times",
-                duat_core::utils::duat_name::<P>()
-            );
-        } else {
-            already_plugged.push(TypeId::of::<P>());
-            drop(already_plugged);
-            crate::utils::catch_panic(|| plugin.plug(Plugins::_new()));
-        }
-    }
 
     /// Executes a shell command, returning its [`Output`] if
     /// successful
@@ -654,10 +779,10 @@ mod book;
 /// ```rust
 #[doc = include_str!("../templates/config/main.rs")]
 /// ```
-mod config {}
+mod config_template {}
 
 #[cfg(doctest)]
 /// ```rust
 #[doc = include_str!("../templates/plugin/lib.rs")]
 /// ```
-mod plugin {}
+mod plugin_template {}

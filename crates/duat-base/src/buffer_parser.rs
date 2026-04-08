@@ -26,14 +26,13 @@ struct BufferOptsParser {
 
 static PARSERS: PerBuffer<BufferOptsParser> = PerBuffer::new();
 
-pub fn enable_parser(ns: Ns) {
+pub fn enable_parser() {
     hook::add::<BufferOpened>(move |pa, handle| {
         let opts_parser = BufferOptsParser { opts: handle.read(pa).opts };
         PARSERS.register(pa, handle, opts_parser);
-    })
-    .grouped(ns);
+    });
 
-    hook::add::<BufferClosed>(|pa, handle| _ = PARSERS.unregister(pa, handle)).grouped(ns);
+    hook::add::<BufferClosed>(|pa, handle| _ = PARSERS.unregister(pa, handle));
 
     let [nl_ns, space_ns] = [Ns::new(), Ns::new()];
     let cur_line_ns = Ns::new();
@@ -57,11 +56,9 @@ pub fn enable_parser(ns: Ns) {
         if parser.opts.highlight_current_line {
             hightlight_current_line(buf, cur_line_ns);
         }
-    })
-    .grouped(ns);
+    });
 
-    hook::add::<BufferPrinted>(move |pa, buffer| buffer.text_mut(pa).remove_tags(cur_line_ns, ..))
-        .grouped(ns);
+    hook::add::<BufferPrinted>(move |pa, buffer| buffer.text_mut(pa).remove_tags(cur_line_ns, ..));
 
     form::enable_mask("indent");
 }

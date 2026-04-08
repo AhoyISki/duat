@@ -120,7 +120,7 @@
 //! [`Info`]: widgets::Info
 //! [`Gutter`]: widgets::Gutter
 use duat_core::{
-    Ns, Plugin, cmd,
+    Ns, cmd,
     form::{self, Form},
     mode,
     text::{Text, txt},
@@ -143,10 +143,18 @@ pub mod widgets;
 ///
 /// [`BufferOpts`]: duat_core::buffer::BufferOpts
 #[derive(Default)]
-pub struct DuatBase(pub Ns);
+pub struct DuatBase {
+    /// Wether to enable the default opts parser.
+    pub default_opts_parser: bool,
+}
 
-impl Plugin for DuatBase {
-    fn plug(self, _: &duat_core::Plugins) {
+impl DuatBase {
+    /// Adds the `DuatBase` plugin.
+    ///
+    /// *DON'T USE THIS DIRECTLY, USE `duat::plug` INSTEAD*.
+    #[doc(hidden)]
+    #[inline(never)]
+    pub fn _plug(self) {
         widgets::add_info_hooks();
         widgets::add_logbook_hooks();
         widgets::add_notifications_hook();
@@ -155,7 +163,9 @@ impl Plugin for DuatBase {
         widgets::setup_completions();
 
         modes::add_prompt_hook();
-        buffer_parser::enable_parser(self.0);
+        if self.default_opts_parser {
+            buffer_parser::enable_parser();
+        }
 
         // Setup for the LineNumbers
         form::set_weak("linenum.main", Form::new().yellow());

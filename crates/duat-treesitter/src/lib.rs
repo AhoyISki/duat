@@ -33,7 +33,6 @@ use std::{
 };
 
 use duat_core::{
-    Plugins,
     buffer::Buffer,
     context::{self, Handle},
     data::Pass,
@@ -65,8 +64,13 @@ mod tree;
 #[derive(Default)]
 pub struct TreeSitter;
 
-impl duat_core::Plugin for TreeSitter {
-    fn plug(self, _: &Plugins) {
+impl TreeSitter {
+    /// Adds the `TreeSitter` plugin.
+    ///
+    /// *DON'T USE THIS DIRECTLY, USE `duat::plug` INSTEAD*.
+    #[doc(hidden)]
+    #[inline(never)]
+    pub fn _plug(self) {
         fn copy_dir_all(src: &include_dir::Dir, dst: impl AsRef<Path>) -> std::io::Result<()> {
             fs::create_dir_all(&dst)?;
             for entry in src.entries() {

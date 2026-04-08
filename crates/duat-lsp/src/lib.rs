@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use duat_core::Plugin;
 use lsp_types::{ServerCapabilities, Uri};
 
 mod config;
@@ -9,9 +8,13 @@ mod server;
 
 pub struct DuatLsp;
 
-impl Plugin for DuatLsp {
+impl DuatLsp {
+    /// Adds the `DuatLsp` plugin.
+    ///
+    /// *DON'T USE THIS DIRECTLY, USE `duat::plug` INSTEAD*.
+    #[doc(hidden)]
     #[inline(never)]
-    fn plug(self, _: &duat_core::Plugins) {
+    pub fn _plug(self) {
         parser::setup_hooks();
     }
 }

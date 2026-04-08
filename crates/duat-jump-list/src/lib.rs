@@ -15,7 +15,7 @@ use std::{
 };
 
 use duat_core::{
-    Ns, Plugin, Plugins,
+    Ns,
     buffer::{Buffer, PerBuffer},
     context::Handle,
     data::Pass,
@@ -34,8 +34,13 @@ static PARSERS: PerBuffer<Parser> = PerBuffer::new();
 #[derive(Default)]
 pub struct JumpList;
 
-impl Plugin for JumpList {
-    fn plug(self, _: &Plugins) {
+impl JumpList {
+    /// Adds the `JumpList` plugin.
+    ///
+    /// *DON'T USE THIS DIRECTLY, USE `duat::plug` INSTEAD*.
+    #[doc(hidden)]
+    #[inline(never)]
+    pub fn _plug(self) {
         hook::add::<BufferOpened>(|pa, handle| _ = PARSERS.register(pa, handle, Parser::new()));
         hook::add::<BufferClosed>(|pa, handle| _ = PARSERS.unregister(pa, handle));
     }

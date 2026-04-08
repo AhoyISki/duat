@@ -80,13 +80,14 @@
 //!
 //! [`Plugin`]: duat_core::Plugin
 use std::{
+    any::TypeId,
     collections::HashMap,
     ops::Range,
     sync::{LazyLock, Mutex},
 };
 
 use duat_core::{
-    Ns, Plugin, Plugins,
+    Ns,
     context::Handle,
     data::Pass,
     form,
@@ -94,7 +95,7 @@ use duat_core::{
     text::{Point, RegexHaystack},
 };
 use duat_filetype::FileType;
-use duat_treesitter::TsHandle;
+use duat_treesitter::{TreeSitter, TsHandle};
 
 /// highlight the match of delimiters under [`Selection`]s
 ///
@@ -169,9 +170,14 @@ impl MatchPairs {
     }
 }
 
-impl Plugin for MatchPairs {
-    fn plug(self, plugins: &Plugins) {
-        plugins.require::<duat_treesitter::TreeSitter>();
+impl MatchPairs {
+    /// Adds the `MatchPairs` plugin.
+    ///
+    /// *DON'T USE THIS DIRECTLY, USE `duat::plug` INSTEAD*.
+    #[doc(hidden)]
+    #[inline(never)]
+    pub fn _plug(self, require: fn(TypeId, fn())) {
+        require(TypeId::of::<TreeSitter>(), || TreeSitter._plug());
 
         hook::add::<BufferUpdated>(move |pa, handle| {
             let file = handle.write(pa);

@@ -6,10 +6,7 @@
 //! case basis, you should reach out for [hooks].
 //!
 //! [hooks]: crate::hook
-use std::{
-    any::TypeId,
-    sync::{LazyLock, Mutex},
-};
+use std::any::TypeId;
 
 use duat_base::widgets::{LineNumbersOpts, LogBookOpts, StatusLineFmt};
 #[allow(unused_imports)]
@@ -24,8 +21,6 @@ pub use duatmode::TabMode;
 use duatmode::opts::DuatModeOpts;
 
 use crate::widgets::NotificationsOpts;
-
-pub(crate) static OPTS: LazyLock<Mutex<Opts>> = LazyLock::new(Mutex::default);
 
 /// General options to set when starting Duat.
 pub struct Opts {

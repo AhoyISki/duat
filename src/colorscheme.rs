@@ -180,6 +180,7 @@ pub fn has_background() -> bool {
 }
 
 #[allow(unused_assignments)]
+#[cfg(feature = "term-ui")]
 pub(crate) fn add_default() {
     add_colorschemes!(
         [

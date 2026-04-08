@@ -197,7 +197,7 @@ impl LineNumbersOpts {
                     linenumbers.write(pa).text = linenumbers.read(pa).form_text(pa, buffer);
                 }
             })
-            .priority(usize::MAX);
+            .lateness(usize::MAX);
 
             hook::add::<OnMouseEvent<LineNumbers>>(|pa, event| {
                 let line = |pa, handle: &Handle| {

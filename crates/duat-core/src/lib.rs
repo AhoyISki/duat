@@ -21,8 +21,6 @@ compile_error!("This crate does not support 16-bit systems.");
 #[cfg(target_pointer_width = "32")]
 compile_error!("This crate does not support 32-bit systems.");
 
-use std::{any::TypeId, sync::Mutex};
-
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
 
@@ -179,90 +177,6 @@ mod namespace {
         }
     }
 }
-
-/// A plugin for Duat.
-///
-/// Plugins should mostly follow the builder pattern, but you can use
-/// fields if you wish to. When calling [`Plugin::plug`], the plugin's
-/// settings should be taken into account, and all of its setup should
-/// be done:
-///
-/// ```rust
-/// # use duat_core::{Plugin, Plugins};
-/// // It's not a supertrait of Plugin, but you must implement
-/// // Default in order to use the plugin.
-/// #[derive(Default)]
-/// struct MyPlugin(bool);
-///
-/// impl Plugin for MyPlugin {
-///     // With the Plugins struct, you can require other plugins
-///     // within your plugin
-///     fn plug(self, plugins: &Plugins) {
-///         //..
-///     }
-/// }
-///
-/// impl MyPlugin {
-///     /// Returns a new instance of the [`MyPlugin`] plugin
-///     pub fn new() -> Self {
-///         Self(false)
-///     }
-///
-///     /// Modifies [`MyPlugin`]
-///     pub fn modify(self) -> Self {
-///         //..
-/// #       self
-///     }
-/// }
-/// ```
-///
-/// [plugged]: Plugin::plug
-/// [`PhantomData`]: std::marker::PhantomData
-pub trait Plugin: 'static {
-    /// Sets up the [`Plugin`]
-    fn plug(self, plugins: &Plugins);
-}
-
-static PLUGINS: Plugins = Plugins(Mutex::new(Vec::new()));
-
-/// A struct for [`Plugin`]s to declare dependencies on other
-/// [`Plugin`]s.
-pub struct Plugins(Mutex<Vec<(PluginFn, TypeId)>>);
-
-impl Plugins {
-    /// Returnss a new instance of [`Plugins`].
-    ///
-    /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
-    #[doc(hidden)]
-    pub fn _new() -> &'static Self {
-        &PLUGINS
-    }
-
-    /// Require that a [`Plugin`] be added.
-    ///
-    /// This plugin may have already been added, or it might be added
-    /// by this call.
-    ///
-    /// For built-in [`Plugin`]s, if they are required by some
-    /// `Plugin`, then they will be added before that `Plugin` is
-    /// added. Otherwise, they will be added at the end of the `setup`
-    /// function.
-    pub fn require<P: Plugin + Default>(&self) {
-        // SAFETY: This function can only push new elements to the list, not
-        // accessing the !Send functions within.
-        let mut plugins = self.0.lock().unwrap();
-        if !plugins.iter().any(|(_, ty)| *ty == TypeId::of::<P>()) {
-            plugins.push((
-                Some(Box::new(|plugins| P::default().plug(plugins))),
-                TypeId::of::<P>(),
-            ));
-        };
-    }
-}
-
-// SAFETY: The !Send functions are only accessed from the main thread
-unsafe impl Send for Plugins {}
-unsafe impl Sync for Plugins {}
 
 pub mod clipboard {
     //! Clipboard interaction for Duat.
@@ -1303,8 +1217,6 @@ pub const fn priority(priority: &str) -> u8 {
 
     val as u8
 }
-
-type PluginFn = Option<Box<dyn FnOnce(&Plugins)>>;
 
 /// Tries to evaluate a block that returns [`Result<T, Text>`]
 ///

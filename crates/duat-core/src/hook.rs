@@ -224,7 +224,7 @@ mod global {
         callback: Option<Callback<H>>,
         ns: Option<Ns>,
         filter: Option<Box<dyn Fn(&H) -> bool + Send>>,
-        priority: usize,
+        lateness: usize,
     }
 
     impl<H: Hookable> HookBuilder<H> {
@@ -259,12 +259,12 @@ mod global {
             self
         }
 
-        /// Set the priority of this [`hook`].
+        /// Set the "lateness" of this [`hook`].
         ///
-        /// Much like with [`Tag`]s, the priority of `hook`s
-        /// determines how "lately" they are applied. The logic here
-        /// is that, the later a `hook` is applied, the more "context"
-        /// is taken into account.
+        /// The lateness determines how "late" a `hook` should be
+        /// applied. For example, if a hook has a lateness of `0` and
+        /// another has a lateness of [`usize::MAX`], the latter one
+        /// will be triggered after the first one.
         ///
         /// An example of where this is useful is with hooks that need
         /// to know which lines were printed. For example, if I print
@@ -274,15 +274,15 @@ mod global {
         ///
         /// The general wisdom is that, in order to not break things,
         /// if your hook relies on meta `Tag`s ([`Ghost`], [`Conceal`]
-        /// or [`Spacer`]) or [edits the `Text`], you should make use
-        /// of a lower priority.
+        /// or [`Spacer`]) or [edits the `Text`] of the [`Buffer`],
+        /// you should make use of a lower lateness.
         ///
         /// If it only makes use of "light" `Tag`s (like [`FormTag`])
         /// or relies on no future changes on the same `BufferUpdated`
         /// trigger (by e.g. getting the [printed lines]), then it
-        /// should have a higher priority.
+        /// should have a higher lateness.
         ///
-        /// By default, every hook has a priority of 100.
+        /// By default, every hook has a lateness of 100.
         ///
         /// [`hook`]: super
         /// [`Tag`]: crate::text::Tag
@@ -293,8 +293,9 @@ mod global {
         /// [`FormTag`]: crate::text::FormTag
         /// [edits the `Text`]: crate::text::Text::replace_range
         /// [printed lines]: crate::context::Handle::printed_lines
-        pub fn priority(mut self, priority: usize) -> Self {
-            self.priority = priority;
+        /// [`Buffer`]: crate::buffer::Buffer
+        pub fn lateness(mut self, lateness: usize) -> Self {
+            self.lateness = lateness;
             self
         }
     }
@@ -305,7 +306,7 @@ mod global {
                 self.callback.take().unwrap(),
                 self.ns,
                 self.filter.take(),
-                self.priority,
+                self.lateness,
             )
         }
     }
@@ -340,7 +341,7 @@ mod global {
             callback: Some(Callback::FnMut(Box::new(f))),
             ns: None,
             filter: None,
-            priority: 100,
+            lateness: 100,
         }
     }
 
@@ -378,7 +379,7 @@ mod global {
             callback: Some(Callback::FnOnce(Some(Box::new(f)))),
             ns: None,
             filter: None,
-            priority: 100,
+            lateness: 100,
         }
     }
 
@@ -1231,7 +1232,7 @@ impl InnerHooks {
         callback: Callback<H>,
         ns: Option<Ns>,
         filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
-        priority: usize,
+        lateness: usize,
     ) {
         let mut map = self.types.lock().unwrap();
 
@@ -1242,7 +1243,7 @@ impl InnerHooks {
             }
         }
 
-        let new_hook = Hook { callback, ns, filter, priority };
+        let new_hook = Hook { callback, ns, filter, lateness };
 
         if let Some(holder) = map.get(&TypeId::of::<H>()) {
             let hooks_of = unsafe {
@@ -1251,7 +1252,7 @@ impl InnerHooks {
             };
 
             let mut hooks = hooks_of.0.borrow_mut();
-            if let Some(i) = hooks.iter().position(|hook| hook.priority >= priority) {
+            if let Some(i) = hooks.iter().position(|hook| hook.lateness >= lateness) {
                 hooks.insert(i, new_hook);
             } else {
                 hooks.push(new_hook)
@@ -1376,7 +1377,7 @@ struct Hook<H: Hookable> {
     callback: Callback<H>,
     ns: Option<Ns>,
     filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
-    priority: usize,
+    lateness: usize,
 }
 
 enum Callback<H: Hookable> {

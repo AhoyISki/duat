@@ -7,7 +7,6 @@
 //! related to printing or receiving input. This includes interpreting
 //! input, updating every widget, updating parsers, mapping keys, etc.
 use std::{
-    any::TypeId,
     path::PathBuf,
     sync::{Mutex, OnceLock},
     time::Instant,
@@ -16,7 +15,7 @@ use std::{
 use crossterm::event::{KeyEvent, KeyModifiers, MouseEventKind};
 
 use crate::{
-    Ns, Plugins,
+    Ns,
     buffer::{Buffer, BufferOpts, History, PathKind},
     context::{self, cache},
     data::Pass,
@@ -39,7 +38,7 @@ pub(crate) static BUFFER_OPTS: OnceLock<BufferOpts> = OnceLock::new();
 /// Starts running duat.
 #[doc(hidden)]
 #[inline(never)]
-pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) -> std::io::Result<()> {
+pub fn start(setup: fn() -> (Ui, BufferOpts)) -> std::io::Result<()> {
     static PANIC_INFO: Mutex<Option<String>> = Mutex::new(None);
 
     log::set_logger(Box::leak(Box::new(context::logs()))).unwrap();
@@ -80,7 +79,7 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) -> std::io::Result<()
         hook::add::<OnMouseEvent>(|pa, event| {
             event.handle.text_mut(pa).remove_tags(Ns::for_toggle(), ..);
         })
-        .priority(0);
+        .lateness(0);
 
         crate::buffer::add_buffer_hooks();
         crate::storage::set_structs(structs);
@@ -88,9 +87,8 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) -> std::io::Result<()
             crate::clipboard::set(clipboard);
         }
 
-        let (ui, already_plugged, buffer_opts) = setup();
+        let (ui, buffer_opts) = setup();
         BUFFER_OPTS.set(buffer_opts).unwrap();
-        load_remaining_plugins(already_plugged);
 
         // SAFETY: this is the first time this is called.
         let pa = unsafe { &mut Pass::new() };
@@ -472,25 +470,6 @@ impl ReloadedBuffer {
             ),
             self.is_active,
         )
-    }
-}
-
-fn load_remaining_plugins(already_plugged: Vec<TypeId>) {
-    let plugins = Plugins::_new();
-    // SAFETY: The only externally available function for Plugins is to
-    // add more plugins, accessing the plugging functions happens only on
-    // this thread.
-    while let Some((plug, ty)) = {
-        plugins
-            .0
-            .lock()
-            .unwrap()
-            .iter_mut()
-            .find_map(|(f, ty)| f.take().zip(Some(*ty)))
-    } {
-        if !already_plugged.contains(&ty) {
-            catch_panic(|| plug(plugins));
-        }
     }
 }
 

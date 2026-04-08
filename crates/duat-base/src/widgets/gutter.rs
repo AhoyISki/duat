@@ -13,7 +13,7 @@ use std::{collections::HashMap, ops::Range, sync::Once};
 use duat_core::{
     Ns,
     buffer::{Buffer, Moment},
-    context::{self, Handle, WidgetRelation},
+    context::{self, Handle},
     data::Pass,
     form::{self, Form, FormId},
     hook::{self, BufferOpened, BufferUpdated, OnMouseEvent},
@@ -36,126 +36,132 @@ pub struct Gutter {
     mouse_coord: Option<Coord>,
 }
 
+fn initial_setup() {
+    form::set_weak("gutter.hint", Form::mimic("default.info"));
+    form::set_weak("gutter.warning", Form::mimic("default.warning"));
+    form::set_weak("gutter.error", Form::mimic("default.error"));
+    form::set_weak("buffer.hint", Form::new().underline_grey().underlined());
+    form::set_weak(
+        "buffer.warning",
+        Form::new().underline_yellow().underlined(),
+    );
+    form::set_weak("buffer.error", Form::new().underline_red().underlined());
+
+    let ns = Ns::new();
+    let msg_ns = Ns::new();
+
+    hook::add::<BufferOpened>(move |pa, buffer| _ = buffer.read(pa).moment_for(ns));
+    hook::add::<BufferUpdated>(move |pa, buffer| {
+        let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
+            return;
+        };
+
+        let printed_line_ranges = buffer.printed_line_ranges(pa);
+
+        let (gtr, buf) = pa.write_many((&gutter, buffer));
+        gtr.apply_changes(buf.moment_for(ns));
+
+        let (gt, buf, area) = pa.write_many((&gutter, buffer, buffer.area()));
+        buf.text_parts().tags.remove(msg_ns, ..);
+        let opts = buf.print_opts();
+
+        let mouse_point = gt
+            .mouse_coord
+            .filter(|&coord| coord >= area.top_left() && coord < area.bottom_right())
+            .and_then(|coord| {
+                Some(
+                    area.points_at_coord(buf.text(), coord, opts)?
+                        .as_within()?
+                        .real,
+                )
+            });
+
+        let entries = gt
+            .entries
+            .iter()
+            .flat_map(|(_, entries)| entries)
+            .filter(|entry| {
+                let is_onscreen = printed_line_ranges
+                    .iter()
+                    .any(|range| range.contains(&entry.range.end));
+
+                let display = match entry.kind {
+                    EntryKind::Hint => gt.opts.hint.display,
+                    EntryKind::Warning => gt.opts.warning.display,
+                    EntryKind::Error => gt.opts.error.display,
+                    EntryKind::_Custom(..) => todo!(),
+                };
+
+                let do_show = match display {
+                    GutterDisplay::OwnLines(always) => {
+                        always
+                            || mouse_point.is_some_and(|point| entry.range.contains(&point.byte()))
+                    }
+                    GutterDisplay::Inline(_) => todo!(),
+                    GutterDisplay::Spawn(_) => todo!(),
+                    GutterDisplay::SpawnCorner(..) => todo!(),
+                };
+
+                do_show && is_onscreen
+            });
+
+        for entry in entries {
+            let Some(line) = buf.text()[entry.range.clone()].lines().last() else {
+                continue;
+            };
+
+            let range = line.range();
+            let lnum = range.start.line();
+            let Some(columns) =
+                area.columns_at(buf.text(), TwoPoints::new_after_ghost(range.start), opts)
+            else {
+                continue;
+            };
+
+            let mut parts = buf.text_parts();
+
+            let inlay = Ghost::inlay(txt!("{}{entry.msg}\n", " ".repeat(columns.wrapped)));
+            let line_end = parts.strs.line(lnum).byte_range().end;
+            parts.tags.insert(msg_ns, line_end, inlay)
+        }
+    })
+    .lateness(100_000_000);
+
+    hook::add::<BufferUpdated>(|pa, buffer| {
+        let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
+            return;
+        };
+
+        gutter.write(pa).text = Gutter::form_text(gutter.read(pa), pa, buffer);
+    })
+    .lateness(usize::MAX);
+
+    hook::add::<OnMouseEvent<Buffer>>(move |pa, event| {
+        let Some((gutter, _)) = event.handle.get_related::<Gutter>(pa).first().cloned() else {
+            return;
+        };
+
+        gutter.write(pa).mouse_coord = Some(event.coord);
+    })
+    .lateness(usize::MAX);
+
+    hook::add::<OnMouseEvent>(move |pa, _| {
+        for gutter in context::windows().handles_of::<Gutter>(pa) {
+            let gt = gutter.write(pa);
+            if gt.mouse_coord.take().is_some() {
+                let (buffer, _) = gutter.get_related::<Buffer>(pa).first().cloned().unwrap();
+                buffer.request_update();
+            }
+        }
+    })
+    .lateness(usize::MAX);
+}
+
 impl Gutter {
     /// A builder for a `Gutter`.
     pub fn builder() -> GutterOpts {
         static ONCE: Once = Once::new();
-
-        ONCE.call_once(|| {
-            form::set_weak("gutter.hint", Form::mimic("default.info"));
-            form::set_weak("gutter.warning", Form::mimic("default.warning"));
-            form::set_weak("gutter.error", Form::mimic("default.error"));
-            form::set_weak("buffer.hint", Form::new().underline_grey().underlined());
-            form::set_weak(
-                "buffer.warning",
-                Form::new().underline_yellow().underlined(),
-            );
-            form::set_weak("buffer.error", Form::new().underline_red().underlined());
-
-            let ns = Ns::new();
-            let msg_ns = Ns::new();
-
-            hook::add::<BufferOpened>(move |pa, buffer| _ = buffer.read(pa).moment_for(ns));
-            hook::add::<BufferUpdated>(move |pa, buffer| {
-                let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
-                    return;
-                };
-
-                let printed_line_ranges = buffer.printed_line_ranges(pa);
-
-                let (gt, buf) = pa.write_many((&gutter, buffer));
-                gt.apply_changes(buf.moment_for(ns));
-                gutter.write(pa).text = Gutter::form_text(gutter.read(pa), pa, buffer);
-
-                let (gt, buf, area) = pa.write_many((&gutter, buffer, buffer.area()));
-                buf.text_parts().tags.remove(msg_ns, ..);
-                let opts = buf.print_opts();
-
-                let mouse_point = gt
-                    .mouse_coord
-                    .filter(|&coord| coord >= area.top_left() && coord < area.bottom_right())
-                    .and_then(|coord| {
-                        Some(
-                            area.points_at_coord(buf.text(), coord, opts)?
-                                .as_within()?
-                                .real,
-                        )
-                    });
-
-                let entries = gt
-                    .entries
-                    .iter()
-                    .flat_map(|(_, entries)| entries)
-                    .filter(|entry| {
-                        let is_onscreen = printed_line_ranges
-                            .iter()
-                            .any(|range| range.contains(&entry.range.end));
-
-                        let display = match entry.kind {
-                            EntryKind::Hint => gt.opts.hint.display,
-                            EntryKind::Warning => gt.opts.warning.display,
-                            EntryKind::Error => gt.opts.error.display,
-                            EntryKind::_Custom(..) => todo!(),
-                        };
-
-                        let do_show = match display {
-                            GutterDisplay::OwnLines(always) => {
-                                always
-                                    || mouse_point
-                                        .is_some_and(|point| entry.range.contains(&point.byte()))
-                            }
-                            GutterDisplay::Inline(_) => todo!(),
-                            GutterDisplay::Spawn(_) => todo!(),
-                            GutterDisplay::SpawnCorner(..) => todo!(),
-                        };
-
-                        do_show && is_onscreen
-                    });
-
-                for entry in entries {
-                    let Some(line) = buf.text()[entry.range.clone()].lines().last() else {
-                        continue;
-                    };
-
-                    let range = line.range();
-                    let lnum = range.start.line();
-                    let Some(columns) =
-                        area.columns_at(buf.text(), TwoPoints::new_after_ghost(range.start), opts)
-                    else {
-                        continue;
-                    };
-
-                    let mut parts = buf.text_parts();
-
-                    let inlay = Ghost::inlay(txt!("{}{entry.msg}\n", " ".repeat(columns.wrapped)));
-                    let line_end = parts.strs.line(lnum).byte_range().end;
-                    parts.tags.insert(msg_ns, line_end, inlay)
-                }
-            })
-            .priority(100_000_000);
-
-            hook::add::<OnMouseEvent<Buffer>>(move |pa, event| {
-                let Some((gutter, _)) = event.handle.get_related::<Gutter>(pa).first().cloned()
-                else {
-                    return;
-                };
-
-                gutter.write(pa).mouse_coord = Some(event.coord);
-            })
-            .priority(usize::MAX);
-
-            hook::add::<OnMouseEvent>(move |pa, _| {
-                for gutter in context::windows().handles_of::<Gutter>(pa) {
-                    let gt = gutter.write(pa);
-                    if gt.mouse_coord.take().is_some() {
-                        let (buffer, _) =
-                            gutter.get_related::<Buffer>(pa).first().cloned().unwrap();
-                        buffer.request_update();
-                    }
-                }
-            })
-            .priority(usize::MAX);
-        });
+        ONCE.call_once(initial_setup);
 
         GutterOpts {
             hint: GutterSymbolOpts {
@@ -181,7 +187,7 @@ impl Gutter {
         let mut builder = Text::builder();
 
         for (idx, line) in printed_line_numbers.iter().enumerate() {
-            if idx > 0 && line.is_wrapped {
+            if idx > 0 && (line.is_wrapped || line.is_ghost) {
                 builder.push(" \n");
                 continue;
             };
@@ -214,6 +220,7 @@ impl Gutter {
                 builder.push(symbol_form);
                 builder.push(symbol);
                 builder.push(FormId::default());
+                builder.push("\n");
             } else {
                 builder.push(" \n");
             }
@@ -363,7 +370,7 @@ pub struct GutterEntries {
     /// The entries that are related.
     list: Vec<GutterEntry>,
     /// How to display the entry's message.
-    display: GutterDisplay,
+    _display: GutterDisplay,
 }
 
 /// An entry in the [`Gutter`].
@@ -421,6 +428,7 @@ pub enum GutterDisplay {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(unused)]
 pub enum Corner {
     TopLeft,
     TopRight,
@@ -438,7 +446,9 @@ pub enum Corner {
 /// diagnostics.
 pub struct GutterEntryBuilder<'p> {
     ns: Ns,
-    gbuf: &'p mut GutteredBuffer<'p>,
+    pa: &'p mut Pass,
+    buffer: &'p Handle,
+    gutter: Handle<Gutter>,
     entries: GutterEntries,
 }
 
@@ -448,7 +458,7 @@ impl<'g> GutterEntryBuilder<'g> {
     /// This could be something like the first borrow, which prevented
     /// a future borrow from making sense (in Rust).
     pub fn add_related_hint(mut self, range: impl TextRange, msg: Text) -> Self {
-        let text = self.gbuf.buffer.text(self.gbuf.pa);
+        let text = self.buffer.text(self.pa);
         let range = range.to_range(text.len());
 
         self.entries
@@ -460,7 +470,7 @@ impl<'g> GutterEntryBuilder<'g> {
 
     /// Add a warning that is related to this entry.
     pub fn add_related_warning(mut self, range: impl TextRange, msg: Text) -> Self {
-        let text = self.gbuf.buffer.text(self.gbuf.pa);
+        let text = self.buffer.text(self.pa);
         let range = range.to_range(text.len());
 
         self.entries
@@ -476,7 +486,7 @@ impl<'g> GutterEntryBuilder<'g> {
     /// possible that multiple things went wrong, or more context
     /// would be helpful.
     pub fn add_related_error(mut self, range: impl TextRange, msg: Text) -> Self {
-        let text = self.gbuf.buffer.text(self.gbuf.pa);
+        let text = self.buffer.text(self.pa);
         let range = range.to_range(text.len());
 
         self.entries
@@ -489,16 +499,13 @@ impl<'g> GutterEntryBuilder<'g> {
 
 impl<'g> Drop for GutterEntryBuilder<'g> {
     fn drop(&mut self) {
-        let (buf, gutter) = self
-            .gbuf
-            .pa
-            .write_many((self.gbuf.buffer, &self.gbuf.gutter));
+        let (buf, gtr) = self.pa.write_many((self.buffer, &self.gutter));
 
-        let mut renderer = gutter.opts.renderer.take().unwrap();
+        let mut renderer = gtr.opts.renderer.take().unwrap();
         renderer(&self.entries, self.ns, buf.text_mut().parts());
-        gutter.opts.renderer = Some(renderer);
+        gtr.opts.renderer = Some(renderer);
 
-        let entries = gutter.entries.entry(self.ns).or_default();
+        let entries = gtr.entries.entry(self.ns).or_default();
 
         for entry in std::mem::take(&mut self.entries.list) {
             let (Ok(idx) | Err(idx)) =
@@ -508,106 +515,148 @@ impl<'g> Drop for GutterEntryBuilder<'g> {
     }
 }
 
-/// A struct that lets you add entries to a [`Buffer`]'s [`Gutter`].
-///
-/// While adding entries to the `Gutter`, those will also be displayed
-/// on the `Buffer`.
+#[allow(private_bounds)]
+trait Sealed {}
+/// Trait for adding gutter entries to a [`Buffer`].
 ///
 /// [`Buffer`]: duat_core::buffer::Buffer
-pub struct GutteredBuffer<'g> {
-    ns: Ns,
-    pa: &'g mut Pass,
-    buffer: &'g Handle,
-    gutter: Handle<Gutter>,
-}
+#[allow(private_bounds)]
+pub trait GutterBuffer: Sealed {
+    /// Remove all [`Gutter`] entries from a given [`Ns`].
+    fn remove_gutter_entries(&self, pa: &mut Pass, ns: Ns);
 
-impl<'g> GutteredBuffer<'g> {
-    /// Remove all entries from a given [`Ns`].
-    pub fn remove_entries(&mut self, ns: Ns) {
-        self.gutter.write(self.pa).entries.remove(&ns);
-        self.buffer.text_mut(self.pa).remove_tags(ns, ..);
-    }
-
-    /// Add a hint to the [`Gutter`].
+    /// Add a hint to the [`Gutter`] and the [`Buffer`].
     ///
     /// This could just be useful information, like the fact that
     /// something won't be included in compilation because of a `cfg`
     /// attribute.
-    pub fn add_hint(&'g mut self, range: impl TextRange, msg: Text) -> GutterEntryBuilder<'g> {
-        let text = self.buffer.text(self.pa);
-        let range = range.to_range(text.len());
-        let display = self.gutter.read(self.pa).opts.hint.display;
+    fn add_hint<'g>(
+        &'g self,
+        pa: &'g mut Pass,
+        ns: Ns,
+        range: impl TextRange,
+        msg: Text,
+    ) -> GutterEntryBuilder<'g>;
 
-        GutterEntryBuilder {
-            ns: self.ns,
-            gbuf: self,
-            entries: GutterEntries {
-                list: vec![GutterEntry { range, msg, kind: EntryKind::Hint }],
-                display,
-            },
-        }
-    }
-
-    /// Add a warning to the [`Gutter`].
+    /// Add a warning to the [`Gutter`] and the [`Buffer`].
     ///
     /// This could be improvements that you could do to your code, or
     /// ways in which it is innadequate that don't necessarily hinder
     /// it from working properly.
-    pub fn add_warning(&'g mut self, range: impl TextRange, msg: Text) -> GutterEntryBuilder<'g> {
-        let text = self.buffer.text(self.pa);
-        let range = range.to_range(text.len());
-        let display = self.gutter.read(self.pa).opts.warning.display;
+    fn add_warning<'g>(
+        &'g self,
+        pa: &'g mut Pass,
+        ns: Ns,
+        range: impl TextRange,
+        msg: Text,
+    ) -> GutterEntryBuilder<'g>;
 
-        GutterEntryBuilder {
-            ns: self.ns,
-            gbuf: self,
-            entries: GutterEntries {
-                list: vec![GutterEntry { range, msg, kind: EntryKind::Warning }],
-                display,
-            },
-        }
-    }
-
-    /// Add an error to the [`Gutter`].
+    /// Add an error to the [`Gutter`] and the [`Buffer`].
     ///
     /// These are fundamental issues in your code, and either prevent
     /// compilation, or prevent it from working properly.
-    pub fn add_error(&'g mut self, range: impl TextRange, msg: Text) -> GutterEntryBuilder<'g> {
-        let text = self.buffer.text(self.pa);
-        let range = range.to_range(text.len());
-        let display = self.gutter.read(self.pa).opts.error.display;
-
-        GutterEntryBuilder {
-            ns: self.ns,
-            gbuf: self,
-            entries: GutterEntries {
-                list: vec![GutterEntry { range, msg, kind: EntryKind::Error }],
-                display,
-            },
-        }
-    }
-}
-
-#[allow(private_bounds)]
-trait Sealed {}
-/// Trait for getting a [`Gutter`] [`Buffer`] combo.
-///
-/// [`Buffer`]: duat_core::buffer::Buffer
-#[allow(private_bounds)]
-pub trait GetGuttered: Sealed {
-    /// Get a [`GutteredBuffer`] struct, letting you add new entries
-    /// to the [`Gutter`].
-    fn get_guttered<'g>(&'g self, pa: &'g mut Pass, ns: Ns) -> Option<GutteredBuffer<'g>>;
+    fn add_error<'g>(
+        &'g self,
+        pa: &'g mut Pass,
+        ns: Ns,
+        range: impl TextRange,
+        msg: Text,
+    ) -> GutterEntryBuilder<'g>;
 }
 
 impl Sealed for Handle {}
-impl GetGuttered for Handle {
-    fn get_guttered<'g>(&'g self, pa: &'g mut Pass, ns: Ns) -> Option<GutteredBuffer<'g>> {
-        let gutter = self.get_related(pa).first().cloned();
-        if let Some((gutter, WidgetRelation::Pushed)) = gutter {
-            Some(GutteredBuffer { ns, pa, buffer: self, gutter })
-        } else {
-            None
+impl GutterBuffer for Handle {
+    #[track_caller]
+    fn remove_gutter_entries(&self, pa: &mut Pass, ns: Ns) {
+        let Some((gutter, _)) = self.get_related::<Gutter>(pa).first().cloned() else {
+            panic!("Tried to remove Gutter entries on Buffer with no Gutter");
+        };
+
+        gutter.write(pa).entries.remove(&ns);
+        self.text_mut(pa).remove_tags(ns, ..);
+    }
+
+    #[track_caller]
+    fn add_hint<'g>(
+        &'g self,
+        pa: &'g mut Pass,
+        ns: Ns,
+        range: impl TextRange,
+        msg: Text,
+    ) -> GutterEntryBuilder<'g> {
+        let Some((gutter, _)) = self.get_related::<Gutter>(pa).first().cloned() else {
+            panic!("Tried to add a Gutter entry on Buffer with no Gutter");
+        };
+
+        let text = self.text(pa);
+        let range = range.to_range(text.len());
+        let display = gutter.read(pa).opts.hint.display;
+
+        GutterEntryBuilder {
+            ns,
+            pa,
+            buffer: self,
+            gutter,
+            entries: GutterEntries {
+                list: vec![GutterEntry { range, msg, kind: EntryKind::Hint }],
+                _display: display,
+            },
+        }
+    }
+
+    #[track_caller]
+    fn add_warning<'g>(
+        &'g self,
+        pa: &'g mut Pass,
+        ns: Ns,
+        range: impl TextRange,
+        msg: Text,
+    ) -> GutterEntryBuilder<'g> {
+        let Some((gutter, _)) = self.get_related::<Gutter>(pa).first().cloned() else {
+            panic!("Tried to add a Gutter entry on Buffer with no Gutter");
+        };
+
+        let text = self.text(pa);
+        let range = range.to_range(text.len());
+        let display = gutter.read(pa).opts.hint.display;
+
+        GutterEntryBuilder {
+            ns,
+            pa,
+            buffer: self,
+            gutter,
+            entries: GutterEntries {
+                list: vec![GutterEntry { range, msg, kind: EntryKind::Warning }],
+                _display: display,
+            },
+        }
+    }
+
+    #[track_caller]
+    fn add_error<'g>(
+        &'g self,
+        pa: &'g mut Pass,
+        ns: Ns,
+        range: impl TextRange,
+        msg: Text,
+    ) -> GutterEntryBuilder<'g> {
+        let Some((gutter, _)) = self.get_related::<Gutter>(pa).first().cloned() else {
+            panic!("Tried to add a Gutter entry on Buffer with no Gutter");
+        };
+
+        let text = self.text(pa);
+        let range = range.to_range(text.len());
+        let display = gutter.read(pa).opts.hint.display;
+
+        GutterEntryBuilder {
+            ns,
+            pa,
+            buffer: self,
+            gutter,
+            entries: GutterEntries {
+                list: vec![GutterEntry { range, msg, kind: EntryKind::Error }],
+                _display: display,
+            },
         }
     }
 }

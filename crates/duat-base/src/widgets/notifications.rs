@@ -79,7 +79,7 @@ pub fn add_notifications_hook() {
             }
         }
     })
-    .priority(0);
+    .lateness(0);
 }
 
 /// A [`Widget`] to show notifications

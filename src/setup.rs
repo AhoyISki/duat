@@ -5,7 +5,6 @@
 //! variables are not set in the start of the program, since they
 //! require a [`Ui`], which cannot be defined in static time.
 use std::{
-    any::TypeId,
     path::Path,
     sync::{LazyLock, Mutex},
 };
@@ -15,7 +14,6 @@ use duat_base::{
     widgets::{FooterWidgets, Gutter, LogBook, WhichKey, status},
 };
 use duat_core::{
-    Ns,
     buffer::{BufferOpts, History, PathKind},
     context::{self, cache},
     data::Pass,
@@ -32,15 +30,18 @@ use crate::{
     form,
     hook::{self, BufferClosed, BufferUnloaded, WindowOpened},
     mode,
-    opts::{OPTS, Opts},
+    opts::Opts,
     prelude::BufferSaved,
 };
 
 #[doc(hidden)]
 #[inline(never)]
-pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, Vec<TypeId>, BufferOpts) {
+#[cfg(feature = "term-ui")]
+pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
     // Check this in here, in order to not give warnings to crates that
     // depend on duat without this feature.
+
+    use crate::plug;
     if !cfg!(feature = "term-ui") {
         panic!("No ui for running Duat has been chosen!");
     }
@@ -51,20 +52,8 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, Vec<TypeId>, BufferOpts) {
 
     // Cache hooks
 
-    #[cfg(feature = "treesitter")]
-    {
-        use duat_core::Plugins;
-
-        Plugins::_new().require::<duat_match_pairs::MatchPairs>();
-    }
-
-    duat_core::Plugins::_new().require::<duatmode::DuatMode>();
-    let duat_base_ns = Ns::new();
-    crate::prelude::plug(duat_base::DuatBase(duat_base_ns));
-
     crate::colorscheme::add_default();
 
-    #[cfg(feature = "term-ui")]
     let ui = duat_core::ui::Ui::new::<duat_term::Ui>();
 
     form::enable_mask("error");
@@ -76,9 +65,12 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, Vec<TypeId>, BufferOpts) {
     let mut opts = OPTS.lock().unwrap();
     duat_core::utils::catch_panic(|| setup(&mut opts));
 
-    if !opts.enabled_hooks.default_opts_parser {
-        hook::remove(duat_base_ns);
-    }
+    plug(&mut opts, duat_base::DuatBase::default());
+    plug(&mut opts, duatmode::DuatMode);
+    #[cfg(feature = "treesitter")]
+    plug(&mut opts, duat_match_pairs::MatchPairs::default());
+
+    crate::plugins::finish(&mut opts);
 
     enable_whichkey_hooks(&opts);
     enable_layout_hooks(&mut opts);
@@ -107,10 +99,9 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, Vec<TypeId>, BufferOpts) {
         }
     };
 
-    let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
-
-    (ui, already_plugged, default_buffer_opts)
+    (ui, default_buffer_opts)
 }
+
 fn enable_layout_hooks(opts: &mut Opts) {
     if opts.enabled_hooks.default_buffer_widgets {
         hook::add::<BufferOpened>(|pa, buffer| {
@@ -313,7 +304,7 @@ fn enable_buffer_hooks(opts: &Opts) {
 }
 
 // Setup statics.
-pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
+pub(crate) static OPTS: LazyLock<Mutex<Opts>> = LazyLock::new(Mutex::default);
 static BUFFER_WATCHER: LazyLock<Watcher> = LazyLock::new(|| {
     Watcher::new(|event, from_duat| {
         use dissimilar::Chunk::*;

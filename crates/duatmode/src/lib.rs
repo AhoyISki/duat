@@ -462,7 +462,7 @@
 //! [`opts`]: https://docs.rs/duat/latest/duat/opts
 //! [word chars]: duat_core::opts::PrintOpts::extra_word_chars
 //! [tab mode]: TabMode
-use std::sync::Mutex;
+use std::{any::TypeId, sync::Mutex};
 
 use crate::normal::Brackets;
 pub use crate::{
@@ -477,7 +477,6 @@ mod one_key;
 
 use duat_base::hooks::SearchPerformed;
 use duat_core::{
-    Plugin, Plugins,
     buffer::Buffer,
     context::Handle,
     data::Pass,
@@ -486,7 +485,8 @@ use duat_core::{
     opts::PrintOpts,
     utils::Memoized,
 };
-use duat_treesitter::TsHandle;
+use duat_jump_list::JumpList;
+use duat_treesitter::{TreeSitter, TsHandle};
 pub use parameter::{add_to_param, duat_param, duat_param_txt, take_param};
 
 mod parameter {
@@ -720,13 +720,19 @@ pub mod opts {
 /// And so on and so forth.
 ///
 /// [`Form`]: duat_core::form::Form
+/// [`Plugin`]: https://docs.rs/crates/duat/latest/struct.Plugin.html
 #[derive(Default)]
 pub struct DuatMode;
 
-impl Plugin for DuatMode {
-    fn plug(self, plugins: &Plugins) {
-        plugins.require::<duat_jump_list::JumpList>();
-        plugins.require::<duat_treesitter::TreeSitter>();
+impl DuatMode {
+    /// Adds the `DuatMode` plugin.
+    ///
+    /// *DON'T USE THIS DIRECTLY, USE `duat::plug` INSTEAD*.
+    #[doc(hidden)]
+    #[inline(never)]
+    pub fn _plug(self, require: fn(TypeId, fn())) {
+        require(TypeId::of::<JumpList>(), || JumpList._plug());
+        require(TypeId::of::<TreeSitter>(), || TreeSitter._plug());
 
         mode::set_alt_is_reverse(true);
         mode::set_default(Normal::new());
