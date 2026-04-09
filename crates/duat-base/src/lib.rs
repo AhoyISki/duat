@@ -181,13 +181,13 @@ impl DuatBase {
 
         // Setup for the LogBook
         form::set_weak("default.LogBook", Form::new().on_dark_grey());
-        form::set_weak("log_book.error", Form::mimic("default.error"));
-        form::set_weak("log_book.warn", Form::mimic("default.warninging"));
-        form::set_weak("log_book.info", Form::mimic("default.info"));
-        form::set_weak("log_book.debug", Form::mimic("default.debug"));
-        form::set_weak("log_book.colon", Form::mimic("prompt.colon"));
-        form::set_weak("log_book.bracket", Form::mimic("punctuation.bracket"));
-        form::set_weak("log_book.target", Form::mimic("module"));
+        form::set_weak("logbook.error", Form::mimic("default.error"));
+        form::set_weak("logbook.warn", Form::mimic("default.warn"));
+        form::set_weak("logbook.info", Form::mimic("default.info"));
+        form::set_weak("logbook.debug", Form::mimic("default.debug"));
+        form::set_weak("logbook.colon", Form::mimic("prompt.colon"));
+        form::set_weak("logbook.bracket", Form::mimic("punctuation.bracket"));
+        form::set_weak("logbook.target", Form::mimic("module"));
 
         // Setup for the PromptLine
         form::set_weak("prompt.preview", Form::mimic("comment"));

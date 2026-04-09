@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     io::{BufRead, Write},
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         mpsc::{self, Sender},
     },
 };
@@ -27,7 +27,11 @@ use lsp_types::{
 use serde_json::Value;
 
 pub use crate::server::bridge::id::ServerId;
-use crate::{config::LanguageServerConfig, server::requests::handle_request};
+use crate::{
+    Encoding,
+    config::LanguageServerConfig,
+    server::handler::{handle_notification, handle_request},
+};
 
 /// Communication abstraction for communication with language servers.
 #[derive(Clone)]
@@ -38,6 +42,7 @@ pub struct ServerBridge {
     callbacks: Callbacks,
     initialize_backlog: Arc<Mutex<Option<Vec<JsonRpcFn>>>>,
     bridge_id: ServerId,
+    pub(super) encoding: Arc<OnceLock<Encoding>>,
 }
 
 impl ServerBridge {
@@ -99,6 +104,7 @@ impl ServerBridge {
             callbacks: Callbacks::default(),
             initialize_backlog: Arc::new(Mutex::new(is_initializing.then_some(Vec::new()))),
             bridge_id: ServerId::new(),
+            encoding: Arc::new(OnceLock::new()),
         };
 
         std::thread::spawn({
@@ -322,21 +328,18 @@ fn stdout_loop(server_bridge: ServerBridge, stdout: &mut impl BufRead) -> std::i
 
         match serde_json::from_str::<JsonRpc>(&msg) {
             Ok(content) => {
-                let mut callbacks = server_bridge
-                    .callbacks
-                    .lock()
-                    .unwrap_or_else(|err| err.into_inner());
-
                 match content {
                     JsonRpc::Request(request) => handle_request(&server_bridge, request),
-                    JsonRpc::Notification(_notif) => {
-                        // if !notif.method.ends_with("progress") {
-                        //     context::debug!("Server notified:
-                        // {notif:#?}"); }
+                    JsonRpc::Notification(notification) => {
+                        handle_notification(&server_bridge, notification);
                     }
                     JsonRpc::Success(_) => {
                         if let Some(id) = content.get_id()
-                            && let Some(callback) = callbacks.remove(&id)
+                            && let Some(callback) = server_bridge
+                                .callbacks
+                                .lock()
+                                .unwrap_or_else(|err| err.into_inner())
+                                .remove(&id)
                         {
                             let value = content.get_result().unwrap().clone();
                             context::queue(move |pa| callback(pa, value));

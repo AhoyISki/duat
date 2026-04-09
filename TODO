@@ -1,43 +1,15 @@
 FOR NEXT UPDATE:
-[x] Start work on duat-lsp.
-  [x] Start process comunications.
-  [x] Send messages back and forth.
-  [x] Send changes.
-  [x] Receive and process semantic tokens.
-[x] Make the 'e' and 'v' traverse words and spaces.
-[x] Add autocommenting.
-[x] Augment forms.
-  [/] Add the Color struct.
-  [x] Add copying and interpolation.
-  [x] Remove generics.
-  [x] Make masks a Tag.
-[x] ReplaceChar Tags!
-[x] Overlay tags!
-[x] BufferOpts.
-  [x] BufferOptsParser.
-    [x] Indent lines.
-    [x] Space replacements.
-    [x] New line replacements.
-[x] Get rid of the print_iter api.
-[x] Do the libloading hacks.
-[x] Use a lines based system for large enough text.
-[x] Get rid of Lender entirely.
-[x] Lean up the dependency tree.
-[x] Make Bytes private 🤯.
-[x] Make Overlay text much more powerful.
-[x] File watching.
-[x] File tracking.
-[x] Persistent process spawning.
-[x] Turn the config into a separate process I guess...
-[x] High priority hooks.
-[x] Opts should be given as argument.
-[x] Move all hook removal options to Opts.
-[x] Get rid of Taggers, GroupIds and Gutterers.
-[x] Gutter initial steps.
-  [x] Accept hints, warnings and errors.
-  [x] Process changes.
-  [x] Print formatted text.
-[x] Split Ghost into Inlay and Overlay.
+[ ] Marker tags?
+[ ] More duat-lsp features:
+  [ ] Diagnostics.
+  [ ] Goto locations.
+  [ ] Autocompletions.
+[ ] Snippet support.
+[ ] More work on the Gutter.
+[ ] Perfect print iterators.
+  [ ] Perfect words iterator.
+[ ] Fix pager search.
+[ ] Allow fixing of Coord on TwoPoints.
 
 KNOWN BUGS:
  HIGH PRIORITY:
@@ -48,8 +20,6 @@ KNOWN BUGS:
  LOW PRIORITY:
   [ ] Selections struct that holds a reference to the Bytes.
     [ ] Also make the Bytes-less version inaccessible.
-  [ ] Perfect print iterators.
-    [ ] Perfect words iterator.
   [ ] tree-sitter-duat-text is not being used.
   [ ] For now, on Windows, duat can only reload if there is only one instance open.
   [ ] Overlays can't remove previous Forms early.

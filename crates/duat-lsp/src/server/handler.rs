@@ -13,26 +13,26 @@ use lsp_types::{
     FileEvent, GlobPattern, OneOf, PartialResultParams, SemanticTokensDeltaParams,
     SemanticTokensParams, SemanticTokensResult, TextDocumentIdentifier, WatchKind,
     WorkDoneProgressParams,
-    notification::{DidChangeWatchedFiles, Notification},
+    notification::{DidChangeWatchedFiles, Notification, PublishDiagnostics},
     request::{
         RegisterCapability, Request, SemanticTokensFullDeltaRequest, SemanticTokensFullRequest,
-        SemanticTokensRefresh,
+        SemanticTokensRefresh, WorkspaceDiagnosticRefresh,
     },
 };
 
-use crate::{parser::Parser, server::bridge::ServerBridge};
+use crate::{parser::Parser, server::bridge::ServerBridge, uri_to_path};
 
 macro_rules! get_method_params {
-    ($Request:ty, $params:expr) => {{
+    ($Type:ty, $params:expr, $Trait:ident) => {{
         let Some(params) = $params.map(Into::into) else {
             context::warn!(
                 "Got [a]{}[] request with [a]no[] parameters",
-                <$Request as Request>::METHOD
+                <$Type as $Trait>::METHOD
             );
             return;
         };
 
-        match serde_json::from_value::<<$Request as Request>::Params>(params) {
+        match serde_json::from_value::<<$Type as $Trait>::Params>(params) {
             Ok(params) => params,
             Err(err) => {
                 context::warn!("LSP: {err}");
@@ -62,7 +62,7 @@ macro_rules! deserialize_opt {
 pub fn handle_request(bridge: &ServerBridge, request: jsonrpc_lite::Request) {
     match request.method.as_str() {
         RegisterCapability::METHOD => {
-            let params = get_method_params!(RegisterCapability, request.params);
+            let params = get_method_params!(RegisterCapability, request.params, Request);
 
             for registration in params.registrations {
                 match registration.method.as_str() {
@@ -127,25 +127,52 @@ pub fn handle_request(bridge: &ServerBridge, request: jsonrpc_lite::Request) {
         }
         SemanticTokensRefresh::METHOD => {
             let bridge = bridge.clone();
-
             context::queue(move |pa| {
-                for handle in context::buffers(pa) {
-                    let Some((parser, buffer)) = Parser::write_for(pa, &handle) else {
-                        return;
+                for buffer in context::buffers(pa) {
+                    let Some((parser, _)) = Parser::write_for(pa, &buffer) else {
+                        continue;
                     };
 
-                    bridge.send_semantic_tokens_request(buffer.path(), &handle, parser);
+                    bridge.send_semantic_tokens_request(&buffer, parser);
                 }
             })
         }
         method if method.contains("workDoneProgress") => {}
-        _ => {} // context::warn!("[a]{method}[] request not yet handled"),
+        WorkspaceDiagnosticRefresh::METHOD => {}
+        _ => {}
+    }
+}
+
+pub fn handle_notification(bridge: &ServerBridge, notification: jsonrpc_lite::Notification) {
+    match notification.method.as_str() {
+        PublishDiagnostics::METHOD => {
+            let Some(encoding) = bridge.encoding.get().copied() else {
+                return;
+            };
+
+            let params = get_method_params!(PublishDiagnostics, notification.params, Notification);
+            let path = uri_to_path(params.uri.clone());
+
+            context::queue(move |pa| {
+                let Some(buffer) = context::get_buffer_by_path(pa, &path) else {
+                    return;
+                };
+                let Some((parser, _)) = Parser::write_for(pa, &buffer) else {
+                    return;
+                };
+
+                parser.diagnostics.publish_diagnostics(encoding, params);
+            });
+        }
+        method if method.ends_with("progress") => {}
+        method => context::warn!("[a]{method}[] request not yet handled"),
     }
 }
 
 /// Send a request for the semantic tokens to a given server.
 impl ServerBridge {
-    pub fn send_semantic_tokens_request(&self, path: PathBuf, handle: &Handle, parser: &Parser) {
+    /// Sends a semantic token request.
+    pub fn send_semantic_tokens_request(&self, buffer: &Handle, parser: &Parser) {
         use lsp_types::SemanticTokensServerCapabilities::*;
 
         let server_id = self.id();
@@ -159,8 +186,8 @@ impl ServerBridge {
 
         let work_done_progress_params = WorkDoneProgressParams { work_done_token: None };
         let partial_result_params = PartialResultParams { partial_result_token: None };
-        let text_document = TextDocumentIdentifier { uri: crate::path_to_uri(&path).unwrap() };
-        let handle = handle.clone();
+        let text_document = TextDocumentIdentifier { uri: parser.uri().clone() };
+        let handle = buffer.clone();
 
         if let Some(result_id) = parser.tokens.result_id(self.id()) {
             self.send_request::<SemanticTokensFullDeltaRequest>(

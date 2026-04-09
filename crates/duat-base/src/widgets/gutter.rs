@@ -8,7 +8,11 @@
 //! errors to a `Buffer`.
 //!
 //! [`Buffer`]: duat_core::buffer::Buffer
-use std::{collections::HashMap, ops::Range, sync::Once};
+use std::{
+    collections::HashMap,
+    ops::Range,
+    sync::{Arc, Mutex, Once},
+};
 
 use duat_core::{
     Ns,
@@ -16,8 +20,8 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     form::{self, Form, FormId},
-    hook::{self, BufferOpened, BufferUpdated, OnMouseEvent},
-    text::{Inlay, Text, TextParts, TextRange, TwoPoints},
+    hook::{self, BufferOpened, BufferPrinted, BufferUpdated, OnMouseEvent},
+    text::{Inlay, Text, TextRange, TwoPoints},
     txt,
     ui::{Coord, PushSpecs, Side, Widget},
 };
@@ -48,7 +52,7 @@ fn initial_setup() {
     form::set_weak("buffer.error", Form::new().underline_red().underlined());
 
     let ns = Ns::new();
-    let msg_ns = Ns::new();
+    let mouse_msg_ns = Ns::new();
 
     hook::add::<BufferOpened>(move |pa, buffer| _ = buffer.read(pa).moment_for(ns));
     hook::add::<BufferUpdated>(move |pa, buffer| {
@@ -56,13 +60,10 @@ fn initial_setup() {
             return;
         };
 
-        let printed_line_ranges = buffer.printed_line_ranges(pa);
-
         let (gtr, buf) = pa.write_many((&gutter, buffer));
         gtr.apply_changes(buf.moment_for(ns));
 
         let (gt, buf, area) = pa.write_many((&gutter, buffer, buffer.area()));
-        buf.text_parts().tags.remove(msg_ns, ..);
         let opts = buf.print_opts();
 
         let mouse_point = gt
@@ -79,12 +80,8 @@ fn initial_setup() {
         let entries = gt
             .entries
             .iter()
-            .flat_map(|(_, entries)| entries)
+            .flat_map(|(_, entries)| entries.iter().rev())
             .filter(|entry| {
-                let is_onscreen = printed_line_ranges
-                    .iter()
-                    .any(|range| range.contains(&entry.range.end));
-
                 let display = match entry.kind {
                     EntryKind::Hint => gt.opts.hint.display,
                     EntryKind::Warning => gt.opts.warning.display,
@@ -92,17 +89,15 @@ fn initial_setup() {
                     EntryKind::_Custom(..) => todo!(),
                 };
 
-                let do_show = match display {
+                match display {
                     GutterDisplay::OwnLines(always) => {
-                        always
-                            || mouse_point.is_some_and(|point| entry.range.contains(&point.byte()))
+                        !always
+                            && mouse_point.is_some_and(|point| entry.range.contains(&point.byte()))
                     }
                     GutterDisplay::Inline(_) => todo!(),
                     GutterDisplay::Spawn(_) => todo!(),
                     GutterDisplay::SpawnCorner(..) => todo!(),
-                };
-
-                do_show && is_onscreen
+                }
             });
 
         for entry in entries {
@@ -120,12 +115,24 @@ fn initial_setup() {
 
             let mut parts = buf.text_parts();
 
-            let inlay = Inlay::new(txt!("{}{entry.msg}\n", " ".repeat(columns.wrapped)));
+            let mut msg = txt!("{entry.msg}\n");
+            let line_ranges = Vec::from_iter(msg.lines().map(|line| line.byte_range()));
+
+            for range in line_ranges.into_iter().rev() {
+                if range.start + 1 < range.end {
+                    msg.replace_range(range.start..range.start, &SPACES[..columns.wrapped]);
+                }
+            }
+
             let line_end = parts.strs.line(lnum).byte_range().end;
-            parts.tags.insert(msg_ns, line_end, inlay)
+            parts.tags.insert(mouse_msg_ns, line_end, Inlay::new(msg))
         }
     })
     .lateness(100_000_000);
+
+    hook::add::<BufferPrinted>(move |pa, buffer| {
+        buffer.text_parts(pa).tags.remove(mouse_msg_ns, ..);
+    });
 
     hook::add::<BufferUpdated>(|pa, buffer| {
         let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
@@ -176,7 +183,7 @@ impl Gutter {
                 symbol: '*',
                 display: GutterDisplay::OwnLines(true),
             },
-            renderer: Some(Box::new(default_renderer)),
+            renderer: Some(Arc::new(Mutex::new(default_renderer))),
         }
     }
 
@@ -289,6 +296,7 @@ impl Widget for Gutter {
 ///
 /// You can change the character of hints, warnings and errors, and
 /// you can also set how they should be displayed by default.
+#[derive(Clone)]
 pub struct GutterOpts {
     /// Hints are information that doesn't necessarily indicate that
     /// something's wrong, but may be related to an actual issue.
@@ -328,7 +336,7 @@ pub struct GutterOpts {
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
     pub error: GutterSymbolOpts,
-    renderer: Option<Box<Renderer>>,
+    renderer: Option<Arc<Mutex<Renderer>>>,
 }
 
 impl GutterOpts {
@@ -500,12 +508,15 @@ impl<'g> GutterEntryBuilder<'g> {
 
 impl<'g> Drop for GutterEntryBuilder<'g> {
     fn drop(&mut self) {
-        let (buf, gtr) = self.pa.write_many((self.buffer, &self.gutter));
+        let gtr = self.gutter.write(self.pa);
+        let renderer = gtr.opts.renderer.take().unwrap();
+        let opts = gtr.opts.clone();
+        duat_core::utils::catch_panic(|| {
+            renderer.lock().unwrap()(self.pa, self.ns, &self.entries, opts, self.buffer)
+        });
 
-        let mut renderer = gtr.opts.renderer.take().unwrap();
-        renderer(&self.entries, self.ns, buf.text_mut().parts());
+        let gtr = self.gutter.write(self.pa);
         gtr.opts.renderer = Some(renderer);
-
         let entries = gtr.entries.entry(self.ns).or_default();
 
         for entry in std::mem::take(&mut self.entries.list) {
@@ -563,6 +574,12 @@ pub trait GutterBuffer: Sealed {
         range: impl TextRange,
         msg: Text,
     ) -> GutterEntryBuilder<'g>;
+
+    /// Wether  this [`Buffer`] has a [`Gutter`] or not.
+    ///
+    /// This should return `true` everytime, unless you disable this
+    /// functionality.
+    fn has_gutter(&self, pa: &Pass) -> bool;
 }
 
 impl Sealed for Handle {}
@@ -660,25 +677,77 @@ impl GutterBuffer for Handle {
             },
         }
     }
+
+    fn has_gutter(&self, pa: &Pass) -> bool {
+        !self.get_related::<Gutter>(pa).is_empty()
+    }
 }
 
 /// The default [`Gutter`] renderer.
 ///
 /// You can use this if you want to render things differently in some
 /// situations, but not all.
-pub fn default_renderer(entries: &GutterEntries, ns: Ns, mut parts: TextParts<'_>) {
+pub fn default_renderer(
+    pa: &mut Pass,
+    ns: Ns,
+    entries: &GutterEntries,
+    opts: GutterOpts,
+    buffer: &Handle,
+) {
+    let (buf, area) = buffer.write_with_area(pa);
+    let popts = buf.print_opts();
+
+    let always = |opts: GutterSymbolOpts| matches!(opts.display, GutterDisplay::OwnLines(true));
+
     for entry in &entries.list {
-        let form_tag = match entry.kind {
-            EntryKind::Hint => form::id_of!("buffer.hint").to_tag(190),
-            EntryKind::Warning => form::id_of!("buffer.warning").to_tag(191),
-            EntryKind::Error => form::id_of!("buffer.error").to_tag(192),
-            EntryKind::_Custom(.., text_form) => text_form.to_tag(193),
+        let (form_tag, do_show) = match entry.kind {
+            EntryKind::Hint => (form::id_of!("buffer.hint").to_tag(190), always(opts.hint)),
+            EntryKind::Warning => (
+                form::id_of!("buffer.warning").to_tag(191),
+                always(opts.warning),
+            ),
+            EntryKind::Error => (form::id_of!("buffer.error").to_tag(192), always(opts.error)),
+            EntryKind::_Custom(.., text_form) => (text_form.to_tag(193), false),
         };
 
-        parts.tags.insert(ns, entry.range.clone(), form_tag);
+        buf.text_parts()
+            .tags
+            .insert(ns, entry.range.clone(), form_tag);
+
+        if !do_show {
+            continue;
+        }
+
+        let Some(line) = buf.text()[entry.range.clone()].lines().last() else {
+            continue;
+        };
+
+        let range = line.range();
+        let lnum = range.start.line();
+        let Some(columns) =
+            area.columns_at(buf.text(), TwoPoints::new_after_ghost(range.start), popts)
+        else {
+            continue;
+        };
+
+        let mut parts = buf.text_parts();
+
+        let mut msg = txt!("{entry.msg}\n");
+        let line_ranges = Vec::from_iter(msg.lines().map(|line| line.byte_range()));
+
+        for range in line_ranges.into_iter().rev() {
+            if range.start + 1 < range.end {
+                msg.replace_range(range.start..range.start, &SPACES[..columns.wrapped]);
+            }
+        }
+
+        let line_end = parts.strs.line(lnum).byte_range().end;
+        parts.tags.insert(ns, line_end, Inlay::new(msg))
     }
 }
 
-type Renderer = dyn FnMut(&GutterEntries, Ns, TextParts<'_>) + 'static + Send;
+type Renderer = dyn FnMut(&mut Pass, Ns, &GutterEntries, GutterOpts, &Handle) + 'static + Send;
 type OnlyOnHover = bool;
 type OnWindow = bool;
+
+static SPACES: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };

@@ -270,10 +270,10 @@ fn default_fmt(rec: Record) -> Option<Text> {
     let mut builder = Text::builder();
 
     match rec.level() {
-        Error => builder.push(txt!("[log_book.error][[ERROR]][log_book.colon]:  ")),
-        Warn => builder.push(txt!("[log_book.warn][[WARNING]][log_book.colon]:")),
-        Info => builder.push(txt!("[log_book.info][[INFO]][log_book.colon]:   ")),
-        Debug => builder.push(txt!("[log_book.debug][[DEBUG]][log_book.colon]:  ")),
+        Error => builder.push(txt!("[logbook.error][[ERROR]][logbook.colon]:  ")),
+        Warn => builder.push(txt!("[logbook.warn][[WARNING]][logbook.colon]:")),
+        Info => builder.push(txt!("[logbook.info][[INFO]][logbook.colon]:   ")),
+        Debug => builder.push(txt!("[logbook.debug][[DEBUG]][logbook.colon]:  ")),
         Trace => unreachable!("Trace is not meant to be useable"),
     };
 

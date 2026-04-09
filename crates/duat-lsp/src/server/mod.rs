@@ -27,7 +27,7 @@ use crate::{
 };
 
 mod bridge;
-mod requests;
+mod handler;
 
 static SERVERS: Mutex<Vec<Server>> = Mutex::new(Vec::new());
 
@@ -94,9 +94,8 @@ impl Server {
 
     /// Send a request to refresh the semantic tokens of a given
     /// [`Handle`].
-    pub fn send_semantic_tokens_request(&self, path: PathBuf, handle: &Handle, parser: &Parser) {
-        self.bridge
-            .send_semantic_tokens_request(path, handle, parser);
+    pub fn send_semantic_tokens_request(&self, handle: &Handle, parser: &Parser) {
+        self.bridge.send_semantic_tokens_request(handle, parser);
     }
 
     /// Sends the initialization requests for a given [`Path`].
@@ -106,6 +105,12 @@ impl Server {
             let server = self.clone();
             move |_, result| {
                 server.bridge.declare_initialized();
+                server
+                    .bridge
+                    .encoding
+                    .set(crate::Encoding::new(&result.capabilities))
+                    .ok()
+                    .unwrap();
 
                 server
                     .init_parts
@@ -240,12 +245,19 @@ impl<Context> Decode<Context> for ServerParts {
         let capabilities: String = Decode::decode(decoder)?;
         let info: Option<String> = Decode::decode(decoder)?;
 
+        let capabilities: ServerCapabilities = serde_json::from_str(&capabilities).unwrap();
+        let encoding = crate::Encoding::new(&capabilities);
+
         Ok(Self {
-            capabilities: serde_json::from_str(&capabilities).unwrap(),
+            capabilities,
             info: info.map(|value| serde_json::from_str(&value).unwrap()),
             offset_encoding: Decode::decode(decoder)?,
             roots: Decode::decode(decoder)?,
-            bridge: Decode::decode(decoder)?,
+            bridge: {
+                let bridge: ServerBridge = Decode::decode(decoder)?;
+                bridge.encoding.set(encoding).ok().unwrap();
+                bridge
+            },
         })
     }
 }

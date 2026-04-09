@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use lsp_types::{ServerCapabilities, Uri};
+use duat_core::{form::{self, Form}, text::{Point, Strs}};
+use lsp_types::{Position, ServerCapabilities, Uri};
 
 mod config;
 mod parser;
@@ -15,6 +16,11 @@ impl DuatLsp {
     #[doc(hidden)]
     #[inline(never)]
     pub fn _plug(self) {
+        form::set("lsp.info", Form::mimic("default.info"));
+        form::set("lsp.hint", Form::mimic("default.info"));
+        form::set("lsp.warn", Form::mimic("default.warn"));
+        form::set("lsp.error", Form::mimic("default.error"));
+        
         parser::setup_hooks();
     }
 }
@@ -77,8 +83,8 @@ fn uri_to_path(uri: Uri) -> PathBuf {
 }
 
 /// An encoding for text positions.
-#[derive(Default)]
-pub enum Encoding {
+#[derive(Default, Clone, Copy)]
+enum Encoding {
     Utf8,
     #[default]
     Utf16,
@@ -87,7 +93,7 @@ pub enum Encoding {
 
 impl Encoding {
     /// Returns the `Encoding` being used by a server.
-    pub fn new(cap: &ServerCapabilities) -> Self {
+    fn new(cap: &ServerCapabilities) -> Self {
         match cap.position_encoding.as_ref().map(|enc| enc.as_str()) {
             Some("utf-8") | None => Encoding::Utf8,
             Some("utf-16") => Encoding::Utf16,
@@ -97,11 +103,19 @@ impl Encoding {
     }
 
     /// The number of bytes occupied by a single code point.
-    pub fn num_bytes(&self) -> usize {
+    const fn num_bytes(&self) -> usize {
         match self {
             Encoding::Utf8 => 1,
             Encoding::Utf16 => 2,
             Encoding::Utf32 => 4,
         }
     }
+}
+
+#[track_caller]
+fn point_from_position(strs: &Strs, position: Position, encoding: Encoding) -> Point {
+    strs.point_at_coords(
+        position.line as usize,
+        position.character as usize / encoding.num_bytes(),
+    )
 }

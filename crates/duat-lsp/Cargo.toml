@@ -11,6 +11,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+duat-base.workspace = true
 duat-core.workspace = true
 duat-filetype.workspace = true
 

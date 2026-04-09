@@ -22,11 +22,12 @@ use lsp_types::{
 
 use crate::{
     Encoding,
-    parser::semantic_tokens::BufferTokens,
+    parser::{diagnostics::Diagnostics, semantic_tokens::BufferTokens},
     path_to_uri,
     server::{self, Server},
 };
 
+mod diagnostics;
 mod semantic_tokens;
 
 /// The struct responsible for updating each individual [`Buffer`].
@@ -38,6 +39,10 @@ pub struct Parser {
     ///
     /// [`SemanticToken`]: lsp_types::SemanticToken
     pub tokens: BufferTokens,
+    /// The [`Diagnostic`]s that have been published on the `Buffer`.
+    ///
+    /// [`Diagnostic`]: lsp_types::Diagnostic
+    pub diagnostics: Diagnostics,
 }
 
 impl Parser {
@@ -48,6 +53,11 @@ impl Parser {
         handle: &'p Handle,
     ) -> Option<(&'p mut Parser, &'p mut Buffer)> {
         PARSERS.write(pa, handle)
+    }
+
+    /// The [`Uri`] of the [`Buffer`].
+    pub fn uri(&self) -> &Uri {
+        &self.uri
     }
 }
 
@@ -61,9 +71,9 @@ pub fn setup_hooks() {
     static OPENED_BUFFERS: LazyLock<OpenedBuffers> =
         LazyLock::new(|| storage::get_if(|_| true).unwrap_or_default());
 
-    hook::add::<BufferOpened>(|pa, handle| {
-        if let Some(filetype) = handle.filetype(pa) {
-            let path = handle.read(pa).path();
+    hook::add::<BufferOpened>(|pa, buffer| {
+        if let Some(filetype) = buffer.filetype(pa) {
+            let path = buffer.read(pa).path();
 
             let Some(servers) = server::get_servers_for(&path) else {
                 return;
@@ -74,7 +84,7 @@ pub fn setup_hooks() {
                 return;
             };
 
-            let text = handle.text(pa);
+            let text = buffer.text(pa);
 
             let mut opened_buffers = OPENED_BUFFERS.0.lock().unwrap();
             if opened_buffers.insert(path) {
@@ -90,15 +100,16 @@ pub fn setup_hooks() {
                 });
             }
 
-            let (parser, buffer) = PARSERS.register(pa, handle, Parser {
+            let (parser, _) = PARSERS.register(pa, buffer, Parser {
                 uri,
                 ns: Ns::new(),
                 servers: servers.clone(),
                 tokens: BufferTokens::default(),
+                diagnostics: Diagnostics::new()
             });
 
             for server in servers {
-                server.send_semantic_tokens_request(buffer.path(), handle, parser);
+                server.send_semantic_tokens_request(buffer, parser);
             }
         }
     });
@@ -144,7 +155,7 @@ pub fn setup_hooks() {
                 };
                 server.send_notification::<DidChangeTextDocument>(notification);
 
-                server.send_semantic_tokens_request(buf.path(), handle, parser);
+                server.send_semantic_tokens_request(handle, parser);
             }
         }
     });

@@ -417,6 +417,7 @@ dependencies = [
 name = "duat-lsp"
 version = "0.10.0"
 dependencies = [
+ "duat-base",
  "duat-core",
  "duat-filetype",
  "gap-buf 0.6.1",
