@@ -641,17 +641,7 @@ mod cargo {
         if print {
             cargo.status()
         } else {
-            cargo.output().map(|out| {
-                #[cfg(target_os = "windows")]
-                if out.stderr.ends_with(b"Access is denied. (os error 5)\n") {
-                    context::error!("Failed to reload config crate");
-                    context::info!("On [a]Windows[], close other instances of Duat to reload");
-                } else {
-                    context::error!("{}", String::from_utf8_lossy(&out.stderr));
-                }
-
-                out.status
-            })
+            cargo.output().map(|out| out.status)
         }
     }
 }

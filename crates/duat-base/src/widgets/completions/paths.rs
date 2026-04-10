@@ -111,7 +111,7 @@ impl CompletionsProvider for PathCompletions {
                 .next_back()
                 .map(|(pat_id, range)| range.start + 2 * (pat_id == 1) as usize)
         } else {
-            text.search("[^ /\\\n\t]*(/|\\).*")
+            text.search("[^ /\\\n\t]*(/|\\\\).*")
                 .range(..caret)
                 .next_back()
                 .map(|range| range.start)

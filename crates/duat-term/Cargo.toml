@@ -16,3 +16,6 @@ duat-core.workspace = true
 unicode-width = "0.2.2"
 kasuari = "0.4.11"
 crossterm = { version = "0.29.0", default-features = false, features = ["events", "windows"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = "0.61.2"

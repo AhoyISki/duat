@@ -79,6 +79,13 @@ impl RawUi for Ui {
         )
         .unwrap();
 
+        #[cfg(target_os = "windows")]
+        unsafe {
+            if windows_sys::Win32::System::Console::SetConsoleOutputCP(65001) == 0 {
+                panic!("Failed to set output mode to utf8");
+            }
+        }
+
         if let Ok(true) = terminal::supports_keyboard_enhancement() {
             queue!(
                 io::stdout(),
@@ -126,9 +133,13 @@ impl RawUi for Ui {
         let _ = print_thread.spawn(move || {
             // Wait for everything to be setup before doing anything to the
             // terminal, for a less jarring effect.
-            let Ok(Event::NewPrinter(mut printer)) = term_rx.recv() else {
-                return;
-            };
+            let mut printer = (&term_rx)
+                .into_iter()
+                .find_map(|event| match event {
+                    Event::NewPrinter(printer) => Some(printer),
+                    _ => None
+                })
+                .unwrap();
 
             for event in term_rx {
                 match event {

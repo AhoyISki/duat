@@ -82,6 +82,12 @@ pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
             }
             let (_, (join_handle, _)) = child.remove_entry();
 
+            let path = crate_dir
+                .join("target")
+                .join("release")
+                .join(resolve_lib_file(&lang));
+            context::debug!("{path:#?}");
+            
             match join_handle.join().unwrap() {
                 Some(status) if status.success() => {
                     if fs::copy(
@@ -94,7 +100,7 @@ pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
                     .is_err()
                     {
                         return fail();
-                    };
+                    }
 
                     let mut cargo = Command::new("cargo");
                     _ = cargo
