@@ -21,9 +21,9 @@ use duat_core::{
     data::Pass,
     form::{self, Form, FormId},
     hook::{self, BufferOpened, BufferPrinted, BufferUpdated, OnMouseEvent},
-    text::{Inlay, Text, TextRange, TwoPoints},
+    text::{Inlay, Overlay, Text, TextRange, TwoPoints},
     txt,
-    ui::{Coord, PushSpecs, Side, Widget},
+    ui::{Area, Coord, PushSpecs, Side, Widget},
 };
 
 /// A struct to hold diagnostic hints about a [`Buffer`].
@@ -63,69 +63,61 @@ fn initial_setup() {
         let (gtr, buf) = pa.write_many((&gutter, buffer));
         gtr.apply_changes(buf.moment_for(ns));
 
-        let (gt, buf, area) = pa.write_many((&gutter, buffer, buffer.area()));
-        let opts = buf.print_opts();
+        let (gtr, buf, area) = pa.write_many((&gutter, buffer, buffer.area()));
+        let mut opts = gtr.opts.clone();
+        let popts = buf.print_opts();
 
-        let mouse_point = gt
+        let (related_to_hovered, hovered_ids) = gtr
             .mouse_coord
             .filter(|&coord| coord >= area.top_left() && coord < area.bottom_right())
             .and_then(|coord| {
-                Some(
-                    area.points_at_coord(buf.text(), coord, opts)?
-                        .as_within()?
-                        .real,
-                )
-            });
+                let real = area
+                    .points_at_coord(buf.text(), coord, popts)?
+                    .as_within()?
+                    .real;
 
-        let entries = gt
+                let ids = Vec::from_iter(
+                    gtr.entries
+                        .iter()
+                        .flat_map(|(_, entries)| entries)
+                        .filter_map(|entry| entry.range.contains(&real.byte()).then_some(entry.id)),
+                );
+
+                let related = Vec::from_iter(
+                    ID_RELATIONS
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .filter(|related| ids.iter().any(|id| related.contains(id)))
+                        .flatten()
+                        .copied(),
+                );
+
+                Some((related, ids))
+            })
+            .unwrap_or_default();
+
+        let entries_to_show = gtr
             .entries
             .iter()
             .flat_map(|(_, entries)| entries.iter().rev())
             .filter(|entry| {
-                let display = match entry.kind {
-                    EntryKind::Hint => gt.opts.hint.display,
-                    EntryKind::Warning => gt.opts.warning.display,
-                    EntryKind::Error => gt.opts.error.display,
-                    EntryKind::_Custom(..) => todo!(),
-                };
-
-                match display {
-                    GutterDisplay::OwnLines(always) => {
-                        !always
-                            && mouse_point.is_some_and(|point| entry.range.contains(&point.byte()))
-                    }
-                    GutterDisplay::Inline(_) => todo!(),
-                    GutterDisplay::Spawn(_) => todo!(),
-                    GutterDisplay::SpawnCorner(..) => todo!(),
-                }
+                let display = gtr.opts.symbol_opts(entry.kind).display;
+                !display.always_show() && related_to_hovered.contains(&entry.id)
             });
 
-        for entry in entries {
-            let Some(line) = buf.text()[entry.range.clone()].lines().last() else {
-                continue;
-            };
-
-            let range = line.range();
-            let lnum = range.start.line();
-            let Some(columns) =
-                area.columns_at(buf.text(), TwoPoints::new_after_ghost(range.start), opts)
-            else {
-                continue;
-            };
-
-            let mut parts = buf.text_parts();
-
-            let mut msg = txt!("{entry.msg}\n");
-            let line_ranges = Vec::from_iter(msg.lines().map(|line| line.byte_range()));
-
-            for range in line_ranges.into_iter().rev() {
-                if range.start + 1 < range.end {
-                    msg.replace_range(range.start..range.start, &SPACES[..columns.wrapped]);
-                }
+        for entry in entries_to_show {
+            // Replace the related entries's displays with an inline one, in order
+            // to not move the `Text` around, displacing it from the mouse
+            // position.
+            if !hovered_ids.contains(&entry.id) {
+                let display = &mut opts.symbol_opts_mut(entry.kind).display;
+                let prev = std::mem::replace(display, GutterDisplay::EndOfLine(false));
+                entry.insert_on(mouse_msg_ns, &opts, buf, area, true);
+                opts.symbol_opts_mut(entry.kind).display = prev;
+            } else {
+                entry.insert_on(mouse_msg_ns, &opts, buf, area, true);
             }
-
-            let line_end = parts.strs.line(lnum).byte_range().end;
-            parts.tags.insert(mouse_msg_ns, line_end, Inlay::new(msg))
         }
     })
     .lateness(100_000_000);
@@ -181,7 +173,7 @@ impl Gutter {
             },
             error: GutterSymbolOpts {
                 symbol: '*',
-                display: GutterDisplay::OwnLines(true),
+                display: GutterDisplay::OwnLines(false),
             },
             renderer: Some(Arc::new(Mutex::new(default_renderer))),
         }
@@ -365,20 +357,32 @@ impl GutterOpts {
             },
         )
     }
+
+    /// The mutable [`GutterSymbolOpts`] for a given [`EntryKind`]
+    pub fn symbol_opts_mut(&mut self, kind: EntryKind) -> &mut GutterSymbolOpts {
+        match kind {
+            EntryKind::Hint => &mut self.hint,
+            EntryKind::Warning => &mut self.warning,
+            EntryKind::Error => &mut self.error,
+            EntryKind::_Custom(..) => todo!(),
+        }
+    }
+
+    /// The [`GutterSymbolOpts`] for a given [`EntryKind`]
+    pub fn symbol_opts(&self, kind: EntryKind) -> &GutterSymbolOpts {
+        match kind {
+            EntryKind::Hint => &self.hint,
+            EntryKind::Warning => &self.warning,
+            EntryKind::Error => &self.error,
+            EntryKind::_Custom(..) => todo!(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GutterSymbolOpts {
     symbol: char,
     display: GutterDisplay,
-}
-
-/// Related entries on the [`Gutter`].
-pub struct GutterEntries {
-    /// The entries that are related.
-    list: Vec<GutterEntry>,
-    /// How to display the entry's message.
-    _display: GutterDisplay,
 }
 
 /// An entry in the [`Gutter`].
@@ -389,10 +393,84 @@ pub struct GutterEntry {
     range: Range<usize>,
     msg: Text,
     kind: EntryKind,
+    id: GutterEntryId,
+}
+
+impl GutterEntry {
+    pub fn insert_on(
+        &self,
+        ns: Ns,
+        opts: &GutterOpts,
+        buf: &mut Buffer,
+        area: &Area,
+        is_hovered: bool,
+    ) {
+        let popts = buf.print_opts();
+
+        let from = |opts: GutterSymbolOpts| {
+            (
+                is_hovered ^ matches!(opts.display, GutterDisplay::OwnLines(true)),
+                opts.display,
+            )
+        };
+
+        let (form_tag, (do_show, display)) = match self.kind {
+            EntryKind::Hint => (form::id_of!("buffer.hint").to_tag(190), from(opts.hint)),
+            EntryKind::Warning => (
+                form::id_of!("buffer.warning").to_tag(191),
+                from(opts.warning),
+            ),
+            EntryKind::Error => (form::id_of!("buffer.error").to_tag(192), from(opts.error)),
+            EntryKind::_Custom(..) => todo!(),
+        };
+
+        buf.text_parts()
+            .tags
+            .insert(ns, self.range.clone(), form_tag);
+
+        if !do_show {
+            return;
+        }
+
+        let Some(line) = buf.text()[self.range.clone()].lines().last() else {
+            return;
+        };
+
+        let line_range = line.range();
+        let lnum = line_range.start.line();
+        let two_points = TwoPoints::new_after_ghost(line_range.start);
+        let Some(columns) = area.columns_at(buf.text(), two_points, popts) else {
+            return;
+        };
+
+        let mut parts = buf.text_parts();
+
+        let line_end = parts.strs.line(lnum).byte_range().end;
+        match display {
+            GutterDisplay::EndOfLine(_) => {
+                let msg = txt!("  {self.msg}");
+                parts.tags.insert(ns, line_end - 1, Overlay::new(msg));
+            }
+            GutterDisplay::Spawn(_) => todo!(),
+            GutterDisplay::SpawnCorner(..) => todo!(),
+            GutterDisplay::OwnLines(_) => {
+                let mut msg = txt!("{self.msg}\n");
+                let line_ranges = Vec::from_iter(msg.lines().map(|line| line.byte_range()));
+
+                for range in line_ranges.into_iter().rev() {
+                    if range.start + 1 < range.end {
+                        msg.replace_range(range.start..range.start, &SPACES[..columns.wrapped]);
+                    }
+                }
+
+                parts.tags.insert(ns, line_end, Inlay::new(msg))
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum EntryKind {
+pub enum EntryKind {
     Hint,
     Warning,
     Error,
@@ -409,13 +487,13 @@ pub enum GutterDisplay {
     ///
     /// If [`GutterEntryBuilder::only_on_hover`] is not called, this
     /// display method will default to always be shown.
-    Inline(OnlyOnHover),
+    EndOfLine(AlwaysShow),
     /// The [`Text`] will be shown as a spawned widget near the
     /// entry's range.
     ///
     /// If [`GutterEntryBuilder::only_on_hover`] is not called, this
     /// display method will default to show up only on hover.
-    Spawn(OnlyOnHover),
+    Spawn(AlwaysShow),
     /// The [`Text`] will be show as a spawned widget on one of the
     /// corners.
     ///
@@ -427,13 +505,25 @@ pub enum GutterDisplay {
     /// display method will default to show up only on hover.
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
-    SpawnCorner(OnlyOnHover, Corner, OnWindow),
+    SpawnCorner(AlwaysShow, Corner, OnWindow),
     /// The [`Text`] will be shown as [`Inlay`] lines under the
     /// entry's range.
     ///
     /// If [`GutterEntryBuilder::only_on_hover`] is not called, this
     /// display method will default to always be shown.
-    OwnLines(OnlyOnHover),
+    OwnLines(AlwaysShow),
+}
+
+impl GutterDisplay {
+    /// Wether this [`GutterEntry`] should always be displayed.
+    pub fn always_show(&self) -> bool {
+        match *self {
+            GutterDisplay::EndOfLine(always) => always,
+            GutterDisplay::Spawn(always) => always,
+            GutterDisplay::SpawnCorner(always, ..) => always,
+            GutterDisplay::OwnLines(always) => always,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -445,86 +535,26 @@ pub enum Corner {
     BottomLeft,
 }
 
-/// A builder for a [`Gutter`] entry.
-///
-/// This lets you add more related messages to this entry, which will
-/// make their display cohesive. You may, for example, have an error
-/// that happens in a specific line, because of a decision you made on
-/// another line (e.g. borrowing errors on Rust), which should be
-/// interlinked with this error, in order to show more cohesive
-/// diagnostics.
-pub struct GutterEntryBuilder<'p> {
+fn insert_entry(
+    pa: &mut Pass,
     ns: Ns,
-    pa: &'p mut Pass,
-    buffer: &'p Handle,
     gutter: Handle<Gutter>,
-    entries: GutterEntries,
-}
+    buffer: &Handle,
+    entry: GutterEntry,
+) {
+    let gtr = gutter.write(pa);
+    let renderer = gtr.opts.renderer.take().unwrap();
+    let opts = gtr.opts.clone();
+    duat_core::utils::catch_panic(|| {
+        renderer.lock().unwrap()(pa, ns, &entry, &opts, buffer, false)
+    });
 
-impl<'g> GutterEntryBuilder<'g> {
-    /// Add a hint that is related to this entry.
-    ///
-    /// This could be something like the first borrow, which prevented
-    /// a future borrow from making sense (in Rust).
-    pub fn add_related_hint(mut self, range: impl TextRange, msg: Text) -> Self {
-        let text = self.buffer.text(self.pa);
-        let range = range.to_range(text.len());
+    let gtr = gutter.write(pa);
+    gtr.opts.renderer = Some(renderer);
+    let entries = gtr.entries.entry(ns).or_default();
 
-        self.entries
-            .list
-            .push(GutterEntry { range, msg, kind: EntryKind::Hint });
-
-        self
-    }
-
-    /// Add a warning that is related to this entry.
-    pub fn add_related_warning(mut self, range: impl TextRange, msg: Text) -> Self {
-        let text = self.buffer.text(self.pa);
-        let range = range.to_range(text.len());
-
-        self.entries
-            .list
-            .push(GutterEntry { range, msg, kind: EntryKind::Warning });
-
-        self
-    }
-
-    /// Add an error that is related to this entry.
-    ///
-    /// This could be more errors on the same range, since it's
-    /// possible that multiple things went wrong, or more context
-    /// would be helpful.
-    pub fn add_related_error(mut self, range: impl TextRange, msg: Text) -> Self {
-        let text = self.buffer.text(self.pa);
-        let range = range.to_range(text.len());
-
-        self.entries
-            .list
-            .push(GutterEntry { range, msg, kind: EntryKind::Error });
-
-        self
-    }
-}
-
-impl<'g> Drop for GutterEntryBuilder<'g> {
-    fn drop(&mut self) {
-        let gtr = self.gutter.write(self.pa);
-        let renderer = gtr.opts.renderer.take().unwrap();
-        let opts = gtr.opts.clone();
-        duat_core::utils::catch_panic(|| {
-            renderer.lock().unwrap()(self.pa, self.ns, &self.entries, opts, self.buffer)
-        });
-
-        let gtr = self.gutter.write(self.pa);
-        gtr.opts.renderer = Some(renderer);
-        let entries = gtr.entries.entry(self.ns).or_default();
-
-        for entry in std::mem::take(&mut self.entries.list) {
-            let (Ok(idx) | Err(idx)) =
-                entries.binary_search_by(|e| e.range.start.cmp(&entry.range.start));
-            entries.insert(idx, entry);
-        }
-    }
+    let (Ok(idx) | Err(idx)) = entries.binary_search_by(|e| e.range.start.cmp(&entry.range.start));
+    entries.insert(idx, entry);
 }
 
 #[allow(private_bounds)]
@@ -542,38 +572,21 @@ pub trait GutterBuffer: Sealed {
     /// This could just be useful information, like the fact that
     /// something won't be included in compilation because of a `cfg`
     /// attribute.
-    fn add_hint<'g>(
-        &'g self,
-        pa: &'g mut Pass,
-        ns: Ns,
-        range: impl TextRange,
-        msg: Text,
-    ) -> GutterEntryBuilder<'g>;
+    fn add_hint(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId;
 
     /// Add a warning to the [`Gutter`] and the [`Buffer`].
     ///
     /// This could be improvements that you could do to your code, or
     /// ways in which it is innadequate that don't necessarily hinder
     /// it from working properly.
-    fn add_warning<'g>(
-        &'g self,
-        pa: &'g mut Pass,
-        ns: Ns,
-        range: impl TextRange,
-        msg: Text,
-    ) -> GutterEntryBuilder<'g>;
+    fn add_warning(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text)
+    -> GutterEntryId;
 
     /// Add an error to the [`Gutter`] and the [`Buffer`].
     ///
     /// These are fundamental issues in your code, and either prevent
     /// compilation, or prevent it from working properly.
-    fn add_error<'g>(
-        &'g self,
-        pa: &'g mut Pass,
-        ns: Ns,
-        range: impl TextRange,
-        msg: Text,
-    ) -> GutterEntryBuilder<'g>;
+    fn add_error(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId;
 
     /// Wether  this [`Buffer`] has a [`Gutter`] or not.
     ///
@@ -590,92 +603,70 @@ impl GutterBuffer for Handle {
             panic!("Tried to remove Gutter entries on Buffer with no Gutter");
         };
 
-        gutter.write(pa).entries.remove(&ns);
         self.text_mut(pa).remove_tags(ns, ..);
+        let gtr = gutter.write(pa);
+        let entries = gtr.entries.remove(&ns);
+
+        let mut extant_ids = EXTANT_IDS.lock().unwrap();
+        for entry in entries.into_iter().flatten() {
+            extant_ids.retain(|id| *id != entry.id);
+        }
+
+        ID_RELATIONS.lock().unwrap().retain_mut(|ids| {
+            ids.retain(|id| id.1 != ns);
+            !ids.is_empty()
+        });
     }
 
     #[track_caller]
-    fn add_hint<'g>(
-        &'g self,
-        pa: &'g mut Pass,
-        ns: Ns,
-        range: impl TextRange,
-        msg: Text,
-    ) -> GutterEntryBuilder<'g> {
+    fn add_hint(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId {
         let Some((gutter, _)) = self.get_related::<Gutter>(pa).first().cloned() else {
             panic!("Tried to add a Gutter entry on Buffer with no Gutter");
         };
 
         let text = self.text(pa);
         let range = range.to_range(text.len());
-        let display = gutter.read(pa).opts.hint.display;
+        let id = GutterEntryId::new(ns);
+        let entry = GutterEntry { range, msg, kind: EntryKind::Hint, id };
+        insert_entry(pa, ns, gutter, self, entry);
 
-        GutterEntryBuilder {
-            ns,
-            pa,
-            buffer: self,
-            gutter,
-            entries: GutterEntries {
-                list: vec![GutterEntry { range, msg, kind: EntryKind::Hint }],
-                _display: display,
-            },
-        }
+        id
     }
 
     #[track_caller]
-    fn add_warning<'g>(
-        &'g self,
-        pa: &'g mut Pass,
+    fn add_warning(
+        &self,
+        pa: &mut Pass,
         ns: Ns,
         range: impl TextRange,
         msg: Text,
-    ) -> GutterEntryBuilder<'g> {
+    ) -> GutterEntryId {
         let Some((gutter, _)) = self.get_related::<Gutter>(pa).first().cloned() else {
             panic!("Tried to add a Gutter entry on Buffer with no Gutter");
         };
 
         let text = self.text(pa);
         let range = range.to_range(text.len());
-        let display = gutter.read(pa).opts.hint.display;
+        let id = GutterEntryId::new(ns);
+        let entry = GutterEntry { range, msg, kind: EntryKind::Warning, id };
+        insert_entry(pa, ns, gutter, self, entry);
 
-        GutterEntryBuilder {
-            ns,
-            pa,
-            buffer: self,
-            gutter,
-            entries: GutterEntries {
-                list: vec![GutterEntry { range, msg, kind: EntryKind::Warning }],
-                _display: display,
-            },
-        }
+        id
     }
 
     #[track_caller]
-    fn add_error<'g>(
-        &'g self,
-        pa: &'g mut Pass,
-        ns: Ns,
-        range: impl TextRange,
-        msg: Text,
-    ) -> GutterEntryBuilder<'g> {
+    fn add_error(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId {
         let Some((gutter, _)) = self.get_related::<Gutter>(pa).first().cloned() else {
             panic!("Tried to add a Gutter entry on Buffer with no Gutter");
         };
 
         let text = self.text(pa);
         let range = range.to_range(text.len());
-        let display = gutter.read(pa).opts.hint.display;
+        let id = GutterEntryId::new(ns);
+        let entry = GutterEntry { range, msg, kind: EntryKind::Error, id };
+        insert_entry(pa, ns, gutter, self, entry);
 
-        GutterEntryBuilder {
-            ns,
-            pa,
-            buffer: self,
-            gutter,
-            entries: GutterEntries {
-                list: vec![GutterEntry { range, msg, kind: EntryKind::Error }],
-                _display: display,
-            },
-        }
+        id
     }
 
     fn has_gutter(&self, pa: &Pass) -> bool {
@@ -690,64 +681,61 @@ impl GutterBuffer for Handle {
 pub fn default_renderer(
     pa: &mut Pass,
     ns: Ns,
-    entries: &GutterEntries,
-    opts: GutterOpts,
+    entry: &GutterEntry,
+    opts: &GutterOpts,
     buffer: &Handle,
+    is_hovered: bool,
 ) {
     let (buf, area) = buffer.write_with_area(pa);
-    let popts = buf.print_opts();
+    entry.insert_on(ns, opts, buf, area, is_hovered);
+}
 
-    let always = |opts: GutterSymbolOpts| matches!(opts.display, GutterDisplay::OwnLines(true));
+/// An id for a [`Gutter`] entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GutterEntryId(usize, Ns);
 
-    for entry in &entries.list {
-        let (form_tag, do_show) = match entry.kind {
-            EntryKind::Hint => (form::id_of!("buffer.hint").to_tag(190), always(opts.hint)),
-            EntryKind::Warning => (
-                form::id_of!("buffer.warning").to_tag(191),
-                always(opts.warning),
-            ),
-            EntryKind::Error => (form::id_of!("buffer.error").to_tag(192), always(opts.error)),
-            EntryKind::_Custom(.., text_form) => (text_form.to_tag(193), false),
-        };
+impl GutterEntryId {
+    /// Returns a new `GutterEntryId`.
+    fn new(ns: Ns) -> Self {
+        use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
 
-        buf.text_parts()
-            .tags
-            .insert(ns, entry.range.clone(), form_tag);
+        let id = Self(COUNT.fetch_add(1, Relaxed), ns);
 
-        if !do_show {
-            continue;
-        }
+        EXTANT_IDS.lock().unwrap().push(id);
 
-        let Some(line) = buf.text()[entry.range.clone()].lines().last() else {
-            continue;
-        };
+        id
+    }
 
-        let range = line.range();
-        let lnum = range.start.line();
-        let Some(columns) =
-            area.columns_at(buf.text(), TwoPoints::new_after_ghost(range.start), popts)
-        else {
-            continue;
-        };
+    /// Declare that the gutter entries for the given
+    /// [`GutterEntryId`]s are related to this one and to each other.
+    ///
+    /// One poignant example is that of rust borrow check errors,
+    /// where an earlier borrow in a certain code location is related
+    /// to a borrow failure in another code location.
+    ///
+    /// The most common effect that this will have is grouped display
+    /// of entries based on cursor posisition. For example, if you
+    /// hover over an entry which displays only when hovered, all
+    /// related entries will also be displayed.
+    #[track_caller]
+    pub fn relate_with_other_entries(&self, entries: impl IntoIterator<Item = GutterEntryId>) {
+        let ids = Vec::from_iter(std::iter::once(*self).chain(entries));
+        let extant_ids = EXTANT_IDS.lock().unwrap();
 
-        let mut parts = buf.text_parts();
+        assert!(
+            ids.iter().all(|id| extant_ids.contains(id)),
+            "Attempted to add entry relations to Gutter, but not all entries still exist"
+        );
 
-        let mut msg = txt!("{entry.msg}\n");
-        let line_ranges = Vec::from_iter(msg.lines().map(|line| line.byte_range()));
-
-        for range in line_ranges.into_iter().rev() {
-            if range.start + 1 < range.end {
-                msg.replace_range(range.start..range.start, &SPACES[..columns.wrapped]);
-            }
-        }
-
-        let line_end = parts.strs.line(lnum).byte_range().end;
-        parts.tags.insert(ns, line_end, Inlay::new(msg))
+        ID_RELATIONS.lock().unwrap().push(ids);
     }
 }
 
-type Renderer = dyn FnMut(&mut Pass, Ns, &GutterEntries, GutterOpts, &Handle) + 'static + Send;
-type OnlyOnHover = bool;
-type OnWindow = bool;
+const SPACES: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
+static ID_RELATIONS: Mutex<Vec<Vec<GutterEntryId>>> = Mutex::new(Vec::new());
+static EXTANT_IDS: Mutex<Vec<GutterEntryId>> = Mutex::new(Vec::new());
 
-static SPACES: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
+type Renderer = dyn FnMut(&mut Pass, Ns, &GutterEntry, &GutterOpts, &Handle, bool) + 'static + Send;
+type AlwaysShow = bool;
+type OnWindow = bool;

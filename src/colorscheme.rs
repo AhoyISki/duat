@@ -311,11 +311,11 @@ pub(crate) fn add_default() {
                 ("accent", Form::new().with(c.rosewater).bold()),
                 // Variations of the above two for different scenarios.
                 ("default.error", Form::new().with(c.maroon)),
-                ("accent.error", Form::new().with(c.red).bold()),
+                ("accent.error", Form::new().with(c.flamingo)),
                 ("default.warn", Form::new().with(c.yellow)),
-                ("accent.warn", Form::new().with(c.peach).bold()),
+                ("accent.warn", Form::new().with(c.rosewater)),
                 ("default.info", Form::new().with(c.sapphire)),
-                ("accent.info", Form::new().with(c.sky).bold()),
+                ("accent.info", Form::new().with(c.text)),
                 ("default.debug", Form::new().with(c.subtext1)),
                 ("accent.debug", Form::new().with(c.lavender).bold()),
                 // In duat, the caret is the blinking bit.

@@ -9,15 +9,18 @@ use duat_core::{
     buffer::{Buffer, PerBuffer},
     context::{self, Handle},
     data::Pass,
-    hook::{self, BufferClosed, BufferOpened, BufferUpdated},
+    hook::{self, BufferClosed, BufferOpened, BufferSaved, BufferUpdated},
     storage,
 };
 use duat_filetype::PassFileType;
 use lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Uri,
+    DidSaveTextDocumentParams, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+    TextDocumentItem, TextDocumentSyncCapability, TextDocumentSyncSaveOptions, Uri,
     VersionedTextDocumentIdentifier,
-    notification::{DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument},
+    notification::{
+        DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
+    },
 };
 
 use crate::{
@@ -50,9 +53,9 @@ impl Parser {
     /// for it.
     pub fn write_for<'p>(
         pa: &'p mut Pass,
-        handle: &'p Handle,
+        buffer: &'p Handle,
     ) -> Option<(&'p mut Parser, &'p mut Buffer)> {
-        PARSERS.write(pa, handle)
+        PARSERS.write(pa, buffer)
     }
 
     /// The [`Uri`] of the [`Buffer`].
@@ -105,7 +108,7 @@ pub fn setup_hooks() {
                 ns: Ns::new(),
                 servers: servers.clone(),
                 tokens: BufferTokens::default(),
-                diagnostics: Diagnostics::new()
+                diagnostics: Diagnostics::new(),
             });
 
             for server in servers {
@@ -114,8 +117,8 @@ pub fn setup_hooks() {
         }
     });
 
-    hook::add::<BufferUpdated>(|pa, handle| {
-        if let Some((parser, buf)) = PARSERS.write(pa, handle)
+    hook::add::<BufferUpdated>(|pa, buffer| {
+        if let Some((parser, buf)) = PARSERS.write(pa, buffer)
             && let moment = buf.moment_for(parser.ns)
             && !moment.is_empty()
         {
@@ -155,13 +158,38 @@ pub fn setup_hooks() {
                 };
                 server.send_notification::<DidChangeTextDocument>(notification);
 
-                server.send_semantic_tokens_request(handle, parser);
+                server.send_semantic_tokens_request(buffer, parser);
             }
         }
     });
 
-    hook::add::<BufferClosed>(|pa, handle| {
-        let path = handle.read(pa).path();
+    hook::add::<BufferSaved>(|pa, (buffer, _)| {
+        if let Some((parser, buf)) = PARSERS.write(pa, buffer) {
+            for server in &parser.servers {
+                let text = server.capabilities().and_then(|cap| {
+                    let opts = match cap.text_document_sync.as_ref()? {
+                        TextDocumentSyncCapability::Kind(_) => None,
+                        TextDocumentSyncCapability::Options(opts) => Some(opts),
+                    };
+
+                    match opts.as_ref()?.save.as_ref()? {
+                        TextDocumentSyncSaveOptions::Supported(_) => None,
+                        TextDocumentSyncSaveOptions::SaveOptions(opts) => {
+                            opts.include_text?.then_some(buf.text().to_string())
+                        }
+                    }
+                });
+
+                server.send_notification::<DidSaveTextDocument>(DidSaveTextDocumentParams {
+                    text_document: TextDocumentIdentifier { uri: parser.uri.clone() },
+                    text,
+                });
+            }
+        }
+    });
+
+    hook::add::<BufferClosed>(|pa, buffer| {
+        let path = buffer.read(pa).path();
         if let Some(uri) = path_to_uri(&path) {
             server::on_all_servers(|server| {
                 server.send_notification::<DidCloseTextDocument>(DidCloseTextDocumentParams {

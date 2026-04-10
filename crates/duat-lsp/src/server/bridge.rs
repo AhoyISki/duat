@@ -206,6 +206,19 @@ impl ServerBridge {
         }
     }
 
+    /// Sends a success message for the given [`Id`].
+    ///
+    /// It is always empty.
+    pub fn send_success(&self, id: Id, value: Value) {
+        let message = Box::new(move || Ok(JsonRpc::success(id, &value)));
+
+        if let Some(backlog) = self.initialize_backlog.lock().unwrap().as_mut() {
+            backlog.push(message);
+        } else {
+            self.server_tx.send(message).unwrap();
+        }
+    }
+
     /// Declares that the server has responded to the initialize
     /// request.
     ///
@@ -328,6 +341,7 @@ fn stdout_loop(server_bridge: ServerBridge, stdout: &mut impl BufRead) -> std::i
 
         match serde_json::from_str::<JsonRpc>(&msg) {
             Ok(content) => {
+                context::debug!("{content:#?}");
                 match content {
                     JsonRpc::Request(request) => handle_request(&server_bridge, request),
                     JsonRpc::Notification(notification) => {

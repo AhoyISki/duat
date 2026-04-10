@@ -8,6 +8,7 @@ use duat_core::{
     notify::Watcher,
 };
 use globset::{Glob, GlobMatcher};
+use jsonrpc_lite::Id;
 use lsp_types::{
     DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions, FileChangeType,
     FileEvent, GlobPattern, OneOf, PartialResultParams, SemanticTokensDeltaParams,
@@ -19,6 +20,7 @@ use lsp_types::{
         SemanticTokensRefresh, WorkspaceDiagnosticRefresh,
     },
 };
+use serde_json::Value;
 
 use crate::{parser::Parser, server::bridge::ServerBridge, uri_to_path};
 
@@ -121,31 +123,32 @@ pub fn handle_request(bridge: &ServerBridge, request: jsonrpc_lite::Request) {
                             }
                         }
                     }
-                    method => context::warn!("[a]{method}[] registration not yet handled"),
+                    _method => {} //context::warn!("[a]{method}[] registration not yet handled"),
                 }
             }
-        }
-        SemanticTokensRefresh::METHOD => {
-            let bridge = bridge.clone();
-            context::queue(move |pa| {
-                for buffer in context::buffers(pa) {
-                    let Some((parser, _)) = Parser::write_for(pa, &buffer) else {
-                        continue;
-                    };
 
-                    bridge.send_semantic_tokens_request(&buffer, parser);
-                }
-            })
+            bridge.send_success(request.id, Value::Null);
         }
-        method if method.contains("workDoneProgress") => {}
-        WorkspaceDiagnosticRefresh::METHOD => {}
-        _ => {}
+        // SemanticTokensRefresh::METHOD => {
+        //     let bridge = bridge.clone();
+        //     context::queue(move |pa| {
+        //         for buffer in context::buffers(pa) {
+        //             let Some((parser, _)) = Parser::write_for(pa, &buffer) else {
+        //                 continue;
+        //             };
+
+        //             bridge.send_semantic_tokens_request(&buffer, parser);
+        //         }
+        //     })
+        // }
+        _ => bridge.send_success(request.id, Value::Null),
     }
 }
 
 pub fn handle_notification(bridge: &ServerBridge, notification: jsonrpc_lite::Notification) {
     match notification.method.as_str() {
         PublishDiagnostics::METHOD => {
+            context::debug!("got diagnostics");
             let Some(encoding) = bridge.encoding.get().copied() else {
                 return;
             };
@@ -161,11 +164,12 @@ pub fn handle_notification(bridge: &ServerBridge, notification: jsonrpc_lite::No
                     return;
                 };
 
-                parser.diagnostics.publish_diagnostics(encoding, params);
+                let add_diagnostics = parser.diagnostics.handle_published(params, encoding);
+                add_diagnostics(pa);
             });
         }
-        method if method.ends_with("progress") => {}
-        method => context::warn!("[a]{method}[] request not yet handled"),
+        "$/progress" => {}
+        _method => {} //context::warn!("[a]{method}[] request not yet handled"),
     }
 }
 

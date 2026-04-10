@@ -411,23 +411,23 @@ impl Buffer {
     }
 
     /// The update function for [`Buffer`]s.
-    pub(crate) fn update(pa: &mut Pass, handle: &Handle<Self>) {
+    pub(crate) fn update(pa: &mut Pass, buffer: &Handle<Self>) {
         // Asynchronous updating of opts
-        let (buffer, area) = handle.write_with_area(pa);
+        let (buf, area) = buffer.write_with_area(pa);
 
-        if let Some(main) = buffer.text().get_main_sel() {
+        if let Some(main) = buf.text().get_main_sel() {
             area.scroll_around_points(
-                buffer.text(),
+                buf.text(),
                 main.caret().to_two_points_after(),
-                buffer.print_opts(),
+                buf.print_opts(),
             );
         }
 
-        drop(buffer.reset_print_info_if_needed(area));
+        drop(buf.reset_print_info_if_needed(area));
 
-        hook::trigger(pa, BufferUpdated(handle.clone()));
+        hook::trigger(pa, BufferUpdated(buffer.clone()));
 
-        handle.text_mut(pa).update_bounds();
+        buffer.text_mut(pa).update_bounds();
     }
 }
 
@@ -884,10 +884,10 @@ impl<T: 'static> PerBuffer<T> {
     pub fn register<'p>(
         &'p self,
         pa: &'p mut Pass,
-        handle: &'p Handle,
+        buffer: &'p Handle,
         new_value: T,
     ) -> (&'p mut T, &'p mut Buffer) {
-        let (list, buf) = pa.write_many((&*self.0, handle));
+        let (list, buf) = pa.write_many((&*self.0, buffer));
 
         let entry = list.entry(buf.buffer_id()).insert_entry(new_value);
 
@@ -903,8 +903,8 @@ impl<T: 'static> PerBuffer<T> {
     ///
     /// [`BufferClosed`]: crate::hook::BufferClosed
     /// [registered]: Self::register
-    pub fn unregister(&self, pa: &mut Pass, handle: &Handle) -> Option<T> {
-        let buf_id = handle.read(pa).buffer_id();
+    pub fn unregister(&self, pa: &mut Pass, buffer: &Handle) -> Option<T> {
+        let buf_id = buffer.read(pa).buffer_id();
         self.0.write(pa).remove(&buf_id)
     }
 
@@ -993,9 +993,9 @@ impl<T: 'static> PerBuffer<T> {
     pub fn write<'p>(
         &'p self,
         pa: &'p mut Pass,
-        handle: &'p Handle,
+        buffer: &'p Handle,
     ) -> Option<(&'p mut T, &'p mut Buffer)> {
-        let (list, buffer) = pa.write_many((&*self.0, handle));
+        let (list, buffer) = pa.write_many((&*self.0, buffer));
         Some((list.get_mut(&buffer.buffer_id())?, buffer))
     }
 
@@ -1014,10 +1014,10 @@ impl<T: 'static> PerBuffer<T> {
     pub fn write_with<'p, Tup: WriteableTuple<'p, impl std::any::Any>>(
         &'p self,
         pa: &'p mut Pass,
-        handle: &'p Handle,
+        buffer: &'p Handle,
         tup: Tup,
     ) -> Option<(&'p mut T, &'p mut Buffer, Tup::Return)> {
-        let (list, buffer, ret) = pa.try_write_many((&*self.0, handle, tup))?;
+        let (list, buffer, ret) = pa.try_write_many((&*self.0, buffer, tup))?;
         Some((list.get_mut(&buffer.buffer_id())?, buffer, ret))
     }
 
@@ -1033,9 +1033,9 @@ impl<T: 'static> PerBuffer<T> {
     pub fn write_many<'p, const N: usize>(
         &'p self,
         pa: &'p mut Pass,
-        handles: [&'p Handle; N],
+        buffers: [&'p Handle; N],
     ) -> Option<[(&'p mut T, &'p mut Buffer); N]> {
-        let (list, buffers) = pa.try_write_many((&*self.0, handles))?;
+        let (list, buffers) = pa.try_write_many((&*self.0, buffers))?;
         let buf_ids = buffers.each_ref().map(|buf| buf.buffer_id());
         let values = list.get_disjoint_mut(buf_ids.each_ref());
 
@@ -1061,10 +1061,10 @@ impl<T: 'static> PerBuffer<T> {
     pub fn write_many_with<'p, const N: usize, Tup: WriteableTuple<'p, impl std::any::Any>>(
         &'p self,
         pa: &'p mut Pass,
-        handles: [&'p Handle; N],
+        buffers: [&'p Handle; N],
         tup: Tup,
     ) -> Option<([(&'p mut T, &'p mut Buffer); N], Tup::Return)> {
-        let (list, buffers, ret) = pa.try_write_many((&*self.0, handles, tup))?;
+        let (list, buffers, ret) = pa.try_write_many((&*self.0, buffers, tup))?;
         let buf_ids = buffers.each_ref().map(|buf| buf.buffer_id());
         let values = list.get_disjoint_mut(buf_ids.each_ref());
 

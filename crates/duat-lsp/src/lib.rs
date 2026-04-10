@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use duat_core::{form::{self, Form}, text::{Point, Strs}};
-use lsp_types::{Position, ServerCapabilities, Uri};
+use duat_core::{
+    form::{self, Form},
+    text::{Point, Strs},
+};
+use lsp_types::{Position, ServerCapabilities, TextDocumentIdentifier, Uri};
 
 mod config;
 mod parser;
@@ -20,7 +23,11 @@ impl DuatLsp {
         form::set("lsp.hint", Form::mimic("default.info"));
         form::set("lsp.warn", Form::mimic("default.warn"));
         form::set("lsp.error", Form::mimic("default.error"));
-        
+        form::set("lsp.tt.info", Form::mimic("accent.info"));
+        form::set("lsp.tt.hint", Form::mimic("accent.info"));
+        form::set("lsp.tt.warn", Form::mimic("accent.warn"));
+        form::set("lsp.tt.error", Form::mimic("accent.error"));
+
         parser::setup_hooks();
     }
 }
