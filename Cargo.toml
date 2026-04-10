@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
-include = ["src/**", "templates/*"]
+include = ["src/**", "bin/**", "templates/*"]
 
 [workspace]
 resolver = "3"
