@@ -15,7 +15,7 @@ use interprocess::local_socket::{
     GenericFilePath, GenericNamespaced, ListenerOptions, Name, prelude::*,
 };
 
-pub use crate::ipc::clipboard::*;
+pub use clipboard::*;
 
 #[cfg(not(target_os = "android"))]
 mod clipboard {

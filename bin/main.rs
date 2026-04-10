@@ -414,9 +414,7 @@ fn try_reload(
     }
 }
 
-/// Decide if a new config is necessary
-///
-/// Returns `true` if Duat shouldn't start.
+/// Decide if a new config is necessary../// Returns `true` if Duat shouldn't start.
 fn decide_on_new_config(
     init_config: bool,
     crate_dir: &Path,
@@ -497,9 +495,7 @@ fn decide_on_new_config(
     Ok(false)
 }
 
-/// Recursively attempts to remove every element in a path
-///
-/// Doesn't give up upon failing to remove some individual item.
+/// Recursively attempts to remove every element in a path../// Doesn't give up upon failing to remove some individual item.
 fn clear_path(path: &Path) {
     let Ok(entries) = std::fs::read_dir(path) else {
         _ = std::fs::remove_file(path);
