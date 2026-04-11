@@ -97,9 +97,9 @@ impl Point {
     }
 
     /// A `Point` from raw indices.
-    pub const fn from_raw(b: usize, c: usize, l: usize) -> Self {
-        let (b, c, l) = (b as u32, c as u32, l as u32);
-        Self { byte: b, char: c, line: l }
+    pub const fn from_raw(b: usize, s: usize, l: usize) -> Self {
+        let (b, s, l) = (b as u32, s as u32, l as u32);
+        Self { byte: b, char: s, line: l }
     }
 
     /// Returns a new [`TwoPoints`] that includes the [`Inlay`]s in
@@ -133,7 +133,7 @@ impl Point {
         Self {
             byte: str.len() as u32,
             char: str.chars().count() as u32,
-            line: str.bytes().filter(|c| *c == b'\n').count() as u32,
+            line: str.bytes().filter(|s| *s == b'\n').count() as u32,
         }
     }
 
@@ -211,10 +211,10 @@ impl Point {
     /// Shifts the [`Point`] by a "signed point".
     ///
     /// This assumes that no overflow is going to happen
-    pub(crate) const fn shift_by(self, [b, c, l]: [i32; 3]) -> Self {
+    pub(crate) const fn shift_by(self, [b, s, l]: [i32; 3]) -> Self {
         Self {
             byte: (self.byte as i32 + b) as u32,
-            char: (self.char as i32 + c) as u32,
+            char: (self.char as i32 + s) as u32,
             line: (self.line as i32 + l) as u32,
         }
     }
@@ -232,7 +232,7 @@ impl std::fmt::Debug for Point {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Point {{ b: {}, c: {}, l: {} }}",
+            "Point {{ b: {}, s: {}, l: {} }}",
             self.byte, self.char, self.line
         )
     }

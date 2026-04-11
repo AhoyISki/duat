@@ -330,8 +330,8 @@ impl Moment {
             }
             _ => {
                 let changes: Vec<_> = self.changes.drain(m_range.clone()).collect();
-                for c in changes.into_iter().rev() {
-                    change.try_merge(c);
+                for s in changes.into_iter().rev() {
+                    change.try_merge(s);
                 }
                 self.changes.insert(m_range.start, change);
             }

@@ -172,7 +172,7 @@ setup_duat!(setup);
 fn setup(opts: &mut Opts) {
     opts.fmt_status(|_| {
         status!(
-            "{name_txt}{Spacer}{} {sels_txt} [coord]c{} l{}[separator]|[coord]{}",
+            "{name_txt}{Spacer}{} {sels_txt} [coord]s{} l{}[separator]|[coord]{}",
             mode_txt(),
             main_col,
             main_line,

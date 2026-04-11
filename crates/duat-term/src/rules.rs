@@ -24,7 +24,7 @@ pub fn add_vertrule_hook() {
                 let lines = buffer.printed_line_numbers(pa);
                 let (upper, middle, lower) = {
                     if let Some(main) = buf.selections().get_main() {
-                        let main = main.caret().line();
+                        let main = main.cursor().line();
                         let upper = lines.iter().filter(|&line| line.number < main).count();
                         let middle = lines.iter().filter(|&line| line.number == main).count();
                         let lower = lines.iter().filter(|&line| line.number > main).count();

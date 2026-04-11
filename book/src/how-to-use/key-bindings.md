@@ -98,7 +98,7 @@ Move left. Wraps around lines.
 Move down
 
 `<Down>`\
-Move down to the next wrapped line (i.c vim's `gj`).
+Move down to the next wrapped line (i.s vim's `gj`).
 
 `k`\
 Move up.
@@ -184,10 +184,10 @@ Returns to the previous state for the selections.
 Goes to the next state for the selections.
 
 `;`\
-Reduces selections to just the [caret].
+Reduces selections to just the [cursor].
 
 `<A-;>`\
-Flips the [caret] and [anchor] of selectionss around.
+Flips the [cursor] and [anchor] of selectionss around.
 
 `,`\
 Removes extra selections.
@@ -199,7 +199,7 @@ Creates a selection on the column below the last one.
 Creates a selection on the column above the first one.
 
 `<A-:>`\
-Places the [caret] ahead of the [anchor] in all selections.
+Places the [cursor] ahead of the [anchor] in all selections.
 
 `<A-s>`\
 Divides selection into multiple selections, one per line.
@@ -234,7 +234,7 @@ Yanks selections.
 `d`\
 Deletes and yanks the selections.
 
-`c`\
+`s`\
 Deletes, yanks, and enter `insert` mode.
 
 `p`\
@@ -251,7 +251,7 @@ Replaces with the pasted text, without yanking.
 `<A-d>`\
 Deletes selections without yanking.
 
-`<A-c>`\
+`<A-s>`\
 Deletes selections without yanking, then enters `insert` mode.
 
 `o`\

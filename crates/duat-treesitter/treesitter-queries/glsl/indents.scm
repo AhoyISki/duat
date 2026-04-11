@@ -1,1 +1,1 @@
-; inherits: c
+; inherits: s

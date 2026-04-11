@@ -85,34 +85,34 @@ impl CompletionsProvider for PathCompletions {
     }
 
     #[cfg(not(target_os = "windows"))]
-    fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
+    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
         use duat_core::text::RegexHaystack;
 
         if self.for_parameters {
             text.search([" '([^']|\\')*", "[^ \n]*"])
-                .range(..caret)
+                .range(..cursor)
                 .next_back()
                 .map(|(pat_id, range)| range.start + (pat_id == 0) as usize)
         } else {
             text.search("[^ /\n\t]*/.*")
-                .range(..caret)
+                .range(..cursor)
                 .next_back()
                 .map(|range| range.start)
         }
     }
 
     #[cfg(target_os = "windows")]
-    fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
+    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
         use duat_core::text::RegexHaystack;
 
         if self.for_parameters {
             text.search(["[^ \n]*", " '([^']|\\')*"])
-                .range(..caret)
+                .range(..cursor)
                 .next_back()
                 .map(|(pat_id, range)| range.start + 2 * (pat_id == 1) as usize)
         } else {
             text.search("[^ /\\\n\t]*(/|\\\\).*")
-                .range(..caret)
+                .range(..cursor)
                 .next_back()
                 .map(|range| range.start)
         }

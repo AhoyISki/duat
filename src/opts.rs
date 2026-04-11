@@ -678,9 +678,9 @@ impl Opts {
     /// use duat::prelude::*;
     ///
     /// fn buf_percent(text: &Text, main: &Selection) -> Text {
-    ///     // The caret is the part of the cursor that moves, as opposed to the anchor.
-    ///     let caret = main.caret();
-    ///     txt!("[coord]{}%", (100 * caret.line()) / text.end_point().line())
+    ///     // The cursor is the part of the cursor that moves, as opposed to the anchor.
+    ///     let cursor = main.cursor();
+    ///     txt!("[coord]{}%", (100 * cursor.line()) / text.end_point().line())
     /// }
     ///
     /// fn setup(opts: &mut Opts) {

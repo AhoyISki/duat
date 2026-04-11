@@ -2,11 +2,11 @@
 //!
 //! This specific feature of Duat is kind of split across this crate
 //! and [`duat-core`], since some of the low level features (like
-//! spawning a bazillion [`Cursor`]s) were only possible with access
+//! spawning a bazillion [`SelectionMut`]s) were only possible with access
 //! to private things.
 //!
 //! [`duat-core`]: duat_core
-//! [`Cursor`]: duat_core::mode::Cursor
+//! [`SelectionMut`]: duat_core::mode::SelectionMut
 use std::sync::{LazyLock, Once};
 
 use duat_core::{
@@ -187,18 +187,18 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 ///
 /// impl IncSearcher for SearchAround {
 ///     fn search(&mut self, pa: &mut Pass, pat: &str, buffer: Handle<Buffer>) {
-///         buffer.edit_all(pa, |mut c| {
-///             c.set_caret_on_end();
-///             let Some(e_range) = c.search(pat).from_caret().next() else {
+///         buffer.edit_all(pa, |mut s| {
+///             s.set_cursor_on_end();
+///             let Some(e_range) = s.search(pat).from_cursor().next() else {
 ///                 return;
 ///             };
 ///
-///             c.set_caret_on_start();
-///             let Some(s_range) = c.search(pat).to_caret().next_back() else {
+///             s.set_cursor_on_start();
+///             let Some(s_range) = s.search(pat).to_cursor().next_back() else {
 ///                 return;
 ///             };
 ///
-///             c.move_to(s_range.start..e_range.end)
+///             s.move_to(s_range.start..e_range.end)
 ///         });
 ///     }
 ///
@@ -224,22 +224,22 @@ pub trait IncSearcher: Clone + Send + 'static {
     fn prompt(&self) -> Text;
 }
 
-/// Searches forward on each [`Cursor`]
+/// Searches forward on each [`SelectionMut`]
 ///
-/// [`Cursor`]: duat_core::mode::Cursor
+/// [`SelectionMut`]: duat_core::mode::SelectionMut
 #[derive(Clone, Copy)]
 pub struct SearchFwd;
 
 impl IncSearcher for SearchFwd {
     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
-        handle.edit_all(pa, |mut c| {
+        handle.edit_all(pa, |mut s| {
             if let Some(range) = {
-                c.search(pat).from_caret_excl().next().or_else(|| {
+                s.search(pat).from_cursor_excl().next().or_else(|| {
                     context::info!("search wrapped around buffer");
-                    c.search(pat).to_caret().next()
+                    s.search(pat).to_cursor().next()
                 })
             } {
-                c.move_to(range)
+                s.move_to(range)
             }
         });
     }
@@ -249,22 +249,22 @@ impl IncSearcher for SearchFwd {
     }
 }
 
-/// Searches backwards on each [`Cursor`]
+/// Searches backwards on each [`SelectionMut`]
 ///
-/// [`Cursor`]: duat_core::mode::Cursor
+/// [`SelectionMut`]: duat_core::mode::SelectionMut
 #[derive(Clone, Copy)]
 pub struct SearchRev;
 
 impl IncSearcher for SearchRev {
     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
-        handle.edit_all(pa, |mut c| {
+        handle.edit_all(pa, |mut s| {
             if let Some(range) = {
-                c.search(pat).to_caret().next_back().or_else(|| {
+                s.search(pat).to_cursor().next_back().or_else(|| {
                     context::info!("search wrapped around buffer");
-                    c.search(pat).from_caret_excl().next_back()
+                    s.search(pat).from_cursor_excl().next_back()
                 })
             } {
-                c.move_to(range)
+                s.move_to(range)
             }
         });
     }
@@ -274,23 +274,23 @@ impl IncSearcher for SearchRev {
     }
 }
 
-/// Extends forward on each [`Cursor`]
+/// Extends forward on each [`SelectionMut`]
 ///
-/// [`Cursor`]: duat_core::mode::Cursor
+/// [`SelectionMut`]: duat_core::mode::SelectionMut
 #[derive(Clone, Copy)]
 pub struct ExtendFwd;
 
 impl IncSearcher for ExtendFwd {
     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
-        handle.edit_all(pa, |mut c| {
+        handle.edit_all(pa, |mut s| {
             if let Some(range) = {
-                c.search(pat).from_caret_excl().next().or_else(|| {
+                s.search(pat).from_cursor_excl().next().or_else(|| {
                     context::info!("search wrapped around buffer");
-                    c.search(pat).to_caret().next()
+                    s.search(pat).to_cursor().next()
                 })
             } {
-                c.set_anchor_if_needed();
-                c.move_to(range)
+                s.set_anchor_if_needed();
+                s.move_to(range)
             }
         });
     }
@@ -300,23 +300,23 @@ impl IncSearcher for ExtendFwd {
     }
 }
 
-/// Extends backwards on each [`Cursor`]
+/// Extends backwards on each [`SelectionMut`]
 ///
-/// [`Cursor`]: duat_core::mode::Cursor
+/// [`SelectionMut`]: duat_core::mode::SelectionMut
 #[derive(Clone, Copy)]
 pub struct ExtendRev;
 
 impl IncSearcher for ExtendRev {
     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
-        handle.edit_all(pa, |mut c| {
+        handle.edit_all(pa, |mut s| {
             if let Some(range) = {
-                c.search(pat).to_caret().next_back().or_else(|| {
+                s.search(pat).to_cursor().next_back().or_else(|| {
                     context::info!("search wrapped around buffer");
-                    c.search(pat).from_caret_excl().next_back()
+                    s.search(pat).from_cursor_excl().next_back()
                 })
             } {
-                c.set_anchor_if_needed();
-                c.move_to(range)
+                s.set_anchor_if_needed();
+                s.move_to(range)
             }
         });
     }

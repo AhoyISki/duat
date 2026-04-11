@@ -44,15 +44,15 @@
 /// fn powerline_main_txt(buffer: &Buffer, area: &Area) -> Text {
 ///     let selections = buffer.selections();
 ///     let opts = buffer.print_opts();
-///     let v_caret = selections
+///     let v_cursor = selections
 ///         .get_main()
 ///         .unwrap()
-///         .v_caret(buffer.text(), area, opts);
+///         .v_cursor(buffer.text(), area, opts);
 ///
 ///     txt!(
 ///         "[separator][coord]{}[separator][coord]{}[separator][coord]{}",
-///         v_caret.visual_col(),
-///         v_caret.line(),
+///         v_cursor.visual_col(),
+///         v_cursor.line(),
 ///         buffer.len_lines()
 ///     )
 /// }

@@ -116,7 +116,7 @@ pub fn add_prompt_hook() {
 ///   selection with the returned value.
 /// - [`IncSearch`] has a further inner abstraction, [`IncSearcher`],
 ///   which lets you abstract over what the incremental search will
-///   actually do. I.c. will it search for the next ocurrence, split
+///   actually do. I.s. will it search for the next ocurrence, split
 ///   selections by matches, things of the sort.
 ///
 /// [`Parameter`]: cmd::Parameter
@@ -218,9 +218,9 @@ impl mode::Mode for Prompt {
 
         match key {
             event!(Char(char)) => {
-                promptline.edit_main(pa, |mut c| {
-                    c.insert(char);
-                    c.move_hor(1);
+                promptline.edit_main(pa, |mut s| {
+                    s.insert(char);
+                    s.move_hor(1);
                 });
                 update(pa);
             }
@@ -237,29 +237,29 @@ impl mode::Mode for Prompt {
                         (self.reset_fn)(pa);
                     }
                 } else {
-                    promptline.edit_main(pa, |mut c| {
-                        c.move_hor(-1);
-                        c.set_anchor_if_needed();
-                        c.replace("");
-                        c.unset_anchor();
+                    promptline.edit_main(pa, |mut s| {
+                        s.move_hor(-1);
+                        s.set_anchor_if_needed();
+                        s.replace("");
+                        s.unset_anchor();
                     });
                     update(pa);
                 }
             }
             event!(Delete) => {
-                promptline.edit_main(pa, |mut c| {
-                    c.set_anchor_if_needed();
-                    c.replace("");
+                promptline.edit_main(pa, |mut s| {
+                    s.set_anchor_if_needed();
+                    s.replace("");
                 });
                 update(pa);
             }
 
             event!(Left) => {
-                promptline.edit_main(pa, |mut c| c.move_hor(-1));
+                promptline.edit_main(pa, |mut s| s.move_hor(-1));
                 update(pa);
             }
             event!(Right) => {
-                promptline.edit_main(pa, |mut c| c.move_hor(1));
+                promptline.edit_main(pa, |mut s| s.move_hor(1));
                 update(pa);
             }
             event!(Up) => {
@@ -276,10 +276,10 @@ impl mode::Mode for Prompt {
                     ty_history.len() - 1
                 };
 
-                promptline.edit_main(pa, |mut c| {
-                    c.move_to(..);
-                    c.replace(ty_history[index].clone());
-                    c.unset_anchor();
+                promptline.edit_main(pa, |mut s| {
+                    s.move_to(..);
+                    s.replace(ty_history[index].clone());
+                    s.unset_anchor();
                 });
 
                 update(pa);
@@ -294,17 +294,17 @@ impl mode::Mode for Prompt {
                     if *index + 1 < ty_history.len() {
                         *index = (*index + 1).min(ty_history.len() - 1);
 
-                        promptline.edit_main(pa, |mut c| {
-                            c.move_to(..);
-                            c.replace(ty_history[*index].clone());
-                            c.unset_anchor();
+                        promptline.edit_main(pa, |mut s| {
+                            s.move_to(..);
+                            s.replace(ty_history[*index].clone());
+                            s.unset_anchor();
                         })
                     } else {
                         self.history_index = None;
-                        promptline.edit_main(pa, |mut c| {
-                            c.move_to(..);
-                            c.replace("");
-                            c.unset_anchor();
+                        promptline.edit_main(pa, |mut s| {
+                            s.move_to(..);
+                            s.replace("");
+                            s.unset_anchor();
                         })
                     }
                 };
@@ -322,9 +322,9 @@ impl mode::Mode for Prompt {
             }
 
             event!(Esc) => {
-                promptline.edit_main(pa, |mut c| {
-                    c.move_to(..);
-                    c.replace("");
+                promptline.edit_main(pa, |mut s| {
+                    s.move_to(..);
+                    s.replace("");
                 });
                 promptline.write(pa).text_mut().selections_mut().clear();
 
@@ -337,9 +337,9 @@ impl mode::Mode for Prompt {
                 if promptline.text(pa).is_empty() {
                     let history = HISTORY.lock().unwrap();
                     if let Some((_, ty_history)) = history.iter().find(ty_eq) {
-                        promptline.edit_main(pa, |mut c| {
-                            c.move_to(..);
-                            c.replace(ty_history.last().unwrap());
+                        promptline.edit_main(pa, |mut s| {
+                            s.move_to(..);
+                            s.replace(ty_history.last().unwrap());
                         });
                     }
                 }
@@ -547,13 +547,13 @@ impl PromptMode for RunCommands {
             return;
         };
 
-        let is_parameter = text[..main.caret()]
+        let is_parameter = text[..main.cursor()]
             .chars()
             .rev()
             .any(|char| char.is_whitespace());
 
         let new_completion = if is_parameter {
-            let call = text[..main.caret()].to_string();
+            let call = text[..main.cursor()].to_string();
             let Some(parameters) = cmd::last_parsed_parameters(pa, &call) else {
                 self.0 = None;
                 Completions::close(pa);
@@ -650,7 +650,7 @@ impl PromptMode for PipeSelections {
         };
 
         let handle = context::current_buffer(pa);
-        handle.edit_all(pa, |mut c| {
+        handle.edit_all(pa, |mut s| {
             let Ok(mut child) = Command::new(caller)
                 .args(cmd::ArgsIter::new(&command).map(|(a, ..)| a))
                 .stdin(Stdio::piped())
@@ -660,7 +660,7 @@ impl PromptMode for PipeSelections {
                 return;
             };
 
-            let input = c.selection().to_string();
+            let input = s.selection().to_string();
             if let Some(mut stdin) = child.stdin.take() {
                 std::thread::spawn(move || {
                     stdin.write_all(input.as_bytes()).unwrap();
@@ -668,8 +668,8 @@ impl PromptMode for PipeSelections {
             }
             if let Ok(out) = child.wait_with_output() {
                 let out = String::from_utf8_lossy(&out.stdout);
-                c.set_anchor_if_needed();
-                c.replace(out);
+                s.set_anchor_if_needed();
+                s.replace(out);
             }
         });
     }

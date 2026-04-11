@@ -1,8 +1,8 @@
-//! The [`Selections`] and [`Selection`] structs
+//! The [`Selections`] and [`Selection`] structs.
 //!
 //! This module just defines the underlying [`Selections`] struct, as
 //! well as all of its components. This struct is used by [`Handle`]s
-//! in order to modify [`Text`]s by manipulating [`Cursor`]s, which
+//! in order to modify [`Text`]s by manipulating [`SelectionMut`]s, which
 //! are ultimately backed by the [`Selection`] struct.
 //!
 //! This module also defines [`VPoint`], which is essentially a
@@ -11,23 +11,23 @@
 //!
 //! [`Handle`]: crate::context::Handle
 //! [`Text`]: crate::text::Text
-//! [`Cursor`]: super::Cursor
+//! [`SelectionMut`]: super::SelectionMut
 use std::sync::Mutex;
 
 use gap_buf::{GapBuffer, gap_buffer};
 
-pub use self::cursor::{Selection, VPoint};
+pub use self::selection::{Selection, VPoint};
 use crate::{
     buffer::Change,
     text::{Point, Strs, TextRange},
     utils::{add_shifts, merging_range_by_guess_and_lazy_shift},
 };
 
-/// The list of [`Selection`]s in a [`Text`]
+/// The list of [`Selection`]s in a [`Text`].
 ///
 /// This list can contain any number of [`Selection`]s, and they
 /// should be usable in whatever order the end user may want, without
-/// breaking from, for example, modifications that should move cursors
+/// breaking from, for example, modifications that should move selections
 /// backwards or ahead. If that is not the case, report it as a bug.
 ///
 /// they are primarily meant to be interacted with from the
@@ -46,7 +46,7 @@ pub struct Selections {
 }
 
 impl Selections {
-    /// A new `Selections` with a set main [`Selection`]
+    /// A new `Selections` with a set main [`Selection`].
     pub(crate) fn new(main: Selection) -> Self {
         Self {
             buf: gap_buffer![main],
@@ -55,7 +55,7 @@ impl Selections {
         }
     }
 
-    /// Returns a new empty `Selections`
+    /// Returns a new empty `Selections`.
     pub(crate) const fn new_empty() -> Self {
         Self {
             buf: GapBuffer::new(),
@@ -66,26 +66,26 @@ impl Selections {
 
     ////////// Modification functions
 
-    /// Sets the main [`Selection`]
+    /// Sets the main [`Selection`].
     pub fn set_main(&mut self, new: usize) {
         self.main_i = new.min(self.buf.len().saturating_sub(1));
     }
 
-    /// Rotates the main [`Selection`] by an amount
+    /// Rotates the main [`Selection`] by an amount.
     pub fn rotate_main(&mut self, amount: i32) {
         if !self.buf.is_empty() {
             self.main_i = (self.main_i as i32 + amount).rem_euclid(self.buf.len() as i32) as usize
         }
     }
 
-    /// Removes all [`Selection`]s
+    /// Removes all [`Selection`]s.
     pub fn clear(&mut self) {
         self.buf = GapBuffer::new();
         *self.shift.get_mut().unwrap() = Shift::default();
     }
 
     /// Removes all [`Selection`]s and adds a [default `Selection`] as
-    /// main
+    /// main.
     ///
     /// [default `Selection`]: Selection::default
     pub fn reset(&mut self) {
@@ -93,21 +93,21 @@ impl Selections {
         self.buf[self.main_i] = Selection::default();
     }
 
-    /// Removes all but the main [`Selection`]
+    /// Removes all but the main [`Selection`].
     pub fn remove_extras(&mut self) {
         if !self.is_empty() {
-            let cursor = self.buf.remove(self.main_i);
+            let selection = self.buf.remove(self.main_i);
             let shift = std::mem::take(self.shift.get_mut().unwrap());
             if shift.from <= self.main_i && shift.by != [0; 3] {
-                cursor.shift_by(shift.by);
+                selection.shift_by(shift.by);
             }
-            self.buf = gap_buffer![cursor];
+            self.buf = gap_buffer![selection];
         }
         self.main_i = 0;
     }
 
     /// Corrects all [`Selection`]s, so that they no longer reference
-    /// outdated data
+    /// outdated data.
     pub(crate) fn correct_all(&mut self, strs: &Strs) {
         for selection in &mut self.buf {
             selection.correct(strs)
@@ -116,7 +116,7 @@ impl Selections {
 
     ////////// Querying functions
 
-    /// Gets the main [`Selection`]
+    /// Gets the main [`Selection`].
     ///
     /// # Panics
     ///
@@ -130,7 +130,7 @@ impl Selections {
         }
     }
 
-    /// Gets the main [`Selection`], if there is one
+    /// Gets the main [`Selection`], if there is one.
     ///
     /// If you want a method that doesn't return an [`Option`] (for
     /// convenience), see [`Selections::main`].
@@ -138,15 +138,15 @@ impl Selections {
         self.get(self.main_i)
     }
 
-    /// Gets the `n`th [`Selection`] if there is one
+    /// Gets the `n`th [`Selection`] if there is one.
     pub fn get(&self, n: usize) -> Option<&Selection> {
         if n >= self.len() {
             return None;
         }
         let mut shift = self.shift.lock().unwrap();
         if n >= shift.from && shift.by != [0; 3] {
-            for cursor in self.buf.range(shift.from..n + 1).iter() {
-                cursor.shift_by(shift.by);
+            for selection in self.buf.range(shift.from..n + 1).iter() {
+                selection.shift_by(shift.by);
             }
             if n + 1 < self.buf.len() {
                 shift.from = n + 1;
@@ -158,7 +158,7 @@ impl Selections {
         self.buf.get(n)
     }
 
-    /// Iterates over all [`Selection`]s in order
+    /// Iterates over all [`Selection`]s in order.
     ///
     /// Also tells you wether the [`Selection`] is the main selection
     /// or not.
@@ -180,7 +180,7 @@ impl Selections {
         })
     }
 
-    /// Iterates over all [`Selection`]s in a given [`TextRange`]
+    /// Iterates over all [`Selection`]s in a given [`TextRange`].
     ///
     /// Also tells you the index of the [`Selection`], as well as if
     /// it is the main selection or not.
@@ -223,17 +223,17 @@ impl Selections {
         })
     }
 
-    /// The index of the main [`Selection`]
+    /// The index of the main [`Selection`].
     pub fn main_index(&self) -> usize {
         self.main_i
     }
 
-    /// How many [`Selection`]s there are in the list
+    /// How many [`Selection`]s there are in the list.
     pub fn len(&self) -> usize {
         self.buf.len()
     }
 
-    /// Returns [`true`] when there are no [`Selection`]s
+    /// Returns `true` when there are no [`Selection`]s.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
@@ -241,7 +241,7 @@ impl Selections {
 
     ////////// Internal modification functions
 
-    /// Inserts a [`Selection`] back from editing
+    /// Inserts a [`Selection`] back from editing.
     pub(crate) fn insert(
         &mut self,
         guess_i: usize,
@@ -251,7 +251,7 @@ impl Selections {
         let mut shift = self.shift.lock().unwrap();
         let shift_from = shift.from.min(self.len());
 
-        // The range of cursors that will be drained
+        // The range of selections that will be drained
         let m_range = merging_range_by_guess_and_lazy_shift(
             (&self.buf, self.buf.len()),
             (guess_i, [sel.start_point(), sel.end_point_excl()]),
@@ -259,16 +259,16 @@ impl Selections {
             (Selection::start_point, Selection::end_point_excl),
         );
 
-        // Shift all ranges that preceed the end of the cursor's range.
+        // Shift all ranges that preceed the end of the selection's range.
         if shift_from < m_range.end && shift.by != [0; 3] {
-            for cursor in self.buf.range(shift_from..m_range.end).into_iter() {
-                cursor.shift_by(shift.by);
+            for selection in self.buf.range(shift_from..m_range.end).into_iter() {
+                selection.shift_by(shift.by);
             }
         }
 
         // Get the minimum and maximum Points in the taken range, designate
         // those as the new Selection's bounds.
-        let (caret, anchor, last_cursor_overhangs) = {
+        let (cursor, anchor, last_selection_overhangs) = {
             let mut c_range = m_range.clone();
             let first = c_range.next().and_then(|i| self.buf.get(i));
             let last = c_range.last().and_then(|i| self.buf.get(i)).or(first);
@@ -284,7 +284,7 @@ impl Selections {
             };
 
             if let Some(anchor) = sel.anchor() {
-                match sel.caret() < anchor {
+                match sel.cursor() < anchor {
                     true => (start, Some(end), last_sel_overhangs),
                     false => (end, Some(start), last_sel_overhangs),
                 }
@@ -293,7 +293,7 @@ impl Selections {
             }
         };
 
-        let selection = Selection::from_v(caret, anchor, sel.change_i);
+        let selection = Selection::from_v(cursor, anchor, sel.change_i);
         self.buf.splice(m_range.clone(), [selection]);
 
         if main {
@@ -304,25 +304,25 @@ impl Selections {
 
         // If there are no more Selections after this, don't set the
         // shift_state.
-        let cursors_taken = m_range.clone().count();
-        let new_shift_from = shift_from.saturating_sub(cursors_taken).max(m_range.start) + 1;
+        let selections_taken = m_range.clone().count();
+        let new_shift_from = shift_from.saturating_sub(selections_taken).max(m_range.start) + 1;
         if new_shift_from < self.buf.len() {
             shift.from = new_shift_from;
         } else {
             *shift = Shift::default()
         }
 
-        ([m_range.start, cursors_taken], last_cursor_overhangs)
+        ([m_range.start, selections_taken], last_selection_overhangs)
     }
 
-    /// Applies a [`Change`] to the [`Selection`]s list
+    /// Applies a [`Change`] to the [`Selection`]s list.
     ///
     /// Returns the number of [`Selection`]s that were removed
     pub(crate) fn apply_change(&mut self, guess_i: usize, change: Change<&str>) -> usize {
         let mut shift = self.shift.lock().unwrap();
         let shift_from = shift.from.min(self.len());
 
-        // The range of cursors that will be drained
+        // The range of selections that will be drained
         let c_range = merging_range_by_guess_and_lazy_shift(
             (&self.buf, self.buf.len()),
             (guess_i, [change.start(), change.taken_end()]),
@@ -335,22 +335,22 @@ impl Selections {
         // order to update them to the latest shift leve, then by the
         // change.
         if c_range.end > shift_from && shift.by != [0; 3] {
-            for cursor in self.buf.range(shift_from..c_range.end).into_iter() {
-                cursor.shift_by(shift.by);
+            for selection in self.buf.range(shift_from..c_range.end).into_iter() {
+                selection.shift_by(shift.by);
             }
         }
         let range = c_range.start..c_range.end.max(shift_from);
-        for cursor in self.buf.range(range).into_iter() {
-            cursor.shift_by_change(change);
+        for selection in self.buf.range(range).into_iter() {
+            selection.shift_by_change(change);
         }
 
-        let (cursors_taken, cursors_added) = {
-            let mut cursors_taken = self.buf.splice(c_range.clone(), []);
-            if let Some(first) = cursors_taken.next() {
-                let last = cursors_taken.next_back().unwrap_or(first.clone());
+        let (selections_taken, selections_added) = {
+            let mut selections_taken = self.buf.splice(c_range.clone(), []);
+            if let Some(first) = selections_taken.next() {
+                let last = selections_taken.next_back().unwrap_or(first.clone());
                 let (start, end) = (first.start_point(), last.end_point_excl());
                 let merged = Selection::new(start, (start < end).then_some(end));
-                drop(cursors_taken);
+                drop(selections_taken);
                 self.buf.insert(c_range.start, merged);
 
                 (c_range.len(), 1)
@@ -359,7 +359,7 @@ impl Selections {
             }
         };
 
-        let from = shift_from.saturating_sub(cursors_taken).max(c_range.start) + cursors_added;
+        let from = shift_from.saturating_sub(selections_taken).max(c_range.start) + selections_added;
         if from < self.buf.len() {
             *shift = Shift {
                 from,
@@ -369,10 +369,10 @@ impl Selections {
             *shift = Shift::default()
         }
 
-        cursors_taken - cursors_added
+        selections_taken - selections_added
     }
 
-    /// Removes a [`Selection`], which might be brought back
+    /// Removes a [`Selection`], which might be brought back.
     pub(crate) fn remove(&mut self, i: usize) -> Option<(Selection, bool)> {
         if i >= self.buf.len() {
             return None;
@@ -380,8 +380,8 @@ impl Selections {
         let shift = self.shift.get_mut().unwrap();
 
         if i >= shift.from && shift.by != [0; 3] {
-            for cursor in self.buf.range(shift.from..i + 1).iter() {
-                cursor.shift_by(shift.by);
+            for selection in self.buf.range(shift.from..i + 1).iter() {
+                selection.shift_by(shift.by);
             }
             if i + 1 < self.buf.len() {
                 // i here, instead of i + 1, since this Selection is about to be
@@ -403,7 +403,7 @@ impl Selections {
         Some((self.buf.remove(i), was_main))
     }
 
-    /// Ensures that there is at least one [`Selection`] on the list
+    /// Ensures that there is at least one [`Selection`] on the list.
     pub(crate) fn populate(&mut self) {
         if self.buf.is_empty() {
             self.main_i = 0;
@@ -422,7 +422,7 @@ impl Clone for Selections {
     }
 }
 
-mod cursor {
+mod selection {
     use std::{cmp::Ordering, ops::Range, sync::Mutex};
 
     use bincode::{Decode, Encode};
@@ -434,32 +434,32 @@ mod cursor {
         ui::Area,
     };
 
-    /// A cursor in the text buffer. This is an editing cursor, -(not
-    /// a printing cursor.
+    /// A selection in the text buffer. This is an editing selection, -(not
+    /// a printing selection.
     #[derive(Default, Encode, Decode)]
     pub struct Selection {
-        caret: Mutex<LazyVPoint>,
+        cursor: Mutex<LazyVPoint>,
         anchor: Mutex<Option<LazyVPoint>>,
-        pub(in crate::mode::cursor) change_i: Option<u32>,
+        pub(in crate::mode::edit) change_i: Option<u32>,
     }
 
     impl Selection {
         /// Returns a new instance of [`Selection`].
-        pub(crate) fn new(caret: Point, anchor: Option<Point>) -> Self {
+        pub(crate) fn new(cursor: Point, anchor: Option<Point>) -> Self {
             Self {
-                caret: Mutex::new(LazyVPoint::Unknown(caret)),
+                cursor: Mutex::new(LazyVPoint::Unknown(cursor)),
                 anchor: Mutex::new(anchor.map(LazyVPoint::Unknown)),
                 change_i: None,
             }
         }
 
         pub(super) fn from_v(
-            caret: LazyVPoint,
+            cursor: LazyVPoint,
             anchor: Option<LazyVPoint>,
             change_i: Option<u32>,
         ) -> Self {
             Self {
-                caret: Mutex::new(caret),
+                cursor: Mutex::new(cursor),
                 anchor: Mutex::new(anchor),
                 change_i,
             }
@@ -469,28 +469,28 @@ mod cursor {
         #[track_caller]
         pub fn move_to(&mut self, idx: impl TextIndex, text: &Text) {
             let byte = idx.to_byte_index();
-            if byte == self.caret().byte() {
+            if byte == self.cursor().byte() {
                 return;
             }
-            *self.caret.get_mut().unwrap() =
+            *self.cursor.get_mut().unwrap() =
                 LazyVPoint::Unknown(text.point_at_byte(byte.min(text.len() - 1)));
         }
 
         /// Internal horizontal movement function
         ///
-        /// Returns `true` if the caret was moved
+        /// Returns `true` if the cursor was moved
         pub fn move_hor(&mut self, by: i32, text: &Text) -> i32 {
             let by = by as isize;
             if by == 0 {
                 return 0;
             };
 
-            let caret = self.caret.get_mut().unwrap();
+            let cursor = self.cursor.get_mut().unwrap();
 
             // We move in chars, not bytes, but calculating char index can be
             // expensive, so do a rough estimate assuming that the text is ascii
             // only.
-            let target_char = caret.point().char().saturating_add_signed(by);
+            let target_char = cursor.point().char().saturating_add_signed(by);
 
             let point = if target_char == 0 {
                 Point::default()
@@ -498,51 +498,51 @@ mod cursor {
                 text.last_point()
             } else if by.abs() < 500 {
                 if by > 0 {
-                    text[caret.point()..]
+                    text[cursor.point()..]
                         .chars()
                         .take(by as usize)
-                        .fold(caret.point(), |point, char| point.fwd(char))
+                        .fold(cursor.point(), |point, char| point.fwd(char))
                 } else {
-                    text[..caret.point()]
+                    text[..cursor.point()]
                         .chars()
                         .rev()
                         .take(by.unsigned_abs())
-                        .fold(caret.point(), |point, char| point.rev(char))
+                        .fold(cursor.point(), |point, char| point.rev(char))
                 }
             } else {
                 text.point_at_char(target_char)
             };
 
-            let moved = point.char() as i32 - caret.point().char() as i32;
-            *caret = LazyVPoint::Unknown(point);
+            let moved = point.char() as i32 - cursor.point().char() as i32;
+            *cursor = LazyVPoint::Unknown(point);
             moved
         }
 
         /// Internal vertical movement function.
         ///
-        /// Returns `true` if the caret actually moved at all.
+        /// Returns `true` if the cursor actually moved at all.
         pub fn move_ver(&mut self, by: i32, text: &Text, area: &Area, opts: PrintOpts) -> bool {
             if by == 0 {
                 return false;
             }
-            let caret = self.caret.get_mut().unwrap();
-            let point = caret.point();
+            let cursor = self.cursor.get_mut().unwrap();
+            let point = cursor.point();
 
-            let desired_col = match *caret {
+            let desired_col = match *cursor {
                 LazyVPoint::Unknown(_) => None,
                 LazyVPoint::Known(vpoint) => Some(vpoint.desired_visual_col()),
                 LazyVPoint::Desired { dvcol, .. } => Some(dvcol as usize),
             };
 
             let vpoint = area.move_ver(by, text, point, desired_col, opts);
-            *caret = LazyVPoint::Known(vpoint);
+            *cursor = LazyVPoint::Known(vpoint);
 
             vpoint.point != point
         }
 
         /// Internal vertical movement function.
         ///
-        /// Returns `true` if the caret actually moved at all.
+        /// Returns `true` if the cursor actually moved at all.
         pub fn move_ver_wrapped(
             &mut self,
             by: i32,
@@ -554,28 +554,28 @@ mod cursor {
                 return false;
             };
 
-            let caret = self.caret.get_mut().unwrap();
-            let point = caret.point();
+            let cursor = self.cursor.get_mut().unwrap();
+            let point = cursor.point();
 
-            let desired_col = match *caret {
+            let desired_col = match *cursor {
                 LazyVPoint::Unknown(_) => None,
                 LazyVPoint::Known(vpoint) => Some(vpoint.desired_wrapped_col()),
                 LazyVPoint::Desired { dwcol, .. } => Some(dwcol as usize),
             };
 
             let vpoint = area.move_ver_wrapped(by, text, point, desired_col, opts);
-            *caret = LazyVPoint::Known(vpoint);
+            *cursor = LazyVPoint::Known(vpoint);
 
             vpoint.point != point
         }
 
         pub(crate) fn shift_by_change(&self, change: Change<&str>) {
-            let mut caret = self.caret.lock().unwrap();
+            let mut cursor = self.cursor.lock().unwrap();
 
             let (shift, taken) = (change.shift(), change.taken_end());
-            if caret.point() >= change.start() {
-                let shifted_caret = caret.point().max(taken).shift_by(shift);
-                *caret = LazyVPoint::Unknown(shifted_caret);
+            if cursor.point() >= change.start() {
+                let shifted_cursor = cursor.point().max(taken).shift_by(shift);
+                *cursor = LazyVPoint::Unknown(shifted_cursor);
             }
 
             let mut anchor = self.anchor.lock().unwrap();
@@ -587,11 +587,11 @@ mod cursor {
             }
         }
 
-        /// Assumes that both parts of the cursor are ahead of the
+        /// Assumes that both parts of the selection are ahead of the
         /// shift
         pub(crate) fn shift_by(&self, shift: [i32; 3]) {
-            let mut caret = self.caret.lock().unwrap();
-            *caret = LazyVPoint::Unknown(caret.point().shift_by(shift));
+            let mut cursor = self.cursor.lock().unwrap();
+            *cursor = LazyVPoint::Unknown(cursor.point().shift_by(shift));
 
             let mut anchor = self.anchor.lock().unwrap();
             if let Some(anchor) = &mut *anchor {
@@ -602,8 +602,8 @@ mod cursor {
         /// Corrects this [`Selection`], so that it no longer assumes
         /// to be in the correct position
         pub(crate) fn correct(&mut self, strs: &Strs) {
-            let mut caret = self.caret.lock().unwrap();
-            *caret = LazyVPoint::Unknown(strs.point_at_byte(caret.point().byte()));
+            let mut cursor = self.cursor.lock().unwrap();
+            *cursor = LazyVPoint::Unknown(strs.point_at_byte(cursor.point().byte()));
 
             let mut anchor = self.anchor.lock().unwrap();
             if let Some(anchor) = &mut *anchor {
@@ -614,46 +614,45 @@ mod cursor {
         ////////// Public movement functions
 
         /// Sets the position of the anchor to be the same as the
-        /// current cursor position in the buffer
+        /// current selection position in the buffer
         ///
         /// The `anchor` and `current` act as a range of text on the
         /// buffer.
         pub fn set_anchor(&mut self) {
-            *self.anchor.get_mut().unwrap() = Some(*self.caret.get_mut().unwrap())
+            *self.anchor.get_mut().unwrap() = Some(*self.cursor.get_mut().unwrap())
         }
 
-        /// Unsets the anchor, returning its byte index if it existed
+        /// Unsets the anchor, returning its byte index if it existed.
         ///
-        /// This is done so the cursor no longer has a valid
-        /// selection.
+        /// This is done so the selection is reset to just the cursor.
         pub fn unset_anchor(&mut self) -> Option<Point> {
             self.anchor.get_mut().unwrap().take().map(|a| a.point())
         }
 
-        /// Switches the position of the anchor and caret
+        /// Switches the position of the anchor and cursor.
         pub fn swap_ends(&mut self) {
             if let Some(anchor) = self.anchor.get_mut().unwrap() {
-                std::mem::swap(self.caret.get_mut().unwrap(), anchor);
+                std::mem::swap(self.cursor.get_mut().unwrap(), anchor);
             }
         }
 
-        /// Returns the byte index of this `Selection`'s `caret`
-        pub fn caret(&self) -> Point {
-            self.caret.lock().unwrap().point()
+        /// Returns the byte index of this `Selection`'s `cursor`.
+        pub fn cursor(&self) -> Point {
+            self.cursor.lock().unwrap().point()
         }
 
         /// Returns the byte index of this `Selection`'s `anchor`, if
-        /// there is one
+        /// there is one.
         pub fn anchor(&self) -> Option<Point> {
             self.anchor.lock().unwrap().map(|lazy| lazy.point())
         }
 
         ////////// Range functions
 
-        /// Returns the byte index range between the `caret` and
-        /// `anchor`
+        /// Returns the byte index range between the `cursor` and
+        /// `anchor`.
         ///
-        /// If `anchor` isn't set, returns an empty range on `caret`.
+        /// If `anchor` isn't set, returns an empty range on `cursor`.
         ///
         /// # Note
         ///
@@ -666,38 +665,39 @@ mod cursor {
             self.start_point().byte()..self.end_point(text).byte()
         }
 
-        /// The starting [`Point`] of this [`Selection`]
+        /// The starting [`Point`] of this [`Selection`].
         pub fn start_point(&self) -> Point {
             if let Some(anchor) = *self.anchor.lock().unwrap() {
-                anchor.point().min(self.caret.lock().unwrap().point())
+                anchor.point().min(self.cursor.lock().unwrap().point())
             } else {
-                self.caret.lock().unwrap().point()
+                self.cursor.lock().unwrap().point()
             }
         }
 
-        /// The ending [`Point`] of this [`Selection`]
+        /// The ending [`Point`] of this [`Selection`].
         pub fn end_point(&self, text: &Text) -> Point {
             self.end_point_excl()
                 .fwd(text.char_at(self.end_point_excl()).unwrap())
         }
 
+		/// The exclusive end [`Point`] of this `Selection`.
         pub(super) fn end_point_excl(&self) -> Point {
             if let Some(anchor) = *self.anchor.lock().unwrap() {
-                anchor.point().max(self.caret.lock().unwrap().point())
+                anchor.point().max(self.cursor.lock().unwrap().point())
             } else {
-                self.caret.lock().unwrap().point()
+                self.cursor.lock().unwrap().point()
             }
         }
 
-        /// Returns the range between `caret` and `anchor`.
+        /// Returns the range between `cursor` and `anchor`.
         ///
         /// If `anchor` isn't set, returns a range that contains only
-        /// the `caret`'s current `char`.
+        /// the `cursor`'s current `char`.
         pub fn point_range(&self, text: &Text) -> Range<Point> {
             self.start_point()..self.end_point(text)
         }
 
-        /// Returns an exclusive range between `caret` and `anchor`
+        /// Returns an exclusive range between `cursor` and `anchor`.
         ///
         /// If `anchor` isn't set, both [`Point`]s will be the same.
         pub fn point_range_excl(&self) -> Range<Point> {
@@ -707,35 +707,35 @@ mod cursor {
         ////////// VPoint functions
 
         /// Sets both the desired visual column, as well as the
-        /// desired wrapped column
+        /// desired wrapped column.
         pub fn set_desired_cols(&mut self, v: usize, w: usize) {
             let (v, w) = (v as u16, w as u16);
-            let caret = self.caret.get_mut().unwrap();
-            match caret {
+            let cursor = self.cursor.get_mut().unwrap();
+            match cursor {
                 LazyVPoint::Known(vp) => {
                     vp.dvcol = v;
                     vp.dwcol = w;
                 }
                 LazyVPoint::Unknown(point) => {
-                    *caret = LazyVPoint::Desired { point: *point, dvcol: v, dwcol: w }
+                    *cursor = LazyVPoint::Desired { point: *point, dvcol: v, dwcol: w }
                 }
                 LazyVPoint::Desired { dvcol, dwcol, .. } => (*dvcol, *dwcol) = (v, w),
             }
         }
 
-        /// The visual caret of this [`Selection`]
+        /// The visual cursor of this [`Selection`].
         ///
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
-        pub fn v_caret(&self, text: &Text, area: &Area, opts: PrintOpts) -> VPoint {
-            let mut caret = self.caret.lock().unwrap();
-            let vp = caret.calculate(text, area, opts);
-            *caret = LazyVPoint::Known(vp);
+        pub fn v_cursor(&self, text: &Text, area: &Area, opts: PrintOpts) -> VPoint {
+            let mut cursor = self.cursor.lock().unwrap();
+            let vp = cursor.calculate(text, area, opts);
+            *cursor = LazyVPoint::Known(vp);
             vp
         }
 
-        /// The visual anchor of this [`Selection`], if it exists
+        /// The visual anchor of this [`Selection`], if it exists.
         ///
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
@@ -748,31 +748,31 @@ mod cursor {
             })
         }
 
-        /// The visual range between the caret and anchor of this
-        /// [`Selection`]
+        /// The visual range between the cursor and anchor of this
+        /// [`Selection`].
         ///
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
         pub fn v_range(&self, text: &Text, area: &Area, opts: PrintOpts) -> [VPoint; 2] {
-            let v_caret = self.v_caret(text, area, opts);
-            let v_anchor = self.v_anchor(text, area, opts).unwrap_or(v_caret);
-            [v_caret.min(v_anchor), v_caret.max(v_anchor)]
+            let v_cursor = self.v_cursor(text, area, opts);
+            let v_anchor = self.v_anchor(text, area, opts).unwrap_or(v_cursor);
+            [v_cursor.min(v_anchor), v_cursor.max(v_anchor)]
         }
 
-        /// The starting [`LazyVPoint`]
+        /// The starting [`LazyVPoint`].
         pub(super) fn lazy_v_start(&self) -> LazyVPoint {
             match *self.anchor.lock().unwrap() {
-                Some(anchor) => self.caret.lock().unwrap().min(anchor),
-                None => *self.caret.lock().unwrap(),
+                Some(anchor) => self.cursor.lock().unwrap().min(anchor),
+                None => *self.cursor.lock().unwrap(),
             }
         }
 
-        /// The ending [`LazyVPoint`]
+        /// The ending [`LazyVPoint`].
         pub(super) fn lazy_v_end(&self) -> LazyVPoint {
             match *self.anchor.lock().unwrap() {
-                Some(anchor) => self.caret.lock().unwrap().max(anchor),
-                None => *self.caret.lock().unwrap(),
+                Some(anchor) => self.cursor.lock().unwrap().max(anchor),
+                None => *self.cursor.lock().unwrap(),
             }
         }
     }
@@ -780,7 +780,7 @@ mod cursor {
     impl Clone for Selection {
         fn clone(&self) -> Self {
             Self {
-                caret: Mutex::new(*self.caret.lock().unwrap()),
+                cursor: Mutex::new(*self.cursor.lock().unwrap()),
                 anchor: Mutex::new(*self.anchor.lock().unwrap()),
                 change_i: self.change_i,
             }
@@ -788,7 +788,7 @@ mod cursor {
     }
 
     /// A struct meant to minimize calculations on very large numbers
-    /// of [`Selection`]s
+    /// of [`Selection`]s.
     #[derive(Clone, Copy, Eq, Encode, Decode)]
     pub(super) enum LazyVPoint {
         Unknown(Point),
@@ -852,7 +852,7 @@ mod cursor {
         }
     }
 
-    /// A visual [`Point`], which includes more information
+    /// A visual [`Point`], which includes more information.
     ///
     /// Alongside the byte, char, and line of the [`Point`], this
     /// struct has:
@@ -873,8 +873,8 @@ mod cursor {
     /// is applied both in [full line] and [wrapped line] vertical
     /// movement.
     ///
-    /// [full line]: crate::mode::Cursor::move_ver
-    /// [wrapped line]: crate::mode::Cursor::move_ver_wrapped
+    /// [full line]: crate::mode::SelectionMut::move_ver
+    /// [wrapped line]: crate::mode::SelectionMut::move_ver_wrapped
     #[derive(Default, Clone, Copy, Debug, Eq, Encode, Decode)]
     pub struct VPoint {
         point: Point,
@@ -887,47 +887,47 @@ mod cursor {
     }
 
     impl VPoint {
-        /// Returns a new `VPoint` from scratch
+        /// Returns a new `VPoint` from scratch.
         pub fn new(point: Point, ccol: u16, vcol: u16, dvcol: u16, wcol: u16, dwcol: u16) -> Self {
             Self { point, ccol, vcol, dvcol, wcol, dwcol }
         }
 
-        /// The byte index of this [`VPoint`]
+        /// The byte index of this [`VPoint`].
         pub fn byte(&self) -> usize {
             self.point.byte()
         }
 
-        /// The char index of this [`VPoint`]
+        /// The char index of this [`VPoint`].
         pub fn char(&self) -> usize {
             self.point.char()
         }
 
-        /// The line index of this [`VPoint`]
+        /// The line index of this [`VPoint`].
         pub fn line(&self) -> usize {
             self.point.line()
         }
 
-        /// Number of characters from the start of the line
+        /// Number of characters from the start of the line.
         pub fn char_col(&self) -> usize {
             self.ccol as usize
         }
 
-        /// Total space from the start of the line
+        /// Total space from the start of the line.
         pub fn visual_col(&self) -> usize {
             self.vcol as usize
         }
 
-        /// How much space there should be from the start of the line
+        /// How much space there should be from the start of the line.
         pub fn desired_visual_col(&self) -> usize {
             self.dvcol as usize
         }
 
-        /// Total space from the left edge
+        /// Total space from the left edge.
         pub fn wrapped_col(&self) -> usize {
             self.wcol as usize
         }
 
-        /// How much space there should be from the left edge
+        /// How much space there should be from the left edge.
         pub fn desired_wrapped_col(&self) -> usize {
             self.dwcol as usize
         }
@@ -955,7 +955,7 @@ mod cursor {
     impl std::fmt::Debug for Selection {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.debug_struct("Selection")
-                .field("caret", &*self.caret.lock().unwrap())
+                .field("cursor", &*self.cursor.lock().unwrap())
                 .field("anchor", &*self.anchor.lock().unwrap())
                 .field("change_i", &self.change_i)
                 .finish()

@@ -15,10 +15,10 @@ use std::{
 
 use crate::text::RegexHaystack;
 
-/// The distance to keep between the [`Cursor`] and the edges of the
+/// The distance to keep between the [`SelectionMut`] and the edges of the
 /// screen when scrolling
 ///
-/// [`Cursor`]: crate::mode::Cursor
+/// [`SelectionMut`]: crate::mode::SelectionMut
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ScrollOff {
     /// The horizontal scrolloff

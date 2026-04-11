@@ -35,8 +35,8 @@ impl DuatLsp {
 fn path_to_uri(path: &Path) -> Option<Uri> {
     pub fn encode_uri(str: &str) -> String {
         let mut encoded = String::with_capacity(str.len());
-        for c in str.bytes() {
-            match c {
+        for s in str.bytes() {
+            match s {
                 b'A'..=b'Z'
                 | b'a'..=b'z'
                 | b'0'..=b'9'
@@ -59,10 +59,10 @@ fn path_to_uri(path: &Path) -> Option<Uri> {
                 | b'='
                 | b'+'
                 | b'$'
-                | b'#' => encoded.push(char::from_u32(c as _).unwrap()),
-                c => {
+                | b'#' => encoded.push(char::from_u32(s as _).unwrap()),
+                s => {
                     encoded.push('%');
-                    encoded.push_str(&format!("{:02x}", c));
+                    encoded.push_str(&format!("{:02x}", s));
                 }
             }
         }

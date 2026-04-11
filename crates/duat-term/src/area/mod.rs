@@ -571,7 +571,7 @@ impl RawArea for Area {
 
             if let Some((wcol, point)) = wcol_and_p {
                 let (ccol, vcol) = iter
-                    .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, c)| c != '\n'))
+                    .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, s)| s != '\n'))
                     .fold((0, 0), |(ccol, vcol), (place, item)| {
                         (ccol + item.is_real() as u16, vcol + place.len as u16)
                     });
@@ -580,7 +580,7 @@ impl RawArea for Area {
             } else if let Some((wcol, point)) = last_valid {
                 let points = point.to_two_points_before();
                 let (ccol, vcol) = rev_print_iter(text, points, cap, opts)
-                    .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, c)| c != '\n'))
+                    .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, s)| s != '\n'))
                     .fold((0, 0), |(ccol, vcol), (place, item)| {
                         (ccol + item.is_real() as u16, vcol + place.len as u16)
                     });
@@ -865,7 +865,7 @@ pub fn print_text(
             }
 
             match last_found {
-                Some(CursorParts { is_main: true, is_caret, is_start, .. }) => {
+                Some(SelectionMutParts { is_main: true, is_cursor, is_start, .. }) => {
                     if let Some(shape) = painter.main_cursor()
                         && is_active
                     {
@@ -874,12 +874,12 @@ pub fn print_text(
                     }
 
                     lines.hide_real_cursor();
-                    painter.apply_main_selection(is_caret, is_start == Some(true));
-                    Some(Cursor::Main(is_caret, is_start == Some(false)))
+                    painter.apply_main_selection(is_cursor, is_start == Some(true));
+                    Some(SelectionMut::Main(is_cursor, is_start == Some(false)))
                 }
-                Some(CursorParts { is_main: false, is_caret, is_start, .. }) => {
-                    painter.apply_extra_selection(is_caret, is_start == Some(true));
-                    Some(Cursor::Extra(is_caret, is_start == Some(false)))
+                Some(SelectionMutParts { is_main: false, is_cursor, is_start, .. }) => {
+                    painter.apply_extra_selection(is_cursor, is_start == Some(true));
+                    Some(SelectionMut::Extra(is_cursor, is_start == Some(false)))
                 }
                 None => None,
             }
@@ -1006,11 +1006,11 @@ pub fn print_text(
 
                 if let Some(cursor) = cursor_style {
                     match cursor {
-                        Cursor::Main(is_caret, end_range) => {
-                            painter.remove_main_selection(is_caret, end_range)
+                        SelectionMut::Main(is_cursor, end_range) => {
+                            painter.remove_main_selection(is_cursor, end_range)
                         }
-                        Cursor::Extra(is_caret, end_range) => {
-                            painter.remove_extra_selection(is_caret, end_range)
+                        SelectionMut::Extra(is_cursor, end_range) => {
+                            painter.remove_extra_selection(is_cursor, end_range)
                         }
                     }
                     if let Some(style) = painter.relative_style() {
@@ -1034,11 +1034,11 @@ pub fn print_text(
                 style_was_set |= cursor_style.is_some();
 
                 match cursor_style {
-                    Some(Cursor::Main(is_caret, end_range)) => {
-                        painter.remove_main_selection(is_caret, end_range)
+                    Some(SelectionMut::Main(is_cursor, end_range)) => {
+                        painter.remove_main_selection(is_cursor, end_range)
                     }
-                    Some(Cursor::Extra(is_caret, end_range)) => {
-                        painter.remove_extra_selection(is_caret, end_range)
+                    Some(SelectionMut::Extra(is_cursor, end_range)) => {
+                        painter.remove_extra_selection(is_cursor, end_range)
                     }
                     None => {}
                 }
@@ -1317,23 +1317,23 @@ const fn get_control_str(char: char) -> Option<&'static str> {
 
 const SPACES: &[u8] = &[b' '; 3000];
 
-fn iter_selections(text: &Text, from: Point) -> impl Iterator<Item = CursorParts> {
+fn iter_selections(text: &Text, from: Point) -> impl Iterator<Item = SelectionMutParts> {
     text.selections()
         .iter_within(from..)
         .flat_map(|(_, sel, is_main)| {
             if let Some(anchor) = sel.anchor()
-                && anchor != sel.caret()
+                && anchor != sel.cursor()
             {
-                let caret_is_start = sel.caret() < anchor;
-                let start = sel.caret().min(anchor);
-                let end = sel.caret().max(anchor);
+                let cursor_is_start = sel.cursor() < anchor;
+                let start = sel.cursor().min(anchor);
+                let end = sel.cursor().max(anchor);
                 [
-                    Some(CursorParts::new(start, is_main, caret_is_start, Some(true))),
-                    Some(CursorParts::new(end, is_main, !caret_is_start, Some(false))),
+                    Some(SelectionMutParts::new(start, is_main, cursor_is_start, Some(true))),
+                    Some(SelectionMutParts::new(end, is_main, !cursor_is_start, Some(false))),
                 ]
             } else {
                 [
-                    Some(CursorParts::new(sel.caret(), is_main, true, None)),
+                    Some(SelectionMutParts::new(sel.cursor(), is_main, true, None)),
                     None,
                 ]
             }
@@ -1341,21 +1341,21 @@ fn iter_selections(text: &Text, from: Point) -> impl Iterator<Item = CursorParts
         .flatten()
 }
 
-pub struct CursorParts {
+pub struct SelectionMutParts {
     point: Point,
     is_main: bool,
-    is_caret: bool,
+    is_cursor: bool,
     is_start: Option<bool>,
 }
 
-impl CursorParts {
-    fn new(point: Point, is_main: bool, is_caret: bool, is_start: Option<bool>) -> Self {
-        Self { point, is_main, is_caret, is_start }
+impl SelectionMutParts {
+    fn new(point: Point, is_main: bool, is_cursor: bool, is_start: Option<bool>) -> Self {
+        Self { point, is_main, is_cursor, is_start }
     }
 }
 
 #[derive(Clone, Copy)]
-enum Cursor {
+enum SelectionMut {
     Main(bool, bool),
     Extra(bool, bool),
 }

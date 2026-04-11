@@ -200,11 +200,11 @@ fn setup() {
         // Handle::edit_all will apply an editing function to all cursors
         // Because it edits the cursors of the `Buffer`, it needs
         // mutable access to it, hence the `&mut Pass`.
-        buf.edit_all(pa, |c| {
-            if dupes.iter().any(|dupe| *dupe == c.selection()) {
-                c.destroy()
+        buf.edit_all(pa, |s| {
+            if dupes.iter().any(|dupe| *dupe == s.selection()) {
+                s.destroy()
             } else {
-                dupes.push(c.selection().to_string());
+                dupes.push(s.selection().to_string());
             }
         });
 

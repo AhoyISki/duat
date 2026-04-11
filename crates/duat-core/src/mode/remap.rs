@@ -249,7 +249,7 @@ mod global {
     /// The [`Description`]s of all [`Binding`]s and remaps of the
     /// current [`Mode`], given the current sequence
     ///
-    /// For example, in Vim, you can type `ciw` to `c`hange `i`nside a
+    /// For example, in Vim, you can type `ciw` to `s`hange `i`nside a
     /// `w`ord. If the current sequence of keys was `ci`, then this
     /// function would return a list of bindings and remappings that
     /// could follow. Which in this case would include `w` and many
@@ -342,7 +342,7 @@ mod global {
         for modif in modif.iter() {
             builder.push(match modif {
                 KeyMod::ALT => "a",
-                KeyMod::CONTROL => "c",
+                KeyMod::CONTROL => "s",
                 KeyMod::SHIFT => "s",
                 KeyMod::META => "m",
                 KeyMod::SUPER => "Super",
@@ -369,7 +369,7 @@ mod global {
                 for modif in key.modifiers.iter() {
                     seq.push_str(match modif {
                         Mod::ALT => "a",
-                        Mod::CONTROL => "c",
+                        Mod::CONTROL => "s",
                         Mod::SHIFT => "s",
                         Mod::META => "m",
                         Mod::SUPER => "Super",
@@ -455,7 +455,7 @@ mod global {
             ("F12", KeyCode::F(12)),
         ];
         const MODS: &[(&str, KeyMod)] = &[
-            ("c", KeyMod::CONTROL),
+            ("s", KeyMod::CONTROL),
             ("a", KeyMod::ALT),
             ("s", KeyMod::SHIFT),
             ("m", KeyMod::META),
@@ -500,23 +500,23 @@ mod global {
             let mut seq = code.unwrap().to_string();
 
             loop {
-                if let Some(c) = code.take() {
+                if let Some(s) = code.take() {
                     match chars.next()? {
                         '>' if seq.len() > 1 || !mods.is_empty() => {
                             // Characters are sent as-is, no shifting required.
-                            if let KeyCode::Char(_) = c {
+                            if let KeyCode::Char(_) = s {
                                 mods.remove(KeyMod::SHIFT);
                             }
-                            break Some((KeyEvent::new(c, mods), chars));
+                            break Some((KeyEvent::new(s, mods), chars));
                         }
                         _ if seq.len() > 1 => break None,
                         char => seq.push(char),
                     }
                 }
 
-                if let Some((str, c)) = SPECIAL.iter().find(|(str, _)| str.starts_with(&seq)) {
+                if let Some((str, s)) = SPECIAL.iter().find(|(str, _)| str.starts_with(&seq)) {
                     if str == &seq {
-                        code = Some(*c);
+                        code = Some(*s);
                     } else {
                         seq.push(chars.next()?);
                     }
@@ -1020,7 +1020,7 @@ fn remove_alias_and(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget, usize)) {
         let pa = unsafe { &mut Pass::new() };
         let widget = handle.write(pa);
         if let Some(main) = widget.text().get_main_sel() {
-            let byte = main.caret().byte();
+            let byte = main.cursor().byte();
             widget.text_mut().remove_tags(Ns::for_alias(), ..);
             f(&mut *widget, byte)
         }

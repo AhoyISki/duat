@@ -27,11 +27,11 @@ pub use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEv
 /// Key modifiers, like Shift, Alt, Super, Shift + Alt, etc
 pub type KeyMod = crossterm::event::KeyModifiers;
 
-pub(crate) use self::cursor::{ModSelection, on_each_cursor, reinsert_selections};
+pub(crate) use self::edit::{ModSelection, on_each_sel, reinsert_selections};
 #[doc(inline)]
 pub use self::{bindings::*, patterns::*};
 pub use self::{
-    cursor::{CaretOrRange, Cursor, CursorMatches, Selection, Selections, VPoint},
+    edit::{CaretOrRange, SelectionMut, SelectionMutMatches, Selection, Selections, VPoint},
     remap::*,
     switch::*,
 };
@@ -45,7 +45,7 @@ use crate::{
 };
 
 mod bindings;
-mod cursor;
+mod edit;
 mod patterns;
 mod remap;
 mod switch;
@@ -204,10 +204,10 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// modify widgets.
 ///
 /// For this example, I will create a `Menu` widget. This example
-/// doesn't make use of the [`Cursor`] methods from the [`Handle`].
+/// doesn't make use of the [`SelectionMut`] methods from the [`Handle`].
 /// Those are methods that modify [`Selection`]s, and can use them to
 /// modify the [`Text`] in a declarative fashion. For an example with
-/// [`Cursor`]s, see the documentation for `Handle`s.
+/// [`SelectionMut`]s, see the documentation for `Handle`s.
 ///
 /// First, the [`Widget`] itself:
 ///
@@ -397,7 +397,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// [`ctrl!`] and [`shift!`]) gets mapped to a [`KeyEvent`] that can
 /// be used for succinctly matching patterns.
 ///
-/// [`Cursor`]: crate::mode::Cursor
+/// [`SelectionMut`]: crate::mode::SelectionMut
 /// [resizing]: crate::ui::Area::set_height
 /// [`Form`]: crate::form::Form
 /// [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak/index.html
@@ -458,7 +458,7 @@ pub trait Mode: Sized + Send + 'static {
     ///                 event!(KeyCode::Char('a')) => txt!("Character to replace with"),
     ///             }),
     ///             event!('d') => (txt!("Delete the next object"), objects.clone()),
-    ///             event!('c') => (txt!("Change the next object"), objects.clone()),
+    ///             event!('s') => (txt!("Change the next object"), objects.clone()),
     ///             _ => txt!("Not properly documented, but will be sent"),
     ///         })
     ///     }

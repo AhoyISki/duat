@@ -112,8 +112,8 @@ impl Bounds {
         range: Range<usize>,
         mut filter: impl FnMut((i32, RawTag)) -> bool,
     ) -> Vec<usize> {
-        let (Ok(s) | Err(s)) = self.list.find_by_key(range.start as i32, |([_, c], ..)| c);
-        let (Ok(e) | Err(e)) = self.list.find_by_key(range.end as i32, |([_, c], ..)| c);
+        let (Ok(s) | Err(s)) = self.list.find_by_key(range.start as i32, |([_, s], ..)| s);
+        let (Ok(e) | Err(e)) = self.list.find_by_key(range.end as i32, |([_, s], ..)| s);
 
         let mut removed = Vec::new();
         let mut starts = Vec::new();

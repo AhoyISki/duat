@@ -89,25 +89,25 @@ impl Jump {
         match self {
             Jump::Single(selection) => {
                 handle.write(pa).selections_mut().remove_extras();
-                handle.edit_main(pa, |mut c| {
-                    let start = c.text().point_at_byte(selection.start);
-                    let end = c.text().point_at_byte(selection.end);
-                    c.move_to(start..end)
+                handle.edit_main(pa, |mut s| {
+                    let start = s.text().point_at_byte(selection.start);
+                    let end = s.text().point_at_byte(selection.end);
+                    s.move_to(start..end)
                 });
             }
             Jump::Multiple(selections, main) => {
                 handle.write(pa).selections_mut().remove_extras();
 
-                handle.edit_main(pa, |mut c| {
+                handle.edit_main(pa, |mut s| {
                     let mut is_first = true;
                     for selection in selections {
                         if !is_first {
-                            c.copy();
+                            s.copy();
                         }
 
-                        let start = c.text().point_at_byte(selection.start);
-                        let end = c.text().point_at_byte(selection.end);
-                        c.move_to(start..end);
+                        let start = s.text().point_at_byte(selection.start);
+                        let end = s.text().point_at_byte(selection.end);
+                        s.move_to(start..end);
                         is_first = false;
                     }
                 });

@@ -1,5 +1,5 @@
 ; Forked from tree-sitter-go
-; Copyright (c) 2014 Max Brunsfeld (The MIT License)
+; Copyright (s) 2014 Max Brunsfeld (The MIT License)
 ;
 ; Identifiers
 (type_identifier) @type

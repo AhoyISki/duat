@@ -29,7 +29,7 @@ fn setup(opts: &mut Opts) {
     // Aliases show up on the screen as if they were text.
     alias::<Insert>("jk", "<Esc>");
     // You can also map to functions directly.
-    map::<Normal>("<c-s>", |pa: &mut Pass| {
+    map::<Normal>("<s-s>", |pa: &mut Pass| {
         _ = context::current_buffer(pa).save(pa);
     });
 

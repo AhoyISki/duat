@@ -53,8 +53,8 @@ impl CompletionsProvider for CommandsCompletions {
         matches
     }
 
-    fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
-        Some(text.search(r"[^\s]*").range(..caret).next_back()?.start)
+    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
+        Some(text.search(r"[^\s]*").range(..cursor).next_back()?.start)
     }
 
     fn default_info_on(&self, _: &str, doc: &Self::Info) -> Option<(Text, Orientation)> {

@@ -166,10 +166,10 @@ impl NsExtents {
     }
 
     /// Shifts the `NsExtents` by a given character difference
-    pub fn shift_by(&mut self, c: usize, by: i32) {
+    pub fn shift_by(&mut self, s: usize, by: i32) {
         self.max = (self.max as i32 + by) as u32;
         for (_, extent) in self.extents.iter_mut() {
-            extent.shift_by(c, by);
+            extent.shift_by(s, by);
         }
     }
 }
@@ -185,9 +185,9 @@ enum Extent {
 
 impl Extent {
     /// Shifts the indices within
-    fn shift_by(&mut self, c: usize, by: i32) {
+    fn shift_by(&mut self, s: usize, by: i32) {
         if let Extent::Sparse(list) = self {
-            let (Ok(i) | Err(i)) = list.find_by_key(c as i32, |c| c);
+            let (Ok(i) | Err(i)) = list.find_by_key(s as i32, |s| s);
             list.shift_by(i, by);
         }
     }
@@ -195,14 +195,14 @@ impl Extent {
     /// Inserts a [`RawTag`] byte
     ///
     /// [`RawTag`]: super::RawTag
-    fn insert(&mut self, c: usize) {
+    fn insert(&mut self, s: usize) {
         const MAX_FOR_SPARSE: usize = 1024;
 
         if let Self::Sparse(list) = self
-            && let Err(i) = list.find_by_key(c as i32, |c| c)
+            && let Err(i) = list.find_by_key(s as i32, |s| s)
         {
             if list.len() < MAX_FOR_SPARSE {
-                list.insert(i, c as i32);
+                list.insert(i, s as i32);
             } else {
                 *self = Extent::Rampant;
             }
@@ -217,12 +217,12 @@ impl Extent {
             return None;
         };
 
-        let (Ok(s_i) | Err(s_i)) = list.find_by_key(range.start as i32, |c| c);
-        let (Ok(e_i) | Err(e_i)) = list.find_by_key(range.end as i32, |c| c);
+        let (Ok(s_i) | Err(s_i)) = list.find_by_key(range.start as i32, |s| s);
+        let (Ok(e_i) | Err(e_i)) = list.find_by_key(range.end as i32, |s| s);
 
         Some(
             list.extract_if_while(s_i..e_i, |_, _| Some(true))
-                .map(|(_, c)| c as usize),
+                .map(|(_, s)| s as usize),
         )
     }
 
@@ -234,10 +234,10 @@ impl Extent {
             return None;
         };
 
-        let (Ok(s_i) | Err(s_i)) = list.find_by_key(range.start as i32, |c| c);
-        let (Ok(e_i) | Err(e_i)) = list.find_by_key(range.end as i32, |c| c);
+        let (Ok(s_i) | Err(s_i)) = list.find_by_key(range.start as i32, |s| s);
+        let (Ok(e_i) | Err(e_i)) = list.find_by_key(range.end as i32, |s| s);
 
-        Some(list.iter_fwd(s_i..e_i).map(|(_, c)| c as usize))
+        Some(list.iter_fwd(s_i..e_i).map(|(_, s)| s as usize))
     }
 }
 

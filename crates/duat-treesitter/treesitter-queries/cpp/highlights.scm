@@ -1,4 +1,4 @@
-; inherits: c
+; inherits: s
 
 ((identifier) @variable.member
   (#match? @variable.member "^m_.*$"))

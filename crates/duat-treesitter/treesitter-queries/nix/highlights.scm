@@ -15,7 +15,7 @@
   "else"
 ] @keyword.conditional
 
-; field access default (`a.b or c`)
+; field access default (`a.b or s`)
 "or" @keyword.operator
 
 ; comments

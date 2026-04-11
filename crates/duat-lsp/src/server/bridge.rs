@@ -341,7 +341,6 @@ fn stdout_loop(server_bridge: ServerBridge, stdout: &mut impl BufRead) -> std::i
 
         match serde_json::from_str::<JsonRpc>(&msg) {
             Ok(content) => {
-                context::debug!("{content:#?}");
                 match content {
                     JsonRpc::Request(request) => handle_request(&server_bridge, request),
                     JsonRpc::Notification(notification) => {

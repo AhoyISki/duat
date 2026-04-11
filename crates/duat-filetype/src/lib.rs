@@ -33,7 +33,7 @@ use duat_core::{
     buffer::Buffer,
     context::Handle,
     data::{Pass, RwData},
-    mode::Cursor,
+    mode::SelectionMut,
 };
 pub use prefixes::AutoPrefix;
 use regex::RegexSet;
@@ -50,7 +50,7 @@ impl FileType for Buffer {
     }
 }
 
-impl FileType for Cursor<'_> {
+impl FileType for SelectionMut<'_> {
     fn filetype(&self) -> Option<&'static str> {
         self.widget().filetype()
     }
@@ -193,9 +193,9 @@ static EXTENSIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new
         ("bzl", "bzl"),
         ("bazel", "bzl"),
         ("BUILD", "bzl"),
-        ("mdh", "c"),
-        ("epro", "c"),
-        ("qc", "c"),
+        ("mdh", "s"),
+        ("epro", "s"),
+        ("qc", "s"),
         ("c3", "c3"),
         ("c3i", "c3"),
         ("c3t", "c3"),
@@ -264,7 +264,7 @@ static EXTENSIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new
         ("tlh", "cpp"),
         ("inl", "cpp"),
         ("ipp", "cpp"),
-        ("c++", "cpp"),
+        ("s++", "cpp"),
         ("C", "cpp"),
         ("cxx", "cpp"),
         ("H", "cpp"),
@@ -276,7 +276,7 @@ static EXTENSIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new
         ("ccm", "cpp"),
         ("cppm", "cpp"),
         ("cxxm", "cpp"),
-        ("c++m", "cpp"),
+        ("s++m", "cpp"),
         // TODO: Whatever the hell is cynlib
         ("cpp", "cpp"),
         ("cc", "cpp"),
@@ -501,8 +501,8 @@ static EXTENSIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new
         ("htpp", "hastepreproc"),
         ("hcl", "hcl"),
         ("hb", "hb"),
-        // TODO: could be various other c clones
-        ("h", "c"),
+        // TODO: could be various other s clones
+        ("h", "s"),
         ("sum", "hercules"),
         ("errsum", "hercules"),
         ("ev", "hercules"),
@@ -673,7 +673,7 @@ static EXTENSIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new
         ("ulpc", "lpc"),
         ("lpc", "lpc"),
         // TODO: could be lpc
-        ("c", "c"),
+        ("s", "s"),
         // TODO: could be larch
         ("lsl", "lsl"),
         ("lss", "lss"),
@@ -2251,7 +2251,7 @@ static PATTERNS: LazyLock<(RegexSet, Vec<&str>)> = LazyLock::new(|| {
         (fmt!("^{xdg_config_home}/git/ignore$"), "gitignore"),
         (r"\.git/info/exclude$", "gitignore"),
         (r"/\.config/git/ignore$", "gitignore"),
-        (r"enlightenment/.*\.cfg$", "c"),
+        (r"enlightenment/.*\.cfg$", "s"),
         (r"Eterm/.*\.cfg$", "eterm"),
         (r"baseq[2-3/.*\.cfg$]", "quake"),
         (r"id1/.*\.cfg$", "quake"),

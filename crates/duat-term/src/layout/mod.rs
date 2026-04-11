@@ -1451,7 +1451,7 @@ fn remove_dependents(
         rm_list = remove_dependents(&mut rect, spawned, p, rm_list);
     }
 
-    for (rect, cons) in rect.children_mut().into_iter().flat_map(|c| c.iter_mut()) {
+    for (rect, cons) in rect.children_mut().into_iter().flat_map(|s| s.iter_mut()) {
         p.remove_rect(rect);
         p.remove_eqs(cons.drain());
 

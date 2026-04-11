@@ -43,8 +43,8 @@ impl CompletionsProvider for WordCompletions {
         )
     }
 
-    fn matches(&mut self, text: &Text, caret: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
-        let suffix = &text[text.search(r"\A\w*").range(caret..).next().unwrap()];
+    fn matches(&mut self, text: &Text, cursor: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
+        let suffix = &text[text.search(r"\A\w*").range(cursor..).next().unwrap()];
 
         let mut matches: Vec<_> = BUFFER_WORDS
             .lock()
@@ -65,9 +65,9 @@ impl CompletionsProvider for WordCompletions {
         matches
     }
 
-    fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
+    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
         text.search(r"\w*\z")
-            .range(..caret)
+            .range(..cursor)
             .next_back()
             .map(|r| r.start)
     }

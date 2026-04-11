@@ -7,7 +7,7 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     hook::{self, BufferSwitched, ModeSwitched},
-    mode::{self, Cursor, KeyEvent, KeyMod, Mode, alt, ctrl, event, shift},
+    mode::{self, KeyEvent, KeyMod, Mode, SelectionMut, alt, ctrl, event, shift},
     text::Mask,
 };
 use duat_filetype::AutoPrefix;
@@ -72,9 +72,9 @@ impl Mode for Insert {
 
         let opts = crate::opts::get();
         if let shift!(Left | Down | Up | Right) = key_event {
-            handle.edit_all(pa, |mut c| {
-                if c.anchor().is_none() {
-                    c.set_anchor()
+            handle.edit_all(pa, |mut s| {
+                if s.anchor().is_none() {
+                    s.set_anchor()
                 }
             });
         }
@@ -97,52 +97,52 @@ impl Mode for Insert {
 
                 match opts.tab_mode {
                     TabMode::Normal => {
-                        handle.edit_all(pa, |mut c| {
+                        handle.edit_all(pa, |mut s| {
                             let indent = indents.next().unwrap();
                             if opts.indent_chars.contains(&'\t')
                                 && is_ts_indent
-                                && reindent(c.indent(), indent, &mut c)
+                                && reindent(s.indent(), indent, &mut s)
                             {
                                 return;
                             }
                             if INSERT_TABS.load(Ordering::Relaxed) {
-                                insert_str(&mut c, '\t', 1, &mut insert_events);
+                                insert_str(&mut s, '\t', 1, &mut insert_events);
                             } else {
                                 let tab_len =
-                                    c.opts().tabstop_spaces_at(c.v_caret().visual_col() as u32);
+                                    s.opts().tabstop_spaces_at(s.v_cursor().visual_col() as u32);
                                 let tab = " ".repeat(tab_len as usize);
-                                insert_str(&mut c, tab, tab_len as i32, &mut insert_events);
+                                insert_str(&mut s, tab, tab_len as i32, &mut insert_events);
                             }
                         });
                     }
-                    TabMode::Smart => handle.edit_all(pa, |mut c| {
-                        let char_col = c.v_caret().char_col();
+                    TabMode::Smart => handle.edit_all(pa, |mut s| {
+                        let char_col = s.v_cursor().char_col();
                         let indent = indents.next().unwrap();
-                        if (opts.indent_chars.contains(&'\t') || char_col <= c.indent())
+                        if (opts.indent_chars.contains(&'\t') || char_col <= s.indent())
                             && is_ts_indent
-                            && reindent(c.indent(), indent, &mut c)
+                            && reindent(s.indent(), indent, &mut s)
                         {
                             return;
                         }
 
                         if INSERT_TABS.load(Ordering::Relaxed) {
-                            insert_str(&mut c, '\t', 1, &mut insert_events);
+                            insert_str(&mut s, '\t', 1, &mut insert_events);
                         } else {
                             let tab_len =
-                                c.opts().tabstop_spaces_at(c.v_caret().visual_col() as u32);
+                                s.opts().tabstop_spaces_at(s.v_cursor().visual_col() as u32);
                             let tab = " ".repeat(tab_len as usize);
-                            insert_str(&mut c, tab, tab_len as i32, &mut insert_events);
+                            insert_str(&mut s, tab, tab_len as i32, &mut insert_events);
                         }
                     }),
                     TabMode::VerySmart => {
                         let mut do_scroll = true;
-                        handle.edit_all(pa, |mut c| {
-                            let char_col = c.v_caret().char_col();
+                        handle.edit_all(pa, |mut s| {
+                            let char_col = s.v_cursor().char_col();
                             let indent = indents.next().unwrap();
                             let has_reindented = (opts.indent_chars.contains(&'\t')
-                                || char_col <= c.indent())
+                                || char_col <= s.indent())
                                 && is_ts_indent
-                                && reindent(c.indent(), indent, &mut c);
+                                && reindent(s.indent(), indent, &mut s);
 
                             do_scroll &= !has_reindented
                         });
@@ -156,18 +156,18 @@ impl Mode for Insert {
 
             // Regular commands
             event!(Char(char)) => {
-                handle.edit_all(pa, |mut c| {
-                    insert_str(&mut c, char, 1, &mut insert_events);
+                handle.edit_all(pa, |mut s| {
+                    insert_str(&mut s, char, 1, &mut insert_events);
                 });
                 if opts.indent_chars.contains(&char) {
                     let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
                     if is_ts_indent {
-                        handle.edit_all(pa, |mut c| {
+                        handle.edit_all(pa, |mut s| {
                             let indent = indents.next().unwrap();
                             if opts.indent_chars.contains(&char)
-                                && c.indent() == c.v_caret().char_col() - 1
+                                && s.indent() == s.v_cursor().char_col() - 1
                             {
-                                reindent(c.indent(), indent, &mut c);
+                                reindent(s.indent(), indent, &mut s);
                             }
                         })
                     }
@@ -175,44 +175,44 @@ impl Mode for Insert {
             }
 
             event!(Enter) => {
-                handle.edit_all(pa, |mut c| {
-                    let (caret, anchor) = (c.caret(), c.anchor());
-                    remove_trailing_before_cursor(&mut c);
+                handle.edit_all(pa, |mut s| {
+                    let (cursor, anchor) = (s.cursor(), s.anchor());
+                    remove_trailing_before_cursor(&mut s);
                     if let Some(anchor) = anchor {
-                        c.set_anchor();
-                        if anchor < caret {
-                            c.move_to(anchor);
+                        s.set_anchor();
+                        if anchor < cursor {
+                            s.move_to(anchor);
                         } else {
-                            c.move_hor(anchor.byte() as i32 - caret.byte() as i32);
+                            s.move_hor(anchor.byte() as i32 - cursor.byte() as i32);
                         }
-                        c.swap_ends();
+                        s.swap_ends();
                     }
 
-                    insert_str(&mut c, '\n', 1, &mut insert_events)
+                    insert_str(&mut s, '\n', 1, &mut insert_events)
                 });
                 if opts.indent_chars.contains(&'\n') {
-                    handle.edit_all(pa, |mut c| {
-                        if c.add_comment() {
-                            c.insert(' ');
-                            c.move_hor(1);
+                    handle.edit_all(pa, |mut s| {
+                        if s.add_comment() {
+                            s.insert(' ');
+                            s.move_hor(1);
                         }
                     });
                     let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
-                    handle.edit_all(pa, |mut c| {
+                    handle.edit_all(pa, |mut s| {
                         if is_ts_indent || opts.auto_indent {
-                            _ = reindent(0, indents.next().unwrap(), &mut c)
+                            _ = reindent(0, indents.next().unwrap(), &mut s)
                         }
                     });
                 }
             }
-            event!(Backspace) => handle.edit_all(pa, |mut c| {
-                let prev_caret = c.caret();
-                let prev_anchor = c.unset_anchor();
+            event!(Backspace) => handle.edit_all(pa, |mut s| {
+                let prev_cursor = s.cursor();
+                let prev_anchor = s.unset_anchor();
 
-                if c.move_hor(-1) != 0 {
-                    c.set_anchor();
-                    c.replace("");
-                    c.unset_anchor();
+                if s.move_hor(-1) != 0 {
+                    s.set_anchor();
+                    s.replace("");
+                    s.unset_anchor();
 
                     match insert_events.last_mut() {
                         Some(InsertEvent::Backspace(total)) => *total += 1,
@@ -220,22 +220,22 @@ impl Mode for Insert {
                     }
 
                     if let Some(prev_anchor) = prev_anchor {
-                        c.set_anchor();
-                        if prev_anchor > prev_caret {
-                            c.move_hor((prev_anchor.char() - prev_caret.char()) as i32);
+                        s.set_anchor();
+                        if prev_anchor > prev_cursor {
+                            s.move_hor((prev_anchor.char() - prev_cursor.char()) as i32);
                         } else {
-                            c.move_to(prev_anchor);
+                            s.move_to(prev_anchor);
                         }
-                        c.swap_ends();
+                        s.swap_ends();
                     }
                 }
             }),
-            event!(Delete) => handle.edit_all(pa, |mut c| {
-                let prev_caret = c.caret();
-                let prev_anchor = c.unset_anchor();
-                c.set_anchor();
-                c.replace("");
-                c.unset_anchor();
+            event!(Delete) => handle.edit_all(pa, |mut s| {
+                let prev_cursor = s.cursor();
+                let prev_anchor = s.unset_anchor();
+                s.set_anchor();
+                s.replace("");
+                s.unset_anchor();
 
                 match insert_events.last_mut() {
                     Some(InsertEvent::Delete(total)) => *total += 1,
@@ -243,42 +243,42 @@ impl Mode for Insert {
                 }
 
                 if let Some(prev_anchor) = prev_anchor {
-                    c.set_anchor();
-                    if prev_anchor > prev_caret {
-                        c.move_hor((prev_anchor.char() - prev_caret.char()) as i32 - 1);
+                    s.set_anchor();
+                    if prev_anchor > prev_cursor {
+                        s.move_hor((prev_anchor.char() - prev_cursor.char()) as i32 - 1);
                     } else {
-                        c.move_to(prev_anchor);
+                        s.move_to(prev_anchor);
                     }
-                    c.swap_ends();
+                    s.swap_ends();
                 }
             }),
-            event!(Left) | shift!(Left) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut c);
-                move_hor(&mut c, -1, &mut insert_events);
+            event!(Left) | shift!(Left) => handle.edit_all(pa, |mut s| {
+                set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
+                move_hor(&mut s, -1, &mut insert_events);
             }),
-            event!(Down) | shift!(Down) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut c);
+            event!(Down) | shift!(Down) => handle.edit_all(pa, |mut s| {
+                set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 if key_event.modifiers == KeyMod::NONE {
-                    c.unset_anchor();
-                    remove_trailing_before_cursor(&mut c);
+                    s.unset_anchor();
+                    remove_trailing_before_cursor(&mut s);
                 }
-                move_ver(&mut c, 1, &mut insert_events);
+                move_ver(&mut s, 1, &mut insert_events);
             }),
-            event!(Up) | shift!(Up) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut c);
+            event!(Up) | shift!(Up) => handle.edit_all(pa, |mut s| {
+                set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 if key_event.modifiers == KeyMod::NONE {
-                    c.unset_anchor();
-                    remove_trailing_before_cursor(&mut c);
+                    s.unset_anchor();
+                    remove_trailing_before_cursor(&mut s);
                 }
-                move_ver(&mut c, -1, &mut insert_events);
+                move_ver(&mut s, -1, &mut insert_events);
             }),
-            event!(Right) | shift!(Right) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut c);
-                move_hor(&mut c, 1, &mut insert_events);
+            event!(Right) | shift!(Right) => handle.edit_all(pa, |mut s| {
+                set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
+                move_hor(&mut s, 1, &mut insert_events);
             }),
 
-            event!(Home) => handle.edit_all(pa, |mut c| c.move_to_col(0)),
-            event!(End) => handle.edit_all(pa, |mut c| c.move_to_col(usize::MAX)),
+            event!(Home) => handle.edit_all(pa, |mut s| s.move_to_col(0)),
+            event!(End) => handle.edit_all(pa, |mut s| s.move_to_col(usize::MAX)),
 
             event!(Esc) => {
                 handle.text_mut(pa).new_moment();
@@ -308,7 +308,7 @@ pub enum TabMode {
     Normal,
     /// Reindent when necessary, insert character otherwise
     ///
-    /// This will reindent the line if the caret is in the leading
+    /// This will reindent the line if the cursor is in the leading
     /// space. If nothing happens, then it will insert the characters
     /// as defined in [`TabMode::Normal`].
     ///
@@ -331,28 +331,28 @@ pub(crate) fn repeat_last_insert(pa: &mut Pass, handle: &Handle) {
 
     for event in insert_events.iter() {
         match event {
-            InsertEvent::MoveHor(hor) => handle.edit_all(pa, |mut c| _ = c.move_hor(*hor)),
-            InsertEvent::MoveVer(ver) => handle.edit_all(pa, |mut c| _ = c.move_ver_wrapped(*ver)),
-            InsertEvent::Delete(del) => handle.edit_all(pa, |mut c| {
-                c.set_anchor();
-                c.move_hor(*del as i32 - 1);
-                c.replace("");
+            InsertEvent::MoveHor(hor) => handle.edit_all(pa, |mut s| _ = s.move_hor(*hor)),
+            InsertEvent::MoveVer(ver) => handle.edit_all(pa, |mut s| _ = s.move_ver_wrapped(*ver)),
+            InsertEvent::Delete(del) => handle.edit_all(pa, |mut s| {
+                s.set_anchor();
+                s.move_hor(*del as i32 - 1);
+                s.replace("");
             }),
-            InsertEvent::Backspace(back) => handle.edit_all(pa, |mut c| {
-                c.move_hor(-1);
-                c.set_anchor();
-                c.move_hor(-(*back as i32 - 1));
-                c.replace("");
+            InsertEvent::Backspace(back) => handle.edit_all(pa, |mut s| {
+                s.move_hor(-1);
+                s.set_anchor();
+                s.move_hor(-(*back as i32 - 1));
+                s.replace("");
             }),
-            InsertEvent::Insert(str, hor) => handle.edit_all(pa, |mut c| {
-                c.insert(str);
-                c.move_hor(*hor as i32);
+            InsertEvent::Insert(str, hor) => handle.edit_all(pa, |mut s| {
+                s.insert(str);
+                s.move_hor(*hor as i32);
             }),
             InsertEvent::Reindent => {
                 let (mut indents, is_ts_indent) = crate::indents(pa, handle);
                 if is_ts_indent {
-                    handle.edit_all(pa, |mut c| {
-                        reindent(c.indent(), indents.next().unwrap(), &mut c);
+                    handle.edit_all(pa, |mut s| {
+                        reindent(s.indent(), indents.next().unwrap(), &mut s);
                     })
                 }
             }
@@ -373,8 +373,8 @@ enum InsertEvent {
 }
 
 /// Removes an empty line, expects a movent down or up after.
-fn remove_trailing_before_cursor(c: &mut Cursor) {
-    let Some(line) = c.text()[..c.caret()].lines().next_back() else {
+fn remove_trailing_before_cursor(s: &mut SelectionMut) {
+    let Some(line) = s.text()[..s.cursor()].lines().next_back() else {
         return;
     };
     let chars_count = line.chars().rev().take_while(|char| *char == ' ').count();
@@ -383,16 +383,16 @@ fn remove_trailing_before_cursor(c: &mut Cursor) {
         return;
     }
 
-    let dvcol = c.v_caret().desired_visual_col();
-    let col = c.v_caret().char_col();
+    let dvcol = s.v_cursor().desired_visual_col();
+    let col = s.v_cursor().char_col();
 
-    c.move_to_col(col - chars_count);
-    c.set_anchor();
-    c.move_hor(chars_count as i32 - 1);
+    s.move_to_col(col - chars_count);
+    s.set_anchor();
+    s.move_hor(chars_count as i32 - 1);
 
-    c.replace("");
-    c.unset_anchor();
-    c.set_desired_vcol(dvcol);
+    s.replace("");
+    s.unset_anchor();
+    s.set_desired_vcol(dvcol);
 }
 
 fn complete(pa: &mut Pass, scroll: i32, insert_events: &mut Vec<InsertEvent>) {
@@ -416,11 +416,16 @@ fn complete(pa: &mut Pass, scroll: i32, insert_events: &mut Vec<InsertEvent>) {
     }
 }
 
-fn insert_str(c: &mut Cursor, new: impl ToString, len: i32, insert_events: &mut Vec<InsertEvent>) {
+fn insert_str(
+    s: &mut SelectionMut,
+    new: impl ToString,
+    len: i32,
+    insert_events: &mut Vec<InsertEvent>,
+) {
     let new = new.to_string();
-    c.insert(&new);
-    c.move_hor(len);
-    if c.is_main() {
+    s.insert(&new);
+    s.move_hor(len);
+    if s.is_main() {
         match insert_events.last_mut() {
             Some(InsertEvent::Insert(str, prev)) => {
                 str.push_str(&new);
@@ -431,8 +436,8 @@ fn insert_str(c: &mut Cursor, new: impl ToString, len: i32, insert_events: &mut 
     }
 }
 
-fn move_hor(c: &mut Cursor, hor: i32, insert_events: &mut Vec<InsertEvent>) {
-    if c.move_hor(hor) != 0 && c.is_main() {
+fn move_hor(s: &mut SelectionMut, hor: i32, insert_events: &mut Vec<InsertEvent>) {
+    if s.move_hor(hor) != 0 && s.is_main() {
         match insert_events.last_mut() {
             Some(InsertEvent::MoveHor(total)) => {
                 *total += hor;
@@ -445,9 +450,9 @@ fn move_hor(c: &mut Cursor, hor: i32, insert_events: &mut Vec<InsertEvent>) {
     }
 }
 
-fn move_ver(c: &mut Cursor, ver: i32, insert_events: &mut Vec<InsertEvent>) {
-    c.move_ver_wrapped(ver);
-    if c.is_main() {
+fn move_ver(s: &mut SelectionMut, ver: i32, insert_events: &mut Vec<InsertEvent>) {
+    s.move_ver_wrapped(ver);
+    if s.is_main() {
         match insert_events.last_mut() {
             Some(InsertEvent::MoveVer(total)) => {
                 *total += ver;
@@ -460,40 +465,40 @@ fn move_ver(c: &mut Cursor, ver: i32, insert_events: &mut Vec<InsertEvent>) {
     }
 }
 
-/// Reindents a [`Cursor`]'s line by a certain amount
-pub fn reindent(old_indent: usize, new_indent: usize, c: &mut Cursor) -> bool {
-    let old_col = c.v_caret().char_col();
-    let (caret, anchor) = (c.caret(), c.anchor());
+/// Reindents a [`SelectionMut`]'s line by a certain amount
+pub fn reindent(old_indent: usize, new_indent: usize, s: &mut SelectionMut) -> bool {
+    let old_col = s.v_cursor().char_col();
+    let (cursor, anchor) = (s.cursor(), s.anchor());
 
     let indent_diff = new_indent as i32 - old_indent as i32;
 
-    c.move_hor(-(old_col as i32));
-    c.set_anchor();
-    c.move_hor(old_indent as i32);
+    s.move_hor(-(old_col as i32));
+    s.set_anchor();
+    s.move_hor(old_indent as i32);
 
-    if c.caret() == c.anchor().unwrap() {
-        c.insert(" ".repeat(new_indent));
+    if s.cursor() == s.anchor().unwrap() {
+        s.insert(" ".repeat(new_indent));
     } else {
-        c.move_hor(-1);
-        c.replace(" ".repeat(new_indent));
+        s.move_hor(-1);
+        s.replace(" ".repeat(new_indent));
     }
-    c.set_caret_on_start();
-    c.unset_anchor();
+    s.set_cursor_on_start();
+    s.unset_anchor();
 
     if old_col < old_indent {
-        c.move_hor(old_col as i32);
+        s.move_hor(old_col as i32);
     } else {
-        c.move_hor(old_col as i32 + indent_diff);
+        s.move_hor(old_col as i32 + indent_diff);
     }
 
     if let Some(anchor) = anchor {
-        c.set_anchor();
-        if anchor < caret {
-            c.move_to(anchor);
+        s.set_anchor();
+        if anchor < cursor {
+            s.move_to(anchor);
         } else {
-            c.move_hor(anchor.byte() as i32 - caret.byte() as i32);
+            s.move_hor(anchor.byte() as i32 - cursor.byte() as i32);
         }
-        c.swap_ends();
+        s.swap_ends();
     }
 
     indent_diff != 0

@@ -26,19 +26,19 @@ impl LineRanges {
     pub fn new([s0, s1]: [&str; 2]) -> Self {
         if s0.len() + s1.len() >= 500 {
             Self(Some({
-                let [mut b, mut c, mut l] = [0; 3];
+                let [mut b, mut s, mut l] = [0; 3];
                 let mut line_ranges = ShiftList::new([0; 2]);
                 line_ranges.insert(0, [0; 2]);
 
                 for char in s0.chars().chain(s1.chars()) {
                     b += char.len_utf8() as u32;
-                    c += 1;
+                    s += 1;
                     if char == '\n' {
                         l += 1;
-                        line_ranges.insert(l as usize, [b, c])
+                        line_ranges.insert(l as usize, [b, s])
                     }
                 }
-                line_ranges.max = [b as i32, c as i32];
+                line_ranges.max = [b as i32, s as i32];
 
                 line_ranges
             }))
@@ -75,13 +75,13 @@ impl LineRanges {
             new_len[1] as i32 - old_len[1] as i32,
         ]);
 
-        let [mut b, mut c, mut l] = start;
+        let [mut b, mut s, mut l] = start;
         for char in s0.chars().chain(s1.chars()) {
             b += char.len_utf8();
-            c += 1;
+            s += 1;
             if char == '\n' {
                 l += 1;
-                line_ranges.insert(l, [b as u32, c as u32])
+                line_ranges.insert(l, [b as u32, s as u32])
             }
         }
     }
@@ -110,7 +110,7 @@ impl LineRanges {
     ) -> Option<Point> {
         let key = key as u32;
 
-        let ([mut b, mut c, mut l], [s0, s1]) = if let Some(lines) = self.0.as_ref() {
+        let ([mut b, mut s, mut l], [s0, s1]) = if let Some(lines) = self.0.as_ref() {
             match lines.find_by_key(key, by) {
                 Ok(l) => {
                     let [byte, char] = lines.get(l).unwrap();
@@ -130,12 +130,12 @@ impl LineRanges {
                     if key - by(prev) > by(next) - key {
                         let s1 = &s1[..(next[0] as usize).saturating_sub(s0.len())];
                         let s0 = &s0[..(next[0] as usize).min(s0.len())];
-                        let [mut b, mut c, mut l] = [next[0] as usize, next[1] as usize, l];
+                        let [mut b, mut s, mut l] = [next[0] as usize, next[1] as usize, l];
                         return s1.chars().rev().chain(s0.chars().rev()).find_map(|char| {
                             b -= char.len_utf8();
-                            c -= 1;
+                            s -= 1;
                             l -= (char == '\n') as usize;
-                            (by([b as u32, c as u32]) == key).then(|| Point::from_raw(b, c, l))
+                            (by([b as u32, s as u32]) == key).then(|| Point::from_raw(b, s, l))
                         });
                     } else {
                         let s1 = &s1[(prev[0] as usize).saturating_sub(s0.len())..];
@@ -149,11 +149,11 @@ impl LineRanges {
         };
 
         s0.chars().chain(s1.chars()).find_map(|char| {
-            if by([b, c]) == key {
-                Some(Point::from_raw(b as usize, c as usize, l as usize))
+            if by([b, s]) == key {
+                Some(Point::from_raw(b as usize, s as usize, l as usize))
             } else {
                 b += char.len_utf8() as u32;
-                c += 1;
+                s += 1;
                 l += (char == '\n') as u32;
                 None
             }
@@ -172,7 +172,7 @@ impl LineRanges {
         [s0, s1]: [&str; 2],
     ) -> Option<Point> {
         if let Some(line_ranges) = self.0.as_ref() {
-            line_ranges.get(line).and_then(|[mut b, mut c]| {
+            line_ranges.get(line).and_then(|[mut b, mut s]| {
                 let end = line_ranges
                     .get(line + 1)
                     .unwrap_or(line_ranges.max().map(|v| v as u32));
@@ -184,22 +184,22 @@ impl LineRanges {
                 s0.chars()
                     .chain(s1.chars())
                     .map(|char| {
-                        let old = [b as usize, c as usize, line];
+                        let old = [b as usize, s as usize, line];
                         b += char.len_utf8() as u32;
-                        c += 1;
+                        s += 1;
                         Point::from_raw(old[0], old[1], old[2])
                     })
                     .nth(column)
             })
         } else {
             let mut col = 0;
-            let [mut b, mut c, mut l] = [0; 3];
+            let [mut b, mut s, mut l] = [0; 3];
             s0.chars().chain(s1.chars()).find_map(|char| {
                 if l == line && col == column {
-                    Some(Point::from_raw(b, c, l))
+                    Some(Point::from_raw(b, s, l))
                 } else {
                     b += char.len_utf8();
-                    c += 1;
+                    s += 1;
                     l += (char == '\n') as usize;
                     col += 1;
                     col *= (char != '\n') as usize;

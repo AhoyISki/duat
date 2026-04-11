@@ -36,7 +36,7 @@ The crate has the following elements:
     diagnostic information about each line of the `Buffer`.
   * [`WhichKey`][__link19] shows what each key will do. It shows up
     automatically as you are typing and multi key sequences are
-    expected (e.g. Vim’s `c`, `d`, `f` and others).
+    expected (e.g. Vim’s `s`, `d`, `f` and others).
   * [`Info`][__link20] just shows static information, resizing itself to
     properly show as much of it as possible.
 * 2 [`modes`][__link21]:
@@ -61,11 +61,11 @@ The crate has the following elements:
     with the [`IncSearcher`][__link31] trait.
 * For [`IncSearch`][__link32], there are 4 `IncSearcher`s:
   
-  * [`SearchFwd`][__link33] will move each [`Cursor`][__link34] to the next match.
-  * [`SearchRev`][__link35] will move each `Cursor` to the previous match.
-  * [`ExtendFwd`][__link36] will extend each `Cursor`’s selections to the
+  * [`SearchFwd`][__link33] will move each [`SelectionMut`][__link34] to the next match.
+  * [`SearchRev`][__link35] will move each `SelectionMut` to the previous match.
+  * [`ExtendFwd`][__link36] will extend each `SelectionMut`’s selections to the
     next match.
-  * [`ExtendRev`][__link37] will extend each `Cursor`’s selections to the
+  * [`ExtendRev`][__link37] will extend each `SelectionMut`’s selections to the
     previous match.
 
 Note that the [`IncSearcher`][__link38] trait can be used for many more
@@ -116,7 +116,7 @@ ecosystem.
  [__link31]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::IncSearcher
  [__link32]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::IncSearch
  [__link33]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::SearchFwd
- [__link34]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::Cursor
+ [__link34]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::SelectionMut
  [__link35]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::SearchRev
  [__link36]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::ExtendFwd
  [__link37]: https://docs.rs/duat-base/0.9.0/duat_base/?search=modes::ExtendRev

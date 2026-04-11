@@ -33,7 +33,7 @@
 //!     diagnostic information about each line of the `Buffer`.
 //!   - [`WhichKey`] shows what each key will do. It shows up
 //!     automatically as you are typing and multi key sequences are
-//!     expected (e.g. Vim's `c`, `d`, `f` and others).
+//!     expected (e.g. Vim's `s`, `d`, `f` and others).
 //!   - [`Info`] just shows static information, resizing itself to
 //!     properly show as much of it as possible.
 //!
@@ -58,11 +58,11 @@
 //!     with the [`IncSearcher`] trait.
 //!
 //! - For [`IncSearch`], there are 4 `IncSearcher`s:
-//!   - [`SearchFwd`] will move each [`Cursor`] to the next match.
-//!   - [`SearchRev`] will move each `Cursor` to the previous match.
-//!   - [`ExtendFwd`] will extend each `Cursor`'s selections to the
+//!   - [`SearchFwd`] will move each [`SelectionMut`] to the next match.
+//!   - [`SearchRev`] will move each `SelectionMut` to the previous match.
+//!   - [`ExtendFwd`] will extend each `SelectionMut`'s selections to the
 //!     next match.
-//!   - [`ExtendRev`] will extend each `Cursor`'s selections to the
+//!   - [`ExtendRev`] will extend each `SelectionMut`'s selections to the
 //!     previous match.
 //!
 //! Note that the [`IncSearcher`] trait can be used for many more
@@ -105,7 +105,7 @@
 //! [`IncSearch`]: modes::IncSearch
 //! [`IncSearcher`]: modes::IncSearcher
 //! [`SearchFwd`]: modes::SearchFwd
-//! [`Cursor`]: duat_core::mode::Cursor
+//! [`SelectionMut`]: duat_core::mode::SelectionMut
 //! [`SearchRev`]: modes::SearchRev
 //! [`ExtendFwd`]: modes::ExtendFwd
 //! [`ExtendRev`]: modes::ExtendRev

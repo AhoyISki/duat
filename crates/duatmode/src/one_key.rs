@@ -48,29 +48,29 @@ impl OneKey {
             }
             (OneKey::ToNext(nth, is_inside, set_anchor), _) => {
                 if set_anchor {
-                    handle.edit_all(pa, |mut c| c.set_anchor());
+                    handle.edit_all(pa, |mut s| s.set_anchor());
                 } else {
-                    handle.edit_all(pa, |mut c| _ = c.set_anchor_if_needed());
+                    handle.edit_all(pa, |mut s| _ = s.set_anchor_if_needed());
                 }
                 match_bounds(pa, handle, event, nth, is_inside, Bounds::Ahead);
                 (SelType::Normal, true)
             }
             (OneKey::ToPrevious(nth, is_inside, set_anchor), _) => {
                 if set_anchor {
-                    handle.edit_all(pa, |mut c| c.set_anchor());
+                    handle.edit_all(pa, |mut s| s.set_anchor());
                 } else {
-                    handle.edit_all(pa, |mut c| _ = c.set_anchor_if_needed());
+                    handle.edit_all(pa, |mut s| _ = s.set_anchor_if_needed());
                 }
                 match_bounds(pa, handle, event, nth, is_inside, Bounds::Behind);
                 (SelType::Normal, true)
             }
             (OneKey::Replace, Some(char)) => {
-                handle.edit_all(pa, |mut c| {
-                    let anchor_didnt_exist = c.set_anchor_if_needed();
-                    let len = c.selection().chars().count();
-                    c.replace(char.to_string().repeat(len));
+                handle.edit_all(pa, |mut s| {
+                    let anchor_didnt_exist = s.set_anchor_if_needed();
+                    let len = s.selection().chars().count();
+                    s.replace(char.to_string().repeat(len));
                     if anchor_didnt_exist {
-                        c.unset_anchor();
+                        s.unset_anchor();
                     }
                 });
                 (SelType::Normal, true)
@@ -94,34 +94,34 @@ fn match_goto(
     };
 
     match key_event {
-        event!('h') => handle.edit_all(pa, |mut c| {
-            set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
-            let range = c.search("\n").to_caret().next_back();
-            c.move_to(range.unwrap_or_default().end);
+        event!('h') => handle.edit_all(pa, |mut s| {
+            set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
+            let range = s.search("\n").to_cursor().next_back();
+            s.move_to(range.unwrap_or_default().end);
         }),
-        event!('j') => handle.edit_all(pa, |mut c| {
-            set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
-            c.move_ver(i32::MAX);
+        event!('j') => handle.edit_all(pa, |mut s| {
+            set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
+            s.move_ver(i32::MAX);
         }),
-        event!('k' | 'g') => handle.edit_all(pa, |mut c| {
-            set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
-            c.move_to_coords(0, 0)
+        event!('k' | 'g') => handle.edit_all(pa, |mut s| {
+            set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
+            s.move_to_coords(0, 0)
         }),
         event!('l') => {
-            handle.edit_all(pa, |c| {
-                select_to_end_of_line(sel_type == SelType::Extend, c)
+            handle.edit_all(pa, |s| {
+                select_to_end_of_line(sel_type == SelType::Extend, s)
             });
             sel_type = SelType::BeforeEndOfLine;
         }
-        event!('i') => handle.edit_all(pa, |mut c| {
-            set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
-            let range = c.search("(\\A|\n)[ \t]*").to_caret().next_back();
+        event!('i') => handle.edit_all(pa, |mut s| {
+            set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
+            let range = s.search("(\\A|\n)[ \t]*").to_cursor().next_back();
             if let Some(range) = range {
-                c.move_to(range.end);
+                s.move_to(range.end);
 
-                let points = c.search("[^ \t]").from_caret().next();
+                let points = s.search("[^ \t]").from_cursor().next();
                 if let Some(range) = points {
-                    c.move_to(range.start)
+                    s.move_to(range.start)
                 }
             }
         }),
@@ -145,24 +145,24 @@ fn match_find_until(
     st: SelType,
 ) {
     use SelType::*;
-    handle.edit_all(pa, |mut c| {
+    handle.edit_all(pa, |mut s| {
         let search = format!("\\x{{{:X}}}", char as u32);
         let (points, back) = match st {
-            Reverse | ExtendRev => (c.search(search).to_caret().nth_back(nth), 1),
-            Normal | Extend => (c.search(search).from_caret_excl().nth(nth), -1),
+            Reverse | ExtendRev => (s.search(search).to_cursor().nth_back(nth), 1),
+            Normal | Extend => (s.search(search).from_cursor_excl().nth(nth), -1),
             _ => unreachable!(),
         };
 
         if let Some(range) = points
-            && range.start != c.caret().byte()
+            && range.start != s.cursor().byte()
         {
             let is_extension = !matches!(st, Extend | ExtendRev);
-            if is_extension || c.anchor().is_none() {
-                c.set_anchor();
+            if is_extension || s.anchor().is_none() {
+                s.set_anchor();
             }
-            c.move_to(range.start);
+            s.move_to(range.start);
             if is_t {
-                c.move_hor(back);
+                s.move_hor(back);
             }
         } else if nth == 0 {
             context::warn!("Char [a]{char}[] not found")
@@ -188,33 +188,33 @@ fn match_bounds(
     bounds: Bounds,
 ) {
     let opts = handle.opts(pa);
-    let initial_cursors_len = handle.selections(pa).len();
+    let initial_sels_len = handle.selections(pa).len();
     let brackets = crate::opts::get().brackets;
 
     let mut failed = false;
 
     if let Some(object) = Object::new(event, opts, brackets) {
-        edit_or_destroy_all(pa, handle, &mut failed, |c| {
+        edit_or_destroy_all(pa, handle, &mut failed, |s| {
             match bounds {
                 Bounds::Ahead => {
-                    let p = object.find_ahead(c, nth, is_inside)?;
-                    c.move_to(p.saturating_sub(1));
+                    let p = object.find_ahead(s, nth, is_inside)?;
+                    s.move_to(p.saturating_sub(1));
                 }
                 Bounds::Behind => {
-                    let p = object.find_behind(c, nth, is_inside)?;
-                    c.move_to(p);
+                    let p = object.find_behind(s, nth, is_inside)?;
+                    s.move_to(p);
                 }
                 Bounds::Both => {
-                    let start = object.find_behind(c, nth, is_inside)?;
-                    let end = object.find_ahead(c, nth, is_inside)?;
-                    c.move_to(start..end);
+                    let start = object.find_behind(s, nth, is_inside)?;
+                    let end = object.find_ahead(s, nth, is_inside)?;
+                    s.move_to(start..end);
                 }
             };
             Some(())
         });
     }
 
-    if initial_cursors_len == 1 && failed {
+    if initial_sels_len == 1 && failed {
         let rel = if is_inside { "inside" } else { "around" };
         context::warn!("Failed selecting {rel} object");
     }

@@ -1,4 +1,4 @@
-; inherits: c
+; inherits: s
 
 [
   (class_declaration)

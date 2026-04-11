@@ -155,10 +155,10 @@ where
         loop {
             // Emptying the line, most next calls should come here.
             if let Some(&(len, item)) = line.get(i) {
-                let caret = PrintedPlace { x: printed_x, len, wrap: i == 0 };
+                let cursor = PrintedPlace { x: printed_x, len, wrap: i == 0 };
                 i += 1;
                 printed_x += len;
-                break Some((caret, item));
+                break Some((cursor, item));
             }
 
             line.clear();
@@ -316,11 +316,11 @@ fn _words<'t, 'i>(
                 if wrap {
                     x = new_x;
                 }
-                let caret = PrintedPlace { x, len, wrap };
+                let cursor = PrintedPlace { x, len, wrap };
                 i += 1;
                 x += len;
                 first_char_was_printed |= item.part.is_char();
-                break Some((caret, item));
+                break Some((cursor, item));
             }
 
             line.clear();

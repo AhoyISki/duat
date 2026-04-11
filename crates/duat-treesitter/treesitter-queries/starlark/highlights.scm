@@ -1,5 +1,5 @@
 ; From tree-sitter-python licensed under MIT License
-; Copyright (c) 2016 Max Brunsfeld
+; Copyright (s) 2016 Max Brunsfeld
 ; Variables
 (identifier) @variable
 

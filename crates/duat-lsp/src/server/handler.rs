@@ -148,7 +148,6 @@ pub fn handle_request(bridge: &ServerBridge, request: jsonrpc_lite::Request) {
 pub fn handle_notification(bridge: &ServerBridge, notification: jsonrpc_lite::Notification) {
     match notification.method.as_str() {
         PublishDiagnostics::METHOD => {
-            context::debug!("got diagnostics");
             let Some(encoding) = bridge.encoding.get().copied() else {
                 return;
             };

@@ -117,7 +117,7 @@ pub fn setup_completions() {
 
             Completions::update_text_and_position(pa, &completions, 0);
             let completions_master = completions.master(pa).unwrap();
-            completions.write(pa).last_caret = completions_master.selections(pa).main().caret();
+            completions.write(pa).last_cursor = completions_master.selections(pa).main().cursor();
             if !completions.is_closed() {
                 Completions::set_frame(pa, &completions);
             }
@@ -142,17 +142,17 @@ pub fn setup_completions() {
 /// character in order to scroll through a list of options.
 ///
 /// The [`Completions`] will show words that match the word behind the
-/// main [`Selection`]'s [caret], and they will automatically follow
+/// main [`Selection`]'s [cursor], and they will automatically follow
 /// the [`Selection`] if it moves to other words.
 ///
-/// Initially, even if there is no word before the [caret],
+/// Initially, even if there is no word before the [cursor],
 /// completions will be shown, unless you set [`show_without_prefix`]
 /// to `false`. However, as the list moves around, completions will
-/// only show up if there is a word behind the [caret], as to not be
+/// only show up if there is a word behind the [cursor], as to not be
 /// bothersome.
 ///
 /// [`Selection`]: duat_core::mode::Selection
-/// [caret]: duat_core::mode::Selection::caret
+/// [cursor]: duat_core::mode::Selection::cursor
 /// [`show_without_prefix`]: Self::show_without_prefix
 pub struct CompletionsBuilder {
     providers: Option<ProvidersFn>,
@@ -203,7 +203,7 @@ impl CompletionsBuilder {
             max_height: 20,
             start_byte,
             show_without_prefix: self.show_without_prefix,
-            last_caret: main.caret(),
+            last_cursor: main.cursor(),
             info_handle: None,
         };
 
@@ -247,7 +247,7 @@ pub struct Completions {
     max_height: usize,
     start_byte: usize,
     show_without_prefix: bool,
-    last_caret: Point,
+    last_cursor: Point,
     info_handle: Option<Handle<Info>>,
 }
 
@@ -408,30 +408,30 @@ impl Completions {
                     .text()
                     .selections()
                     .iter()
-                    .map(|(sel, _)| start_fn(master.text(), sel.caret()))
+                    .map(|(sel, _)| start_fn(master.text(), sel.cursor()))
                     .collect::<Vec<_>>()
                     .into_iter();
 
                 drop(start_fn);
                 let mut shift = 0;
 
-                master_handle.edit_all(pa, |mut c| {
+                master_handle.edit_all(pa, |mut s| {
                     let start = (starts.next().unwrap() as i32 + shift) as usize;
-                    shift += replacement.len() as i32 - (c.caret().byte() as i32 - start as i32);
+                    shift += replacement.len() as i32 - (s.cursor().byte() as i32 - start as i32);
 
-                    c.move_to(start..c.caret().byte());
+                    s.move_to(start..s.cursor().byte());
 
-                    if c.is_main() {
-                        main_replacement = Some((c.selection().to_string(), replacement.clone()));
+                    if s.is_main() {
+                        main_replacement = Some((s.selection().to_string(), replacement.clone()));
                     }
 
-                    c.replace(&replacement);
-                    c.unset_anchor();
+                    s.replace(&replacement);
+                    s.unset_anchor();
                     if !replacement.is_empty() {
-                        c.move_hor(1);
+                        s.move_hor(1);
                     }
 
-                    if c.is_main() {
+                    if s.is_main() {
                         new_start_byte = start;
                     }
                 });
@@ -486,7 +486,7 @@ impl Completions {
                     max_height: comp.max_height,
                     start_byte: new_start_byte,
                     show_without_prefix: false,
-                    last_caret: comp.last_caret,
+                    last_cursor: comp.last_cursor,
                     info_handle: comp.info_handle.take(),
                 };
 
@@ -582,8 +582,8 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// in an appropriate manner (e.g. by word proximity or
     /// frequency).
     ///
-    /// The `caret` is the position where the main cursor's [caret]
-    /// lies, And the `prefix` and `suffix` are .
+    /// The `cursor` is the position where the main selection's
+    /// [cursor] lies, And the `prefix` and `suffix` are .
     ///
     /// If the returned [`Vec`] is empty, then the next provider will
     /// be selected to return a list of matches.
@@ -592,8 +592,8 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// would happen if the user types something, deletes something,
     /// or moves the cursor around.
     ///
-    /// [caret]: duat_core::mode::Selection::caret
-    fn matches(&mut self, text: &Text, caret: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)>;
+    /// [cursor]: duat_core::mode::Selection::cursor
+    fn matches(&mut self, text: &Text, cursor: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)>;
 
     /// Get the starting byte for this completions
     ///
@@ -608,7 +608,7 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// ```text
     ///         v------ starting byte index.
     /// This is bein|g typed.
-    ///             ^-- main cursor caret.
+    ///             ^-- main cursor.
     /// ```
     ///
     /// If you're typing arguments in a command, you'd return the byte
@@ -617,13 +617,13 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// ```text
     ///       v--------------------------- starting byte index.
     /// :edit 'This is a quoted argum|ent
-    ///                              ^---< main cursor caret.
+    ///                              ^---< main cursor.
     /// ```
     ///
     /// This function is used in order to determine which providers
     /// should be prioritized, giving higher priority to the ones that
     /// have longer matches.
-    fn get_start(&self, text: &Text, caret: Point) -> Option<usize>;
+    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize>;
 
     /// Additional information about an entry, which can be shown when
     /// it is selected.
@@ -665,16 +665,16 @@ struct InnerProvider<P: CompletionsProvider> {
 impl<P: CompletionsProvider> InnerProvider<P> {
     #[allow(clippy::type_complexity)]
     fn new(mut provider: P, text: &Text, height: usize) -> (Self, usize, Option<(Text, Text)>) {
-        let Some(main_caret) = text.get_main_sel().map(|sel| sel.caret()) else {
+        let Some(main_cursor) = text.get_main_sel().map(|sel| sel.cursor()) else {
             panic!("Tried to spawn completions on a Text with no main selection");
         };
 
         let start = provider
-            .get_start(text, main_caret)
-            .unwrap_or(main_caret.byte());
+            .get_start(text, main_cursor)
+            .unwrap_or(main_cursor.byte());
 
-        let orig_prefix = text[start..main_caret.byte()].to_string();
-        let matches = provider.matches(text, main_caret, &orig_prefix);
+        let orig_prefix = text[start..main_cursor.byte()].to_string();
+        let matches = provider.matches(text, main_cursor, &orig_prefix);
 
         let mut inner = Self {
             provider,
@@ -702,28 +702,31 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         usize,
         Option<((Text, Text), Option<(String, Option<(Text, Orientation)>)>)>,
     ) {
-        let Some(caret) = text.get_main_sel().map(|sel| sel.caret()) else {
+        let Some(cursor) = text.get_main_sel().map(|sel| sel.cursor()) else {
             panic!("Tried to update completions on a Text with no main selection");
         };
 
-        let start = self.provider.get_start(text, caret).unwrap_or(caret.byte());
+        let start = self
+            .provider
+            .get_start(text, cursor)
+            .unwrap_or(cursor.byte());
 
-        let Some(prefix) = text.get(start..caret.byte()).map(Strs::to_string) else {
-            panic!("Failed to get prefix from {:?}", start..caret.byte());
+        let Some(prefix) = text.get(start..cursor.byte()).map(Strs::to_string) else {
+            panic!("Failed to get prefix from {:?}", start..cursor.byte());
         };
 
         // This should only be true if edits other than the one applied by
         // Completions take place.
-        let target_changed = self.current.as_ref().is_some_and(|(c, _)| **c != prefix)
+        let target_changed = self.current.as_ref().is_some_and(|(s, _)| **s != prefix)
             || (self.current.is_none() && self.orig_prefix != prefix);
 
         if target_changed {
-            self.matches = self.provider.matches(text, caret, &prefix);
+            self.matches = self.provider.matches(text, cursor, &prefix);
             self.current = None;
             self.orig_prefix = prefix;
         }
 
-        if self.matches.is_empty() || (start == caret.byte() && !show_without_prefix) {
+        if self.matches.is_empty() || (start == cursor.byte() && !show_without_prefix) {
             self.current = None;
             return (start, None);
         }
@@ -811,7 +814,11 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
     }
 
     fn start_fn(&self) -> Box<dyn Fn(&Text, Point) -> usize + '_> {
-        Box::new(|text, caret| self.provider.get_start(text, caret).unwrap_or(caret.byte()))
+        Box::new(|text, cursor| {
+            self.provider
+                .get_start(text, cursor)
+                .unwrap_or(cursor.byte())
+        })
     }
 }
 

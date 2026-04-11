@@ -1,4 +1,4 @@
-; inherits: c
+; inherits: s
 
 [
   (foreach_statement)

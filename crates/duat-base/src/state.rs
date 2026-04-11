@@ -5,12 +5,12 @@
 //! no other meddling.
 //!
 //! Examples of functions in here are [`main_txt`], which will show a
-//! formatted version of the main [`Cursor`], and [`mode_txt`] which
+//! formatted version of the main [`SelectionMut`], and [`mode_txt`] which
 //! will show a formatted version of the current [`Mode`] of Duat.
 //!
 //! [`StatusLine`]: crate::widgets::StatusLine
 //! [`status!`]: crate::widgets::status
-//! [`Cursor`]: duat_core::mode::Cursor
+//! [`SelectionMut`]: duat_core::mode::SelectionMut
 //! [`Mode`]: duat_core::mode::Mode
 use std::sync::LazyLock;
 
@@ -175,21 +175,21 @@ pub fn mode_txt() -> DataMap<&'static str, Text> {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_byte(buf: &Buffer) -> usize {
-    buf.selections().main().caret().byte() + 1
+    buf.selections().main().cursor().byte() + 1
 }
 
 /// [`StatusLine`] part: Char of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_char(buf: &Buffer) -> usize {
-    buf.selections().main().caret().char() + 1
+    buf.selections().main().cursor().char() + 1
 }
 
 /// [`StatusLine`] part: Line of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_line(buf: &Buffer) -> usize {
-    buf.selections().main().caret().line() + 1
+    buf.selections().main().cursor().line() + 1
 }
 
 /// [`StatusLine`] part: Column of the main selection
@@ -197,7 +197,7 @@ pub fn main_line(buf: &Buffer) -> usize {
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_col(buffer: &Buffer, area: &Area) -> usize {
     let main = buffer.selections().main();
-    main.v_caret(buffer.text(), area, buffer.print_opts())
+    main.v_cursor(buffer.text(), area, buffer.print_opts())
         .char_col()
 }
 
@@ -230,20 +230,20 @@ pub fn selections(buffer: &Buffer) -> usize {
 ///
 /// # Formatting
 ///
-/// When there is one [`Cursor`]:
+/// When there is one [`SelectionMut`]:
 ///
 /// ```text
 /// [selections]1 sel
 /// ```
 ///
-/// When there is more than one [`Cursor`]:
+/// When there is more than one [`SelectionMut`]:
 ///
 /// ```text
 /// [selections]{n} sels
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-/// [`Cursor`]: duat_core::mode::Cursor
+/// [`SelectionMut`]: duat_core::mode::SelectionMut
 pub fn sels_txt(buffer: &Buffer) -> Text {
     if buffer.selections().len() == 1 {
         txt!("[selections]1 sel")

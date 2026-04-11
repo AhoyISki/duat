@@ -28,8 +28,8 @@ impl<S: AsRef<str> + Send + 'static> CompletionsProvider for Vec<S> {
         entries
     }
 
-    fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
-        Some(text.search(r"\S*").range(..caret).next_back()?.start)
+    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
+        Some(text.search(r"\S*").range(..cursor).next_back()?.start)
     }
 }
 
@@ -57,8 +57,8 @@ impl<const N: usize, S: AsRef<str> + Send + 'static> CompletionsProvider for [S;
         entries
     }
 
-    fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
-        Some(text.search(r"\S*").range(..caret).next_back()?.start)
+    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
+        Some(text.search(r"\S*").range(..cursor).next_back()?.start)
     }
 }
 
@@ -82,11 +82,11 @@ impl<S: AsRef<str> + Send + 'static> CompletionsProvider for ExhaustiveCompletio
         txt!("{entry}{Spacer}")
     }
 
-    fn matches(&mut self, text: &Text, caret: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
+    fn matches(&mut self, text: &Text, cursor: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
         let yet_to_be_typed: Vec<_> = self
             .list
             .iter()
-            .filter(|word| !text[..caret].contains_pat(word.as_ref()).unwrap())
+            .filter(|word| !text[..cursor].contains_pat(word.as_ref()).unwrap())
             .collect();
 
         if yet_to_be_typed.len() < self.list.len() && self.only_one {
@@ -109,7 +109,7 @@ impl<S: AsRef<str> + Send + 'static> CompletionsProvider for ExhaustiveCompletio
         entries
     }
 
-    fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
-        Some(text.search(r"\S*").range(..caret).next_back()?.start)
+    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
+        Some(text.search(r"\S*").range(..cursor).next_back()?.start)
     }
 }

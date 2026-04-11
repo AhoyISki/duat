@@ -99,8 +99,8 @@ pub fn duat_name<T: ?Sized + 'static>() -> &'static str {
 
             for path in type_name.split_inclusive(['<', '>', ',', ' ']) {
                 for segment in path.split("::") {
-                    let is_type = segment.chars().any(|c| c.is_uppercase());
-                    let is_punct = segment.chars().all(|c| !c.is_alphanumeric());
+                    let is_type = segment.chars().any(|s| s.is_uppercase());
+                    let is_punct = segment.chars().all(|s| !s.is_alphanumeric());
                     let is_dyn = segment.starts_with("dyn");
                     if is_type || is_punct || is_dyn {
                         name.push_str(segment);
@@ -261,9 +261,9 @@ pub fn get_range(range: impl std::ops::RangeBounds<usize>, max: usize) -> Range<
 /// Adds two shifts together.
 pub fn add_shifts(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
     let b = lhs[0] + rhs[0];
-    let c = lhs[1] + rhs[1];
+    let s = lhs[1] + rhs[1];
     let l = lhs[2] + rhs[2];
-    [b, c, l]
+    [b, s, l]
 }
 
 /// Allows binary searching with an initial guess and displaced
@@ -303,7 +303,7 @@ pub fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug,
         }
     };
 
-    // On Cursors, the Cursors can intersect, so we need to check
+    // On SelectionMuts, the SelectionMuts can intersect, so we need to check
     while m_range.start > 0 && start <= end_of(m_range.start - 1) {
         m_range.start -= 1;
     }
@@ -472,7 +472,7 @@ macro_rules! doc_duat {
                     Ns, buffer::Buffer, cmd,
                     context::{self, Handle},
                     data::{self, Pass},
-                    form::{self, CursorShape, Form},
+                    form::{self, SelectionMutShape, Form},
                     hook::{
                         self, BufferOpened, BufferSaved, BufferUpdated, ColorschemeSet,
                         ConfigLoaded, ConfigUnloaded, FocusChanged, FocusedOn, FocusedOnDuat,

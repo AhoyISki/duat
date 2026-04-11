@@ -76,7 +76,7 @@ impl LineNumbers {
             let main_line = if buf.selections().is_empty() {
                 usize::MAX
             } else {
-                buf.selections().main().caret().line()
+                buf.selections().main().cursor().line()
             };
 
             (main_line, printed_line_numbers)
@@ -216,18 +216,18 @@ impl LineNumbersOpts {
                         let line = line(pa, &buffer);
 
                         buffer.selections_mut(pa).remove_extras();
-                        buffer.edit_main(pa, |mut c| {
-                            c.unset_anchor();
-                            c.move_to_coords(line, 0)
+                        buffer.edit_main(pa, |mut s| {
+                            s.unset_anchor();
+                            s.move_to_coords(line, 0)
                         })
                     }
                     MouseEventKind::Drag(MouseButton::Left) => {
                         let line = line(pa, &buffer);
 
                         buffer.selections_mut(pa).remove_extras();
-                        buffer.edit_main(pa, |mut c| {
-                            c.set_anchor_if_needed();
-                            c.move_to_coords(line, 0)
+                        buffer.edit_main(pa, |mut s| {
+                            s.set_anchor_if_needed();
+                            s.move_to_coords(line, 0)
                         })
                     }
                     MouseEventKind::ScrollDown => {

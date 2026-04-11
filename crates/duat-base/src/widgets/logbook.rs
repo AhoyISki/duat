@@ -105,8 +105,8 @@ pub fn add_logbook_hooks() {
                 let buffer = context::get_buffer_by_path(pa, Path::new(location.file())).unwrap();
                 mode::reset_to(pa, &buffer);
                 buffer.selections_mut(pa).remove_extras();
-                buffer.edit_main(pa, |mut c| {
-                    c.move_to_coords(location.line() - 1, location.column() - 1);
+                buffer.edit_main(pa, |mut s| {
+                    s.move_to_coords(location.line() - 1, location.column() - 1);
                 });
             }
         }

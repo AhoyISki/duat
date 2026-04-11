@@ -22,7 +22,7 @@
 
 [
   "\\a"
-  "\\c"
+  "\\s"
 ] @tag
 
 (code_block_language) @label

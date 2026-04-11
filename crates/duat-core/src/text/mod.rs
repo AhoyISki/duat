@@ -161,7 +161,7 @@ impl Text {
         let tags = InnerTags::new(buf.len());
 
         let selections = if selections.iter().any(|(sel, _)| {
-            [Some(sel.caret()), sel.anchor()]
+            [Some(sel.cursor()), sel.anchor()]
                 .into_iter()
                 .flatten()
                 .any(|point| point.char() >= buf.end_point().char())

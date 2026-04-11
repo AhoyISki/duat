@@ -130,7 +130,7 @@ impl Variables {
 
             for &other_coords in edges[(i + 1)..].iter() {
                 if let Some((coord, sides)) = coords.crossing(other_coords) {
-                    let prev_crossing = crossings.iter_mut().find(|(c, ..)| *c == coord);
+                    let prev_crossing = crossings.iter_mut().find(|(s, ..)| *s == coord);
                     if let Some((_, [right, up, left, down])) = prev_crossing {
                         *right = right.or(sides[0]);
                         *up = up.or(sides[1]);

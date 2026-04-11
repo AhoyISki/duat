@@ -6,7 +6,7 @@
   (#eq? @_cdef_identifier "cdef")
   (#match? @injection.content "^[\"']")
   (#offset! @injection.content 0 1 0 -1)
-  (#set! injection.language "c"))
+  (#set! injection.language "s"))
 
 ((function_call
   (index
@@ -16,7 +16,7 @@
   (#eq? @_cdef_identifier "cdef")
   (#match? @injection.content "^%[%[")
   (#offset! @injection.content 0 2 0 -2)
-  (#set! injection.language "c"))
+  (#set! injection.language "s"))
 
 ; string.format('...')
 ((function_call

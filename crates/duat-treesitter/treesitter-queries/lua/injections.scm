@@ -8,7 +8,7 @@
   arguments: (arguments
     (string
       content: _ @injection.content)))
-  (#set! injection.language "c")
+  (#set! injection.language "s")
   (#eq? @_cdef_identifier "cdef"))
 
 ((function_call

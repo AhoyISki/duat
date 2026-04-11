@@ -256,17 +256,17 @@ impl MatchPairsRef<'_> {
                 let ((delim_side, node), parent) =
                     node.and_then(|(ds, n)| Some((ds, n)).zip(n.parent()))?;
 
-                let mut c = parent.walk();
+                let mut s = parent.walk();
 
                 if delim_side == 0
-                    && (c.goto_first_child() && c.node() == node && c.goto_parent())
-                    && (c.goto_last_child() && c.node().grammar_name().as_bytes() == delims[1])
+                    && (s.goto_first_child() && s.node() == node && s.goto_parent())
+                    && (s.goto_last_child() && s.node().grammar_name().as_bytes() == delims[1])
                 {
-                    Some((node.byte_range(), c.node().byte_range()))
-                } else if (c.goto_last_child() && c.node() == node && c.goto_parent())
-                    && (c.goto_first_child() && c.node().grammar_name().as_bytes() == delims[0])
+                    Some((node.byte_range(), s.node().byte_range()))
+                } else if (s.goto_last_child() && s.node() == node && s.goto_parent())
+                    && (s.goto_first_child() && s.node().grammar_name().as_bytes() == delims[0])
                 {
-                    Some((c.node().byte_range(), node.byte_range()))
+                    Some((s.node().byte_range(), node.byte_range()))
                 } else {
                     None
                 }

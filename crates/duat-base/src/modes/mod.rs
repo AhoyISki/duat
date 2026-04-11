@@ -18,11 +18,11 @@
 //!
 //! impl IncSearcher for KeepMatching {
 //!     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
-//!         handle.edit_all(pa, |mut c| {
-//!             c.set_caret_on_start();
-//!             let range = c.range();
-//!             if c.search(pat).range(range).next().is_none() {
-//!                 c.destroy();
+//!         handle.edit_all(pa, |mut s| {
+//!             s.set_cursor_on_start();
+//!             let range = s.range();
+//!             if s.search(pat).range(range).next().is_none() {
+//!                 s.destroy();
 //!             }
 //!         });
 //!     }
@@ -34,11 +34,11 @@
 //! ```
 //!
 //! The above [`IncSearcher`] will do the incremental search, and keep
-//! only the [`Cursor`]s that matched at some point inside of their
+//! only the [`SelectionMut`]s that matched at some point inside of their
 //! selections.
 //!
 //! [`Mode`]: duat_core::mode::Mode
-//! [`Cursor`]: duat_core::mode::Cursor
+//! [`SelectionMut`]: duat_core::mode::SelectionMut
 use std::sync::Mutex;
 
 use duat_core::{buffer::Buffer, context::Handle, data::Pass};
@@ -70,7 +70,7 @@ static CLIPBOARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// [`Selection`]: duat_core::mode::Selection
 pub fn copy_selections(pa: &mut Pass, handle: &Handle<Buffer>) {
     let mut copies: Vec<String> = Vec::new();
-    handle.edit_all(pa, |c| copies.push(c.selection().to_string()));
+    handle.edit_all(pa, |s| copies.push(s.selection().to_string()));
     if copies.len() == 1 && !copies.first().unwrap().is_empty() {
         duat_core::clipboard::set(copies.first().unwrap());
     }

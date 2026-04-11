@@ -23,11 +23,11 @@
 
 (asy_environment
   code: (source_code) @injection.content
-  (#set! injection.language "c"))
+  (#set! injection.language "s"))
 
 (asydef_environment
   code: (source_code) @injection.content
-  (#set! injection.language "c"))
+  (#set! injection.language "s"))
 
 (minted_environment
   (begin

@@ -61,11 +61,11 @@
 
 (normal_command
   (identifier) @keyword.repeat
-  (#match? @keyword.repeat "\\\\c^(continue|break)$"))
+  (#match? @keyword.repeat "\\\\s^(continue|break)$"))
 
 (normal_command
   (identifier) @keyword.return
-  (#match? @keyword.return "\\\\c^return$"))
+  (#match? @keyword.return "\\\\s^return$"))
 
 (function_command
   (function)
@@ -93,7 +93,7 @@
 
 ;
 ((argument) @boolean
-  (#match? @boolean "\\\\c^(1|on|yes|true|y|0|off|no|false|n|ignore|notfound|.*-notfound)$"))
+  (#match? @boolean "\\\\s^(1|on|yes|true|y|0|off|no|false|n|ignore|notfound|.*-notfound)$"))
 
 ;
 (if_command
@@ -119,18 +119,18 @@
 (normal_command
   (identifier) @function.builtin
   (#match? @function.builtin
-    "\\c^(cmake_host_system_information|cmake_language|cmake_minimum_required|cmake_parse_arguments|cmake_path|cmake_policy|configure_file|execute_process|file|find_file|find_library|find_package|find_path|find_program|foreach|get_cmake_property|get_directory_property|get_filename_component|get_property|include|include_guard|list|macro|mark_as_advanced|math|message|option|separate_arguments|set|set_directory_properties|set_property|site_name|string|unset|variable_watch|add_compile_definitions|add_compile_options|add_custom_command|add_custom_target|add_definitions|add_dependencies|add_executable|add_library|add_link_options|add_subdirectory|add_test|aux_source_directory|build_command|create_test_sourcelist|define_property|enable_language|enable_testing|export|fltk_wrap_ui|get_source_file_property|get_target_property|get_test_property|include_directories|include_external_msproject|include_regular_expression|install|link_directories|link_libraries|load_cache|project|remove_definitions|set_source_files_properties|set_target_properties|set_tests_properties|source_group|target_compile_definitions|target_compile_features|target_compile_options|target_include_directories|target_link_directories|target_link_libraries|target_link_options|target_precompile_headers|target_sources|try_compile|try_run|ctest_build|ctest_configure|ctest_coverage|ctest_empty_binary_directory|ctest_memcheck|ctest_read_custom_files|ctest_run_script|ctest_sleep|ctest_start|ctest_submit|ctest_test|ctest_update|ctest_upload)$"))
+    "\\s^(cmake_host_system_information|cmake_language|cmake_minimum_required|cmake_parse_arguments|cmake_path|cmake_policy|configure_file|execute_process|file|find_file|find_library|find_package|find_path|find_program|foreach|get_cmake_property|get_directory_property|get_filename_component|get_property|include|include_guard|list|macro|mark_as_advanced|math|message|option|separate_arguments|set|set_directory_properties|set_property|site_name|string|unset|variable_watch|add_compile_definitions|add_compile_options|add_custom_command|add_custom_target|add_definitions|add_dependencies|add_executable|add_library|add_link_options|add_subdirectory|add_test|aux_source_directory|build_command|create_test_sourcelist|define_property|enable_language|enable_testing|export|fltk_wrap_ui|get_source_file_property|get_target_property|get_test_property|include_directories|include_external_msproject|include_regular_expression|install|link_directories|link_libraries|load_cache|project|remove_definitions|set_source_files_properties|set_target_properties|set_tests_properties|source_group|target_compile_definitions|target_compile_features|target_compile_options|target_include_directories|target_link_directories|target_link_libraries|target_link_options|target_precompile_headers|target_sources|try_compile|try_run|ctest_build|ctest_configure|ctest_coverage|ctest_empty_binary_directory|ctest_memcheck|ctest_read_custom_files|ctest_run_script|ctest_sleep|ctest_start|ctest_submit|ctest_test|ctest_update|ctest_upload)$"))
 
 (normal_command
   (identifier) @_function
   (argument_list
     .
     (argument) @variable)
-  (#match? @_function "\\\\c^set$"))
+  (#match? @_function "\\\\s^set$"))
 
 (normal_command
   (identifier) @_function
-  (#match? @_function "\\\\c^set$")
+  (#match? @_function "\\\\s^set$")
   (argument_list
     .
     (argument)
@@ -142,7 +142,7 @@
 
 (normal_command
   (identifier) @_function
-  (#match? @_function "\\\\c^unset$")
+  (#match? @_function "\\\\s^unset$")
   (argument_list
     .
     (argument)
@@ -151,7 +151,7 @@
 
 (normal_command
   (identifier) @_function
-  (#match? @_function "\\\\c^list$")
+  (#match? @_function "\\\\s^list$")
   (argument_list
     .
     (argument) @constant
@@ -162,7 +162,7 @@
 
 (normal_command
   (identifier) @_function
-  (#match? @_function "\\\\c^list$")
+  (#match? @_function "\\\\s^list$")
   (argument_list
     .
     (argument) @constant
@@ -174,7 +174,7 @@
 
 (normal_command
   (identifier) @_function
-  (#match? @_function "\\\\c^list$")
+  (#match? @_function "\\\\s^list$")
   (argument_list
     .
     (argument) @_transform @constant
@@ -187,7 +187,7 @@
 
 (normal_command
   (identifier) @_function
-  (#match? @_function "\\\\c^list$")
+  (#match? @_function "\\\\s^list$")
   (argument_list
     .
     (argument) @_transform @constant
@@ -203,7 +203,7 @@
 
 (normal_command
   (identifier) @_function
-  (#match? @_function "\\\\c^list$")
+  (#match? @_function "\\\\s^list$")
   (argument_list
     .
     (argument) @_transform @constant

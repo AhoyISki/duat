@@ -43,7 +43,7 @@ fn setup(opts: &mut Opts) {
     opts.wrap_lines = true;
     opts.wrapping_cap = Some(80);
 
-    form::set("caret.main", Form::new().yellow());
+    form::set("cursor.main", Form::new().yellow());
 
     cmd::add("set-rel-lines", |pa: &mut Pass| {
         let handles: Vec<_> = context::windows()
@@ -351,9 +351,9 @@ Currently, in `duat`, these are the forms in use:
   `default.LineNumbers`.
 - `accent`: This form is used when formatting error, warning, information, or
   debug messages. Is used mostly with the `error`, `warn` and `info` [masks].
-- `caret.main`: The form to use when printing the main "caret" (each cursor has
-  a selection, an anchor, and a caret).
-- `caret.extra`: Same as `caret.main`, but for cursors other than the main one.
+- `cursor.main`: The form to use when printing the main "cursor" (each cursor has
+  a selection, an anchor, and a cursor).
+- `cursor.extra`: Same as `cursor.main`, but for cursors other than the main one.
 - `selection.main`: Color to be used on the main selection.
 - `selection.extra`: Color to be used on extra selections.
 - `cloak`: This form is supposed to be a common "get rid of all forms
@@ -635,14 +635,14 @@ cursors should be printed as "real cursors" (The blinking kind, that can turn
 into a bar and stuff), or as just `Form`s.
 
 - `cursor::set_main` will set the "shape" of the main cursor. This takes a
-  `CursorShape` argument, and lets you set its shape to a vertical bar, a
+  `SelectionMutShape` argument, and lets you set its shape to a vertical bar, a
   horizontal bar, and make it blink.
 - `cursor::set_extra` is the same but for extra cursors. Do note that this may
   not work on some `Ui`s, mainly terminals, which only allow for one cursor at a
   time.
 - `cursor::unset_main` and `cursor::unset_extra`: Disables cursor shapes for
-  every type of cursor, replacing them with a `Form`, which will be `caret.main`
-  and `caret.extra`, respectively
+  every type of cursor, replacing them with a `Form`, which will be `cursor.main`
+  and `cursor.extra`, respectively
 - `cursor::unset`: The same as calling `unset_main` and `unset_extra`.
 
 [modding the `StatusLine`]: ../../scripting-duat/mod-status.md

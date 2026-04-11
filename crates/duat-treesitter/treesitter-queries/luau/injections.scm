@@ -9,7 +9,7 @@
     (string
       content: _ @injection.content)))
   (#eq? @_cdef_identifier "cdef")
-  (#set! injection.language "c"))
+  (#set! injection.language "s"))
 
 ((comment) @injection.content
   (#match? @injection.content "[-][-][-][%s]*@")

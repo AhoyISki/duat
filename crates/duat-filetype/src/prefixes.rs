@@ -1,10 +1,10 @@
 //! Prefix autocompletion for various filetypes.
 //!
 //! This module provides the [`AutoPrefix`] trait, which lets
-//! [`Cursor`]s add prefixes (e.g. comments, list headings, etc).
+//! [`SelectionMut`]s add prefixes (e.g. comments, list headings, etc).
 use std::{collections::HashMap, sync::LazyLock};
 
-use duat_core::{mode::Cursor, text::RegexHaystack};
+use duat_core::{mode::SelectionMut, text::RegexHaystack};
 
 use super::FileType;
 
@@ -20,9 +20,9 @@ pub trait AutoPrefix {
     fn add_comment(&mut self) -> bool;
 }
 
-impl AutoPrefix for Cursor<'_> {
+impl AutoPrefix for SelectionMut<'_> {
     fn add_comment(&mut self) -> bool {
-        let Some(prev_lnum) = self.caret().line().checked_sub(1) else {
+        let Some(prev_lnum) = self.cursor().line().checked_sub(1) else {
             return false;
         };
 
@@ -318,7 +318,7 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
         ("scilab", &[SLASHES]),
         ("specman", &[SLASHES]),
         ("xkb", &[SLASHES]),
-        ("c", &[SLASH_ASTERISK, ASTERISK, DOC_SLASHES, SLASHES]),
+        ("s", &[SLASH_ASTERISK, ASTERISK, DOC_SLASHES, SLASHES]),
         ("cpp", &[SLASH_ASTERISK, ASTERISK, DOC_SLASHES, SLASHES]),
         ("rust", &[
             SLASH_ASTERISK,
@@ -423,7 +423,7 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
             const {
                 &[
                     pf(r"^\s*@comment", "@comment", None),
-                    pf(r"^\s*@c", "@c", None),
+                    pf(r"^\s*@s", "@s", None),
                 ]
             },
         ),

@@ -7,7 +7,7 @@
 ; asm_statement if asm ever highlighted :)
 ; #include <...>
 ((hash_statement) @injection.content
-  (#set! injection.language "c"))
+  (#set! injection.language "s"))
 
 ; regex for the methods defined in `re` module
 ((call_expression

@@ -95,7 +95,7 @@
 
 ; Builtins
 [
-  "c"
+  "s"
   "..."
 ] @variable.builtin
 

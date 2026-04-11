@@ -1,7 +1,7 @@
 //! The primary [`Widget`] of Duat, used to display buffers.
 //!
 //! Most extensible features of Duat have the primary purpose of
-//! serving the [`Buffer`], such as multiple [`Cursor`]s, a
+//! serving the [`Buffer`], such as multiple [`SelectionMut`]s, a
 //! `History` system, [`RawArea::PrintInfo`], etc.
 //!
 //! The [`Buffer`] also provides a list of printed lines through the
@@ -10,7 +10,7 @@
 //! currently printed lines.
 //!
 //! [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
-//! [`Cursor`]: crate::mode::Cursor
+//! [`SelectionMut`]: crate::mode::SelectionMut
 //! [`RawArea::PrintInfo`]: crate::ui::traits::RawArea::PrintInfo
 use std::{
     collections::HashMap,
@@ -31,7 +31,7 @@ use crate::{
     context::{self, Handle, cache},
     data::{Pass, RwData, WriteableTuple},
     hook::{self, BufferSaved, BufferUpdated, OnMouseEvent},
-    mode::{Cursor, Selections, TwoPointsPlace},
+    mode::{SelectionMut, Selections, TwoPointsPlace},
     opts::PrintOpts,
     text::{Point, Strs, StrsBuf, Text, TextMut, TextParts, TextVersion, txt},
     ui::{Area, Coord, PrintInfo, PrintedLine, Widget},
@@ -51,9 +51,9 @@ pub(crate) fn add_buffer_hooks() {
             };
 
             event.handle.selections_mut(pa).remove_extras();
-            event.handle.edit_main(pa, |mut c| {
-                c.unset_anchor();
-                c.move_to(point)
+            event.handle.edit_main(pa, |mut s| {
+                s.unset_anchor();
+                s.move_to(point)
             })
         }
         MouseEventKind::Down(_) => {}
@@ -67,9 +67,9 @@ pub(crate) fn add_buffer_hooks() {
             };
 
             event.handle.selections_mut(pa).remove_extras();
-            event.handle.edit_main(pa, |mut c| {
-                c.set_anchor_if_needed();
-                c.move_to(point);
+            event.handle.edit_main(pa, |mut s| {
+                s.set_anchor_if_needed();
+                s.move_to(point);
             })
         }
         MouseEventKind::Drag(_) => {}
@@ -418,7 +418,7 @@ impl Buffer {
         if let Some(main) = buf.text().get_main_sel() {
             area.scroll_around_points(
                 buf.text(),
-                main.caret().to_two_points_after(),
+                main.cursor().to_two_points_after(),
                 buf.print_opts(),
             );
         }
@@ -915,7 +915,7 @@ impl<T: 'static> PerBuffer<T> {
     /// `Buffer`.
     ///
     /// For now, the two types that can be used as [`BufferPass`]es
-    /// are the [`Buffer`] itself and a [`Cursor<Buffer>`]. These
+    /// are the [`Buffer`] itself and a [`SelectionMut<Buffer>`]. These
     /// types are allowed to do this because they are impossible
     /// to acquire without first borrowing from an
     /// [`RwData<Buffer>`], either directly or through a [`Handle`]
@@ -958,7 +958,7 @@ impl<T: 'static> PerBuffer<T> {
     /// `Buffer`.
     ///
     /// For now, the two types that can be used as [`BufferPass`]es
-    /// are the [`Buffer`] itself and a [`Cursor<Buffer>`]. These
+    /// are the [`Buffer`] itself and a [`SelectionMut<Buffer>`]. These
     /// types are allowed to do this because they are impossible
     /// to acquire without first borrowing from an [`RwData<Buffer>`],
     /// either directly or through a [`Handle`]
@@ -1104,13 +1104,13 @@ impl BufferPass for Buffer {
         Buffer::buffer_id(self)
     }
 }
-impl<'b> BufferPass for Cursor<'b, Buffer> {
+impl<'b> BufferPass for SelectionMut<'b, Buffer> {
     fn buffer_id(&self) -> BufferId {
-        Cursor::buffer_id(self)
+        SelectionMut::buffer_id(self)
     }
 }
 
 trait InnerBufferPass {}
 
 impl InnerBufferPass for Buffer {}
-impl<'b> InnerBufferPass for Cursor<'b, Buffer> {}
+impl<'b> InnerBufferPass for SelectionMut<'b, Buffer> {}

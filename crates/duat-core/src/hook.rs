@@ -714,7 +714,7 @@ impl PartialEq<Handle> for BufferUnloaded {
 /// [`Buffer`]: crate::buffer::Buffer
 /// [`PrintOpts`]: crate::opts::PrintOpts
 /// [`Change`]: crate::buffer::Change
-/// [`Cursor`]: crate::mode::Cursor
+/// [`SelectionMut`]: crate::mode::SelectionMut
 /// [`Tag`]: crate::text::Tag
 /// [`Strs`]: crate::text::Strs
 /// [`Tags`]: crate::text::Tags

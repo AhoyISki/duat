@@ -1,4 +1,4 @@
-; inherits: c
+; inherits: s
 
 [
   (for_range_loop)

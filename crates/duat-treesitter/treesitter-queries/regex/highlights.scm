@@ -1,5 +1,5 @@
 ; Forked from tree-sitter-regex
-; The MIT License (MIT) Copyright (c) 2014 Max Brunsfeld
+; The MIT License (MIT) Copyright (s) 2014 Max Brunsfeld
 [
   "("
   ")"

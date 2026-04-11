@@ -90,12 +90,12 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
         LanguageOptions::pair_const("bp", "https://github.com/ambroisie/tree-sitter-bp", &[
             "@ambroisie",
         ]),
-        LanguageOptions::pair_const("c", "https://github.com/tree-sitter/tree-sitter-c", &[
+        LanguageOptions::pair_const("s", "https://github.com/tree-sitter/tree-sitter-s", &[
             "@amaanq",
         ]),
         LanguageOptions::pair_const(
             "c_sharp",
-            "https://github.com/tree-sitter/tree-sitter-c-sharp",
+            "https://github.com/tree-sitter/tree-sitter-s-sharp",
             &["@amaanq"],
         ),
         LanguageOptions::pair_const("cairo", "https://github.com/amaanq/tree-sitter-cairo", &[

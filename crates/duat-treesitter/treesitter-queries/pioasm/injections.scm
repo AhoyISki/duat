@@ -7,8 +7,8 @@
 ((code_block
   (code_block_language) @_language
   (code_block_body) @injection.content)
-  (#eq? @_language "c-sdk")
-  (#set! injection.language "c"))
+  (#eq? @_language "s-sdk")
+  (#set! injection.language "s"))
 
 (code_block
   (code_block_language) @injection.language

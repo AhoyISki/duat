@@ -102,7 +102,7 @@ fn initial_setup() {
             .iter()
             .flat_map(|(_, entries)| entries.iter().rev())
             .filter(|entry| {
-                let display = gtr.opts.symbol_opts(entry.kind).display;
+                let display = gtr.opts.symbol_opts(entry.kind).default_display;
                 !display.always_show() && related_to_hovered.contains(&entry.id)
             });
 
@@ -111,10 +111,10 @@ fn initial_setup() {
             // to not move the `Text` around, displacing it from the mouse
             // position.
             if !hovered_ids.contains(&entry.id) {
-                let display = &mut opts.symbol_opts_mut(entry.kind).display;
+                let display = &mut opts.symbol_opts_mut(entry.kind).default_display;
                 let prev = std::mem::replace(display, GutterDisplay::EndOfLine(false));
                 entry.insert_on(mouse_msg_ns, &opts, buf, area, true);
-                opts.symbol_opts_mut(entry.kind).display = prev;
+                opts.symbol_opts_mut(entry.kind).default_display = prev;
             } else {
                 entry.insert_on(mouse_msg_ns, &opts, buf, area, true);
             }
@@ -165,15 +165,15 @@ impl Gutter {
         GutterOpts {
             hint: GutterSymbolOpts {
                 symbol: 'i',
-                display: GutterDisplay::OwnLines(false),
+                default_display: GutterDisplay::OwnLines(false),
             },
             warning: GutterSymbolOpts {
                 symbol: '!',
-                display: GutterDisplay::OwnLines(false),
+                default_display: GutterDisplay::OwnLines(false),
             },
             error: GutterSymbolOpts {
                 symbol: '*',
-                display: GutterDisplay::OwnLines(false),
+                default_display: GutterDisplay::OwnLines(false),
             },
             renderer: Some(Arc::new(Mutex::new(default_renderer))),
         }
@@ -381,8 +381,20 @@ impl GutterOpts {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GutterSymbolOpts {
-    symbol: char,
-    display: GutterDisplay,
+    /// Which symbol to show on the [`Gutter`]
+    pub symbol: char,
+    /// How the text should be shown by default.
+    ///
+    /// `None` means that it shouldn't be shown at all.
+    pub default_display: Option<GutterDisplay>,
+    /// How the text should be shown when hovered.
+    ///
+    /// `None` means that it shouldn't be shown at all.
+    pub hover_display: Option<GutterDisplay>,
+    /// How the text should be shown when the .
+    ///
+    /// `None` means that it shouldn't be shown at all.
+    pub cursor_display: Option<GutterDisplay>
 }
 
 /// An entry in the [`Gutter`].
@@ -409,8 +421,8 @@ impl GutterEntry {
 
         let from = |opts: GutterSymbolOpts| {
             (
-                is_hovered ^ matches!(opts.display, GutterDisplay::OwnLines(true)),
-                opts.display,
+                is_hovered ^ matches!(opts.default_display, GutterDisplay::OwnLines(true)),
+                opts.default_display,
             )
         };
 
@@ -484,16 +496,10 @@ pub enum EntryKind {
 pub enum GutterDisplay {
     /// The [`Text`] will be shown at the end of the line, potentially
     /// running off out of screen.
-    ///
-    /// If [`GutterEntryBuilder::only_on_hover`] is not called, this
-    /// display method will default to always be shown.
-    EndOfLine(AlwaysShow),
+    EndOfLine,
     /// The [`Text`] will be shown as a spawned widget near the
     /// entry's range.
-    ///
-    /// If [`GutterEntryBuilder::only_on_hover`] is not called, this
-    /// display method will default to show up only on hover.
-    Spawn(AlwaysShow),
+    Spawn,
     /// The [`Text`] will be show as a spawned widget on one of the
     /// corners.
     ///
@@ -501,17 +507,11 @@ pub enum GutterDisplay {
     /// corners of the window. Otherwise, it will be spawned on the
     /// corners of the [`Buffer`]
     ///
-    /// If [`GutterEntryBuilder::only_on_hover`] is not called, this
-    /// display method will default to show up only on hover.
-    ///
     /// [`Buffer`]: duat_core::buffer::Buffer
-    SpawnCorner(AlwaysShow, Corner, OnWindow),
+    SpawnCorner(Corner, OnWindow),
     /// The [`Text`] will be shown as [`Inlay`] lines under the
     /// entry's range.
-    ///
-    /// If [`GutterEntryBuilder::only_on_hover`] is not called, this
-    /// display method will default to always be shown.
-    OwnLines(AlwaysShow),
+    OwnLines,
 }
 
 impl GutterDisplay {

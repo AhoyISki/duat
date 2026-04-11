@@ -16,7 +16,7 @@
   .
   item: (string
     (string_content) @injection.content
-    (#set! injection.language "c")))
+    (#set! injection.language "s")))
 
 (list
   call: (multi_symbol) @_ts_query_identifier

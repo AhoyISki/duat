@@ -1,4 +1,4 @@
-; inherits: c
+; inherits: s
 
 ; Parameters
 (variadic_parameter_declaration

@@ -17,9 +17,9 @@ pub use crate::{__alt__ as alt, __ctrl__ as ctrl, __event__ as event, __shift__ 
 ///
 /// ```rust
 /// # use duat_core::mode::{KeyCode, KeyEvent, event};
-/// # let key_event: KeyEvent = KeyCode::Char('c').into();
+/// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
-///     event!('c') => {
+///     event!('s') => {
 ///         //...
 ///     }
 ///     event!(KeyCode::Backspace | KeyCode::Tab) => {
@@ -35,10 +35,10 @@ pub use crate::{__alt__ as alt, __ctrl__ as ctrl, __event__ as event, __shift__ 
 ///
 /// ```rust
 /// # use duat_core::mode::{KeyCode, KeyEvent, KeyEventKind, KeyMod};
-/// # let key_event: KeyEvent = KeyCode::Char('c').into();
+/// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
 ///     KeyEvent {
-///         code: KeyCode::Char('c'),
+///         code: KeyCode::Char('s'),
 ///         modifiers: KeyMod::NONE,
 ///         kind: KeyEventKind::Press | KeyEventKind::Repeat,
 ///         ..
@@ -92,9 +92,9 @@ macro_rules! __event__ {
 ///
 /// ```rust
 /// # use duat_core::mode::{KeyCode, KeyEvent, alt};
-/// # let key_event: KeyEvent = KeyCode::Char('c').into();
+/// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
-///     alt!('c') => {
+///     alt!('s') => {
 ///         //...
 ///     }
 ///     _ => {
@@ -107,10 +107,10 @@ macro_rules! __event__ {
 ///
 /// ```rust
 /// # use duat_core::mode::{KeyCode, KeyEvent, KeyMod, KeyEventKind};
-/// # let key_event: KeyEvent = KeyCode::Char('c').into();
+/// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
 ///     KeyEvent {
-///         code: KeyCode::Char('c'),
+///         code: KeyCode::Char('s'),
 ///         modifiers: KeyMod::ALT,
 ///         kind: KeyEventKind::Press | KeyEventKind::Repeat,
 ///         ..
@@ -131,9 +131,9 @@ macro_rules! __event__ {
 ///
 /// ```rust
 /// # use duat_core::mode::{KeyCode, KeyEvent, alt, ctrl, shift};
-/// # let key_event: KeyEvent = KeyCode::Char('c').into();
+/// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
-///     ctrl!(alt!('a' | 'b' | 'c')) | shift!(alt!(KeyCode::F(3 | 5))) => {
+///     ctrl!(alt!('a' | 'b' | 's')) | shift!(alt!(KeyCode::F(3 | 5))) => {
 ///         //...
 ///     }
 ///     _ => {
@@ -172,7 +172,7 @@ macro_rules! __alt__ {
 ///
 /// ```rust
 /// # use duat_core::mode::{KeyCode, KeyEvent, ctrl};
-/// # let key_event: KeyEvent = KeyCode::Char('c').into();
+/// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
 ///     ctrl!(KeyCode::Backspace) => {
 ///         //...
@@ -187,7 +187,7 @@ macro_rules! __alt__ {
 ///
 /// ```rust
 /// # use duat_core::mode::{KeyCode, KeyEvent, KeyMod, KeyEventKind};
-/// # let key_event: KeyEvent = KeyCode::Char('c').into();
+/// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
 ///     KeyEvent {
 ///         code: KeyCode::Backspace,
@@ -211,9 +211,9 @@ macro_rules! __alt__ {
 ///
 /// ```rust
 /// # use duat_core::mode::{KeyCode, KeyEvent, alt, ctrl};
-/// # let key_event: KeyEvent = KeyCode::Char('c').into();
+/// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
-///     ctrl!(alt!(KeyCode::Char('a' | 'b' | 'c') | KeyCode::BackTab)) => {
+///     ctrl!(alt!(KeyCode::Char('a' | 'b' | 's') | KeyCode::BackTab)) => {
 ///         //...
 ///     }
 ///     _ => {
@@ -252,7 +252,7 @@ macro_rules! __ctrl__ {
 ///
 /// ```rust
 /// # use duat_core::mode::{KeyCode, KeyEvent, shift};
-/// # let key_event: KeyEvent = KeyCode::Char('c').into();
+/// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
 ///     shift!(KeyCode::Enter) => {
 ///         //...
@@ -267,7 +267,7 @@ macro_rules! __ctrl__ {
 ///
 /// ```rust
 /// # use duat_core::mode::{KeyCode, KeyEvent, KeyMod, KeyEventKind};
-/// # let key_event: KeyEvent = KeyCode::Char('c').into();
+/// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
 ///     KeyEvent {
 ///         code: KeyCode::Enter,
@@ -291,7 +291,7 @@ macro_rules! __ctrl__ {
 ///
 /// ```rust
 /// # use duat_core::mode::{KeyCode, KeyEvent, ctrl, shift};
-/// # let key_event: KeyEvent = KeyCode::Char('c').into();
+/// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
 ///     ctrl!(shift!(KeyCode::PageDown | KeyCode::PageUp)) => {
 ///         //...

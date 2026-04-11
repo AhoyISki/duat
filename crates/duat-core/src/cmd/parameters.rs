@@ -114,7 +114,7 @@ impl Parameter for Flag {
             } else if let Some(blob_chars) = arg.strip_prefix("-") {
                 let mut blob = String::new();
                 for char in blob_chars.chars() {
-                    if !blob.chars().any(|c| c == char) {
+                    if !blob.chars().any(|s| s == char) {
                         blob.push(char);
                     }
                 }
@@ -165,7 +165,7 @@ impl<S: AsRef<str>> Flag<S> {
         self.as_str()
             .as_blob()
             .ok()
-            .is_some_and(|b| blob.chars().all(|char| b.chars().any(|c| c == char)))
+            .is_some_and(|b| blob.chars().all(|char| b.chars().any(|s| s == char)))
     }
 
     /// Returns an [`Err`] if the `Flag` is a blob or doesn't belong
@@ -237,7 +237,7 @@ impl Flags {
             self.0
                 .iter()
                 .filter_map(|flag| flag.as_str().as_blob().ok())
-                .any(|blob| blob.chars().any(|c| c == char))
+                .any(|blob| blob.chars().any(|s| s == char))
         })
     }
 }
@@ -783,7 +783,7 @@ pub struct FormName(pub String);
 impl Parameter for FormName {
     fn from_args(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let arg = args.next()?.value;
-        if !arg.chars().all(|c| c.is_ascii_alphanumeric() || c == '.') {
+        if !arg.chars().all(|s| s.is_ascii_alphanumeric() || s == '.') {
             return Err(txt!(
                 "Expected identifiers separated by '.'s, found [a]{arg}"
             ));

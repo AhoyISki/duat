@@ -102,12 +102,12 @@ impl SyncSolver {
                     let len = spawn.desired_len.unwrap_or(inside_len).min(inside_len);
 
                     self.solver.suggest_value(spawn.len_var, len).unwrap();
-                    let c = if spawn.prefers_before {
+                    let s = if spawn.prefers_before {
                         lhs_frame + lhs + len / 2.0
                     } else {
                         rhs - (rhs_frame + len / 2.0)
                     };
-                    self.solver.suggest_value(spawn.center_var, c).unwrap();
+                    self.solver.suggest_value(spawn.center_var, s).unwrap();
                 } else if let Some(len) = spawn.desired_len
                     && (lhs >= len + lhs_outside_len || max - rhs >= len + rhs_outside_len)
                 {
@@ -320,15 +320,15 @@ impl SyncSolver {
         self.spawns
             .extract_if(.., |spawn| spawn.id == id)
             .next()
-            .map(|c| {
-                self.solver.remove_edit_variable(c.center_var).unwrap();
-                self.solver.remove_edit_variable(c.len_var).unwrap();
-                if let CenterDeps::TextHorizontal(tl, _) | CenterDeps::TextVertical(tl) = c.deps {
+            .map(|s| {
+                self.solver.remove_edit_variable(s.center_var).unwrap();
+                self.solver.remove_edit_variable(s.len_var).unwrap();
+                if let CenterDeps::TextHorizontal(tl, _) | CenterDeps::TextVertical(tl) = s.deps {
                     self.solver.remove_edit_variable(tl.x).unwrap();
                     self.solver.remove_edit_variable(tl.y).unwrap();
-                    ReturnedEditVars::TextSpawned([c.center_var, c.len_var, tl.x, tl.y])
+                    ReturnedEditVars::TextSpawned([s.center_var, s.len_var, tl.x, tl.y])
                 } else {
-                    ReturnedEditVars::WidgetSpawned([c.center_var, c.len_var])
+                    ReturnedEditVars::WidgetSpawned([s.center_var, s.len_var])
                 }
             })
     }

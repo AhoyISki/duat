@@ -167,11 +167,11 @@ impl Strs {
         }
     }
 
-    /// The [`Point`] associated with the `c`th char.
+    /// The [`Point`] associated with the `s`th char.
     ///
     /// # Panics
     ///
-    /// Will panic if `c` is greater than the number of chars in the
+    /// Will panic if `s` is greater than the number of chars in the
     /// text.
     #[inline(always)]
     #[track_caller]
@@ -202,7 +202,7 @@ impl Strs {
             formed
                 .buf
                 .line_ranges
-                .point_by_key(start.char() + char, |[_, c]| c, slices)
+                .point_by_key(start.char() + char, |[_, s]| s, slices)
                 .unwrap()
         }
     }
@@ -429,7 +429,7 @@ impl Strs {
     pub fn char_indices(&self) -> impl DoubleEndedIterator<Item = (usize, char)> {
         let [s0, s1] = self.to_array();
         s0.char_indices()
-            .chain(s1.char_indices().map(move |(b, c)| (b + s0.len(), c)))
+            .chain(s1.char_indices().map(move |(b, s)| (b + s0.len(), s)))
     }
 
     /// A [`Range<usize>`] of the bytes on this `Strs`.

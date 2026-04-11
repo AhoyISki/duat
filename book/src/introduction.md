@@ -25,13 +25,13 @@ impl duat::Plugin for HighlightMatches {
             let lines = handle.printed_line_ranges(pa);
 
             handle.text_mut(pa).remove_tags(ns, ..);
-            let caret = handle.text(pa).main_sel().caret();
-            let Some(range) = handle.text(pa).search(r"\A\w+").range(caret..).next() else {
+            let cursor = handle.text(pa).main_sel().cursor();
+            let Some(range) = handle.text(pa).search(r"\A\w+").range(cursor..).next() else {
                 return;
             };
 
             let start = handle
-                .edit_main(pa, |c| c.search(r"\w*\z").to_caret().next_back())
+                .edit_main(pa, |s| s.search(r"\w*\z").to_cursor().next_back())
                 .map(|range| range.start)
                 .unwrap_or(range.start);
 

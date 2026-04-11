@@ -1,4 +1,4 @@
-; inherits: c
+; inherits: s
 
 ; cpp
 ((identifier) @variable.member

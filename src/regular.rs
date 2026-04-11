@@ -39,31 +39,31 @@ impl mode::Mode for Regular {
                 if !matches!(*last_code, Some(Char(_))) || char == ' ' {
                     handle.write(pa).text_mut().new_moment();
                 }
-                handle.edit_all(pa, |mut c| {
-                    c.replace(char);
-                    c.unset_anchor();
-                    c.move_hor(1);
+                handle.edit_all(pa, |mut s| {
+                    s.replace(char);
+                    s.unset_anchor();
+                    s.move_hor(1);
                 })
             }
             event!(Enter) => {
                 handle.write(pa).text_mut().new_moment();
-                handle.edit_all(pa, |mut c| {
+                handle.edit_all(pa, |mut s| {
                     #[cfg(not(feature = "treesitter"))]
-                    let indent = c.indent();
+                    let indent = s.indent();
 
-                    c.replace('\n');
-                    c.unset_anchor();
-                    c.move_hor(1);
+                    s.replace('\n');
+                    s.unset_anchor();
+                    s.move_hor(1);
 
                     #[cfg(not(feature = "treesitter"))]
-                    c.insert(" ".repeat(indent));
+                    s.insert(" ".repeat(indent));
                 });
 
                 #[cfg(feature = "treesitter")]
                 if let Some(indents) = handle.ts_get_indentations(pa, ..) {
                     let mut indents = indents.into_iter();
-                    handle.edit_all(pa, |mut c| {
-                        duatmode::reindent(c.indent(), indents.next().unwrap(), &mut c);
+                    handle.edit_all(pa, |mut s| {
+                        duatmode::reindent(s.indent(), indents.next().unwrap(), &mut s);
                     });
                 }
             }
@@ -71,11 +71,11 @@ impl mode::Mode for Regular {
             // Text Removal
             event!(Backspace) => {
                 let mut major_removal = false;
-                handle.edit_all(pa, |mut c| {
-                    if c.anchor().is_some()
-                        || (c.move_hor(-1) != 0
-                            && c.set_anchor_if_needed()
-                            && c.selection().chars().any(|c| c == '\n'))
+                handle.edit_all(pa, |mut s| {
+                    if s.anchor().is_some()
+                        || (s.move_hor(-1) != 0
+                            && s.set_anchor_if_needed()
+                            && s.selection().chars().any(|s| s == '\n'))
                     {
                         major_removal = true;
                     }
@@ -85,87 +85,87 @@ impl mode::Mode for Regular {
                     handle.write(pa).text_mut().new_moment();
                 }
 
-                handle.edit_all(pa, |mut c| {
-                    c.replace("");
-                    c.unset_anchor();
+                handle.edit_all(pa, |mut s| {
+                    s.replace("");
+                    s.unset_anchor();
                 })
             }
             event!(Delete) => {
                 let mut major_removal = false;
-                handle.edit_all(pa, |mut c| {
-                    c.set_anchor_if_needed();
-                    major_removal |= c.selection().chars().any(|c| c == '\n');
+                handle.edit_all(pa, |mut s| {
+                    s.set_anchor_if_needed();
+                    major_removal |= s.selection().chars().any(|s| s == '\n');
                 });
 
                 if !matches!(*last_code, Some(Delete)) || major_removal {
                     handle.write(pa).text_mut().new_moment();
                 }
 
-                handle.edit_all(pa, |mut c| {
-                    c.replace("");
-                    c.unset_anchor();
+                handle.edit_all(pa, |mut s| {
+                    s.replace("");
+                    s.unset_anchor();
                 })
             }
 
             // Movement
-            event!(Left) => handle.edit_all(pa, |mut c| {
-                c.unset_anchor();
-                c.move_hor(-1);
+            event!(Left) => handle.edit_all(pa, |mut s| {
+                s.unset_anchor();
+                s.move_hor(-1);
             }),
-            event!(Right) => handle.edit_all(pa, |mut c| {
-                c.unset_anchor();
-                c.move_hor(1);
+            event!(Right) => handle.edit_all(pa, |mut s| {
+                s.unset_anchor();
+                s.move_hor(1);
             }),
-            event!(Up) => handle.edit_all(pa, |mut c| {
-                c.unset_anchor();
-                c.move_ver(-1);
+            event!(Up) => handle.edit_all(pa, |mut s| {
+                s.unset_anchor();
+                s.move_ver(-1);
             }),
-            event!(Down) => handle.edit_all(pa, |mut c| {
-                c.unset_anchor();
-                c.move_ver(1);
+            event!(Down) => handle.edit_all(pa, |mut s| {
+                s.unset_anchor();
+                s.move_ver(1);
             }),
-            shift!(Left) => handle.edit_all(pa, |mut c| {
-                c.set_anchor_if_needed();
-                c.move_hor(-1);
+            shift!(Left) => handle.edit_all(pa, |mut s| {
+                s.set_anchor_if_needed();
+                s.move_hor(-1);
             }),
-            shift!(Right) => handle.edit_all(pa, |mut c| {
-                c.set_anchor_if_needed();
-                c.move_hor(1);
+            shift!(Right) => handle.edit_all(pa, |mut s| {
+                s.set_anchor_if_needed();
+                s.move_hor(1);
             }),
-            shift!(Up) => handle.edit_all(pa, |mut c| {
-                c.set_anchor_if_needed();
-                c.move_ver(-1);
+            shift!(Up) => handle.edit_all(pa, |mut s| {
+                s.set_anchor_if_needed();
+                s.move_ver(-1);
             }),
-            shift!(Down) => handle.edit_all(pa, |mut c| {
-                c.set_anchor_if_needed();
-                c.move_ver(1);
+            shift!(Down) => handle.edit_all(pa, |mut s| {
+                s.set_anchor_if_needed();
+                s.move_ver(1);
             }),
 
             // Basic commands
             ctrl!('z') => handle.write(pa).text_mut().undo(),
             ctrl!('y' | 'Z') => handle.write(pa).text_mut().redo(),
-            ctrl!(char @ ('x' | 'c')) => {
+            ctrl!(char @ ('x' | 's')) => {
                 if char == 'x' {
                     handle.write(pa).text_mut().new_moment();
                 }
                 let mut prev = Vec::new();
-                handle.edit_all(pa, |mut c| {
-                    prev.push((c.range(), c.anchor_is_start()));
-                    if c.anchor().is_none() {
-                        let range = c.text().line(c.caret().line()).byte_range();
-                        c.move_to(range);
+                handle.edit_all(pa, |mut s| {
+                    prev.push((s.range(), s.anchor_is_start()));
+                    if s.anchor().is_none() {
+                        let range = s.text().line(s.cursor().line()).byte_range();
+                        s.move_to(range);
                     }
                 });
                 crate::mode::copy_selections(pa, &handle);
                 let mut ranges = prev.into_iter();
-                handle.edit_all(pa, |mut c| {
+                handle.edit_all(pa, |mut s| {
                     if char == 'x' {
-                        c.replace("");
+                        s.replace("");
                     } else {
                         let (range, anchor_is_start) = ranges.next().unwrap();
-                        c.move_to(range);
+                        s.move_to(range);
                         if !anchor_is_start {
-                            c.swap_ends();
+                            s.swap_ends();
                         }
                     }
                 });
@@ -176,25 +176,25 @@ impl mode::Mode for Regular {
                     handle.write(pa).text_mut().new_moment();
                     let mut p_iter = pastes.iter().cycle();
 
-                    handle.edit_all(pa, |mut c| {
+                    handle.edit_all(pa, |mut s| {
                         let paste = p_iter.next().unwrap();
                         if !paste.is_empty() {
-                            let mut c = c.copy();
-                            c.set_caret_on_start();
-                            c.unset_anchor();
+                            let mut s = s.copy();
+                            s.set_cursor_on_start();
+                            s.unset_anchor();
                             if paste.ends_with('\n') {
-                                c.move_to_col(0);
-                                c.insert(paste);
+                                s.move_to_col(0);
+                                s.insert(paste);
                             } else {
-                                c.insert(paste)
+                                s.insert(paste)
                             }
-                            c.destroy();
+                            s.destroy();
                         }
-                        c.move_hor(paste.chars().count() as i32);
-                        if c.anchor().is_some() {
-                            c.swap_ends();
-                            c.move_hor(paste.chars().count() as i32);
-                            c.swap_ends();
+                        s.move_hor(paste.chars().count() as i32);
+                        if s.anchor().is_some() {
+                            s.swap_ends();
+                            s.move_hor(paste.chars().count() as i32);
+                            s.swap_ends();
                         }
                     });
                 }

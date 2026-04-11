@@ -1,4 +1,4 @@
-; inherits: c
+; inherits: s
 
 (condition_clause) @indent.begin
 

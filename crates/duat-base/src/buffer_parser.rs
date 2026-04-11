@@ -66,8 +66,8 @@ pub fn enable_parser() {
 fn hightlight_current_line(buf: &mut Buffer, ns: Ns) {
     let mut parts = buf.text_parts();
 
-    let caret = parts.selections.main().caret();
-    let line_range = parts.strs.line(caret.line()).byte_range();
+    let cursor = parts.selections.main().cursor();
+    let line_range = parts.strs.line(cursor.line()).byte_range();
 
     parts.tags.insert(ns, line_range, Mask("current_line"));
 }

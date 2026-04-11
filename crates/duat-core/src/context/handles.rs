@@ -10,7 +10,7 @@ use std::sync::{
 use crate::{
     context,
     data::{Pass, RwData, WriteableTuple},
-    mode::{Cursor, ModSelection, Selection, Selections},
+    mode::{SelectionMut, ModSelection, Selection, Selections},
     opts::PrintOpts,
     text::{Text, TextMut, TextParts, TwoPoints},
     ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, Widget},
@@ -65,7 +65,7 @@ use crate::{
 ///         match key_event {
 ///             // actions based on the key pressed
 ///             event!(KeyCode::Char(char)) => {
-///                 // Do something when the character 'c' is typed.
+///                 // Do something when the character 's' is typed.
 ///             }
 ///             _ => todo!("The remaining keys"),
 ///         }
@@ -109,19 +109,19 @@ use crate::{
 ///     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
 ///         use KeyCode::*;
 ///         match key_event {
-///             event!(Char(char)) => handle.edit_all(pa, |mut c| {
-///                 c.insert('c');
-///                 c.move_hor(1);
+///             event!(Char(char)) => handle.edit_all(pa, |mut s| {
+///                 s.insert('s');
+///                 s.move_hor(1);
 ///             }),
-///             shift!(Right) => handle.edit_all(pa, |mut c| {
-///                 if c.anchor().is_none() {
-///                     c.set_anchor();
+///             shift!(Right) => handle.edit_all(pa, |mut s| {
+///                 if s.anchor().is_none() {
+///                     s.set_anchor();
 ///                 }
-///                 c.move_hor(1);
+///                 s.move_hor(1);
 ///             }),
-///             event!(KeyCode::Right) => handle.edit_all(pa, |mut c| {
-///                 c.unset_anchor();
-///                 c.move_hor(1);
+///             event!(KeyCode::Right) => handle.edit_all(pa, |mut s| {
+///                 s.unset_anchor();
+///                 s.move_hor(1);
 ///             }),
 ///             _ => todo!("Predictable remaining implementations"),
 ///         }
@@ -143,8 +143,8 @@ use crate::{
 /// [`Area`]: crate::ui::Area
 /// [commands]: crate::cmd
 /// [`KeyEvent`]: crate::mode::KeyEvent
-/// [editing]: Cursor
-/// [moving]: Cursor
+/// [editing]: SelectionMut
+/// [moving]: SelectionMut
 /// [`Mode`]: crate::mode::Mode
 /// [`event!`]: crate::mode::event
 /// [`alt!`]: crate::mode::alt
@@ -462,7 +462,7 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     /// Edits the nth [`Selection`] in the [`Text`].
     ///
-    /// Once dropped, the [`Selection`] in this [`Cursor`] will be
+    /// Once dropped, the [`Selection`] in this [`SelectionMut`] will be
     /// added back to the list of [`Selection`]s, unless it is
     /// [destroyed].
     ///
@@ -473,7 +473,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// [`Selections`], so if there are no [`Selection`]s, it will
     /// create one at [`Point::default`].
     ///
-    /// [destroyed]: Cursor::destroy
+    /// [destroyed]: SelectionMut::destroy
     /// [`edit_main`]: Self::edit_main
     /// [`edit_all`]: Self::edit_all
     /// [`Point::default`]: crate::text::Point::default
@@ -481,7 +481,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         &self,
         pa: &mut Pass,
         n: usize,
-        edit: impl FnOnce(Cursor<W>) -> Ret,
+        edit: impl FnOnce(SelectionMut<W>) -> Ret,
     ) -> Ret {
         fn get_parts<'a, W: Widget + ?Sized>(
             pa: &'a mut Pass,
@@ -502,7 +502,7 @@ impl<W: Widget + ?Sized> Handle<W> {
 
         let mut selections = vec![Some(ModSelection::new(selection, n, was_main))];
 
-        let ret = edit(Cursor::new(&mut selections, 0, (widget, area), None));
+        let ret = edit(SelectionMut::new(&mut selections, 0, (widget, area), None));
 
         crate::mode::reinsert_selections(selections.into_iter().flatten(), widget, None);
 
@@ -511,7 +511,7 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     /// Edits the main [`Selection`] in the [`Text`].
     ///
-    /// Once dropped, the `Selection` in this [`Cursor`] will be
+    /// Once dropped, the `Selection` in this [`SelectionMut`] will be
     /// added back to the list of `Selection`s, unless it is
     /// [destroyed].
     ///
@@ -523,12 +523,12 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// `Selections`, so if there are no `Selection`s, it will
     /// create one at [`Point::default`].
     ///
-    /// [destroyed]: Cursor::destroy
+    /// [destroyed]: SelectionMut::destroy
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_last`]: Self::edit_last
     /// [`edit_all`]: Self::edit_all
     /// [`Point::default`]: crate::text::Point::default
-    pub fn edit_main<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursor<W>) -> Ret) -> Ret {
+    pub fn edit_main<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(SelectionMut<W>) -> Ret) -> Ret {
         self.edit_nth(
             pa,
             self.widget.read(pa).text().selections().main_index(),
@@ -538,7 +538,7 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     /// Edits the last [`Selection`] in the [`Text`].
     ///
-    /// Once dropped, the `Selection` in this [`Cursor`] will be
+    /// Once dropped, the `Selection` in this [`SelectionMut`] will be
     /// added back to the list of `Selection`s, unless it is
     /// [destroyed].
     ///
@@ -550,12 +550,12 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// `Selections`, so if there are no `Selection`s, it will
     /// create one at [`Point::default`].
     ///
-    /// [destroyed]: Cursor::destroy
+    /// [destroyed]: SelectionMut::destroy
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_main`]: Self::edit_main
     /// [`edit_all`]: Self::edit_all
     /// [`Point::default`]: crate::text::Point::default
-    pub fn edit_last<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursor<W>) -> Ret) -> Ret {
+    pub fn edit_last<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(SelectionMut<W>) -> Ret) -> Ret {
         let len = self.widget.read(pa).text().selections().len();
         self.edit_nth(pa, len.saturating_sub(1), edit)
     }
@@ -565,10 +565,10 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// But it can't return a value, and is meant to reduce the
     /// indentation that will inevitably come from using the
     /// equivalent long form call.
-    pub fn edit_all(&self, pa: &mut Pass, edit: impl FnMut(Cursor<W>)) {
+    pub fn edit_all(&self, pa: &mut Pass, edit: impl FnMut(SelectionMut<W>)) {
         let (widget, area) = self.write_with_area(pa);
         widget.text_mut().selections_mut().populate();
-        crate::mode::on_each_cursor(widget, area, edit);
+        crate::mode::on_each_sel(widget, area, edit);
     }
 
     ////////// Area functions

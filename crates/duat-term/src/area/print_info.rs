@@ -216,7 +216,7 @@ impl PrintInfo {
             return;
         }
 
-        let (max_shift, caret_start, caret_end) = {
+        let (max_shift, cursor_start, cursor_end) = {
             let points = text.ghost_max_points_at(p.byte().min(text.len()));
             let after = text
                 .points_after(points)
@@ -224,7 +224,7 @@ impl PrintInfo {
 
             let mut iter = rev_print_iter(text, after, width, opts);
 
-            let (points, caret_start, caret_end) = iter
+            let (points, cursor_start, cursor_end) = iter
                 .find_map(|(PrintedPlace { x, len, .. }, item)| {
                     let points = item.points();
                     item.part.as_char().and(Some((points, x, x + len)))
@@ -237,16 +237,16 @@ impl PrintInfo {
                 .map(|(PrintedPlace { x, len, .. }, _)| x + len)
                 .unwrap_or(0);
 
-            (max_shift, caret_start, caret_end)
+            (max_shift, cursor_start, cursor_end)
         };
 
         self.x_shift = self
             .x_shift
-            .min(caret_start.saturating_sub(opts.scrolloff.x as u32))
+            .min(cursor_start.saturating_sub(opts.scrolloff.x as u32))
             .max(if opts.force_scrolloff {
-                (caret_end + opts.scrolloff.x as u32).saturating_sub(width)
+                (cursor_end + opts.scrolloff.x as u32).saturating_sub(width)
             } else {
-                (caret_end + opts.scrolloff.x as u32)
+                (cursor_end + opts.scrolloff.x as u32)
                     .min(max_shift)
                     .saturating_sub(width)
             });

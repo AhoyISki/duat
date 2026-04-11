@@ -22,7 +22,7 @@
 //! `<Tab>` and `<s-Tab>` will do different things depending on your
 //! [tab mode].
 //!
-//! `<c-n>` and `<c-p>` go to the next and previous completion
+//! `<s-n>` and `<s-p>` go to the next and previous completion
 //! entries.
 //!
 //! `<Esc>` exits insert mode, returning to `Normal` mode`.
@@ -103,7 +103,7 @@
 //! Move down
 //!
 //! `<Down>`\
-//! Move down to the next wrapped line (i.c vim's `gj`).
+//! Move down to the next wrapped line (i.s vim's `gj`).
 //!
 //! `k`\
 //! Move up.
@@ -204,10 +204,10 @@
 //! Goes to the next state for the selections.
 //!
 //! `;`\
-//! Reduces selections to just the [caret].
+//! Reduces selections to just the [cursor].
 //!
 //! `<a-;>`\
-//! Flips the [caret] and [anchor] of selectionss around.
+//! Flips the [cursor] and [anchor] of selectionss around.
 //!
 //! `,`\
 //! Removes extra selections.
@@ -219,7 +219,7 @@
 //! Creates a selection on the column above the first one.
 //!
 //! `<a-:>`\
-//! Places the [caret] ahead of the [anchor] in all selections.
+//! Places the [cursor] ahead of the [anchor] in all selections.
 //!
 //! `X`\
 //! Divides selection into multiple selections, one per line.
@@ -235,6 +235,9 @@
 //!
 //! `<a-Q>`\
 //! Starts/stops recording a macro.
+//!
+//! `<s-r>`\
+//! Reloads the configuration crate.
 //!
 //! </details>
 //!
@@ -266,7 +269,7 @@
 //! `d`\
 //! Deletes and yanks the selections.
 //!
-//! `c`\
+//! `s`\
 //! Deletes, yanks, and enter `insert` mode.
 //!
 //! `p`\
@@ -283,7 +286,7 @@
 //! `<a-d>`\
 //! Deletes selections without yanking.
 //!
-//! `<a-c>`\
+//! `<a-s>`\
 //! Deletes selections without yanking, then enters `insert` mode.
 //!
 //! `o`\
@@ -374,13 +377,13 @@
 //! Go to next match for pattern.
 //!
 //! `N`\
-//! Create a new cursor on the next match for pattern.
+//! Create a new selection on the next match for pattern.
 //!
 //! `<a-n>`\
 //! Go to previous match for pattern.
 //!
 //! `<a-N>`\
-//! Create a new cursor on the previous match for pattern.
+//! Create a new selection on the previous match for pattern.
 //!
 //! `*`\
 //! Makes the main selection the searching pattern.
@@ -446,9 +449,9 @@
 //!
 //! [`User`]: duat_core::mode::User
 //! [kakoune]: https://github.com/mawww/kakoune
-//! [caret]: duat_core::mode::Cursor::caret
-//! [anchor]: duat_core::mode::Cursor::anchor
-//! [`Cursor`]: duat_core::mode::Cursor
+//! [cursor]: duat_core::mode::SelectionMut::cursor
+//! [anchor]: duat_core::mode::SelectionMut::anchor
+//! [`SelectionMut`]: duat_core::mode::SelectionMut
 //! [Undoes]: duat_core::text::TextMut::undo
 //! [Redoes]: duat_core::text::TextMut::redo
 //! [`Cargo.toml`'s `dependencies` section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
@@ -481,7 +484,7 @@ use duat_core::{
     context::Handle,
     data::Pass,
     form, hook,
-    mode::{self, Cursor, KeyEvent, alt, event},
+    mode::{self, KeyEvent, SelectionMut, alt, event},
     opts::PrintOpts,
     utils::Memoized,
 };
@@ -709,13 +712,13 @@ pub mod opts {
 /// [`Normal`].
 ///
 /// It also adds a hook to automatically change the forms of the
-/// cursors when the mode changes. This is the pattern that the forms
-/// take:
+/// selections when the mode changes. This is the pattern that the
+/// forms take:
 ///
-/// - On [`Insert`] mode: `"caret.main.Insert"`,
-///   `"caret.extra.Insert"`
-/// - On [`Normal`] mode: `"caret.main.Normal"`,
-///   `"caret.extra.Normal"`
+/// - On [`Insert`] mode: `"cursor.main.Insert"`,
+///   `"cursor.extra.Insert"`
+/// - On [`Normal`] mode: `"cursor.main.Normal"`,
+///   `"cursor.extra.Normal"`
 ///
 /// And so on and so forth.
 ///
@@ -747,50 +750,50 @@ impl DuatMode {
     }
 }
 
-////////// Cursor utility functions
+////////// SelectionMut utility functions
 
 fn edit_or_destroy_all(
     pa: &mut Pass,
     handle: &Handle,
     failed_at_least_once: &mut bool,
-    mut f: impl FnMut(&mut Cursor) -> Option<()> + Clone,
+    mut f: impl FnMut(&mut SelectionMut) -> Option<()> + Clone,
 ) {
-    handle.edit_all(pa, move |mut c| {
-        let ret: Option<()> = f(&mut c);
+    handle.edit_all(pa, move |mut s| {
+        let ret: Option<()> = f(&mut s);
         if ret.is_none() {
-            c.reset();
-            c.destroy();
+            s.reset();
+            s.destroy();
             *failed_at_least_once = true;
         }
     })
 }
 
-fn select_to_end_of_line(set_anchor: bool, mut c: Cursor) {
-    set_anchor_if_needed(set_anchor, &mut c);
-    c.set_desired_vcol(usize::MAX);
-    let pre_nl = match c.char() {
-        '\n' => c.text()[..c.caret()]
+fn select_to_end_of_line(set_anchor: bool, mut s: SelectionMut) {
+    set_anchor_if_needed(set_anchor, &mut s);
+    s.set_desired_vcol(usize::MAX);
+    let pre_nl = match s.char() {
+        '\n' => s.text()[..s.cursor()]
             .char_indices()
             .rev()
             .map_while(|(b, char)| (char != '\n').then_some(b))
             .next(),
-        _ => c.text()[c.caret()..]
+        _ => s.text()[s.cursor()..]
             .char_indices()
-            .map_while(|(b, char)| (char != '\n').then_some(c.caret().byte() + b))
+            .map_while(|(b, char)| (char != '\n').then_some(s.cursor().byte() + b))
             .last(),
     };
     if let Some(b) = pre_nl {
-        c.move_to(b);
+        s.move_to(b);
     }
 }
 
-fn set_anchor_if_needed(set_anchor: bool, c: &mut Cursor) {
+fn set_anchor_if_needed(set_anchor: bool, s: &mut SelectionMut) {
     if set_anchor {
-        if c.anchor().is_none() {
-            c.set_anchor();
+        if s.anchor().is_none() {
+            s.set_anchor();
         }
     } else {
-        c.unset_anchor();
+        s.unset_anchor();
     }
 }
 
@@ -967,21 +970,21 @@ impl<'o> Object<'o> {
         }
     }
 
-    fn find_ahead(self, c: &mut Cursor, count: usize, is_inside: bool) -> Option<usize> {
+    fn find_ahead(self, s: &mut SelectionMut, count: usize, is_inside: bool) -> Option<usize> {
         let mut s_diff = count as i32;
         let (range, inside_pat) = match self {
             Object::OneBound(ahead) => (
-                c.search(ahead.around)
-                    .from_caret()
+                s.search(ahead.around)
+                    .from_cursor()
                     .nth(count.saturating_sub(1))?,
                 ahead.inside,
             ),
             Object::TwoBounds { ahead, repeat: false, .. } => {
-                (c.search(ahead.around).from_caret().next()?, ahead.inside)
+                (s.search(ahead.around).from_cursor().next()?, ahead.inside)
             }
             Object::TwoBounds { ahead, behind, repeat: true } => {
                 let pat = [behind.around, ahead.around];
-                let (_, range) = c.search(pat).from_caret().find(|&(id, _)| {
+                let (_, range) = s.search(pat).from_cursor().find(|&(id, _)| {
                     s_diff += (id == 0) as i32 - (id == 1) as i32;
                     s_diff <= 0
                 })?;
@@ -989,7 +992,7 @@ impl<'o> Object<'o> {
             }
             Object::Argument { ahead, behind } => {
                 let pat = [r"\s*([;,]\s*|\z)", behind.around, ahead.around];
-                let (id, range) = c.search(pat).from_caret_excl().find(|(id, _)| {
+                let (id, range) = s.search(pat).from_cursor_excl().find(|(id, _)| {
                     s_diff += (*id == 1) as i32 - (*id == 2) as i32;
                     s_diff == 0 || (s_diff == 1 && *id == 0)
                 })?;
@@ -998,7 +1001,7 @@ impl<'o> Object<'o> {
                     if id == 0 {
                         range.start
                     } else {
-                        c.search(r"\s*").range(..range.start).next_back()?.start
+                        s.search(r"\s*").range(..range.start).next_back()?.start
                     }
                 } else if id == 0 {
                     range.end
@@ -1007,51 +1010,51 @@ impl<'o> Object<'o> {
                 });
             }
             Object::Indent => {
-                let indent = c.indent();
-                let mut point = c.text().point_at_coords(c.caret().line(), 0);
+                let indent = s.indent();
+                let mut point = s.text().point_at_coords(s.cursor().line(), 0);
 
-                while c.indent_on(point.line()) >= indent
-                    && point.line() < c.text().end_point().line()
+                while s.indent_on(point.line()) >= indent
+                    && point.line() < s.text().end_point().line()
                 {
-                    point = c.text().point_at_coords(point.line() + 1, 0)
+                    point = s.text().point_at_coords(point.line() + 1, 0)
                 }
 
                 return Some(if is_inside {
                     point.byte()
                 } else {
-                    c.text()[point..]
+                    s.text()[point..]
                         .lines()
-                        .find(|line| line.chars().any(|c| !c.is_ascii_whitespace()))
+                        .find(|line| line.chars().any(|s| !s.is_ascii_whitespace()))
                         .map(|line| line.byte_range().start)
-                        .unwrap_or(c.text().len())
+                        .unwrap_or(s.text().len())
                 });
             }
         };
 
         Some(if is_inside {
             let pat = inside_pat;
-            c.search(pat).range(..range.end).next_back()?.start
+            s.search(pat).range(..range.end).next_back()?.start
         } else {
             range.end
         })
     }
 
-    fn find_behind(self, c: &mut Cursor, count: usize, is_inside: bool) -> Option<usize> {
+    fn find_behind(self, s: &mut SelectionMut, count: usize, is_inside: bool) -> Option<usize> {
         let mut e_diff = count as i32;
         let (range, inside_pat) = match self {
             Object::OneBound(behind) => (
-                c.search(behind.around)
-                    .to_caret()
+                s.search(behind.around)
+                    .to_cursor()
                     .nth_back(count.saturating_sub(1))?,
                 behind.inside,
             ),
             Object::TwoBounds { behind, repeat: false, .. } => (
-                c.search(behind.around).to_caret().next_back()?,
+                s.search(behind.around).to_cursor().next_back()?,
                 behind.inside,
             ),
             Object::TwoBounds { ahead, behind, repeat: true } => {
                 let pat = [behind.around, ahead.around];
-                let (_, range) = c.search(pat).to_caret().rev().find(|&(id, _)| {
+                let (_, range) = s.search(pat).to_cursor().rev().find(|&(id, _)| {
                     e_diff += (id == 1) as i32 - (id == 0) as i32;
                     e_diff <= 0
                 })?;
@@ -1059,7 +1062,7 @@ impl<'o> Object<'o> {
             }
             Object::Argument { ahead, behind } => {
                 let pat = [r"(\A|[;,])\s*", behind.around, ahead.around];
-                let (id, range) = c.search(pat).to_caret_incl().rev().find(|(id, _)| {
+                let (id, range) = s.search(pat).to_cursor_incl().rev().find(|(id, _)| {
                     e_diff += (*id == 2) as i32 - (*id == 1) as i32;
                     e_diff == 0 || (e_diff == 1 && *id == 0)
                 })?;
@@ -1068,7 +1071,7 @@ impl<'o> Object<'o> {
                     if id == 0 {
                         range.end
                     } else {
-                        c.search(r"\s*").range(range.end..).next()?.end
+                        s.search(r"\s*").range(range.end..).next()?.end
                     }
                 } else if id == 0 {
                     range.start + 1
@@ -1077,24 +1080,24 @@ impl<'o> Object<'o> {
                 });
             }
             Object::Indent => {
-                let indent = c.indent();
-                let mut point = c.text().point_at_coords(c.caret().line(), 0);
+                let indent = s.indent();
+                let mut point = s.text().point_at_coords(s.cursor().line(), 0);
 
                 while let Some(prev_line) = point.line().checked_sub(1) {
-                    let prev = c.text().point_at_coords(prev_line, 0);
-                    if c.indent_on(prev.line()) < indent {
+                    let prev = s.text().point_at_coords(prev_line, 0);
+                    if s.indent_on(prev.line()) < indent {
                         break;
                     }
-                    point = c.text().point_at_coords(point.line() - 1, 0)
+                    point = s.text().point_at_coords(point.line() - 1, 0)
                 }
 
                 return Some(if is_inside {
                     point.byte()
                 } else {
-                    c.text()[..point]
+                    s.text()[..point]
                         .lines()
                         .rev()
-                        .take_while(|line| line.chars().all(|c| c.is_ascii_whitespace()))
+                        .take_while(|line| line.chars().all(|s| s.is_ascii_whitespace()))
                         .last()
                         .map(|line| line.byte_range().start)
                         .unwrap_or(point.byte())
@@ -1104,7 +1107,7 @@ impl<'o> Object<'o> {
 
         Some(if is_inside {
             let pat = inside_pat;
-            c.search(pat).range(range.start..).next()?.end
+            s.search(pat).range(range.start..).next()?.end
         } else {
             range.start
         })
@@ -1133,25 +1136,25 @@ fn escaped_str(str: impl ToString) -> String {
 static SEARCH: Mutex<String> = Mutex::new(String::new());
 
 fn indents(pa: &mut Pass, handle: &Handle) -> (std::vec::IntoIter<usize>, bool) {
-    fn prev_non_empty_line(c: &mut Cursor<Buffer>) -> Option<usize> {
-        let line_start = c.text().point_at_coords(c.caret().line(), 0);
+    fn prev_non_empty_line(s: &mut SelectionMut<Buffer>) -> Option<usize> {
+        let line_start = s.text().point_at_coords(s.cursor().line(), 0);
 
-        c.text()[..line_start]
+        s.text()[..line_start]
             .lines()
             .rev()
             .enumerate()
-            .find(|(_, line)| line.chars().any(|c| !c.is_whitespace()))
-            .map(|(i, _)| c.caret().line() - (i + 1))
+            .find(|(_, line)| line.chars().any(|s| !s.is_whitespace()))
+            .map(|(i, _)| s.cursor().line() - (i + 1))
     }
 
     if let Some(indents) = handle.ts_get_indentations(pa, ..) {
         (indents.into_iter(), true)
     } else {
         let mut indents = Vec::new();
-        handle.edit_all(pa, |mut c| {
+        handle.edit_all(pa, |mut s| {
             indents.push(
-                prev_non_empty_line(&mut c)
-                    .map(|line| c.indent_on(line))
+                prev_non_empty_line(&mut s)
+                    .map(|line| s.indent_on(line))
                     .unwrap_or(0),
             )
         });

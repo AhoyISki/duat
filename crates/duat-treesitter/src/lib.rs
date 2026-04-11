@@ -282,7 +282,7 @@ pub trait TsHandle {
     /// buffer, either because there is no queries for the [filetype]
     /// or because there is no filetype at all.
     ///
-    /// [`caret`]: duat_core::mode::Selection::caret
+    /// [`cursor`]: duat_core::mode::Selection::cursor
     /// [filetype]: duat_filetype::FileType::filetype
     fn ts_get_indentations(
         &self,
@@ -303,18 +303,18 @@ impl TsHandle for Handle {
     ) -> Option<Vec<usize>> {
         let range = duat_core::utils::get_range(selections, self.selections(pa).len());
 
-        let carets: Vec<usize> = self
+        let cursors: Vec<usize> = self
             .selections(pa)
             .iter()
             .enumerate()
             .take(range.end)
             .skip(range.start)
-            .map(|(_, (sel, _))| sel.caret().line())
+            .map(|(_, (sel, _))| sel.cursor().line())
             .collect();
 
         let (parser, buffer) = parser::sync_parse(pa, self)?;
 
-        carets
+        cursors
             .into_iter()
             .map(|lnum| {
                 let text = buffer.text();

@@ -17,8 +17,8 @@ use crate::{
 static BASE_FORMS: &[(&str, Form)] = &[
     ("default", Form::new()),
     ("accent", Form::new().bold()),
-    ("caret.main", Form::new().reverse()),
-    ("caret.extra", Form {
+    ("cursor.main", Form::new().reverse()),
+    ("cursor.extra", Form {
         kind: Ref(2, default_style()),
         ..Form::new().reverse()
     }),
@@ -130,12 +130,12 @@ mod global {
         PALETTE.form_from_id(id).unwrap_or_default()
     }
 
-    /// The current main cursor, with the `"caret.main"` [`Form`].
+    /// The current main cursor, with the `"cursor.main"` [`Form`].
     pub fn main_cursor() -> (Form, Option<CursorShape>) {
         PALETTE.main_cursor()
     }
 
-    /// The current extra cursor, with the `"caret.extra"` [`Form`].
+    /// The current extra cursor, with the `"cursor.extra"` [`Form`].
     pub fn extra_cursor() -> (Form, Option<CursorShape>) {
         PALETTE.extra_cursor()
     }
@@ -153,7 +153,7 @@ mod global {
     ///
     /// ```rust
     /// # use duat_core::form::{self, Form};
-    /// form::set("caret.main", Form::new().black().on("#456321"));
+    /// form::set("cursor.main", Form::new().black().on("#456321"));
     /// ```
     ///
     /// However, if possible, Duat will still try to use the main
@@ -179,7 +179,7 @@ mod global {
     ///
     /// ```rust
     /// # use duat_core::form::{self, Form};
-    /// form::set("caret.extra", Form::new().black().on_cyan());
+    /// form::set("cursor.extra", Form::new().black().on_cyan());
     /// ```
     ///
     /// However, if possible, Duat will still try to use the main
@@ -195,7 +195,7 @@ mod global {
     /// Removes the main cursor's [shape].
     ///
     /// By doing this, you will force Duat to draw the main cursor by
-    /// use of the `"caret.main"` form.
+    /// use of the `"cursor.main"` form.
     ///
     /// If you want to set the [shape] instead, see
     /// [`form::set_main_cursor`].
@@ -209,7 +209,7 @@ mod global {
     /// Removes extra cursors's [shape]s.
     ///
     /// By doing this, you will force Duat to draw the extra cursor by
-    /// use of the `"caret.main"` form. Do note however that, in
+    /// use of the `"cursor.main"` form. Do note however that, in
     /// something like a terminal, extra cursors would never be
     /// printed as a [shape] anyways, since terminals can only
     /// print one cursor at a time.
@@ -1391,10 +1391,10 @@ impl Painter {
         self.reset_attrs = true;
     }
 
-    /// Applies the `"caret.main"` [`Form`].
+    /// Applies the `"cursor.main"` [`Form`].
     #[inline(always)]
-    pub fn apply_main_selection(&mut self, is_caret: bool, start_range: bool) {
-        if is_caret {
+    pub fn apply_main_selection(&mut self, is_cursor: bool, start_range: bool) {
+        if is_cursor {
             self.apply(M_CAR_ID, 150);
         }
         if start_range {
@@ -1402,10 +1402,10 @@ impl Painter {
         }
     }
 
-    /// Removes the `"caret.main"` [`Form`].
+    /// Removes the `"cursor.main"` [`Form`].
     #[inline(always)]
-    pub fn remove_main_selection(&mut self, is_caret: bool, end_range: bool) {
-        if is_caret {
+    pub fn remove_main_selection(&mut self, is_cursor: bool, end_range: bool) {
+        if is_cursor {
             self.remove(M_CAR_ID);
         }
         if end_range {
@@ -1413,10 +1413,10 @@ impl Painter {
         }
     }
 
-    /// Applies the `"caret.extra"` [`Form`].
+    /// Applies the `"cursor.extra"` [`Form`].
     #[inline(always)]
-    pub fn apply_extra_selection(&mut self, is_caret: bool, start_range: bool) {
-        if is_caret {
+    pub fn apply_extra_selection(&mut self, is_cursor: bool, start_range: bool) {
+        if is_cursor {
             self.apply(E_CAR_ID, 149);
         }
         if start_range {
@@ -1424,10 +1424,10 @@ impl Painter {
         }
     }
 
-    /// Removes the `"caret.extra"` [`Form`].
+    /// Removes the `"cursor.extra"` [`Form`].
     #[inline(always)]
-    pub fn remove_extra_selection(&mut self, is_caret: bool, end_range: bool) {
-        if is_caret {
+    pub fn remove_extra_selection(&mut self, is_cursor: bool, end_range: bool) {
+        if is_cursor {
             self.remove(E_CAR_ID);
         }
         if end_range {
@@ -1469,12 +1469,12 @@ impl Painter {
         }
     }
 
-    /// The [`Form`] "caret.extra", and its shape.
+    /// The [`Form`] "cursor.extra", and its shape.
     pub fn main_cursor(&self) -> Option<CursorShape> {
         self.inner.main_cursor
     }
 
-    /// The [`Form`] "caret.extra", and its shape.
+    /// The [`Form`] "cursor.extra", and its shape.
     pub fn extra_cursor(&self) -> Option<CursorShape> {
         self.inner.extra_cursor
     }
@@ -1794,9 +1794,9 @@ impl std::fmt::Debug for FormKind {
 pub const DEFAULT_ID: FormId = FormId(0);
 /// The [`FormId`] of `"accent"`.
 pub const ACCENT_ID: FormId = FormId(1);
-/// The [`FormId`] of `"caret.main"`.
+/// The [`FormId`] of `"cursor.main"`.
 pub const M_CAR_ID: FormId = FormId(2);
-/// The [`FormId`] of `"caret.extra"`.
+/// The [`FormId`] of `"cursor.extra"`.
 pub const E_CAR_ID: FormId = FormId(3);
 /// The [`FormId`] of `"slection.main"`.
 pub const M_SEL_ID: FormId = FormId(4);

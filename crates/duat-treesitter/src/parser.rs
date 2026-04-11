@@ -632,8 +632,8 @@ impl Parser {
             }
 
             let fd = |node: Node<'a>, delim: &str| -> (Option<Node<'a>>, bool) {
-                let mut c = node.walk();
-                let child = node.children(&mut c).find(|child| child.kind() == delim);
+                let mut s = node.walk();
+                let child = node.children(&mut s).find(|child| child.kind() == delim);
                 let ret = child.map(|child| {
                     let line_range = strs.line(child.start_position().row).byte_range();
                     let range = child.range().end_byte..line_range.end;

@@ -1,4 +1,4 @@
-; inherits: c
+; inherits: s
 
 ; Preprocs
 (preproc_undef

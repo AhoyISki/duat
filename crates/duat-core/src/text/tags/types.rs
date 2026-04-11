@@ -34,7 +34,7 @@ use crate::{
 /// Currently, these are the [`Tag`]s in Duat:
 ///
 /// - [`FormTag`]: Applies a `Form` on a [range]; `Text`. Can be an
-///   actual `caret` or just a temporary `Form`.
+///   actual `cursor` or just a temporary `Form`.
 /// - [`Spacer`]: Lets you put arbitrary equally sized spaces on a
 ///   line.
 /// - [`Inlay`] represents `Text` that "isn't really there", and is

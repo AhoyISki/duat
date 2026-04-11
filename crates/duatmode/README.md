@@ -24,7 +24,7 @@ following:
 `<Tab>` and `<s-Tab>` will do different things depending on your
 [tab mode][__link4].
 
-`<c-n>` and `<c-p>` go to the next and previous completion
+`<s-n>` and `<s-p>` go to the next and previous completion
 entries.
 
 `<Esc>` exits insert mode, returning to `Normal` mode\`.
@@ -104,7 +104,7 @@ Move left. Wraps around lines.
 Move down
 
 `<Down>`  
-Move down to the next wrapped line (i.c vim’s `gj`).
+Move down to the next wrapped line (i.s vim’s `gj`).
 
 `k`  
 Move up.
@@ -204,10 +204,10 @@ Returns to the previous state for the selections.
 Goes to the next state for the selections.
 
 `;`  
-Reduces selections to just the [caret][__link6].
+Reduces selections to just the [cursor][__link6].
 
 `<a-;>`  
-Flips the [caret][__link7] and [anchor][__link8] of selectionss around.
+Flips the [cursor][__link7] and [anchor][__link8] of selectionss around.
 
 `,`  
 Removes extra selections.
@@ -219,7 +219,7 @@ Creates a selection on the column below the last one.
 Creates a selection on the column above the first one.
 
 `<a-:>`  
-Places the [caret][__link9] ahead of the [anchor][__link10] in all selections.
+Places the [cursor][__link9] ahead of the [anchor][__link10] in all selections.
 
 `X`  
 Divides selection into multiple selections, one per line.
@@ -235,6 +235,9 @@ Replays the recorded macro.
 
 `<a-Q>`  
 Starts/stops recording a macro.
+
+`<s-r>`  
+Reloads the configuration crate.
 
 </details>
 
@@ -266,7 +269,7 @@ Yanks selections.
 `d`  
 Deletes and yanks the selections.
 
-`c`  
+`s`  
 Deletes, yanks, and enter `insert` mode.
 
 `p`  
@@ -283,7 +286,7 @@ Replaces with the pasted text, without yanking.
 `<a-d>`  
 Deletes selections without yanking.
 
-`<a-c>`  
+`<a-s>`  
 Deletes selections without yanking, then enters `insert` mode.
 
 `o`  
@@ -374,13 +377,13 @@ Keeps only the selections that *don’t* match the pattern.
 Go to next match for pattern.
 
 `N`  
-Create a new cursor on the next match for pattern.
+Create a new selection on the next match for pattern.
 
 `<a-n>`  
 Go to previous match for pattern.
 
 `<a-N>`  
-Create a new cursor on the previous match for pattern.
+Create a new selection on the previous match for pattern.
 
 `*`  
 Makes the main selection the searching pattern.
@@ -445,24 +448,24 @@ To enter `User` mode, you type `<Space>` in `Normal` mode.
 </details>
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG6FZ99dyf85bG2mBrP-naXRHG-TuFOlR0fnBG6Zg3bFImaOVYWSDgmlkdWF0X2Jhc2VlMC45LjCCaWR1YXRfY29yZWUwLjkuMIJoZHVhdG1vZGVlMC45LjA
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG0tZRfnXg4SDG5oHQ2d9A0QfGw7rSln0YpkuG_k-zi9-hxiKYWSEgmZQbHVnaW72gmlkdWF0X2Jhc2VmMC4xMC4wgmlkdWF0X2NvcmVmMC4xMC4wgmhkdWF0bW9kZWYwLjEwLjE
  [__link0]: https://github.com/mawww/kakoune
- [__link1]: https://docs.rs/duat_core/0.9.0/duat_core/?search=Plugin
- [__link10]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::Cursor::anchor
- [__link11]: https://docs.rs/duat_core/0.9.0/duat_core/?search=text::TextMut::undo
- [__link12]: https://docs.rs/duat_core/0.9.0/duat_core/?search=text::TextMut::redo
- [__link13]: https://docs.rs/duat_base/0.9.0/duat_base/?search=modes::PipeSelections
- [__link14]: https://docs.rs/duat_base/0.9.0/duat_base/?search=modes::IncSearch
- [__link15]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::Mode
- [__link16]: https://docs.rs/duat_base/0.9.0/duat_base/?search=modes::IncSearcher
- [__link17]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::User
- [__link18]: https://docs.rs/duat_core/0.9.0/duat_core/?search=Plugin
- [__link19]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::User
- [__link2]: https://docs.rs/duatmode/0.9.0/duatmode/opts/index.html
+ [__link1]: https://crates.io/crates/Plugin
+ [__link10]: https://docs.rs/duat_core/0.10.0/duat_core/?search=mode::SelectionMut::anchor
+ [__link11]: https://docs.rs/duat_core/0.10.0/duat_core/?search=text::TextMut::undo
+ [__link12]: https://docs.rs/duat_core/0.10.0/duat_core/?search=text::TextMut::redo
+ [__link13]: https://docs.rs/duat_base/0.10.0/duat_base/?search=modes::PipeSelections
+ [__link14]: https://docs.rs/duat_base/0.10.0/duat_base/?search=modes::IncSearch
+ [__link15]: https://docs.rs/duat_core/0.10.0/duat_core/?search=mode::Mode
+ [__link16]: https://docs.rs/duat_base/0.10.0/duat_base/?search=modes::IncSearcher
+ [__link17]: https://docs.rs/duat_core/0.10.0/duat_core/?search=mode::User
+ [__link18]: https://crates.io/crates/Plugin
+ [__link19]: https://docs.rs/duat_core/0.10.0/duat_core/?search=mode::User
+ [__link2]: https://docs.rs/duatmode/0.10.1/duatmode/opts/index.html
  [__link3]: https://docs.rs/duat/latest/duat/opts
- [__link4]: https://docs.rs/duatmode/0.9.0/duatmode/?search=insert::TabMode
- [__link5]: https://docs.rs/duat_core/0.9.0/duat_core/?search=opts::PrintOpts::extra_word_chars
- [__link6]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::Cursor::caret
- [__link7]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::Cursor::caret
- [__link8]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::Cursor::anchor
- [__link9]: https://docs.rs/duat_core/0.9.0/duat_core/?search=mode::Cursor::caret
+ [__link4]: https://docs.rs/duatmode/0.10.1/duatmode/?search=insert::TabMode
+ [__link5]: https://docs.rs/duat_core/0.10.0/duat_core/?search=opts::PrintOpts::extra_word_chars
+ [__link6]: https://docs.rs/duat_core/0.10.0/duat_core/?search=mode::SelectionMut::cursor
+ [__link7]: https://docs.rs/duat_core/0.10.0/duat_core/?search=mode::SelectionMut::cursor
+ [__link8]: https://docs.rs/duat_core/0.10.0/duat_core/?search=mode::SelectionMut::anchor
+ [__link9]: https://docs.rs/duat_core/0.10.0/duat_core/?search=mode::SelectionMut::cursor

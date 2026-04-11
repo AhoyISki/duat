@@ -48,7 +48,7 @@ pub fn add_promptline_hooks() {
             if let Some(main) = pl.text.selections().get_main() {
                 area.scroll_around_points(
                     &pl.text,
-                    main.caret().to_two_points_after(),
+                    main.cursor().to_two_points_after(),
                     pl.print_opts(),
                 );
             }

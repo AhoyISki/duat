@@ -40,7 +40,7 @@ pub struct Printer {
 }
 
 impl Printer {
-    /// Returns a new instance of [`Printer`]
+    /// Returns a new instance of `Printer`.
     pub(crate) fn new() -> Self {
         let (vars, sync_solver, max) = {
             let mut vars = Variables::new();
@@ -68,14 +68,14 @@ impl Printer {
     ////////// Area setup functions
 
     /// Adds a new [`VarPoint`] to the list of [`Variable`]s and
-    /// returns it
+    /// returns it.
     pub fn new_point(&self) -> VarPoint {
         self.vars.lock().unwrap().new_point()
     }
 
     /// Returns [`Variable`]s for a new dynamically updated widget,
     /// which centers a [`Rect`] as well as another which
-    /// represents the length of said [`Rect`]
+    /// represents the length of said [`Rect`].
     pub fn new_widget_spawn(
         &self,
         id: SpawnId,
@@ -117,7 +117,7 @@ impl Printer {
         )
     }
 
-    /// Returns the spawned info associated with a [`SpawnId`]
+    /// Returns the spawned info associated with a [`SpawnId`].
     ///
     /// This info consists of the following:
     ///
@@ -131,7 +131,7 @@ impl Printer {
         self.sync_solver.lock().unwrap().get_spawn_info(id)
     }
 
-    /// Sets the new desired length for a [`SpawnId`]
+    /// Sets the new desired length for a [`SpawnId`].
     pub fn set_spawn_len(&self, id: SpawnId, len: Option<f64>) {
         self.sync_solver.lock().unwrap().set_spawn_len(id, len);
         if len == Some(0.0) {
@@ -142,7 +142,7 @@ impl Printer {
         }
     }
 
-    /// Sets the [`Frame`] for a [`SpawnId`]
+    /// Sets the [`Frame`] for a [`SpawnId`].
     pub fn set_frame(&self, id: SpawnId, frame: &Frame, parent_frame: Option<&Frame>) {
         self.sync_solver
             .lock()
@@ -150,7 +150,7 @@ impl Printer {
             .set_frame(id, frame, parent_frame);
     }
 
-    /// Creates a new edge from the two [`VarPoint`]s
+    /// Creates a new edge from the two [`VarPoint`]s.
     ///
     /// This function will return the [`Variable`] representing the
     /// `width` of that edge. It can only have a value of `1` or `0`.
@@ -158,25 +158,25 @@ impl Printer {
         self.vars.lock().unwrap().add_edge([lhs, rhs], axis, fr)
     }
 
-    /// Adds [`Equality`]s to the solver
+    /// Adds [`Equality`]s to the solver.
     pub fn add_eqs(&self, eqs: impl IntoIterator<Item = Equality>) {
         self.sync_solver.lock().unwrap().add_eqs(eqs);
     }
 
     ////////// Layout modification functions
 
-    /// Removes [`Equality`]s from the solver
+    /// Removes [`Equality`]s from the solver.
     pub fn remove_eqs(&self, eqs: impl IntoIterator<Item = Equality>) {
         // If there is no SavedVar, then the first term is a frame.
         self.sync_solver.lock().unwrap().remove_eqs(eqs);
     }
 
-    /// Removes an edge from the list of edges
+    /// Removes an edge from the list of edges.
     pub fn remove_edge(&self, edge: Variable) {
         self.vars.lock().unwrap().remove_edge(edge);
     }
 
-    /// Takes the [`Variables`] of a [`Rect`]
+    /// Takes the [`Variables`] of a [`Rect`].
     ///
     /// This is done when swapping two [`Rect`]s from different
     /// windows.
@@ -204,7 +204,7 @@ impl Printer {
         [tl.x(), tl.y(), br.x(), br.y()]
     }
 
-    /// Removes the information regarding a [`SpawnId`]
+    /// Removes the information regarding a [`SpawnId`].
     ///
     /// This will remove, more specifically, the `center` and `len`
     /// variables, as well as future calculations for the center of
@@ -230,7 +230,7 @@ impl Printer {
         drop(vars);
     }
 
-    /// Inserts the [`Variables`] taken from a [`Rect`]
+    /// Inserts the [`Variables`] taken from a [`Rect`].
     pub fn insert_rect_vars(&self, new_vars: [Variable; 4]) {
         let mut vars = self.vars.lock().unwrap();
         for var in new_vars {
@@ -240,7 +240,7 @@ impl Printer {
 
     ////////// Updating functions
 
-    /// Updates the value of all [`VarPoint`]s that have changed
+    /// Updates the value of all [`VarPoint`]s that have changed.
     pub fn update(&self, change_max: bool, assign_floating: bool) {
         let changes = {
             let mut ss = self.sync_solver.lock().unwrap();
@@ -252,7 +252,7 @@ impl Printer {
         self.has_to_print_edges.store(true, Ordering::Relaxed);
     }
 
-    /// Clears a spawned Widget from screen, not actually deleting it
+    /// Clears a spawned Widget from screen, not actually deleting it.
     pub fn clear_spawn(&self, area_id: AreaId) {
         let mut spawned_lines = self.spawned_lines.lock().unwrap();
         let old_len = spawned_lines.len();
@@ -266,7 +266,7 @@ impl Printer {
         }
     }
 
-    /// Replace a set of [`Equality`]s with another
+    /// Replace a set of [`Equality`]s with another.
     pub fn replace(
         &self,
         old_eqs: impl IntoIterator<Item = Equality>,
@@ -277,7 +277,7 @@ impl Printer {
         ss.add_eqs(new_eqs);
     }
 
-    /// Moves a [`SpawnId`] to another [`Coord`]
+    /// Moves a [`SpawnId`] to another [`Coord`].
     pub fn move_spawn_to(&self, id: SpawnId, coord: Coord, char_width: u32) {
         self.sync_solver
             .lock()
@@ -286,7 +286,7 @@ impl Printer {
     }
 
     /// Main printing function, responsible for keeping things
-    /// consistent
+    /// consistent.
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
 
@@ -403,7 +403,7 @@ impl Printer {
         }
     }
 
-    /// Clears every area
+    /// Clears every area.
     ///
     /// This function should be used when unloading in order to
     /// prevent lingering static references to the old loaded config,
@@ -416,7 +416,7 @@ impl Printer {
 
     ////////// Lines functions
 
-    /// Sends the finished [`Lines`], off to be printed
+    /// Sends the finished [`Lines`], off to be printed.
     pub fn send_lines(&self, lines: Lines) {
         let mut new_lines = self.new_lines.lock().unwrap();
         // Areas that intersect with this one came from a previous
@@ -432,7 +432,7 @@ impl Printer {
     }
 
     /// Sends the finished [`Lines`] of a floating `Widget` to be
-    /// printed
+    /// printed.
     pub fn send_spawn_lines(
         &self,
         area_id: AreaId,
@@ -465,12 +465,12 @@ impl Printer {
 
     ////////// Querying functions
 
-    /// The maximum [`VarPoint`], i.e. the bottom right of the screen
+    /// The maximum [`VarPoint`], i.e. the bottom right of the screen.
     pub fn max(&self) -> &VarPoint {
         &self.max
     }
 
-    /// The current value of the [`max`] [`VarPoint`]
+    /// The current value of the [`max`] [`VarPoint`].
     ///
     /// [`max`]: Self::max
     pub fn max_value(&self) -> Coord {
@@ -479,7 +479,7 @@ impl Printer {
         max
     }
 
-    /// Gets [`Coords`] from two [`VarPoint`]s
+    /// Gets [`Coords`] from two [`VarPoint`]s.
     pub fn coords(&self, var_points: [VarPoint; 2], is_printing: bool) -> Coords {
         let mut vars = self.vars.lock().unwrap();
         let (tl, _) = vars.coord(var_points[0], is_printing);
@@ -487,7 +487,7 @@ impl Printer {
         Coords::new(tl, br)
     }
 
-    /// Wether a [`Variable`] has changed
+    /// Wether a [`Variable`] has changed.
     pub fn coords_have_changed(&self, [tl, br]: [VarPoint; 2]) -> bool {
         let vars = self.vars.lock().unwrap();
         [tl.x(), tl.y(), br.x(), br.y()]
@@ -499,7 +499,7 @@ impl Printer {
 unsafe impl Send for Printer {}
 unsafe impl Sync for Printer {}
 
-/// A list of lines to print, belonging to some `Widget`
+/// A list of lines to print, belonging to some `Widget`.
 #[derive(Debug)]
 pub struct Lines {
     bytes: Vec<u8>,
@@ -511,7 +511,7 @@ pub struct Lines {
 
 impl Lines {
     /// Returns a new `Lines`, which is used to send stuff to be
-    /// printed on screen
+    /// printed on screen.
     pub fn new(coords: Coords, has_edge_ahead: bool) -> Self {
         let mut offsets = Vec::with_capacity(coords.height() as usize);
         offsets.push(0);
@@ -525,21 +525,21 @@ impl Lines {
     }
 
     /// Show the real cursor, making the main cursor [`CursorShape`]
-    /// based
+    /// based.
     ///
     /// [`CursorShape`]: duat_core::form::CursorShape
     pub fn show_real_cursor(&mut self) {
         self.real_cursor = Some(true);
     }
 
-    /// Hide the real cursor, making the main cursor [`Form`] based
+    /// Hide the real cursor, making the main cursor [`Form`] based.
     ///
     /// [`Form`]: duat_core::form::Form
     pub fn hide_real_cursor(&mut self) {
         self.real_cursor = Some(false);
     }
 
-    /// A line on a given `y` position
+    /// A line on a given `y` position.
     ///
     /// Returns [`None`] if these [`Lines`] don't intersect with the
     /// given `y`.
@@ -553,7 +553,7 @@ impl Lines {
         })
     }
 
-    /// Returns the [`Coords`] the bytes will be printed to
+    /// Returns the [`Coords`] the bytes will be printed to.
     pub fn coords(&self) -> Coords {
         self.coords
     }
@@ -608,7 +608,7 @@ mod stdout {
 
     pub type Stdout = MutexGuard<'static, BufWriter<File>>;
 
-    /// Gets a BufWriter wrapper around the stdout
+    /// Gets a BufWriter wrapper around the stdout.
     pub fn get() -> Stdout {
         #[cfg(not(windows))]
         use unix::get_stdout;
@@ -630,7 +630,7 @@ mod stdout {
             os::fd::{AsRawFd, FromRawFd},
         };
 
-        /// The stdout [`File`] on non Windows systems
+        /// The stdout [`File`] on non Windows systems.
         pub fn get_stdout() -> File {
             unsafe { File::from_raw_fd(stdout().as_raw_fd()) }
         }
@@ -644,7 +644,7 @@ mod stdout {
             os::windows::io::{AsRawHandle, FromRawHandle},
         };
 
-        /// The stdout [`File`] on Windows systems
+        /// The stdout [`File`] on Windows systems.
         pub fn get_stdout() -> File {
             unsafe { File::from_raw_handle(stdout().as_raw_handle()) }
         }

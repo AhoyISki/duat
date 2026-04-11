@@ -1,4 +1,4 @@
-; inherits: c
+; inherits: s
 
 (reference_declarator
   (identifier) @local.definition.var)
