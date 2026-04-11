@@ -228,6 +228,7 @@ impl Mode for Normal {
             ctrl!('i') | event!(Tab) => txt!("Go to next jump"),
             event!(' ') => txt!("Enter [mode]User[] mode"),
             alt!('u' | 'U') => txt!("{undo} last selection change"),
+            ctrl!('r') => txt!("Reload the config crate"),
         })
     }
 
@@ -1196,6 +1197,7 @@ impl Mode for Normal {
             ////////// History manipulation
             event!('u') => handle.text_mut(pa).undo(),
             event!('U') => handle.text_mut(pa).redo(),
+            ctrl!('r') => _ = duat_core::cmd::call_notify(pa, "reload"),
             _ => {}
         }
 

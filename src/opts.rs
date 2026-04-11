@@ -401,8 +401,9 @@ pub struct Opts {
 /// This lets you turn off a bunch of functionality in order to either
 /// not have it, or replace it with your own version.
 ///
-/// Every item here is set to `true` by default, and by setting it to
-/// `false`, you will disable that functionality.
+/// With the exception of `reload_on_save`, Every item here is set to
+/// `true` by default, and by setting it to `false`, you will disable
+/// that functionality.
 pub struct EnabledHooks {
     /// Enables the default [`BufferOpts`] parser.
     ///
@@ -421,6 +422,13 @@ pub struct EnabledHooks {
     /// Instead of calling `:write` followed by a call to `:reload`,
     /// by having this enabled, just by calling `:write` (or `:w` or
     /// `wa`), you will automatically trigger a reload.
+    ///
+    /// This is the only member that is set to `false` by default.
+    /// This is because in rust-analyzer, at least for now,
+    /// diagnostics require the file to be saved, which means it is
+    /// best to save as often as possible. This would result in way
+    /// too frequent reloads. If you want that, you can enable this
+    /// hook.
     pub reload_on_save: bool,
     /// Automatically reloads [`Buffer`]s whenever an external change
     /// is detected.
@@ -756,7 +764,7 @@ impl Default for Opts {
             status_fmt_fn: None,
             enabled_hooks: EnabledHooks {
                 default_opts_parser: true,
-                reload_on_save: true,
+                reload_on_save: false,
                 auto_reload_buffers: true,
                 show_whichkey: true,
                 default_buffer_widgets: true,

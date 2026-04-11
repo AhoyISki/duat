@@ -33,6 +33,17 @@ fn setup(opts: &mut Opts) {
         _ = context::current_buffer(pa).save(pa);
     });
 
+	// On Rust, diagnostics rely on file saving, so this hook should
+	// provide a reload whenever switching to Normal mode.
+    hook::add::<ModeSwitched>(|pa, switch| {
+        if switch.new.is::<Normal>()
+            && let buffer = context::current_buffer(pa)
+            && let Some("rust") = buffer.filetype(pa)
+        {
+            _ = buffer.save(pa);
+        }
+    });
+
     colorscheme::set("catppuccin-mocha");
 }
 
