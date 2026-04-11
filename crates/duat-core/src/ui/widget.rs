@@ -50,7 +50,7 @@ use crate::{
     opts::PrintOpts,
     session::UiMouseEvent,
     text::{Text, TextMut},
-    ui::{PrintInfo, RwArea},
+    ui::{PrintInfo, RwArea, SpawnId},
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -98,8 +98,9 @@ impl Node {
         area: RwArea,
         master: Option<Handle<dyn Widget>>,
         is_closed: Arc<AtomicBool>,
+        spawn_id: Option<SpawnId>,
     ) -> Self {
-        Self::from_handle(Handle::new(widget, area, master, is_closed))
+        Self::from_handle(Handle::new(widget, area, master, is_closed, spawn_id))
     }
 
     /// Returns a `Node` from an existing [`Handle`]
@@ -151,20 +152,26 @@ impl Node {
 
                     let points = handle.area().points_at_coord(pa, text, event.coord, opts);
 
-                    hook::trigger(pa, OnMouseEvent {
-                        handle: dyn_handle.clone(),
-                        points,
-                        coord: event.coord,
-                        kind: event.kind,
-                        modifiers: event.modifiers,
-                    });
-                    hook::trigger(pa, OnMouseEvent {
-                        handle: handle.clone(),
-                        points,
-                        coord: event.coord,
-                        kind: event.kind,
-                        modifiers: event.modifiers,
-                    });
+                    hook::trigger(
+                        pa,
+                        OnMouseEvent {
+                            handle: dyn_handle.clone(),
+                            points,
+                            coord: event.coord,
+                            kind: event.kind,
+                            modifiers: event.modifiers,
+                        },
+                    );
+                    hook::trigger(
+                        pa,
+                        OnMouseEvent {
+                            handle: handle.clone(),
+                            points,
+                            coord: event.coord,
+                            kind: event.kind,
+                            modifiers: event.modifiers,
+                        },
+                    );
 
                     if let Some(TwoPointsPlace::Within(points)) = points {
                         let event = ToggleEvent {

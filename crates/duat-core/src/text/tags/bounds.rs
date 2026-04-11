@@ -4,9 +4,8 @@ use self::id::RangeId;
 use crate::{
     ranges::Ranges,
     text::{
-        RawTag,
         shift_list::{ShiftList, Shiftable},
-        tags::ToggleId,
+        tags::RawTag,
     },
 };
 
@@ -266,6 +265,7 @@ impl Bounds {
     }
 
     /// Try to find the match for a RawTag at a given index
+    #[inline]
     pub fn match_of(&self, n: usize) -> Option<([usize; 2], RawTag)> {
         let i = self.list.find_by_key(n as i32, |([n, _], ..)| n).ok()?;
 
@@ -281,19 +281,20 @@ impl Bounds {
     }
 
     /// Get all the toggle ranges that surround a byte.
-    pub fn toggles_surrounding(&self, byte: i32) -> impl Iterator<Item = (Range<usize>, ToggleId)> {
+    #[inline]
+    pub fn toggles_surrounding(&self, byte: i32) -> impl Iterator<Item = (Range<usize>, u32)> {
         self.list
             .iter_fwd(..)
             .take_while(move |(_, ([_, b], ..))| *b <= byte)
             .filter_map(move |(i, ([_, sb], tag, range_id))| {
-                if let RawTag::StartToggle(_, toggle_id) = tag {
+                if let RawTag::StartToggle(_, idx) = tag {
                     let (_, ([_, eb], ..)) = self
                         .list
                         .iter_rev(i + 1..)
                         .find(|(_, (.., other))| *other == range_id)
                         .unwrap();
 
-                    (eb > byte).then_some((sb as usize..eb as usize, toggle_id))
+                    (eb > byte).then_some((sb as usize..eb as usize, idx))
                 } else {
                     None
                 }
@@ -303,7 +304,7 @@ impl Bounds {
 
 /// A forward iterator for the [`Bounds`]
 #[derive(Debug, Clone)]
-pub struct IterFwd<'a> {
+pub(in crate::text) struct IterFwd<'a> {
     iter: crate::text::shift_list::IterFwd<'a, ([i32; 2], RawTag, RangeId)>,
 }
 
@@ -319,7 +320,7 @@ impl Iterator for IterFwd<'_> {
 
 /// A forward iterator for the [`Bounds`]
 #[derive(Debug, Clone)]
-pub struct IterRev<'a> {
+pub(in crate::text) struct IterRev<'a> {
     iter: crate::text::shift_list::IterRev<'a, ([i32; 2], RawTag, RangeId)>,
 }
 

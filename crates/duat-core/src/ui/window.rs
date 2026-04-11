@@ -160,7 +160,13 @@ impl Windows {
             specs,
         )?;
 
-        let node = Node::new(widget, spawned, master, Arc::new(AtomicBool::new(false)));
+        let node = Node::new(
+            widget,
+            spawned,
+            master,
+            Arc::new(AtomicBool::new(false)),
+            Some(id),
+        );
 
         let window = self.inner.write(pa).list.remove(win);
         window.add(pa, node.clone(), None, Location::Spawned(id));
@@ -191,7 +197,7 @@ impl Windows {
             .ui
             .new_dyn_spawned(path.as_ref().map(|p| p.as_ref()), id, specs, win);
 
-        let node = Node::new(widget, spawned, Some(master), is_closed);
+        let node = Node::new(widget, spawned, Some(master), is_closed, Some(id));
 
         let window = self.inner.write(pa).list.remove(win);
         window.add(pa, node.clone(), None, Location::Spawned(id));
@@ -218,7 +224,13 @@ impl Windows {
             .ui
             .new_static_spawned(path.as_ref().map(|p| p.as_ref()), id, specs, win);
 
-        let node = Node::new(widget, spawned, None, Arc::new(AtomicBool::new(false)));
+        let node = Node::new(
+            widget,
+            spawned,
+            None,
+            Arc::new(AtomicBool::new(false)),
+            Some(id),
+        );
 
         let window = self.inner.write(pa).list.remove(win);
         window.add(pa, node.clone(), None, Location::Spawned(id));
@@ -307,7 +319,13 @@ impl Windows {
                 .find_map(|(.., node)| node.area().is_eq(pa, area).then(|| node.handle().clone()))
         });
 
-        let node = Node::new(widget, pushed, master, Arc::new(AtomicBool::new(false)));
+        let node = Node::new(
+            widget,
+            pushed,
+            master,
+            Arc::new(AtomicBool::new(false)),
+            None,
+        );
 
         let window = self.inner.write(pa).list.remove(win);
         window.add(pa, node.clone(), parent, location);
@@ -857,7 +875,13 @@ impl Window {
         };
 
         let area = ui.new_root(path.as_ref().map(|p| p.as_ref()));
-        let node = Node::new::<W>(widget, area.clone(), None, Arc::new(AtomicBool::new(false)));
+        let node = Node::new::<W>(
+            widget,
+            area.clone(),
+            None,
+            Arc::new(AtomicBool::new(false)),
+            None,
+        );
 
         new_additions
             .lock()

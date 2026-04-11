@@ -17,10 +17,9 @@ use std::{
 
 use RawTag::*;
 
-use self::{bounds::Bounds, extents::NsExtents};
-pub use self::{
-    ids::*,
-    types::{Conceal, FormTag, Inlay, Mask, Overlay, RawTag, Spacer, Spawn, Tag, Toggle, ToggleFn},
+pub(super) use crate::text::tags::types::RawTag;
+pub use crate::text::tags::types::{
+    Conceal, FormTag, Inlay, Mask, Overlay, Spacer, Spawn, Tag, TagPart, Toggle, ToggleFn,
 };
 use crate::{
     Ns,
@@ -29,6 +28,7 @@ use crate::{
     text::{
         Point, Text, TextRangeOrIndex,
         shift_list::{Shift, ShiftList, Shiftable},
+        tags::{bounds::Bounds, extents::NsExtents},
     },
     ui::{SpawnId, Widget},
     utils::get_range,
@@ -141,10 +141,10 @@ impl Tags<'_> {
         &mut self,
         ns: Ns,
         from: impl TextRangeOrIndex,
-        filter: impl FnMut(usize, RawTag) -> bool,
+        filter: impl FnMut(usize, TagPart) -> bool,
     ) {
         let range = from.to_range(self.0.len_bytes() + 1);
-        self.0.remove_from_if(ns, range, filter)
+        self.0.remove_if(ns, range, filter)
     }
 
     /// Removes all [`Tag`]s
@@ -179,8 +179,8 @@ impl std::fmt::Debug for Tags<'_> {
 /// functions of [`StartToggle`]s
 pub struct InnerTags {
     list: ShiftList<(i32, RawTag)>,
-    ghosts: Vec<(InlayId, Arc<Text>)>,
-    toggles: Vec<(ToggleId, ToggleFn)>,
+    ghosts: Vec<Option<(Ghost, usize)>>,
+    toggles: Vec<Option<(Toggle, usize)>>,
     spawns: Vec<SpawnCell>,
     pub(super) spawn_fns: SpawnFns,
     bounds: Bounds,
@@ -317,14 +317,18 @@ impl InnerTags {
                     }
                 }
                 ConcealUntil(_) => unreachable!(),
-                RawTag::Inlay(_, id) | RawTag::Overlay(_, id) => {
-                    self.ghosts
-                        .extend(other.ghosts.iter().find(|(l, _)| l == &id).cloned());
+                RawTag::Inlay(_, mut idx) | RawTag::Overlay(_, mut idx) => {
+                    let (ghost, _) = other.ghosts[idx as usize].as_ref().unwrap();
+                    idx = reflist_pos(&self.ghosts, ghost) as u32;
+                    reflist_insert(&mut self.ghosts, ghost.clone(), idx as usize);
+
                     self.insert_raw((b, tag), None, false);
                 }
-                RawTag::StartToggle(_, id) => {
-                    self.toggles
-                        .extend(other.toggles.iter().find(|(l, _)| l == &id).cloned());
+                RawTag::StartToggle(_, mut idx) => {
+                    let (toggle, _) = other.toggles[idx as usize].as_ref().unwrap();
+                    idx = reflist_pos(&self.toggles, toggle) as u32;
+                    reflist_insert(&mut self.toggles, toggle.clone(), idx as usize);
+
                     self.insert_raw((b, tag), None, false);
                 }
                 RawTag::Spacer(_) | SpawnedWidget(..) | RawTag::EndToggle(..) => {
@@ -345,7 +349,7 @@ impl InnerTags {
     /// Removes all [`RawTag`]s of a given [`Ns`]
     pub(super) fn remove_from(&mut self, ns: Ns, within: Range<usize>) {
         for extent in self.extents.remove(within.clone(), |other| other == ns) {
-            self.remove_inner(extent.clone(), |(_, tag)| tag.ns() == ns);
+            self.remove_inner(extent.clone(), |(_, tag), _, _| tag.ns() == ns);
         }
     }
 
@@ -353,7 +357,7 @@ impl InnerTags {
         let mut remained_on = [false; 2];
 
         for extent in self.extents.remove(within.clone(), |other| other == ns) {
-            self.remove_inner(extent.clone(), |(b, tag)| {
+            self.remove_inner(extent.clone(), |(b, tag), _, _| {
                 if ns != tag.ns() {
                     return false;
                 };
@@ -384,14 +388,16 @@ impl InnerTags {
 
     /// Removes every [`RawTag`] from a range that matches a given
     /// predicate
-    pub(super) fn remove_from_if(
+    pub(super) fn remove_if(
         &mut self,
         ns: Ns,
         within: Range<usize>,
-        mut filter: impl FnMut(usize, RawTag) -> bool,
+        mut filter: impl FnMut(usize, TagPart) -> bool,
     ) {
         for extent in self.extents.iter_over(within.clone(), ns) {
-            self.remove_inner(extent.clone(), |(byte, tag)| filter(byte as usize, tag));
+            self.remove_inner(extent.clone(), |(byte, tag), ghosts, toggles| {
+                filter(byte as usize, TagPart::from_raw(tag, ghosts, toggles))
+            });
         }
     }
 
@@ -402,10 +408,21 @@ impl InnerTags {
     /// of the [`Bounds`], WILL NOT shift [`NsExtents`] since
     /// there is no byte shifting, WILL NOT shift the bytes of the
     /// [`Bounds`]
-    fn remove_inner(&mut self, range: Range<usize>, mut filter: impl FnMut((i32, RawTag)) -> bool) {
+    #[inline(always)]
+    fn remove_inner(
+        &mut self,
+        range: Range<usize>,
+        mut filter: impl FnMut(
+            (i32, RawTag),
+            &[Option<(Ghost, usize)>],
+            &[Option<(Toggle, usize)>],
+        ) -> bool,
+    ) {
         let removed = self
             .bounds
-            .remove_intersecting(range.clone(), &mut filter)
+            .remove_intersecting(range.clone(), |entry| {
+                filter(entry, &self.ghosts, &self.toggles)
+            })
             .into_iter();
 
         let mut tags_changed = removed.len() > 0;
@@ -414,6 +431,15 @@ impl InnerTags {
         for i in removed.rev() {
             let (_, tag) = self.list.get(i).unwrap();
             meta_tags_changed |= tag.is_meta();
+            match tag {
+                RawTag::Overlay(_, idx) | RawTag::Inlay(_, idx) => {
+                    reflist_remove(&mut self.ghosts, idx as usize)
+                }
+                StartToggle(_, idx) | EndToggle(_, idx) => {
+                    reflist_remove(&mut self.toggles, idx as usize)
+                }
+                _ => {}
+            }
 
             // We remove both bounds in order to prevent a state of dangling
             // bounds, which would cause a lookback or lookahead over the whole
@@ -431,7 +457,22 @@ impl InnerTags {
         let (Ok(end) | Err(end)) = self.list.find_by_key(range.end as i32, |(b, _)| b);
 
         self.list
-            .extract_if_while(start..end, |_, entry| Some(filter(entry)))
+            .extract_if_while(start..end, |_, entry| {
+                let remove = filter(entry, &self.ghosts, &self.toggles);
+                if remove {
+                    match entry.1 {
+                        RawTag::Overlay(_, idx) | RawTag::Inlay(_, idx) => {
+                            reflist_remove(&mut self.ghosts, idx as usize)
+                        }
+                        StartToggle(_, idx) | EndToggle(_, idx) => {
+                            reflist_remove(&mut self.toggles, idx as usize)
+                        }
+                        _ => {}
+                    }
+                }
+
+                Some(remove)
+            })
             .for_each(|(i, (_, tag))| {
                 self.bounds.shift_by(i, [-1, 0]);
 
@@ -513,7 +554,7 @@ impl InnerTags {
             // range.
             // old.start + 1 because we don't want to ge rid of bounds that merely
             // coincide with the edges.
-            self.remove_inner(old.start + 1..old.end, |_| true);
+            self.remove_inner(old.start + 1..old.end, |_, _, _| true);
             self.extents.remove(old.start + 1..old.end, |_| true);
 
             // If the range becomes empty, we should remove the remaining pairs
@@ -578,7 +619,7 @@ impl InnerTags {
     ////////// Iterator functions
 
     /// Returns a forward iterator at a given byte
-    pub fn fwd_at(&self, b: usize, lookaround: Option<usize>) -> FwdTags<'_> {
+    pub(super) fn fwd_at(&self, b: usize, lookaround: Option<usize>) -> FwdTags<'_> {
         let start = {
             let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(b as i32, |(b, _)| b);
             s_i.saturating_sub(lookaround.unwrap_or(self.bounds.min_len()))
@@ -593,7 +634,7 @@ impl InnerTags {
     }
 
     /// Returns a reverse iterator at a given byte
-    pub fn rev_at(&self, b: usize, lookaround: Option<usize>) -> RevTags<'_> {
+    pub(super) fn rev_at(&self, b: usize, lookaround: Option<usize>) -> RevTags<'_> {
         let end = {
             let (Ok(e_i) | Err(e_i)) = self.list.find_by_key(b as i32, |(b, _)| b);
             (e_i + lookaround.unwrap_or(self.bounds.min_len())).min(self.list.len())
@@ -607,27 +648,33 @@ impl InnerTags {
         bounds.chain(tags).peekable()
     }
 
-    pub fn raw_fwd_at(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
+    pub fn tag_parts_fwd(&self, b: usize) -> impl Iterator<Item = (usize, TagPart<'_>)> + '_ {
         let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(b as i32, |(b, _)| b);
-        self.list
-            .iter_fwd(s_i..)
-            .map(|(_, (b, tag))| (b as usize, tag))
+        self.list.iter_fwd(s_i..).map(|(_, (b, tag))| {
+            (
+                b as usize,
+                TagPart::from_raw(tag, &self.ghosts, &self.toggles),
+            )
+        })
     }
 
-    pub fn raw_rev_at(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
+    pub fn tag_parts_rev(&self, b: usize) -> impl Iterator<Item = (usize, TagPart<'_>)> + '_ {
         let (Ok(e_i) | Err(e_i)) = self.list.find_by_key(b as i32, |(b, _)| b);
-        self.list
-            .iter_rev(..e_i)
-            .map(|(_, (b, tag))| (b as usize, tag))
+        self.list.iter_rev(..e_i).map(|(_, (b, tag))| {
+            (
+                b as usize,
+                TagPart::from_raw(tag, &self.ghosts, &self.toggles),
+            )
+        })
     }
 
     /// Returns an iterator over a single byte
-    pub fn iter_only_at(&self, b: usize) -> impl Iterator<Item = RawTag> + '_ {
+    pub fn iter_only_at(&self, b: usize) -> impl Iterator<Item = TagPart<'_>> + '_ {
         let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(b as i32, |(b, _)| b);
         self.list
             .iter_fwd(s_i..)
             .take_while(move |(_, (cur_b, _))| *cur_b as usize == b)
-            .map(|(_, (_, tag))| tag)
+            .map(|(_, (_, tag))| TagPart::from_raw(tag, &self.ghosts, &self.toggles))
     }
 
     ////////// Querying functions
@@ -653,19 +700,11 @@ impl InnerTags {
     /// Returns the length of all [`Inlay`]s in a byte
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
-            RawTag::Inlay(_, id) => {
-                let (_, text) = self.ghosts.iter().find(|(lhs, _)| *lhs == id)?;
-                Some(p.map_or(text.last_point(), |p| p + text.last_point()))
+            TagPart::Inlay(inlay) => {
+                Some(p.map_or(inlay.text().last_point(), |p| p + inlay.text().last_point()))
             }
             _ => p,
         })
-    }
-
-    /// Return the [`Text`] of a given [`InlayId`]
-    pub fn get_ghost(&self, id: InlayId) -> Option<&Text> {
-        self.ghosts
-            .iter()
-            .find_map(|(lhs, text)| (*lhs == id).then_some(text.as_ref()))
     }
 
     /// A list of all [`SpawnId`]s that belong to this `Tags`
@@ -705,14 +744,15 @@ impl InnerTags {
                 Some((sb as usize..eb as usize, sid))
             });
 
-        on_bounds.chain(not_on_bounds).map(|(range, toggle_id)| {
-            let (_, func) = self
-                .toggles
-                .iter()
-                .find(|(id, _)| *id == toggle_id)
-                .unwrap();
-            (range, func.clone())
+        on_bounds.chain(not_on_bounds).map(|(range, idx)| {
+            let (toggle, _) = self.toggles[idx as usize].as_ref().unwrap();
+            (range, toggle.func.clone())
         })
+    }
+
+    /// Get the [`Inlay`] or [`Overlay`] [`Text`] from an index
+    pub(super) fn get_ghost(&self, idx: u32) -> &Text {
+        self.ghosts[idx as usize].as_ref().unwrap().0.text()
     }
 }
 
@@ -787,14 +827,8 @@ impl PartialEq for InnerTags {
                 }
                 (PopForm(_, lhs), PopForm(_, rhs)) => lhs == rhs && l_b == r_b,
                 (Inlay(_, lhs), Inlay(_, rhs)) | (Overlay(_, lhs), Overlay(_, rhs)) => {
-                    let self_ghost = self
-                        .ghosts
-                        .iter()
-                        .find_map(|(id, arc)| (lhs == *id).then_some(arc.as_ref()));
-                    let other_ghost = other
-                        .ghosts
-                        .iter()
-                        .find_map(|(id, arc)| (rhs == *id).then_some(arc.as_ref()));
+                    let self_ghost = &self.ghosts[lhs as usize];
+                    let other_ghost = &other.ghosts[rhs as usize];
                     self_ghost == other_ghost && l_b == r_b
                 }
                 (Spacer(_), Spacer(_))
@@ -813,11 +847,10 @@ impl Eq for InnerTags {}
 ///
 /// This iterator automatically takes into account [`TagRange`]s and
 /// iterates their bounds as if they were regular [`RawTag`]s
-pub type FwdTags<'a> = std::iter::Peekable<Chain<FwdBoundsBefore<'a>, FwdTagsMapper<'a>>>;
+pub(super) type FwdTags<'a> = std::iter::Peekable<Chain<FwdBoundsBefore<'a>, FwdTagsMapper<'a>>>;
 
-#[doc(hidden)]
 #[derive(Debug, Clone)]
-pub struct FwdTagsMapper<'a> {
+pub(super) struct FwdTagsMapper<'a> {
     iter: crate::text::shift_list::IterFwd<'a, (i32, RawTag)>,
     bounds: &'a Bounds,
 }
@@ -836,9 +869,8 @@ impl Iterator for FwdTagsMapper<'_> {
     }
 }
 
-#[doc(hidden)]
 #[derive(Debug, Clone)]
-pub struct FwdBoundsBefore<'a> {
+pub(super) struct FwdBoundsBefore<'a> {
     iter: self::bounds::IterFwd<'a>,
     start: usize,
 }
@@ -859,9 +891,8 @@ impl Iterator for FwdBoundsBefore<'_> {
 /// iterates their bounds as if they were regular [`RawTag`]s
 pub type RevTags<'a> = std::iter::Peekable<Chain<RevBoundsAfter<'a>, RevTagsMapper<'a>>>;
 
-#[doc(hidden)]
 #[derive(Debug, Clone)]
-pub struct RevTagsMapper<'a> {
+pub(super) struct RevTagsMapper<'a> {
     iter: crate::text::shift_list::IterRev<'a, (i32, RawTag)>,
     bounds: &'a Bounds,
 }
@@ -880,9 +911,8 @@ impl Iterator for RevTagsMapper<'_> {
     }
 }
 
-#[doc(hidden)]
 #[derive(Debug, Clone)]
-pub struct RevBoundsAfter<'a> {
+pub(super) struct RevBoundsAfter<'a> {
     iter: self::bounds::IterRev<'a>,
     end: usize,
 }
@@ -894,50 +924,6 @@ impl Iterator for RevBoundsAfter<'_> {
         let end = self.end;
         let is_after = move |([n, b], tag): ([usize; 2], _)| (n > end).then_some((b, tag));
         self.iter.next().and_then(is_after)
-    }
-}
-
-mod ids {
-    use std::sync::atomic::{AtomicU16, Ordering};
-
-    /// The id of a [ghost text]
-    ///
-    /// [ghost text]: super::Inlay
-    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct InlayId(u16);
-
-    impl InlayId {
-        /// Creates a new [`InlayId`]
-        pub(super) fn new() -> Self {
-            static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
-            Self(TEXT_COUNT.fetch_add(1, Ordering::Relaxed))
-        }
-    }
-
-    impl std::fmt::Debug for InlayId {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "InlayId({})", self.0)
-        }
-    }
-
-    /// The id of a toggleable region of the [`Text`]
-    ///
-    /// [`Text`]: super::Text
-    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct ToggleId(u16);
-
-    impl ToggleId {
-        /// Creates a new [`ToggleId`]
-        pub(super) fn new() -> Self {
-            static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
-            Self(TOGGLE_COUNT.fetch_add(1, Ordering::Relaxed))
-        }
-    }
-
-    impl std::fmt::Debug for ToggleId {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "ToggleId({})", self.0)
-        }
     }
 }
 
@@ -980,3 +966,73 @@ pub(super) struct SpawnFns(
 /// Pass Besides, does Sync even apply to FnOnce? isn't it impossible
 /// to do anything with an &FnOnce value?
 unsafe impl Sync for SpawnFns {}
+
+/// Either an [`Inlay`] or an [`Overlay`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Ghost {
+    Inlay(Inlay),
+    Overlay(Overlay),
+}
+
+impl Ghost {
+    fn text(&self) -> &Text {
+        match self {
+            Ghost::Inlay(inlay) => inlay.text(),
+            Ghost::Overlay(overlay) => overlay.text(),
+        }
+    }
+}
+
+impl PartialEq<Inlay> for Ghost {
+    fn eq(&self, other: &Inlay) -> bool {
+        match self {
+            Ghost::Inlay(inlay) => inlay == other,
+            Ghost::Overlay(_) => false,
+        }
+    }
+}
+
+impl PartialEq<Overlay> for Ghost {
+    fn eq(&self, other: &Overlay) -> bool {
+        match self {
+            Ghost::Overlay(overlay) => overlay == other,
+            Ghost::Inlay(_) => false,
+        }
+    }
+}
+
+/// Returns a position that's either equal and occupied, not occupied,
+/// or not yet pushed.
+fn reflist_pos<T, U>(list: &[Option<(T, usize)>], value: &U) -> usize
+where
+    T: PartialEq<U>,
+{
+    if let Some(idx) = list
+        .iter()
+        .position(|entry| entry.as_ref().is_some_and(|(t, _)| t == value))
+    {
+        idx
+    } else {
+        list.iter()
+            .position(|entry| entry.is_none())
+            .unwrap_or(list.len())
+    }
+}
+
+/// Add a value to the reflist or increment a refcount.
+fn reflist_insert<T>(list: &mut Vec<Option<(T, usize)>>, value: T, idx: usize) {
+    match list.get_mut(idx) {
+        Some(Some((_, refcount))) => *refcount += 1,
+        Some(ghost @ None) => *ghost = Some((value, 1)),
+        None => list.push(Some((value, 1))),
+    }
+}
+
+/// Remove a value from the reflist or decrement a refcount.
+fn reflist_remove<T>(list: &mut [Option<(T, usize)>], idx: usize) {
+    match list.get_mut(idx) {
+        Some(entry @ Some((_, 1))) => *entry = None,
+        Some(Some((_, refcount))) => *refcount += 1,
+        Some(None) | None => {}
+    }
+}

@@ -14,14 +14,17 @@ use std::{
 use RawTag::*;
 use crossterm::event::{MouseButton, MouseEventKind};
 
-use super::{InlayId, InnerTags, SpawnId};
+use super::{InnerTags, SpawnId};
 use crate::{
     Ns,
     context::{self, Handle},
     data::Pass,
     form::{self, FormId, MaskId},
     mode::ToggleEvent,
-    text::{Point, Text, TextRange, tags::ToggleId},
+    text::{
+        Point, Text, TextIndex, TextRange,
+        tags::{Ghost, reflist_insert, reflist_pos},
+    },
     ui::{DynSpawnSpecs, Widget},
 };
 
@@ -57,7 +60,10 @@ use crate::{
 /// [range]: TextRange
 /// [`Buffer`]: crate::buffer::Buffer
 /// [`Widget`]: crate::ui::Widget
-pub trait Tag<Index>: Sized {
+pub trait Tag<Index>: Sealed<Index> {}
+
+/// Sealed requirements of the [`Tag`] trait.
+pub(super) trait Sealed<Index>: Sized {
     /// A meta `Tag` is one that changes the layout of the [`Text`]
     /// itself.
     ///
@@ -112,7 +118,7 @@ pub struct FormTag {
     pub priority: u8,
 }
 
-impl<I: TextRange> Tag<I> for FormTag {
+impl<I: TextRange> Sealed<I> for FormTag {
     const IS_META: bool = false;
 
     #[track_caller]
@@ -131,6 +137,7 @@ impl<I: TextRange> Tag<I> for FormTag {
         ((range.start, s_tag), Some((range.end, e_tag)))
     }
 }
+impl<I: TextRange> Tag<I> for FormTag {}
 
 ////////// Meta Tags
 
@@ -169,17 +176,18 @@ impl<I: TextRange> Tag<I> for FormTag {
 /// [`Builder`]: crate::text::Builder
 #[derive(Debug, Clone, Copy)]
 pub struct Spacer;
-impl Tag<usize> for Spacer {
+impl<I: TextIndex> Sealed<I> for Spacer {
     const IS_META: bool = true;
 
     #[track_caller]
     fn get_raw(
         &mut self,
         _: &InnerTags,
-        byte: usize,
+        index: I,
         max: usize,
         ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        let byte = index.to_byte_index();
         assert!(
             byte <= max,
             "byte out of bounds: the len is {max}, but the byte is {byte}",
@@ -187,21 +195,7 @@ impl Tag<usize> for Spacer {
         ((byte, RawTag::Spacer(ns)), None)
     }
 }
-
-impl Tag<Point> for Spacer {
-    const IS_META: bool = true;
-
-    fn get_raw(
-        &mut self,
-        tags: &InnerTags,
-        point: Point,
-        max: usize,
-        ns: Ns,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
-        let byte = point.byte();
-        self.get_raw(tags, byte, max, ns)
-    }
-}
+impl<I: TextIndex> Tag<I> for Spacer {}
 
 /// [`Builder`] part and [`Tag`]: Places ghost `Text` _within_ real `Text`.
 ///
@@ -212,8 +206,7 @@ impl Tag<Point> for Spacer {
 #[derive(Debug, Clone)]
 pub struct Inlay {
     text: Arc<Text>,
-    id: Option<InlayId>,
-    is_new: bool,
+    idx: Option<usize>,
 }
 
 impl Inlay {
@@ -239,11 +232,7 @@ impl Inlay {
             "Can't place Inlays inside of Inlays"
         );
 
-        Self {
-            text: Arc::new(text),
-            id: None,
-            is_new: false,
-        }
+        Self { text: Arc::new(text), idx: None }
     }
 
     /// The [`Text`] of this `Inlay`
@@ -252,65 +241,42 @@ impl Inlay {
     }
 }
 
-impl Tag<usize> for Inlay {
+impl<I: TextIndex> Sealed<I> for Inlay {
     const IS_META: bool = true;
 
     #[track_caller]
     fn get_raw(
         &mut self,
         tags: &InnerTags,
-        byte: usize,
+        index: I,
         max: usize,
         ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        let byte = index.to_byte_index();
         assert!(
             byte <= max,
             "index out of bounds: the len is {max}, but the index is {byte}",
         );
-        let id = if let Some((id, _)) = tags
-            .ghosts
-            .iter()
-            .find(|(_, arc)| Arc::ptr_eq(arc, &self.text))
-        {
-            self.is_new = false;
-            *id
-        } else {
-            self.is_new = true;
-            InlayId::new()
-        };
+        let idx = reflist_pos(&tags.ghosts, self);
 
-        self.id = Some(id);
-        ((byte, RawTag::Inlay(ns, id)), None)
+        self.idx = Some(idx);
+        ((byte, RawTag::Inlay(ns, idx as u32)), None)
     }
 
     fn on_insertion(self, tags: &mut InnerTags) {
-        if self.is_new {
-            tags.ghosts.push((self.id.unwrap(), self.text.clone()))
-        }
+        let idx = self.idx.unwrap();
+        reflist_insert(&mut tags.ghosts, Ghost::Inlay(self), idx);
+    }
+}
+impl<I: TextIndex> Tag<I> for Inlay {}
+
+impl PartialEq for Inlay {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.text, &other.text)
     }
 }
 
-impl Tag<Point> for Inlay {
-    const IS_META: bool = true;
-
-    #[track_caller]
-    fn get_raw(
-        &mut self,
-        tags: &InnerTags,
-        point: Point,
-        max: usize,
-        ns: Ns,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
-        let byte = point.byte();
-        self.get_raw(tags, byte, max, ns)
-    }
-
-    fn on_insertion(self, tags: &mut InnerTags) {
-        if self.is_new {
-            tags.ghosts.push((self.id.unwrap(), self.text))
-        }
-    }
-}
+impl Eq for Inlay {}
 
 /// [`Builder`] part and [`Tag`]: Places ghost `Text` _within_ real `Text`.
 ///
@@ -321,8 +287,7 @@ impl Tag<Point> for Inlay {
 #[derive(Debug, Clone)]
 pub struct Overlay {
     text: Arc<Text>,
-    id: Option<InlayId>,
-    is_new: bool,
+    idx: Option<usize>,
 }
 
 impl Overlay {
@@ -349,71 +314,52 @@ impl Overlay {
 
         Self {
             text: Arc::new(text),
-            id: None,
-            is_new: false,
+            idx: None,
         }
+    }
+
+    /// The [`Text`] of this `Overlay`.
+    pub fn text(&self) -> &Text {
+        &self.text
     }
 }
 
-impl Tag<usize> for Overlay {
+impl<I: TextIndex> Sealed<I> for Overlay {
     const IS_META: bool = false;
 
     #[track_caller]
     fn get_raw(
         &mut self,
         tags: &InnerTags,
-        byte: usize,
+        index: I,
         max: usize,
         ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        let byte = index.to_byte_index();
         assert!(
             byte <= max,
             "index out of bounds: the len is {max}, but the index is {byte}",
         );
-        let id = if let Some((id, _)) = tags
-            .ghosts
-            .iter()
-            .find(|(_, arc)| Arc::ptr_eq(arc, &self.text))
-        {
-            self.is_new = false;
-            *id
-        } else {
-            self.is_new = true;
-            InlayId::new()
-        };
+        let idx = reflist_pos(&tags.ghosts, self);
 
-        self.id = Some(id);
-        ((byte, RawTag::Overlay(ns, id)), None)
+        self.idx = Some(idx);
+        ((byte, RawTag::Overlay(ns, idx as u32)), None)
     }
 
     fn on_insertion(self, tags: &mut InnerTags) {
-        if self.is_new {
-            tags.ghosts.push((self.id.unwrap(), self.text.clone()))
-        }
+        let idx = self.idx.unwrap();
+        reflist_insert(&mut tags.ghosts, Ghost::Overlay(self), idx);
+    }
+}
+impl<I: TextIndex> Tag<I> for Overlay {}
+
+impl PartialEq for Overlay {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.text, &other.text)
     }
 }
 
-impl Tag<Point> for Overlay {
-    const IS_META: bool = false;
-
-    #[track_caller]
-    fn get_raw(
-        &mut self,
-        tags: &InnerTags,
-        point: Point,
-        max: usize,
-        ns: Ns,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
-        let byte = point.byte();
-        self.get_raw(tags, byte, max, ns)
-    }
-
-    fn on_insertion(self, tags: &mut InnerTags) {
-        if self.is_new {
-            tags.ghosts.push((self.id.unwrap(), self.text))
-        }
-    }
-}
+impl Eq for Overlay {}
 
 /// [`Tag`]: Conceals a [range] in the [`Text`].
 ///
@@ -424,7 +370,8 @@ impl Tag<Point> for Overlay {
 /// [range]: TextRange
 #[derive(Debug, Clone, Copy)]
 pub struct Conceal;
-impl<I: TextRange> Tag<I> for Conceal {
+
+impl<I: TextRange> Sealed<I> for Conceal {
     const IS_META: bool = true;
 
     #[track_caller]
@@ -442,6 +389,7 @@ impl<I: TextRange> Tag<I> for Conceal {
         )
     }
 }
+impl<I: TextRange> Tag<I> for Conceal {}
 
 /// [`Tag`]: Adds a toggleable region to the [`Text`].
 ///
@@ -450,9 +398,8 @@ impl<I: TextRange> Tag<I> for Conceal {
 /// that nature.
 #[derive(Clone)]
 pub struct Toggle {
-    toggle_fn: ToggleFn,
-    id: Option<ToggleId>,
-    is_new: bool,
+    pub(super) func: ToggleFn,
+    idx: Option<usize>,
 }
 
 impl Toggle {
@@ -489,7 +436,7 @@ impl Toggle {
         mut func: impl FnMut(&mut Pass, ToggleEvent, Range<Point>) + Send + 'static,
     ) -> Self {
         Self {
-            toggle_fn: Arc::new(Mutex::new(
+            func: Arc::new(Mutex::new(
                 move |pa: &mut Pass, event: ToggleEvent<'_>, range: Range<Point>| {
                     let ns = Ns::for_toggle();
                     let mut parts = event.handle.text_parts(pa);
@@ -515,8 +462,7 @@ impl Toggle {
                     func(pa, event, range)
                 },
             )),
-            id: None,
-            is_new: false,
+            idx: None,
         }
     }
 
@@ -542,14 +488,13 @@ impl Toggle {
         func: impl FnMut(&mut Pass, ToggleEvent, Range<Point>) + Send + 'static,
     ) -> Self {
         Self {
-            toggle_fn: Arc::new(Mutex::new(func)),
-            id: None,
-            is_new: false,
+            func: Arc::new(Mutex::new(func)),
+            idx: None,
         }
     }
 }
 
-impl<I: TextRange> Tag<I> for Toggle {
+impl<I: TextRange> Sealed<I> for Toggle {
     const IS_META: bool = false;
 
     fn get_raw(
@@ -560,29 +505,33 @@ impl<I: TextRange> Tag<I> for Toggle {
         ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         let range = index.to_range(max);
-        let id = if let Some((id, _)) = tags
-            .toggles
-            .iter()
-            .find(|(_, arc)| Arc::ptr_eq(arc, &self.toggle_fn))
-        {
-            self.is_new = false;
-            *id
-        } else {
-            self.is_new = true;
-            ToggleId::new()
-        };
+        let idx = reflist_pos(&tags.toggles, self);
 
-        self.id = Some(id);
+        self.idx = Some(idx);
         (
-            (range.start, RawTag::StartToggle(ns, id)),
-            Some((range.end, RawTag::EndToggle(ns, id))),
+            (range.start, RawTag::StartToggle(ns, idx as u32)),
+            Some((range.end, RawTag::EndToggle(ns, idx as u32))),
         )
     }
 
     fn on_insertion(self, tags: &mut InnerTags) {
-        if self.is_new {
-            tags.toggles.push((self.id.unwrap(), self.toggle_fn))
-        }
+        let idx = self.idx.unwrap();
+        reflist_insert(&mut tags.toggles, self, idx);
+    }
+}
+impl<I: TextRange> Tag<I> for Toggle {}
+
+impl PartialEq for Toggle {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.func, &other.func)
+    }
+}
+
+impl Eq for Toggle {}
+
+impl std::fmt::Debug for Toggle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Toggle").finish_non_exhaustive()
     }
 }
 
@@ -645,20 +594,18 @@ impl Spawn {
     }
 }
 
-impl Tag<Point> for Spawn {
+impl<I: TextIndex> Sealed<I> for Spawn {
     const IS_META: bool = false;
 
     fn get_raw(
         &mut self,
         _: &InnerTags,
-        index: Point,
+        index: I,
         max: usize,
         ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
-        (
-            (index.byte().min(max), RawTag::SpawnedWidget(ns, self.id)),
-            None,
-        )
+        let byte = index.to_byte_index().min(max);
+        ((byte, RawTag::SpawnedWidget(ns, self.id)), None)
     }
 
     fn on_insertion(self, tags: &mut InnerTags) {
@@ -666,25 +613,7 @@ impl Tag<Point> for Spawn {
         tags.spawn_fns.0.push((self.id, self.spawn_fn));
     }
 }
-
-impl Tag<usize> for Spawn {
-    const IS_META: bool = false;
-
-    fn get_raw(
-        &mut self,
-        _: &InnerTags,
-        index: usize,
-        max: usize,
-        ns: Ns,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
-        ((index.min(max), RawTag::SpawnedWidget(ns, self.id)), None)
-    }
-
-    fn on_insertion(self, tags: &mut InnerTags) {
-        tags.spawns.push(super::SpawnCell(self.id, self.is_closed));
-        tags.spawn_fns.0.push((self.id, self.spawn_fn));
-    }
-}
+impl<I: TextIndex> Tag<I> for Spawn {}
 
 /// [`Tag`]: A mask that maps [`Form`]s based on a suffix.
 ///
@@ -710,7 +639,7 @@ impl Mask {
     }
 }
 
-impl<I: TextRange> Tag<I> for Mask {
+impl<I: TextRange> Sealed<I> for Mask {
     const IS_META: bool = false;
 
     #[track_caller]
@@ -731,6 +660,7 @@ impl<I: TextRange> Tag<I> for Mask {
         ((range.start, s_tag), Some((range.end, e_tag)))
     }
 }
+impl<I: TextRange> Tag<I> for Mask {}
 
 /// An internal representation of [`Tag`]s.
 ///
@@ -738,8 +668,7 @@ impl<I: TextRange> Tag<I> for Mask {
 /// single position, and [`Tag`]s that occupy a range are replaced by
 /// two [`RawTag`]s, like [`PushForm`] and [`PopForm`], for example.
 #[derive(Clone, Copy, Eq)]
-pub enum RawTag {
-    // Implemented:
+pub(in crate::text) enum RawTag {
     /// Appends a form to the stack.
     PushForm(Ns, FormId, u8),
     /// Removes a form from the stack. It won't always be the last
@@ -750,9 +679,9 @@ pub enum RawTag {
     Spacer(Ns),
 
     /// Text that shows up on screen, but is ignored otherwise.
-    Overlay(Ns, InlayId),
+    Overlay(Ns, u32),
     /// Text that shows up on screen, after the end of the line.
-    Inlay(Ns, InlayId),
+    Inlay(Ns, u32),
 
     /// Starts concealing the [`Text`], skipping all [`Tag`]s and
     /// [`char`]s until the [`EndConceal`] tag shows up.
@@ -774,9 +703,9 @@ pub enum RawTag {
 
     /// Starts a toggleable region of the [`Text`], that can be
     /// interacted with through a mouse pointer.
-    StartToggle(Ns, ToggleId),
+    StartToggle(Ns, u32),
     /// Ends a toggleable region of the [`Text`].
-    EndToggle(Ns, ToggleId),
+    EndToggle(Ns, u32),
 
     /// A spawned floating [`Widget`].
     SpawnedWidget(Ns, SpawnId),
@@ -791,21 +720,6 @@ pub enum RawTag {
 }
 
 impl RawTag {
-    /// Inverts a [`RawTag`] that occupies a range.
-    pub fn inverse(&self) -> Option<Self> {
-        match self {
-            Self::PushForm(ns, id, _) => Some(Self::PopForm(*ns, *id)),
-            Self::PopForm(ns, id) => Some(Self::PushForm(*ns, *id, 0)),
-            Self::StartConceal(ns) => Some(Self::EndConceal(*ns)),
-            Self::EndConceal(ns) => Some(Self::StartConceal(*ns)),
-            Self::StartToggle(ns, id) => Some(Self::EndToggle(*ns, *id)),
-            Self::EndToggle(ns, id) => Some(Self::StartToggle(*ns, *id)),
-            Self::PushMask(ns, id) => Some(Self::PopMask(*ns, *id)),
-            Self::PopMask(ns, id) => Some(Self::PushMask(*ns, *id)),
-            _ => None,
-        }
-    }
-
     /// Wether this [`RawTag`] ends with another.
     pub fn ends_with(&self, other: &Self) -> bool {
         match (self, other) {
@@ -983,3 +897,89 @@ impl std::fmt::Debug for RawTag {
 }
 
 pub type ToggleFn = Arc<Mutex<dyn FnMut(&mut Pass, ToggleEvent, Range<Point>) + Send>>;
+
+/// A part of an inserted [`Tag`].
+///
+/// Ranged tags like [`FormTag`] and [`Toggle`] are broken up into two
+/// tags, a starting one and an ending one.
+///
+/// In [`Tags::remove_if`], removing either side of the tags will
+/// result in both being removed.
+///
+/// [`Tags::remove_if`]: super::Tags::remove_if
+#[derive(Debug, PartialEq, Eq)]
+pub enum TagPart<'t> {
+    /// Appends a form to the stack.
+    PushForm(FormId, u8),
+    /// Removes a form from the stack. It won't always be the last
+    /// one.
+    PopForm(FormId),
+
+    /// A spacer for the current screen line, replaces alignment.
+    Spacer,
+
+    /// Text that shows up on screen, but is ignored otherwise.
+    Overlay(&'t Overlay),
+    /// Text that shows up on screen, after the end of the line.
+    Inlay(&'t Inlay),
+
+    /// Starts concealing the [`Text`], skipping all [`Tag`]s and
+    /// [`char`]s until the [`EndConceal`] tag shows up.
+    ///
+    /// [`Text`]: super::Text
+    /// [`EndConceal`]: RawTag::EndConceal
+    StartConceal,
+    /// Stops concealing the [`Text`], returning the iteration process
+    /// back to the regular [`Text`] iterator.
+    ///
+    /// [`Text`]: super::Text
+    EndConceal,
+
+    /// Starts a toggleable region of the [`Text`], that can be
+    /// interacted with through a mouse pointer.
+    StartToggle(&'t Toggle),
+    /// Ends a toggleable region of the [`Text`].
+    EndToggle(&'t Toggle),
+
+    /// A spawned floating [`Widget`].
+    SpawnedWidget(SpawnId),
+
+    /// Appends mask to map [`Form`]s given a suffix, to the stack.
+    ///
+    /// [`Form`]: crate::form::Form
+    PushMask(&'static str),
+    /// Removes a mask from the stack. It won't always be the last
+    /// one.
+    PopMask(&'static str),
+}
+
+impl<'t> TagPart<'t> {
+    /// Returns a [`TagPart`] from a [`RawTag`].
+    pub(super) fn from_raw(
+        raw_tag: RawTag,
+        ghosts: &'t [Option<(Ghost, usize)>],
+        toggles: &'t [Option<(Toggle, usize)>],
+    ) -> Self {
+        match raw_tag {
+            PushForm(_, form_id, priority) => Self::PushForm(form_id, priority),
+            PopForm(_, form_id) => Self::PopForm(form_id),
+            RawTag::Spacer(_) => Self::Spacer,
+            RawTag::Overlay(_, idx) => Self::Overlay(match &ghosts[idx as usize] {
+                Some((Ghost::Overlay(overlay), _)) => overlay,
+                _ => unreachable!(),
+            }),
+            RawTag::Inlay(_, idx) => Self::Inlay(match &ghosts[idx as usize] {
+                Some((Ghost::Inlay(overlay), _)) => overlay,
+                _ => unreachable!(),
+            }),
+            StartConceal(_) => Self::StartConceal,
+            EndConceal(_) => Self::EndConceal,
+            ConcealUntil(_) => unreachable!(),
+            StartToggle(_, idx) => Self::StartToggle(&toggles[idx as usize].as_ref().unwrap().0),
+            EndToggle(_, idx) => Self::EndToggle(&toggles[idx as usize].as_ref().unwrap().0),
+            SpawnedWidget(_, spawn_id) => Self::SpawnedWidget(spawn_id),
+            PushMask(_, mask_id) => Self::PushMask(mask_id.name()),
+            PopMask(_, mask_id) => Self::PopMask(mask_id.name()),
+        }
+    }
+}

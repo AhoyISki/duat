@@ -10,10 +10,10 @@ use std::sync::{
 use crate::{
     context,
     data::{Pass, RwData, WriteableTuple},
-    mode::{SelectionMut, ModSelection, Selection, Selections},
+    mode::{ModSelection, Selection, SelectionMut, Selections},
     opts::PrintOpts,
     text::{Text, TextMut, TextParts, TwoPoints},
-    ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, Widget},
+    ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, SpawnId, Widget},
 };
 
 /// A handle to a [`Widget`] in Duat.
@@ -156,6 +156,7 @@ pub struct Handle<W: ?Sized = crate::buffer::Buffer> {
     related: RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>>,
     is_closed: Arc<AtomicBool>,
     pub(crate) update_requested: Arc<AtomicBool>,
+    spawn_id: Option<SpawnId>,
 }
 
 impl<W: Widget + ?Sized> Handle<W> {
@@ -165,6 +166,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         area: RwArea,
         main: Option<Handle<dyn Widget>>,
         is_closed: Arc<AtomicBool>,
+        spawn_id: Option<SpawnId>,
     ) -> Self {
         Self {
             widget,
@@ -176,6 +178,7 @@ impl<W: Widget + ?Sized> Handle<W> {
             ),
             is_closed,
             update_requested: Arc::new(AtomicBool::new(false)),
+            spawn_id,
         }
     }
 }
@@ -277,6 +280,7 @@ impl<W: 'static + ?Sized> Handle<W> {
             related: self.related.clone(),
             is_closed: self.is_closed.clone(),
             update_requested: self.update_requested.clone(),
+            spawn_id: self.spawn_id,
         })
     }
 
@@ -346,12 +350,24 @@ impl<W: 'static + ?Sized> Handle<W> {
     /// on the master's [`Text`].
     ///
     /// [spawned]: crate::text::Spawn
-    pub fn buffer(&self, pa: &Pass) -> Option<Handle> {
+    pub fn master_buffer(&self, pa: &Pass) -> Option<Handle> {
         self.related.read(pa).iter().find_map(|(handle, relation)| {
             handle
                 .try_downcast()
                 .filter(|_| *relation == WidgetRelation::Main)
         })
+    }
+
+    /// Returns a [`SpawnId`], if this `Handle` was spawned.
+    ///
+    /// You can use this if, for example, you want to compare a
+    /// `Handle` with a specific [`RawTag`], when calling
+    /// [`tags.remove_if`].
+    ///
+    /// [`RawTag`]: crate::text::RawTag
+    /// [`tags.remove_if`]: crate::text::Tags::remove_if
+    pub fn spawn_id(&self) -> Option<SpawnId> {
+        self.spawn_id
     }
 
     /// Reads related [`Widget`]s of type `W2`, as well as its
@@ -462,8 +478,8 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     /// Edits the nth [`Selection`] in the [`Text`].
     ///
-    /// Once dropped, the [`Selection`] in this [`SelectionMut`] will be
-    /// added back to the list of [`Selection`]s, unless it is
+    /// Once dropped, the [`Selection`] in this [`SelectionMut`] will
+    /// be added back to the list of [`Selection`]s, unless it is
     /// [destroyed].
     ///
     /// If you want to edit on the main selection, see [`edit_main`],
@@ -810,6 +826,7 @@ impl<W: Widget> Handle<W> {
             related: self.related.clone(),
             is_closed: self.is_closed.clone(),
             update_requested: self.update_requested.clone(),
+            spawn_id: self.spawn_id,
         }
     }
 }
@@ -834,6 +851,7 @@ impl<W: ?Sized> Clone for Handle<W> {
             related: self.related.clone(),
             is_closed: self.is_closed.clone(),
             update_requested: self.update_requested.clone(),
+            spawn_id: self.spawn_id,
         }
     }
 }

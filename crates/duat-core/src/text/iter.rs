@@ -115,11 +115,11 @@ impl<'t> FwdIter<'t> {
     #[inline(always)]
     fn handle_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
-            RawTag::Inlay(_, id) => {
+            RawTag::Inlay(_, idx) => {
                 if b < self.point.byte() || self.conceals > 0 {
                     return true;
                 }
-                let text = self.text.get_ghost(*id).unwrap();
+                let text = self.text.0.tags.get_ghost(*idx);
 
                 let (this_ghost, total_ghost) = if let Some((ghost, dist)) = &mut self.ghost {
                     if ghost.byte() >= *dist + text.last_point().byte() {
@@ -278,11 +278,11 @@ impl<'t> RevIter<'t> {
     #[inline]
     fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
-            RawTag::Inlay(_, id) => {
+            RawTag::Inlay(_, idx) => {
                 if b > self.point.byte() || self.conceals > 0 {
                     return true;
                 }
-                let text = self.text.get_ghost(*id).unwrap();
+                let text = self.text.0.tags.get_ghost(*idx);
 
                 let (ghost_b, this_ghost) = if let Some((offset, dist)) = &mut self.ghost {
                     if *dist - text.last_point().byte() >= offset.byte() {
@@ -551,7 +551,7 @@ impl<'t> TextPart<'t> {
             RawTag::Spacer(_) => Self::Spacer,
             RawTag::ConcealUntil(_) => Self::ResetState,
             RawTag::SpawnedWidget(_, id) => Self::SpawnedWidget(id),
-            RawTag::Overlay(_, id) => Self::Overlay(tags.get_ghost(id).unwrap()),
+            RawTag::Overlay(_, idx) => Self::Overlay(tags.get_ghost(idx)),
             RawTag::PushMask(_, id) => Self::PushMask(id),
             RawTag::PopMask(_, id) => Self::PopMask(id),
             RawTag::StartConceal(_)

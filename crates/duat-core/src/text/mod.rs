@@ -103,10 +103,7 @@ pub use crate::{
         iter::{FwdIter, RevIter, TextPart, TextPlace},
         search::{Matches, RegexHaystack, RegexPattern},
         strs::{Lines, Strs},
-        tags::{
-            Conceal, FormTag, InlayId, Inlay, Mask, Overlay, RawTag, Spacer, Spawn, Tag, Tags,
-            Toggle,
-        },
+        tags::{Conceal, FormTag, Inlay, Mask, Overlay, Spacer, Spawn, Tag, TagPart, Tags, Toggle},
         utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     },
     txt,
@@ -335,11 +332,6 @@ impl Text {
         points
     }
 
-    /// Gets the [`Inlay`] of a given [`InlayId`]
-    pub fn get_ghost(&self, id: InlayId) -> Option<&Text> {
-        self.0.tags.get_ghost(id)
-    }
-
     ////////// Modification functions
 
     /// Replaces a [range] in the `Text`.
@@ -508,10 +500,10 @@ impl Text {
         &mut self,
         ns: Ns,
         from: impl TextRangeOrIndex,
-        filter: impl FnMut(usize, RawTag) -> bool,
+        filter: impl FnMut(usize, TagPart) -> bool,
     ) {
         let range = from.to_range(self.len() + 1);
-        self.0.tags.remove_from_if(ns, range, filter)
+        self.0.tags.remove_if(ns, range, filter)
     }
 
     /// Removes all [`Tag`]s.
@@ -556,7 +548,7 @@ impl Text {
     ///
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
-    pub fn tags_fwd(&self, b: usize, lookaround: Option<usize>) -> FwdTags<'_> {
+    fn tags_fwd(&self, b: usize, lookaround: Option<usize>) -> FwdTags<'_> {
         self.0.tags.fwd_at(b, lookaround)
     }
 
@@ -574,7 +566,7 @@ impl Text {
     ///
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
-    pub fn tags_rev(&self, b: usize, lookaround: Option<usize>) -> RevTags<'_> {
+    fn tags_rev(&self, b: usize, lookaround: Option<usize>) -> RevTags<'_> {
         self.0.tags.rev_at(b, lookaround)
     }
 
@@ -583,8 +575,8 @@ impl Text {
     /// This [`Iterator`] does not take into account [`Tag`] ranges
     /// that intersect with the starting point, unlike
     /// [`Text::tags_fwd`]
-    pub fn raw_tags_fwd(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> {
-        self.0.tags.raw_fwd_at(b)
+    pub fn tag_parts_fwd(&self, b: usize) -> impl Iterator<Item = (usize, TagPart<'_>)> {
+        self.0.tags.tag_parts_fwd(b)
     }
 
     /// A reverse [`Iterator`] over the [`RawTag`]s.
@@ -592,8 +584,8 @@ impl Text {
     /// This [`Iterator`] does not take into account [`Tag`] ranges
     /// that intersect with the starting point, unlike
     /// [`Text::tags_rev`]
-    pub fn raw_tags_rev(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> {
-        self.0.tags.raw_rev_at(b)
+    pub fn tag_parts_rev(&self, b: usize) -> impl Iterator<Item = (usize, TagPart<'_>)> {
+        self.0.tags.tag_parts_rev(b)
     }
 
     /// The [`Selections`] printed to this `Text`, if they exist.
@@ -849,7 +841,7 @@ impl<'t> TextMut<'t> {
         &mut self,
         ns: Ns,
         from: impl TextRangeOrIndex,
-        filter: impl FnMut(usize, RawTag) -> bool,
+        filter: impl FnMut(usize, TagPart) -> bool,
     ) {
         let range = from.to_range(self.len() + 1);
         self.text.remove_tags_if(ns, range, filter)
