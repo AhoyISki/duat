@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-988232b1.js";
+            window.path_to_searchindex_js = "../searchindex-bc1c0210.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -234,7 +234,7 @@ Inside/around <code>word</code>s and <code>WORD</code>s.</p>
 <summary><b>Selection keys</b></summary>
 <p><code>h</code>, <code>&lt;Left&gt;</code><br>Move left. Wraps around lines.</p>
 <p><code>j</code><br>Move down</p>
-<p><code>&lt;Down&gt;</code><br>Move down to the next wrapped line (i.c vim’s <code>gj</code>).</p>
+<p><code>&lt;Down&gt;</code><br>Move down to the next wrapped line (i.s vim’s <code>gj</code>).</p>
 <p><code>k</code><br>Move up.</p>
 <p><code>&lt;Up&gt;</code><br>Move up to the previous wrapped line (i.e. vim’s <code>gk</code>).</p>
 <p><code>l</code>, <code>&lt;Right&gt;</code><br>Move right. Wraps around lines.</p>
@@ -263,12 +263,12 @@ mode.</p>
 <p><code>M</code>, <code>&lt;A-M&gt;</code><br>Same as the previous two, but extends the selection.</p>
 <p><code>&lt;A-u&gt;</code><br>Returns to the previous state for the selections.</p>
 <p><code>&lt;A-U&gt;</code><br>Goes to the next state for the selections.</p>
-<p><code>;</code><br>Reduces selections to just the [caret].</p>
-<p><code>&lt;A-;&gt;</code><br>Flips the [caret] and [anchor] of selectionss around.</p>
+<p><code>;</code><br>Reduces selections to just the [cursor].</p>
+<p><code>&lt;A-;&gt;</code><br>Flips the [cursor] and [anchor] of selectionss around.</p>
 <p><code>,</code><br>Removes extra selections.</p>
 <p><code>C</code><br>Creates a selection on the column below the last one.</p>
 <p><code>&lt;A-C&gt;</code><br>Creates a selection on the column above the first one.</p>
-<p><code>&lt;A-:&gt;</code><br>Places the [caret] ahead of the [anchor] in all selections.</p>
+<p><code>&lt;A-:&gt;</code><br>Places the [cursor] ahead of the [anchor] in all selections.</p>
 <p><code>&lt;A-s&gt;</code><br>Divides selection into multiple selections, one per line.</p>
 <p><code>&lt;A-S&gt;</code><br>Splits into two selections, one at each end of the selection.</p>
 <p><code>&lt;A-_&gt;</code><br>Merges all adjacent selections.</p>
@@ -282,14 +282,14 @@ mode.</p>
 <p><code>A</code><br>Moves to the end of the line and enters <code>insert</code> mode.</p>
 <p><code>y</code><br>Yanks selections.</p>
 <p><code>d</code><br>Deletes and yanks the selections.</p>
-<p><code>c</code><br>Deletes, yanks, and enter <code>insert</code> mode.</p>
+<p><code>s</code><br>Deletes, yanks, and enter <code>insert</code> mode.</p>
 <p><code>p</code><br>Pastes after end of each selection (multi line selections are
 placed on the next line).</p>
 <p><code>P</code><br>Pastes at the start of each selection (multi line pastes are
 placed on the previous line).</p>
 <p><code>R</code><br>Replaces with the pasted text, without yanking.</p>
 <p><code>&lt;A-d&gt;</code><br>Deletes selections without yanking.</p>
-<p><code>&lt;A-c&gt;</code><br>Deletes selections without yanking, then enters <code>insert</code> mode.</p>
+<p><code>&lt;A-s&gt;</code><br>Deletes selections without yanking, then enters <code>insert</code> mode.</p>
 <p><code>o</code><br>Creates a new line below and enters <code>insert</code> mode in it.</p>
 <p><code>O</code><br>Creates a new line above and enters <code>insert</code> mode in it.</p>
 <p><code>&lt;A-(o|O)&gt;</code><br>Same as <code>(o|O)</code>, but just adds the new line without moving.</p>

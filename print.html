@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-988232b1.js";
+            window.path_to_searchindex_js = "searchindex-bc1c0210.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-74f781a9.js"></script>
@@ -200,13 +200,13 @@ impl duat::Plugin for HighlightMatches {
             let lines = handle.printed_line_ranges(pa);
 
             handle.text_mut(pa).remove_tags(ns, ..);
-            let caret = handle.text(pa).main_sel().caret();
-            let Some(range) = handle.text(pa).search(r"\A\w+").range(caret..).next() else {
+            let cursor = handle.text(pa).main_sel().cursor();
+            let Some(range) = handle.text(pa).search(r"\A\w+").range(cursor..).next() else {
                 return;
             };
 
             let start = handle
-                .edit_main(pa, |c| c.search(r"\w*\z").to_caret().next_back())
+                .edit_main(pa, |s| s.search(r"\w*\z").to_cursor().next_back())
                 .map(|range| range.start)
                 .unwrap_or(range.start);
 
@@ -342,7 +342,7 @@ Inside/around <code>word</code>s and <code>WORD</code>s.</p>
 <summary><b>Selection keys</b></summary>
 <p><code>h</code>, <code>&lt;Left&gt;</code><br>Move left. Wraps around lines.</p>
 <p><code>j</code><br>Move down</p>
-<p><code>&lt;Down&gt;</code><br>Move down to the next wrapped line (i.c vim’s <code>gj</code>).</p>
+<p><code>&lt;Down&gt;</code><br>Move down to the next wrapped line (i.s vim’s <code>gj</code>).</p>
 <p><code>k</code><br>Move up.</p>
 <p><code>&lt;Up&gt;</code><br>Move up to the previous wrapped line (i.e. vim’s <code>gk</code>).</p>
 <p><code>l</code>, <code>&lt;Right&gt;</code><br>Move right. Wraps around lines.</p>
@@ -371,12 +371,12 @@ mode.</p>
 <p><code>M</code>, <code>&lt;A-M&gt;</code><br>Same as the previous two, but extends the selection.</p>
 <p><code>&lt;A-u&gt;</code><br>Returns to the previous state for the selections.</p>
 <p><code>&lt;A-U&gt;</code><br>Goes to the next state for the selections.</p>
-<p><code>;</code><br>Reduces selections to just the [caret].</p>
-<p><code>&lt;A-;&gt;</code><br>Flips the [caret] and [anchor] of selectionss around.</p>
+<p><code>;</code><br>Reduces selections to just the [cursor].</p>
+<p><code>&lt;A-;&gt;</code><br>Flips the [cursor] and [anchor] of selectionss around.</p>
 <p><code>,</code><br>Removes extra selections.</p>
 <p><code>C</code><br>Creates a selection on the column below the last one.</p>
 <p><code>&lt;A-C&gt;</code><br>Creates a selection on the column above the first one.</p>
-<p><code>&lt;A-:&gt;</code><br>Places the [caret] ahead of the [anchor] in all selections.</p>
+<p><code>&lt;A-:&gt;</code><br>Places the [cursor] ahead of the [anchor] in all selections.</p>
 <p><code>&lt;A-s&gt;</code><br>Divides selection into multiple selections, one per line.</p>
 <p><code>&lt;A-S&gt;</code><br>Splits into two selections, one at each end of the selection.</p>
 <p><code>&lt;A-_&gt;</code><br>Merges all adjacent selections.</p>
@@ -390,14 +390,14 @@ mode.</p>
 <p><code>A</code><br>Moves to the end of the line and enters <code>insert</code> mode.</p>
 <p><code>y</code><br>Yanks selections.</p>
 <p><code>d</code><br>Deletes and yanks the selections.</p>
-<p><code>c</code><br>Deletes, yanks, and enter <code>insert</code> mode.</p>
+<p><code>s</code><br>Deletes, yanks, and enter <code>insert</code> mode.</p>
 <p><code>p</code><br>Pastes after end of each selection (multi line selections are
 placed on the next line).</p>
 <p><code>P</code><br>Pastes at the start of each selection (multi line pastes are
 placed on the previous line).</p>
 <p><code>R</code><br>Replaces with the pasted text, without yanking.</p>
 <p><code>&lt;A-d&gt;</code><br>Deletes selections without yanking.</p>
-<p><code>&lt;A-c&gt;</code><br>Deletes selections without yanking, then enters <code>insert</code> mode.</p>
+<p><code>&lt;A-s&gt;</code><br>Deletes selections without yanking, then enters <code>insert</code> mode.</p>
 <p><code>o</code><br>Creates a new line below and enters <code>insert</code> mode in it.</p>
 <p><code>O</code><br>Creates a new line above and enters <code>insert</code> mode in it.</p>
 <p><code>&lt;A-(o|O)&gt;</code><br>Same as <code>(o|O)</code>, but just adds the new line without moving.</p>
@@ -581,7 +581,7 @@ fn setup(opts: &amp;mut Opts) {
     opts.wrap_lines = true;
     opts.wrapping_cap = Some(80);
 
-    form::set("caret.main", Form::new().yellow());
+    form::set("cursor.main", Form::new().yellow());
 
     cmd::add("set-rel-lines", |pa: &amp;mut Pass| {
         let handles: Vec&lt;_&gt; = context::windows()
@@ -849,9 +849,9 @@ chapter</a></p>
 <code>default.LineNumbers</code>.</li>
 <li><code>accent</code>: This form is used when formatting error, warning, information, or
 debug messages. Is used mostly with the <code>error</code>, <code>warn</code> and <code>info</code> <a href="../scripting-duat/masks.html">masks</a>.</li>
-<li><code>caret.main</code>: The form to use when printing the main “caret” (each cursor has
-a selection, an anchor, and a caret).</li>
-<li><code>caret.extra</code>: Same as <code>caret.main</code>, but for cursors other than the main one.</li>
+<li><code>cursor.main</code>: The form to use when printing the main “cursor” (each cursor has
+a selection, an anchor, and a cursor).</li>
+<li><code>cursor.extra</code>: Same as <code>cursor.main</code>, but for cursors other than the main one.</li>
 <li><code>selection.main</code>: Color to be used on the main selection.</li>
 <li><code>selection.extra</code>: Color to be used on extra selections.</li>
 <li><code>cloak</code>: This form is supposed to be a common “get rid of all forms
@@ -1138,14 +1138,14 @@ cursors should be printed as “real cursors” (The blinking kind, that can tur
 into a bar and stuff), or as just <code>Form</code>s.</p>
 <ul>
 <li><code>cursor::set_main</code> will set the “shape” of the main cursor. This takes a
-<code>CursorShape</code> argument, and lets you set its shape to a vertical bar, a
+<code>SelectionMutShape</code> argument, and lets you set its shape to a vertical bar, a
 horizontal bar, and make it blink.</li>
 <li><code>cursor::set_extra</code> is the same but for extra cursors. Do note that this may
 not work on some <code>Ui</code>s, mainly terminals, which only allow for one cursor at a
 time.</li>
 <li><code>cursor::unset_main</code> and <code>cursor::unset_extra</code>: Disables cursor shapes for
-every type of cursor, replacing them with a <code>Form</code>, which will be <code>caret.main</code>
-and <code>caret.extra</code>, respectively</li>
+every type of cursor, replacing them with a <code>Form</code>, which will be <code>cursor.main</code>
+and <code>cursor.extra</code>, respectively</li>
 <li><code>cursor::unset</code>: The same as calling <code>unset_main</code> and <code>unset_extra</code>.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -1292,7 +1292,7 @@ setup_duat!(setup);
 fn setup(opts: &amp;mut Opts) {
     opts.fmt_status(|_| {
         status!(
-            "{name_txt}{Spacer}{} {sels_txt} [coord]c{} l{}[separator]|[coord]{}",
+            "{name_txt}{Spacer}{} {sels_txt} [coord]s{} l{}[separator]|[coord]{}",
             mode_txt(),
             main_col,
             main_line,
@@ -1609,11 +1609,11 @@ fn setup() {
         // Handle::edit_all will apply an editing function to all cursors
         // Because it edits the cursors of the `Buffer`, it needs
         // mutable access to it, hence the `&amp;mut Pass`.
-        buf.edit_all(pa, |c| {
-            if dupes.iter().any(|dupe| *dupe == c.selection()) {
-                c.destroy()
+        buf.edit_all(pa, |s| {
+            if dupes.iter().any(|dupe| *dupe == s.selection()) {
+                s.destroy()
             } else {
-                dupes.push(c.selection().to_string());
+                dupes.push(s.selection().to_string());
             }
         });
 
