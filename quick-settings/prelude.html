@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bc1c0210.js";
+            window.path_to_searchindex_js = "../searchindex-988232b1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -209,7 +209,7 @@ fn setup(opts: &amp;mut Opts) {
     opts.wrap_lines = true;
     opts.wrapping_cap = Some(80);
 
-    form::set("cursor.main", Form::new().yellow());
+    form::set("caret.main", Form::new().yellow());
 
     cmd::add("set-rel-lines", |pa: &amp;mut Pass| {
         let handles: Vec&lt;_&gt; = context::windows()
@@ -477,9 +477,9 @@ chapter</a></p>
 <code>default.LineNumbers</code>.</li>
 <li><code>accent</code>: This form is used when formatting error, warning, information, or
 debug messages. Is used mostly with the <code>error</code>, <code>warn</code> and <code>info</code> <a href="../../scripting-duat/masks.html">masks</a>.</li>
-<li><code>cursor.main</code>: The form to use when printing the main “cursor” (each cursor has
-a selection, an anchor, and a cursor).</li>
-<li><code>cursor.extra</code>: Same as <code>cursor.main</code>, but for cursors other than the main one.</li>
+<li><code>caret.main</code>: The form to use when printing the main “caret” (each cursor has
+a selection, an anchor, and a caret).</li>
+<li><code>caret.extra</code>: Same as <code>caret.main</code>, but for cursors other than the main one.</li>
 <li><code>selection.main</code>: Color to be used on the main selection.</li>
 <li><code>selection.extra</code>: Color to be used on extra selections.</li>
 <li><code>cloak</code>: This form is supposed to be a common “get rid of all forms
@@ -766,14 +766,14 @@ cursors should be printed as “real cursors” (The blinking kind, that can tur
 into a bar and stuff), or as just <code>Form</code>s.</p>
 <ul>
 <li><code>cursor::set_main</code> will set the “shape” of the main cursor. This takes a
-<code>SelectionMutShape</code> argument, and lets you set its shape to a vertical bar, a
+<code>CursorShape</code> argument, and lets you set its shape to a vertical bar, a
 horizontal bar, and make it blink.</li>
 <li><code>cursor::set_extra</code> is the same but for extra cursors. Do note that this may
 not work on some <code>Ui</code>s, mainly terminals, which only allow for one cursor at a
 time.</li>
 <li><code>cursor::unset_main</code> and <code>cursor::unset_extra</code>: Disables cursor shapes for
-every type of cursor, replacing them with a <code>Form</code>, which will be <code>cursor.main</code>
-and <code>cursor.extra</code>, respectively</li>
+every type of cursor, replacing them with a <code>Form</code>, which will be <code>caret.main</code>
+and <code>caret.extra</code>, respectively</li>
 <li><code>cursor::unset</code>: The same as calling <code>unset_main</code> and <code>unset_extra</code>.</li>
 </ul>
 
