@@ -202,8 +202,8 @@ impl Mode for Normal {
             event!('<') => txt!("Dedent selections's lines"),
             alt!('j') => txt!("Merge selections's lines"),
             event!('y') => txt!("Yank selections"),
-            event!('d' | 's') => txt!("[a]Delete[separator],[a]change[] selection"),
-            alt!('d' | 's') => txt!("[a]Delete[separator],[a]change[] selection w/o yanking"),
+            event!('d' | 'c') => txt!("[a]Delete[separator],[a]change[] selection"),
+            alt!('d' | 'c') => txt!("[a]Delete[separator],[a]change[] selection w/o yanking"),
             event!('p' | 'P') => txt!("Paste [a]ahead[separator],[a]behind[]"),
             event!('R') => txt!("Replace selections with pasted content"),
             event!(',') => txt!("Remove extra selections"),
@@ -930,12 +930,12 @@ impl Mode for Normal {
 
             ////////// Clipboard keys
             event!('y') => duat_base::modes::copy_selections(pa, &handle),
-            event!(char @ ('d' | 's')) | alt!(char @ ('d' | 's')) => {
+            event!(char @ ('d' | 'c')) | alt!(char @ ('d' | 'c')) => {
                 if key_event.modifiers == KeyMod::NONE {
                     duat_base::modes::copy_selections(pa, &handle);
                 }
                 delete_selections(pa);
-                if char == 's' {
+                if char == 'c' {
                     *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::Change);
                     mode::set(pa, crate::Insert);
                 }

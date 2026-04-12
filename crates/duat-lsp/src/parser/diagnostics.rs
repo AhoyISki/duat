@@ -9,13 +9,9 @@ use duat_core::{
     text::{Mask, RegexHaystack, Strs, Text},
     txt,
 };
-use lsp_types::{
-    Diagnostic, DiagnosticSeverity, DocumentDiagnosticParams, PartialResultParams,
-    PublishDiagnosticsParams, TextDocumentIdentifier, Uri, WorkDoneProgressParams,
-    request::DocumentDiagnosticRequest,
-};
+use lsp_types::{Diagnostic, DiagnosticSeverity, PublishDiagnosticsParams, Uri};
 
-use crate::{Encoding, server::Server, uri_to_path};
+use crate::{Encoding, uri_to_path};
 
 macro_rules! ns_and_buffer {
     ($pa:expr, $uri:expr, $kw:ident) => {{

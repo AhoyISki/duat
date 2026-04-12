@@ -551,8 +551,8 @@ impl FormId {
     ///
     /// [`Tag`]: crate::text::Tag
     /// [`Text`]: crate::text::Text
-    pub const fn to_tag(self, prio: u8) -> FormTag {
-        FormTag { id: self, priority: prio }
+    pub const fn to_tag(self, priority: u8) -> FormTag {
+        FormTag { id: self, priority }
     }
 
     /// The internal id of the [`FormId`].

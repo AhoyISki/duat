@@ -4,7 +4,7 @@ use duat_core::{
     form::{self, Form},
     text::{Point, Strs},
 };
-use lsp_types::{Position, ServerCapabilities, TextDocumentIdentifier, Uri};
+use lsp_types::{Position, ServerCapabilities, Uri};
 
 mod config;
 mod parser;

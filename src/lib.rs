@@ -89,7 +89,7 @@
 //!     });
 //!
 //!     hook::add::<ModeSwitched>(|_, switch| match switch.new.name {
-//!         "Insert" => cursor::set_main(SelectionMutShape::SteadyBar),
+//!         "Insert" => cursor::set_main(CursorShape::SteadyBar),
 //!         _ => cursor::unset(),
 //!     });
 //!
@@ -498,7 +498,7 @@ pub mod form {
     //! [`Form`]: crate::form::Form
     #[doc(inline)]
     pub use duat_core::form::{
-        SelectionMutShape, Form, Palette, enable_mask, from_id, id_of, set, set_many, set_weak,
+        CursorShape, Form, Palette, enable_mask, from_id, id_of, set, set_many, set_weak,
     };
 }
 
@@ -644,13 +644,13 @@ pub mod state {
     //! understood with no other meddling.
     //!
     //! Examples of functions in here are [`main_txt`], which will
-    //! show a formatted version of the main [`SelectionMut`], and
+    //! show a formatted version of the main [`Cursor`], and
     //! [`mode_txt`] which will show a formatted version of the
     //! current [`Mode`] of Duat.
     //!
     //! [`StatusLine`]: crate::widgets::StatusLine
     //! [`status!`]: crate::widgets::status
-    //! [`SelectionMut`]: crate::mode::SelectionMut
+    //! [`Cursor`]: crate::mode::Cursor
     //! [`Mode`]: crate::mode::Mode
     pub use duat_base::state::*;
     pub use duatmode::{duat_param, duat_param_txt};
@@ -708,7 +708,7 @@ pub mod prelude {
         context::{self, Handle},
         cursor,
         data::{self, Pass, RwData},
-        form::{self, SelectionMutShape, Form},
+        form::{self, Form, CursorShape},
         hook::{
             self, BufferClosed, BufferOpened, BufferPrinted, BufferSaved, BufferSwitched,
             BufferUnloaded, BufferUpdated, ColorschemeSet, ConfigLoaded, ConfigUnloaded,

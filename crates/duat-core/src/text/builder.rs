@@ -218,7 +218,7 @@ impl Builder {
             self.last_was_empty = false;
             let end = self.text.last_point();
             self.text
-                .apply_change(0, Change::str_insert(&self.buffer, end));
+                .apply_change(0, Change::str_insert(&self.buffer, end), false);
         }
     }
 
@@ -237,7 +237,7 @@ impl Builder {
     /// Pushes [`Text`] directly
     fn push_text(&mut self, text: &Text) {
         self.last_was_empty = text.is_empty();
-        self.text.insert_text(self.text.last_point(), text);
+        self.text.append_text(self.text.last_point(), text);
     }
 
     /// Pushes [`Text`] directly
@@ -245,7 +245,7 @@ impl Builder {
         self.last_was_empty = other.text.is_empty();
 
         let offset = self.text.last_point().byte();
-        self.text.insert_text(offset, &other.text);
+        self.text.append_text(offset, &other.text);
         let end = self.text.last_point().byte();
 
         if let Some((b, id)) = other.last_form

@@ -6,6 +6,9 @@ FOR NEXT UPDATE:
   [ ] Autocompletions.
 [ ] Snippet support.
 [ ] More work on the Gutter.
+  [ ] Diferentiate hovering, cursoring, related and default display.
+  [ ] Implement Widget spawning.
+  [x] More functional style.
 [ ] Perfect print iterators.
   [ ] Perfect words iterator.
 [ ] Fix pager search.

@@ -40,8 +40,9 @@ pub struct FwdIter<'t> {
     conceals: u32,
 
     // Things to deal with ghost text.
-    main_iter: Option<MainIter<FwdChars<'t>, tags::FwdTags<'t>>>,
+    main_iter: Option<MainIter<'t, FwdChars<'t>, tags::FwdTags<'t>>>,
     ghost: Option<(Point, usize)>,
+    inner_tags: &'t InnerTags,
 }
 
 impl<'t> FwdIter<'t> {
@@ -80,6 +81,7 @@ impl<'t> FwdIter<'t> {
 
             main_iter: None,
             ghost,
+            inner_tags: &text.0.tags,
         }
     }
 
@@ -136,9 +138,16 @@ impl<'t> FwdIter<'t> {
                 let init_point = std::mem::replace(&mut self.init_point, this_ghost);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
+                let inner_tags = std::mem::replace(&mut self.inner_tags, &text.0.tags);
 
                 self.ghost = Some((total_ghost, total_ghost.byte()));
-                self.main_iter = Some(MainIter { point, init_point, chars, tags });
+                self.main_iter = Some(MainIter {
+                    point,
+                    init_point,
+                    chars,
+                    tags,
+                    inner_tags,
+                });
             }
             RawTag::StartConceal(_) => self.conceals += 1,
             RawTag::EndConceal(_) => {
@@ -178,7 +187,7 @@ impl<'t> Iterator for FwdIter<'t> {
             if self.handle_meta_tag(&tag, b) {
                 self.next()
             } else {
-                let tags = &self.text.0.tags;
+                let tags = self.inner_tags;
                 Some(TextPlace::new(self.points(), TextPart::from_raw(tags, tag)))
             }
         } else if let Some(char) = self.chars.next() {
@@ -196,6 +205,7 @@ impl<'t> Iterator for FwdIter<'t> {
             self.init_point = main_iter.init_point;
             self.chars = main_iter.chars;
             self.tags = main_iter.tags;
+            self.inner_tags = main_iter.inner_tags;
 
             self.next()
         } else {
@@ -217,8 +227,9 @@ pub struct RevIter<'t> {
     tags: tags::RevTags<'t>,
     conceals: usize,
 
-    main_iter: Option<MainIter<RevChars<'t>, tags::RevTags<'t>>>,
+    main_iter: Option<MainIter<'t, RevChars<'t>, tags::RevTags<'t>>>,
     ghost: Option<(Point, usize)>,
+    inner_tags: &'t InnerTags,
 }
 
 impl<'t> RevIter<'t> {
@@ -244,6 +255,7 @@ impl<'t> RevIter<'t> {
 
             main_iter: None,
             ghost,
+            inner_tags: &text.0.tags,
         }
     }
 
@@ -304,9 +316,16 @@ impl<'t> RevIter<'t> {
                 let init_point = std::mem::replace(&mut self.init_point, this_ghost);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
+                let inner_tags = std::mem::replace(&mut self.inner_tags, &text.0.tags);
 
                 self.ghost = Some((this_ghost, this_ghost.byte()));
-                self.main_iter = Some(MainIter { point, init_point, chars, tags });
+                self.main_iter = Some(MainIter {
+                    point,
+                    init_point,
+                    chars,
+                    tags,
+                    inner_tags,
+                });
             }
 
             RawTag::StartConceal(_) => {
@@ -345,7 +364,7 @@ impl<'t> Iterator for RevIter<'t> {
             if self.handled_meta_tag(&tag, b) {
                 self.next()
             } else {
-                let tags = &self.text.0.tags;
+                let tags = self.inner_tags;
                 Some(TextPlace::new(self.points(), TextPart::from_raw(tags, tag)))
             }
         } else if let Some(char) = self.chars.next() {
@@ -362,6 +381,7 @@ impl<'t> Iterator for RevIter<'t> {
             self.init_point = main_iter.init_point;
             self.chars = main_iter.chars;
             self.tags = main_iter.tags;
+            self.inner_tags = main_iter.inner_tags;
 
             self.next()
         } else {
@@ -595,9 +615,10 @@ impl<'t> TextPart<'t> {
 }
 
 #[derive(Debug, Clone)]
-struct MainIter<Chars, Tags> {
+struct MainIter<'t, Chars, Tags> {
     point: Point,
     init_point: Point,
     chars: Chars,
     tags: Tags,
+    inner_tags: &'t InnerTags,
 }

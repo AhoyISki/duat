@@ -135,7 +135,7 @@ mod namespace {
             Self(start)..Self(start + amount)
         }
 
-        /// A simple key with no uniqueness guarantee
+        /// A simple `Ns` with no uniqueness guarantee.
         ///
         /// You should use this if you're editing widgets that are not
         /// the [`Buffer`] widget, since you're probably the
@@ -152,11 +152,12 @@ mod namespace {
             Self(0)
         }
 
-        /// A [`Tagger`] specifically for remaps
+        /// A `Ns` specifically for remaps.
         pub(crate) const fn for_alias() -> Self {
             Self(1)
         }
 
+		/// A `Ns` specifically for toggles.
         pub(crate) const fn for_toggle() -> Self {
             Self(2)
         }

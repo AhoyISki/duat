@@ -8,7 +8,6 @@ use duat_core::{
     notify::Watcher,
 };
 use globset::{Glob, GlobMatcher};
-use jsonrpc_lite::Id;
 use lsp_types::{
     DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions, FileChangeType,
     FileEvent, GlobPattern, OneOf, PartialResultParams, SemanticTokensDeltaParams,
@@ -17,7 +16,6 @@ use lsp_types::{
     notification::{DidChangeWatchedFiles, Notification, PublishDiagnostics},
     request::{
         RegisterCapability, Request, SemanticTokensFullDeltaRequest, SemanticTokensFullRequest,
-        SemanticTokensRefresh, WorkspaceDiagnosticRefresh,
     },
 };
 use serde_json::Value;
@@ -123,7 +121,7 @@ pub fn handle_request(bridge: &ServerBridge, request: jsonrpc_lite::Request) {
                             }
                         }
                     }
-                    _method => {} //context::warn!("[a]{method}[] registration not yet handled"),
+                    _method => {} // context::warn!("[a]{method}[] registration not yet handled"),
                 }
             }
 
@@ -168,7 +166,7 @@ pub fn handle_notification(bridge: &ServerBridge, notification: jsonrpc_lite::No
             });
         }
         "$/progress" => {}
-        _method => {} //context::warn!("[a]{method}[] request not yet handled"),
+        _method => {} // context::warn!("[a]{method}[] request not yet handled"),
     }
 }
 

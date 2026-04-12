@@ -127,6 +127,7 @@ mod utils;
 /// [`Builder`].
 ///
 /// [`Widget`]: crate::ui::Widget
+#[derive(Clone)]
 pub struct Text(Box<InnerText>);
 
 #[derive(Clone)]
@@ -351,16 +352,17 @@ impl Text {
         let change = Change::new(edit, start..end, self);
 
         self.0.buf.increment_version();
-        self.apply_change(0, change.as_ref());
+        self.apply_change(0, change.as_ref(), false);
     }
 
     /// Merges `String`s with the body of text, given a range to
     /// replace.
-    fn apply_change(&mut self, guess_i: usize, change: Change<&str>) -> usize {
+    fn apply_change(&mut self, guess_i: usize, change: Change<&str>, before: bool) -> usize {
         self.0.buf.apply_change(change);
         self.0.tags.transform(
             change.start().byte()..change.taken_end().byte(),
             change.added_end().byte(),
+            before,
         );
 
         self.0.has_unsaved_changes = true;
@@ -368,6 +370,28 @@ impl Text {
     }
 
     /// Inserts a `Text` into this `Text`, in a specific [`Point`].
+    ///
+    /// Note that this isn't like append in neovim. It instead appends
+    /// directly on the passed `Point`. What this means is that this
+    /// method _won't_ shift ahead the [`Tag`]s located at this
+    /// `Point`. For that, check out [`Text::insert_text`].
+    pub fn append_text(&mut self, p: impl TextIndex, text: &Text) {
+        let b = p.to_byte_index().min(self.last_point().byte());
+        let cap = text.last_point().byte();
+
+        let added_str = text.0.buf[..cap].to_string();
+        let point = self.point_at_byte(b);
+        let change = Change::str_insert(&added_str, point);
+        self.apply_change(0, change, false);
+
+        self.0.tags.insert_tags(point, cap, &text.0.tags);
+    }
+
+    /// Inserts a `Text` into this `Text`, _before_ a specific
+    /// [`Point`].
+    ///
+    /// Unlike [`Text::append_text`], this function will also shift
+    /// ahead the [`Tag`]s located at this specific [`Point`].
     pub fn insert_text(&mut self, p: impl TextIndex, text: &Text) {
         let b = p.to_byte_index().min(self.last_point().byte());
         let cap = text.last_point().byte();
@@ -375,7 +399,7 @@ impl Text {
         let added_str = text.0.buf[..cap].to_string();
         let point = self.point_at_byte(b);
         let change = Change::str_insert(&added_str, point);
-        self.apply_change(0, change);
+        self.apply_change(0, change, true);
 
         self.0.tags.insert_tags(point, cap, &text.0.tags);
     }
@@ -388,7 +412,7 @@ impl Text {
 
         let len = changes.len();
         for (i, change) in changes.enumerate() {
-            self.apply_change(0, change);
+            self.apply_change(0, change, false);
 
             let start = change.start().min(self.last_point());
             let added_end = match change.added_str().chars().next_back() {
@@ -733,7 +757,7 @@ impl<'t> TextMut<'t> {
         let change = Change::new(edit, start..end, self);
 
         self.text.0.buf.increment_version();
-        self.text.apply_change(0, change.as_ref());
+        self.text.apply_change(0, change.as_ref(), false);
         self.history.as_mut().map(|h| h.apply_change(None, change));
     }
 
@@ -746,7 +770,7 @@ impl<'t> TextMut<'t> {
         self.text.0.buf.increment_version();
         let selections_taken = self
             .text
-            .apply_change(guess_i.unwrap_or(0), change.as_ref());
+            .apply_change(guess_i.unwrap_or(0), change.as_ref(), false);
         let history = self.history.as_mut();
         let insertion_i = history.map(|h| h.apply_change(guess_i, change));
         (insertion_i, selections_taken)
@@ -1081,18 +1105,6 @@ impl std::fmt::Debug for Text {
             .field("buf", &self.0.buf)
             .field("tags", &self.0.tags)
             .finish_non_exhaustive()
-    }
-}
-
-impl Clone for Text {
-    fn clone(&self) -> Self {
-        let mut text = Self(self.0.clone());
-        if text.bytes().next_back().is_none_or(|b| b != b'\n') {
-            let end = text.end_point();
-            text.apply_change(0, Change::str_insert("\n", end));
-        }
-
-        text
     }
 }
 
