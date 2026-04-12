@@ -225,10 +225,14 @@ impl Inlay {
         let mut text = value.into();
         text.0
             .tags
-            .transform(text.len() - 1..text.len(), text.len() - 1);
+            .transform(text.len() - 1..text.len(), text.len() - 1, false);
 
         assert!(
-            text.0.tags.ghosts.is_empty(),
+            text.0
+                .tags
+                .ghosts
+                .iter()
+                .all(|ghost| !matches!(ghost, Some((Ghost::Inlay(_), _)))),
             "Can't place Inlays inside of Inlays"
         );
 
@@ -305,17 +309,18 @@ impl Overlay {
         let mut text = value.into();
         text.0
             .tags
-            .transform(text.len() - 1..text.len(), text.len() - 1);
+            .transform(text.len() - 1..text.len(), text.len() - 1, false);
 
         assert!(
-            text.0.tags.ghosts.is_empty(),
-            "Can't place Inlays inside of Inlays"
+            text.0
+                .tags
+                .ghosts
+                .iter()
+                .all(|ghost| !matches!(ghost, Some((Ghost::Overlay(_), _)))),
+            "Can't place Overlays inside of Overlays"
         );
 
-        Self {
-            text: Arc::new(text),
-            idx: None,
-        }
+        Self { text: Arc::new(text), idx: None }
     }
 
     /// The [`Text`] of this `Overlay`.
@@ -803,10 +808,10 @@ impl RawTag {
             Self::Spacer(..) => 0,
             Self::EndConceal(..) => 1,
             Self::PopForm(..) => 2,
-            Self::Inlay(..) => 3,
-            Self::EndToggle(..) => 4,
-            Self::PushMask(..) => 5,
-            Self::Overlay(..) => 6,
+            Self::Overlay(..) => 3,
+            Self::Inlay(..) => 4,
+            Self::EndToggle(..) => 5,
+            Self::PushMask(..) => 6,
             Self::PopMask(..) => 7,
             Self::StartConceal(..) => 8,
             Self::StartToggle(..) => 9,
@@ -882,13 +887,13 @@ impl std::fmt::Debug for RawTag {
             }
             Self::PopForm(ns, id) => write!(f, "PopForm({ns:?}, {})", id.name()),
             Self::Spacer(ns) => write!(f, "Spacer({ns:?})"),
-            Self::Inlay(ns, id) => write!(f, "Inlay({ns:?}, {id:?})"),
-            Self::Overlay(ns, id) => write!(f, "Overlay({ns:?}, {id:?})"),
+            Self::Inlay(ns, idx) => write!(f, "Inlay({ns:?}, {idx:?})"),
+            Self::Overlay(ns, idx) => write!(f, "Overlay({ns:?}, {idx:?})"),
             Self::StartConceal(ns) => write!(f, "StartConceal({ns:?})"),
             Self::EndConceal(ns) => write!(f, "EndConceal({ns:?})"),
             Self::ConcealUntil(ns) => write!(f, "ConcealUntil({ns:?})"),
-            Self::StartToggle(ns, id) => write!(f, "StartToggle({ns:?}, {id:?}"),
-            Self::EndToggle(ns, id) => write!(f, "EndToggle({ns:?}, {id:?}"),
+            Self::StartToggle(ns, idx) => write!(f, "StartToggle({ns:?}, {idx:?}"),
+            Self::EndToggle(ns, idx) => write!(f, "EndToggle({ns:?}, {idx:?}"),
             Self::SpawnedWidget(ns, id) => write!(f, "SpawnedWidget({ns:?}, {id:?}"),
             Self::PushMask(ns, id) => write!(f, "PushMask({ns:?}, {})", id.name()),
             Self::PopMask(ns, id) => write!(f, "PopMask({ns:?}, {})", id.name()),

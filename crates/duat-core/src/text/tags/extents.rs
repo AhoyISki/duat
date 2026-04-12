@@ -76,6 +76,10 @@ impl NsExtents {
     ) -> Vec<Range<usize>> {
         const MAX_FOR_JOINING: usize = 32;
 
+        if filter(Ns::basic()) {
+            return vec![range];
+        }
+
         let mut ranges = Vec::new();
         let mut rampant_matches = false;
 
@@ -133,6 +137,10 @@ impl NsExtents {
     /// remove their respective extents.
     pub fn iter_over(&self, range: Range<usize>, ns: Ns) -> Vec<Range<usize>> {
         const MAX_FOR_JOINING: usize = 32;
+
+        if ns == Ns::basic() {
+            return vec![range];
+        }
 
         let Some((_, extent)) = self.extents.iter().find(|(other, _)| *other == ns) else {
             return Vec::new();

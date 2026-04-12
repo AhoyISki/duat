@@ -185,7 +185,7 @@ pub struct InnerTags {
     pub(super) spawn_fns: SpawnFns,
     bounds: Bounds,
     extents: NsExtents,
-    tags_verssion: u64,
+    tags_version: u64,
     meta_tags_version: u64,
 }
 
@@ -205,7 +205,7 @@ impl InnerTags {
             spawn_fns: SpawnFns(Vec::new()),
             bounds: Bounds::new(max),
             extents: NsExtents::new(max),
-            tags_verssion: 0,
+            tags_version: 0,
             meta_tags_version: 0,
         }
     }
@@ -227,7 +227,7 @@ impl InnerTags {
         if inserted {
             tag.on_insertion(self);
             self.meta_tags_version += T::IS_META as u64;
-            self.tags_verssion += 1;
+            self.tags_version += 1;
         }
     }
 
@@ -506,7 +506,7 @@ impl InnerTags {
         };
 
         self.meta_tags_version += meta_tags_changed as u64;
-        self.tags_verssion += tags_changed as u64;
+        self.tags_version += tags_changed as u64;
 
         self.list
             .extract_if_while(last.., |i, (_, tag)| {
@@ -545,7 +545,7 @@ impl InnerTags {
     ///
     /// This will destroy any [`RawTag`]s contained in the original
     /// range.
-    pub fn transform(&mut self, old: Range<usize>, new_end: usize) {
+    pub fn transform(&mut self, old: Range<usize>, new_end: usize, before: bool) {
         let new = old.start..new_end;
 
         // Old length removal.
@@ -590,7 +590,8 @@ impl InnerTags {
         }
 
         let shift = new.len() as i32 - old.len() as i32;
-        let (Ok(i) | Err(i)) = self.list.find_by_key(old.start as i32 + 1, |(b, _)| b);
+        let from = old.start as i32 + if before { 0 } else { 1 };
+        let (Ok(i) | Err(i)) = self.list.find_by_key(from, |(b, _)| b);
 
         self.list.shift_by(i, shift);
         self.bounds.shift_by(i, [0, shift]);
@@ -684,7 +685,7 @@ impl InnerTags {
     /// First element is the `tags_version`, second is the
     /// `meta_tags_version`
     pub(crate) fn versions(&self) -> (u64, u64) {
-        (self.tags_verssion, self.meta_tags_version)
+        (self.tags_version, self.meta_tags_version)
     }
 
     /// Returns true if there are no [`RawTag`]s
@@ -766,8 +767,8 @@ impl Clone for InnerTags {
             spawn_fns: SpawnFns(Vec::new()),
             bounds: self.bounds.clone(),
             extents: self.extents.clone(),
-            tags_verssion: self.tags_verssion,
-            meta_tags_version: self.tags_verssion,
+            tags_version: self.tags_version,
+            meta_tags_version: self.tags_version,
         }
     }
 }
@@ -1032,7 +1033,7 @@ fn reflist_insert<T>(list: &mut Vec<Option<(T, usize)>>, value: T, idx: usize) {
 fn reflist_remove<T>(list: &mut [Option<(T, usize)>], idx: usize) {
     match list.get_mut(idx) {
         Some(entry @ Some((_, 1))) => *entry = None,
-        Some(Some((_, refcount))) => *refcount += 1,
+        Some(Some((_, refcount))) => *refcount -= 1,
         Some(None) | None => {}
     }
 }
