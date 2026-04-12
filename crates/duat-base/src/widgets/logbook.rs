@@ -33,7 +33,7 @@ pub fn add_logbook_hooks() {
 
         let mut fmt_rec = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
             if let Some(rec_text) = fmt(rec.clone()) {
-                lb.text.insert_text(lb.text.len(), &rec_text);
+                lb.text.append_text(lb.text.len(), &rec_text);
                 lb.location_ranges
                     .push((lb.text.last_point(), rec.location()));
             }
@@ -201,7 +201,7 @@ impl LogBookOpts {
         let fmt_recs = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
             for rec in records.into_iter() {
                 if let Some(rec_text) = fmt(rec.clone()) {
-                    text.insert_text(text.len(), &rec_text);
+                    text.append_text(text.len(), &rec_text);
                     path_ranges.push((text.last_point(), rec.location()));
                 }
             }
