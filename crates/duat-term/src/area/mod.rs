@@ -421,7 +421,7 @@ impl RawArea for Area {
                 prev_point = Some(number);
                 printed_lines.push(PrintedLine { number, is_wrapped, is_ghost: true });
             }
-            
+
             if item.as_real_char().is_some() {
                 is_ghost = false;
             }
@@ -1116,6 +1116,7 @@ fn continue_overlays<'t, Iter: Iterator<Item = (PrintedPlace, TextPlace<'t>)>>(
     // For specific Tags
     let mut spawns_for_next: Vec<SpawnId> = Vec::new();
     let mut current_x = original_x;
+    let mut still_printint_chars = true;
 
     while let Some((place, item)) = {
         let mut min = None;
@@ -1133,13 +1134,13 @@ fn continue_overlays<'t, Iter: Iterator<Item = (PrintedPlace, TextPlace<'t>)>>(
         let TextPlace { part, real, .. } = item;
 
         if wrap && real != Point::default() {
-            break;
+            still_printint_chars = false;
         }
 
         let is_contained = x + len > x_shift && x < x_shift + lines.coords().width();
 
         match part {
-            TextPart::Char(char) if is_contained => {
+            TextPart::Char(char) if is_contained && still_printint_chars => {
                 if x != original_x {
                     write!(lines, "\x1b[{}G", lines.coords().tl.x + x + 1).unwrap();
                 }
@@ -1328,8 +1329,18 @@ fn iter_selections(text: &Text, from: Point) -> impl Iterator<Item = SelectionMu
                 let start = sel.cursor().min(anchor);
                 let end = sel.cursor().max(anchor);
                 [
-                    Some(SelectionMutParts::new(start, is_main, cursor_is_start, Some(true))),
-                    Some(SelectionMutParts::new(end, is_main, !cursor_is_start, Some(false))),
+                    Some(SelectionMutParts::new(
+                        start,
+                        is_main,
+                        cursor_is_start,
+                        Some(true),
+                    )),
+                    Some(SelectionMutParts::new(
+                        end,
+                        is_main,
+                        !cursor_is_start,
+                        Some(false),
+                    )),
                 ]
             } else {
                 [
