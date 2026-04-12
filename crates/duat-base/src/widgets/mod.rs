@@ -24,24 +24,26 @@ pub(crate) use self::{
 };
 pub use self::{
     completions::{CommandsCompletions, Completions, CompletionsBuilder, CompletionsProvider},
-    gutter::{Gutter, GutterBuffer, GutterEntryId},
+    gutter::{
+        Corner, Gutter, GutterBuffer, GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts,
+    },
     info::Info,
-    line_numbers::{LineNumbers, LineNumbersOpts},
+    linenumbers::{LineNumbers, LineNumbersOpts},
     logbook::{LogBook, LogBookOpts},
     notifications::{Notifications, NotificationsOpts},
     promptline::{PromptLine, PromptLineBuilder},
-    status_line::{State, StatusLine, StatusLineFmt, status},
+    statusline::{State, StatusLine, StatusLineFmt, status},
     whichkey::WhichKey,
 };
 
 mod completions;
 mod gutter;
 mod info;
-mod line_numbers;
+mod linenumbers;
 mod logbook;
 mod notifications;
 mod promptline;
-mod status_line;
+mod statusline;
 mod whichkey;
 
 /// A group of [`Widget`]s consisting of a [`StatusLine`],

@@ -1,4 +1,4 @@
-//! Option definitions for the [`Buffer`] widget
+//! Option definitions for the [`Buffer`] widget.
 //!
 //! These options are defined here, but their actual implementation is
 //! left as an exercise to plugins. This is because I want them to be
@@ -13,7 +13,7 @@
 
 use crate::opts::{PrintOpts, ScrollOff};
 
-/// The default suite of options available to [`Buffer`]s
+/// The default suite of options available to [`Buffer`]s.
 ///
 /// Unlike most other widget options, these ones are dynamic, that is,
 /// if they are changed while duat is still open, the `Buffer` will be
@@ -29,25 +29,25 @@ use crate::opts::{PrintOpts, ScrollOff};
 /// [`Buffer`]: super::Buffer
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BufferOpts {
-    /// Highlights the current line
+    /// Highlights the current line.
     ///
-    /// The default is `true`
+    /// The default is `true`.
     ///
-    /// This makes use of the `current_line` [`Form`]
+    /// This makes use of the `current_line` [`Form`].
     ///
     /// [`Form`]: crate::form::Form
     pub highlight_current_line: bool,
-    /// Enables wrapping of lines
+    /// Enables wrapping of lines.
     ///
-    /// The default is `true`
+    /// The default is `true`.
     pub wrap_lines: bool,
-    /// Wrap on word boundaries, rather than on any character
+    /// Wrap on word boundaries, rather than on any character.
     ///
     /// The default is `false`.
     pub wrap_on_word: bool,
-    /// Where to start wrapping
+    /// Where to start wrapping.
     ///
-    /// The default is `None`
+    /// The default is `None`.
     ///
     /// If this value is `None` and `opts.wrap_lines == true`, then
     /// wrapping will take place at the right edge of the screen.
@@ -58,11 +58,11 @@ pub struct BufferOpts {
     /// than it, then wrapping will take place slightly outside the
     /// screen as a concequence.
     pub wrapping_cap: Option<u32>,
-    /// Whether to indent wrapped lines or not
+    /// Which characters should "indent wrapped lines".
     ///
-    /// The default is `true`.
+    /// The default is `&[' ', '\t', '│', '─', '├', '└']`.
     ///
-    /// This turns this:
+    /// By containing a `' '` and `'\t'` characters, it turns this:
     ///
     /// ```text
     ///     This is a very long line of text, so long that it
@@ -75,28 +75,37 @@ pub struct BufferOpts {
     ///     This is a very long line of text, so long that it
     ///     wraps around
     /// ```
-    pub indent_wraps: bool,
-    /// How much space a tab should occupy
     ///
-    /// The default is `4`
+    /// If the slice is empty, the behavior is turned off completely.
+    ///
+    /// The reasoning for the box drawing characters is because those
+    /// are used by the `Gutter` in order to show diagnostics, and it
+    /// looks nicer if the line wraps at the end of the connecting
+    /// bits.
+    ///
+    /// [`Buffer`]: crate::widgets::Buffer
+    pub indent_wrap_chars: &'static [char],
+    /// How much space a tab should occupy.
+    ///
+    /// The default is `4`.
     ///
     /// This also affect other things, like if your tabs are converted
     /// into spaces, this will also set how many spaces should be
     /// added.
     pub tabstop: u8,
-    /// How much space to keep between the cursor and edges
+    /// How much space to keep between the cursor and edges.
     ///
-    /// The default is `ScrollOff { x: 3, y: 3 }`
+    /// The default is `ScrollOff { x: 3, y: 3 }`.
     pub scrolloff: ScrollOff,
-    /// Whether to limit scrolloff at the end of lines
+    /// Whether to limit scrolloff at the end of lines.
     ///
-    /// The default is `false`
+    /// The default is `false`.
     ///
     /// This makes it so, as you reach the end of a long line of text,
     /// the cursor line will continue scrolling to the left,
     /// maintaining the `scrolloff.x`'s gap.
     pub force_scrolloff: bool,
-    /// Extra characters to be considered part of a word
+    /// Extra characters to be considered part of a word.
     ///
     /// The default is `&[]`.
     ///
@@ -109,9 +118,9 @@ pub struct BufferOpts {
     ///
     /// [`\w`]: https://www.unicode.org/reports/tr18/#word
     pub extra_word_chars: &'static [char],
-    /// Indent string
+    /// Indent string.
     ///
-    /// The default is `Some("│")`.
+    /// The default is `Some("│")`..
     ///
     /// The indent lines will be printed with the `replace.indent`
     /// [`Form`].
@@ -158,7 +167,7 @@ pub struct BufferOpts {
     /// Wether to copy the indentation string of `opts.indent_str` on
     /// empty lines.
     ///
-    /// The default is `true`
+    /// The default is `true`.
     ///
     /// If this is set to true, this str will be printed with the
     /// `replace.indent.empty` form.
@@ -167,9 +176,9 @@ pub struct BufferOpts {
     /// of indentation.
     pub indent_str_on_empty: bool,
     /// An indent string, just like `opts.indent_str`, but only for
-    /// `\t`s
+    /// `\t`s.
     ///
-    /// The default is `None`
+    /// The default is `None`.
     ///
     /// This is useful for languages like python, where the mixup of
     /// tabs and spaces on indentation can cause problems.
@@ -178,9 +187,9 @@ pub struct BufferOpts {
     /// `replace.indent.tab` form. If this is `None`, then
     /// `opts.indent_str` will be used instead.
     pub indent_tab_str: Option<&'static str>,
-    /// A character to be printed in place of the space
+    /// A character to be printed in place of the space.
     ///
-    /// The default is `None`
+    /// The default is `None`.
     ///
     /// The char will be printed with the `replace.space` [`Form`].
     ///
@@ -189,9 +198,9 @@ pub struct BufferOpts {
     ///
     /// [`Form`]: crate::form::Form
     pub space_char: Option<char>,
-    /// Which `char` should be printed in new lines
+    /// Which `char` should be printed in new lines.
     ///
-    /// The default is `' '` (space character)
+    /// The default is `' '` (space character).
     ///
     /// This character will be printed with the `replace.newline`
     /// [`Form`].
@@ -199,9 +208,9 @@ pub struct BufferOpts {
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`Form`]: crate::form::Form
     pub newline: char,
-    /// A character to be printed on the new line on empty strings
+    /// A character to be printed on the new line on empty strings.
     ///
-    /// The default is `None`
+    /// The default is `None`.
     ///
     /// This character will be printed with the
     /// `replace.newline.empty` [`Form`].
@@ -210,9 +219,9 @@ pub struct BufferOpts {
     ///
     /// [`Form`]: crate::form::Form
     pub newline_on_empty: Option<char>,
-    /// A character to be printed on trailing new lines
+    /// A character to be printed on trailing new lines.
     ///
-    /// The default is `None`
+    /// The default is `None`.
     ///
     /// This character will be printed with the
     /// `replace.newline.trailing` [`Form`].
@@ -228,7 +237,7 @@ impl BufferOpts {
             wrap_lines: self.wrap_lines,
             wrap_on_word: self.wrap_on_word,
             wrapping_cap: self.wrapping_cap,
-            indent_wraps: self.indent_wraps,
+            indent_wrap_chars: self.indent_wrap_chars,
             tabstop: self.tabstop,
             print_new_line: true,
             scrolloff: self.scrolloff,
@@ -247,7 +256,7 @@ impl Default for BufferOpts {
             wrap_lines: true,
             wrap_on_word: false,
             wrapping_cap: None,
-            indent_wraps: true,
+            indent_wrap_chars: &[' ', '\t', '│', '─', '├', '└'],
             tabstop: 4,
             scrolloff: ScrollOff { x: 3, y: 3 },
             force_scrolloff: false,

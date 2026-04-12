@@ -1,19 +1,23 @@
 FOR NEXT UPDATE:
 [ ] Marker tags?
 [ ] More duat-lsp features:
-  [ ] Diagnostics.
+  [x] Diagnostics.
   [ ] Goto locations.
   [ ] Autocompletions.
+  [ ] Formatting.
+  [ ] Caching of certain things.
 [ ] Snippet support.
 [ ] More work on the Gutter.
-  [ ] Diferentiate hovering, cursoring, related and default display.
+  [x] Diferentiate hovering, cursoring, related and default display.
   [ ] Implement Widget spawning.
   [x] More functional style.
+  [ ] Add user configuration.
 [ ] Perfect print iterators.
   [ ] Perfect words iterator.
 [ ] Fix pager search.
-[ ] Allow fixing of Coord on TwoPoints.
 [ ] Stop eagerly merging Selections.
+[ ] Additional wrap continuation characters.
+[ ] Add a donation splash screen.
 
 KNOWN BUGS:
  HIGH PRIORITY:

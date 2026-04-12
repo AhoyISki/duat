@@ -26,7 +26,7 @@ use duat_core::{
     ui::{Area, Window},
 };
 
-use crate::widgets::status_line::CheckerFn;
+use crate::widgets::statusline::CheckerFn;
 
 /// A struct that reads state in order to return [`Text`].
 enum Appender<Part: AsBuilderPart<D, _T> = String, _T = (), D: Display = String> {

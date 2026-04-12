@@ -8,19 +8,18 @@
 //! [hooks]: crate::hook
 use std::any::TypeId;
 
-use duat_base::widgets::{LineNumbersOpts, LogBookOpts, StatusLineFmt};
 #[allow(unused_imports)]
 pub use duat_core::opts::*;
-use duat_core::{
+pub use duatmode::TabMode;
+use duatmode::opts::DuatModeOpts;
+
+use crate::{
     data::Pass,
     mode::{Description, KeyCode, KeyEvent, KeyMod, Mode},
     text::Text,
     ui::Orientation,
+    widgets::{GutterOpts, LineNumbersOpts, LogBookOpts, NotificationsOpts, StatusLineFmt},
 };
-pub use duatmode::TabMode;
-use duatmode::opts::DuatModeOpts;
-
-use crate::widgets::NotificationsOpts;
 
 /// General options to set when starting Duat.
 pub struct Opts {
@@ -53,11 +52,12 @@ pub struct Opts {
     /// than it, then wrapping will take place slightly outside the
     /// screen as a concequence.
     pub wrapping_cap: Option<u32>,
-    /// Whether to indent wrapped lines or not.
+    /// Which characters should "indent wrapped lines".
     ///
-    /// In [`Buffer`]s, the default is `true`.
+    /// In [`Buffer`]s, the default is `&[' ', '\t', '│', '─', '├',
+    /// '└']`.
     ///
-    /// This turns this:
+    /// By containing a `' '` and `'\t'` characters, it turns this:
     ///
     /// ```text
     ///     This is a very long line of text, so long that it
@@ -71,8 +71,15 @@ pub struct Opts {
     ///     wraps around
     /// ```
     ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    pub indent_wraps: bool,
+    /// If the slice is empty, the behavior is turned off completely.
+    ///
+    /// The reasoning for the box drawing characters is because those
+    /// are used by the `Gutter` in order to show diagnostics, and it
+    /// looks nicer if the line wraps at the end of the connecting
+    /// bits.
+    ///
+    /// [`Buffer`]: crate::widgets::Buffer
+    pub indent_wrap_chars: &'static [char],
     /// How long tabs should be on screen.
     ///
     /// In [`Buffer`]s, the default is `4`
@@ -277,13 +284,22 @@ pub struct Opts {
     /// [`WhichKey`]: crate::widgets::WhichKey
     /// [removing]: crate::hook::remove
     pub help_key: Option<KeyEvent>,
-    /// Options for the [`LineNumbers`]s widget.
+    /// Options for the [`LineNumbers`] widget.
     ///
     /// Do note that, at the moment, these options only apply to newly
     /// opened `LineNumbers`s, not to those that already exist.
     ///
     /// [`LineNumbers`]: crate::widgets::LineNumbers
-    pub line_numbers: LineNumbersOpts,
+    pub linenumbers: LineNumbersOpts,
+    /// Options for the [`Gutter`] widget.
+    ///
+    /// This widget goes on the left side of each [`Buffer`], adn
+    /// displays information about diagnostics and other things added
+    /// to said `Buffer`.
+    ///
+    /// [`Gutter`]: crate::widgets::Gutter
+    /// [`Buffer`]: crate::widgets::Buffer
+    pub gutter: GutterOpts,
     /// Options for the [`Notifications`] widget.
     ///
     /// The main purpose of these options is to modify how messages
@@ -472,12 +488,12 @@ pub struct EnabledHooks {
     /// fn setup(opts: &mut Opts) {
     ///     opts.enabled_hooks.default_buffer_widgets = false;
     ///
-    ///     let line_numbers = opts.line_numbers;
+    ///     let linenumbers = opts.linenumbers;
     ///     hook::add::<BufferOpened>(move |pa, buffer| {
     ///         VertRule::builder().push_on(pa, buffer);
     ///         Gutter::builder().push_on(pa, buffer);
     ///         VertRule::builder().push_on(pa, buffer);
-    ///         line_numbers.push_on(pa, buffer);
+    ///         linenumbers.push_on(pa, buffer);
     ///     });
     /// }
     /// ```
@@ -680,7 +696,10 @@ impl Opts {
     /// fn buf_percent(text: &Text, main: &Selection) -> Text {
     ///     // The cursor is the part of the cursor that moves, as opposed to the anchor.
     ///     let cursor = main.cursor();
-    ///     txt!("[coord]{}%", (100 * cursor.line()) / text.end_point().line())
+    ///     txt!(
+    ///         "[coord]{}%",
+    ///         (100 * cursor.line()) / text.end_point().line()
+    ///     )
     /// }
     ///
     /// fn setup(opts: &mut Opts) {
@@ -741,7 +760,7 @@ impl Default for Opts {
             wrap_lines: true,
             wrap_on_word: false,
             wrapping_cap: None,
-            indent_wraps: true,
+            indent_wrap_chars: &[' ', '\t', '│', '─', '├', '└'],
             tabstop: 4,
             scrolloff: ScrollOff { x: 3, y: 3 },
             force_scrolloff: false,
@@ -757,7 +776,7 @@ impl Default for Opts {
             one_line_footer: false,
             footer_on_top: false,
             help_key: Some(KeyEvent::new(KeyCode::Char('h'), KeyMod::CONTROL)),
-            line_numbers: LineNumbersOpts::default(),
+            linenumbers: LineNumbersOpts::default(),
             notifications: NotificationsOpts::default(),
             whichkey: WhichKeyOpts::default(),
             logs: LogBookOpts::default(),

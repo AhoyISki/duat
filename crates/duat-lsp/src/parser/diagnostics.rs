@@ -53,16 +53,12 @@ impl Diagnostics {
         params: PublishDiagnosticsParams,
         encoding: Encoding,
     ) -> impl FnOnce(&mut Pass) + 'static {
-        move |pa| {
-            handle_diagnostics(pa, params.uri, params.diagnostics, encoding);
-        }
+        move |pa| handle_diagnostics(pa, params.uri, params.diagnostics, encoding)
     }
 }
 
 /// Handles a list of diagnostics.
 pub fn handle_diagnostics(pa: &mut Pass, uri: Uri, mut list: Vec<Diagnostic>, encoding: Encoding) {
-    let mut already_added = Vec::new();
-
     list.sort_unstable_by(|lhs, rhs| {
         lhs.severity
             .cmp(&rhs.severity)
@@ -73,6 +69,7 @@ pub fn handle_diagnostics(pa: &mut Pass, uri: Uri, mut list: Vec<Diagnostic>, en
     let (ns, buffer) = ns_and_buffer!(pa, &uri, return);
     buffer.remove_gutter_entries(pa, ns);
 
+    let mut already_added_hints = Vec::new();
     let mut taken_buffers = HashSet::new();
     taken_buffers.insert(buffer.read(pa).buffer_id());
 
@@ -80,27 +77,35 @@ pub fn handle_diagnostics(pa: &mut Pass, uri: Uri, mut list: Vec<Diagnostic>, en
         let text = buffer.text(pa);
         let range = byte_range(text, diagnostic.range, encoding);
 
-        let mut msg = format_message(&diagnostic.message);
-
         let entry_id = match diagnostic.severity {
             Some(DiagnosticSeverity::INFORMATION) => {
+                let mut msg = format_message(&diagnostic.message);
                 msg.insert_tag(Ns::basic(), .., Mask("info"));
                 buffer.add_hint(pa, ns, range, msg)
             }
             Some(DiagnosticSeverity::HINT) => {
-                msg.insert_tag(Ns::basic(), .., Mask("info"));
-                buffer.add_hint(pa, ns, range, msg);
+                let entry = (&uri, diagnostic.range, &diagnostic.message);
+                if !already_added_hints.contains(&entry) {
+                    let mut msg = format_message(&diagnostic.message);
+                    msg.insert_tag(Ns::basic(), .., Mask("info"));
+                    buffer.add_hint(pa, ns, range, msg);
+                }
                 continue;
             }
             Some(DiagnosticSeverity::WARNING) => {
+                let mut msg = format_message(&diagnostic.message);
                 msg.insert_tag(Ns::basic(), .., Mask("warn"));
                 buffer.add_warning(pa, ns, range, msg)
             }
             Some(DiagnosticSeverity::ERROR) => {
+                let mut msg = format_message(&diagnostic.message);
                 msg.insert_tag(Ns::basic(), .., Mask("error"));
                 buffer.add_error(pa, ns, range, msg)
             }
-            None => buffer.add_hint(pa, ns, range, msg),
+            None => {
+                let msg = format_message(&diagnostic.message);
+                buffer.add_hint(pa, ns, range, msg)
+            }
             _ => {
                 context::error!("Unrecognized severity: [a]{diagnostic.severity:?}");
                 continue;
@@ -120,7 +125,7 @@ pub fn handle_diagnostics(pa: &mut Pass, uri: Uri, mut list: Vec<Diagnostic>, en
             let mut msg = format_message(&related.message);
             let range = byte_range(text, related.location.range, encoding);
 
-            already_added.push((
+            already_added_hints.push((
                 &related.location.uri,
                 related.location.range,
                 &related.message,

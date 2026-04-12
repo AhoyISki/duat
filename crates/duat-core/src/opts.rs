@@ -15,8 +15,8 @@ use std::{
 
 use crate::text::RegexHaystack;
 
-/// The distance to keep between the [`SelectionMut`] and the edges of the
-/// screen when scrolling
+/// The distance to keep between the [`SelectionMut`] and the edges of
+/// the screen when scrolling
 ///
 /// [`SelectionMut`]: crate::mode::SelectionMut
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -70,7 +70,7 @@ pub struct PrintOpts {
     /// ```
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub indent_wraps: bool,
+    pub indent_wrap_chars: &'static [char],
     /// How long tabs should be on screen
     ///
     /// In [`Buffer`]s, the default is `4`
@@ -164,7 +164,7 @@ impl PrintOpts {
     ///     wrap_lines: false,
     ///     wrap_on_word: false,
     ///     wrapping_cap: None,
-    ///     indent_wraps: true,
+    ///     indent_wrap_chars: &[' ', '\t'],
     ///     tabstop: 4,
     ///     print_new_line: false,
     ///     scrolloff: ScrollOff { x: 3, y: 3 },
@@ -186,7 +186,7 @@ impl PrintOpts {
             wrap_lines: false,
             wrap_on_word: false,
             wrapping_cap: None,
-            indent_wraps: true,
+            indent_wrap_chars: &[' ', '\t'],
             tabstop: 4,
             print_new_line: false,
             scrolloff: ScrollOff { x: 3, y: 3 },
@@ -212,7 +212,7 @@ impl PrintOpts {
     ///     wrap_lines: false,
     ///     wrap_on_word: false,
     ///     wrapping_cap: None,
-    ///     indent_wraps: true,
+    ///     indent_wraps: &[' ', '\t'],
     ///     tabstop: 4,
     ///     print_new_line: true,
     ///     scrolloff: ScrollOff { x: 3, y: 3 },
@@ -230,7 +230,7 @@ impl PrintOpts {
             wrap_lines: false,
             wrap_on_word: false,
             wrapping_cap: None,
-            indent_wraps: true,
+            indent_wrap_chars: &[' ', '\t'],
             tabstop: 4,
             print_new_line: true,
             scrolloff: ScrollOff { x: 3, y: 3 },

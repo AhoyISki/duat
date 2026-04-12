@@ -84,7 +84,7 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
             wrap_lines: opts.wrap_lines,
             wrap_on_word: opts.wrap_on_word,
             wrapping_cap: opts.wrapping_cap,
-            indent_wraps: opts.indent_wraps,
+            indent_wrap_chars: opts.indent_wrap_chars,
             tabstop: opts.tabstop,
             scrolloff: opts.scrolloff,
             force_scrolloff: opts.force_scrolloff,
@@ -107,7 +107,7 @@ fn enable_layout_hooks(opts: &mut Opts) {
         hook::add::<BufferOpened>(|pa, buffer| {
             #[cfg(feature = "term-ui")]
             VertRule::builder().push_on(pa, buffer);
-            OPTS.lock().unwrap().line_numbers.push_on(pa, buffer);
+            OPTS.lock().unwrap().linenumbers.push_on(pa, buffer);
             #[cfg(feature = "term-ui")]
             VertRule::builder().push_on(pa, buffer);
             Gutter::builder().push_on(pa, buffer);

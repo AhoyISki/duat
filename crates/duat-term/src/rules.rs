@@ -21,7 +21,7 @@ pub fn add_vertrule_hook() {
             let (buf, vr, area) = (buffer.read(pa), &vertrule.read(pa), vertrule.area());
 
             let text = if let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = vr.sep_char {
-                let lines = buffer.printed_line_numbers(pa);
+                let lines = buffer.printed_linenumbers(pa);
                 let (upper, middle, lower) = {
                     if let Some(main) = buf.selections().get_main() {
                         let main = main.cursor().line();

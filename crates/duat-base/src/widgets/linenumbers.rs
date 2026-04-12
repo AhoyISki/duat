@@ -69,8 +69,8 @@ impl LineNumbers {
     }
 
     fn form_text(&self, pa: &Pass, buffer: &Handle) -> Text {
-        let (main_line_num, printed_line_numbers) = {
-            let printed_line_numbers = buffer.printed_line_numbers(pa);
+        let (main_line_num, printed_linenumbers) = {
+            let printed_linenumbers = buffer.printed_linenumbers(pa);
             let buf = buffer.read(pa);
 
             let main_line = if buf.selections().is_empty() {
@@ -79,13 +79,13 @@ impl LineNumbers {
                 buf.selections().main().cursor().line()
             };
 
-            (main_line, printed_line_numbers)
+            (main_line, printed_linenumbers)
         };
 
         let mut builder = Text::builder();
         let mut last_was_ghost = false;
 
-        for (idx, line) in printed_line_numbers.iter().enumerate() {
+        for (idx, line) in printed_linenumbers.iter().enumerate() {
             if line.is_ghost {
                 last_was_ghost = true;
                 builder.push("\n");
@@ -201,7 +201,7 @@ impl LineNumbersOpts {
 
             hook::add::<OnMouseEvent<LineNumbers>>(|pa, event| {
                 let line = |pa, handle: &Handle| {
-                    let lines = handle.printed_line_numbers(pa);
+                    let lines = handle.printed_linenumbers(pa);
                     event
                         .points
                         .and_then(|tpp| lines.get(tpp.points().real.line()))

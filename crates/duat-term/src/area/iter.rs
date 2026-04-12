@@ -39,7 +39,7 @@ pub fn print_iter<'t>(
 ) -> impl Iterator<Item = (PrintedPlace, TextPlace<'t>)> + 't {
     let start_points = text.visual_line_start(points, 0);
     let cap = opts.wrap_width(width).unwrap_or(width);
-    let max_indent = if opts.indent_wraps { cap } else { 0 };
+    let max_indent = cap * !opts.indent_wrap_chars.is_empty() as u32;
 
     // Line construction variables.
     let (mut x, mut spacers) = (0, 0);
@@ -143,7 +143,7 @@ fn inner_iter<'t, 'i>(
 where
     't: 'i,
 {
-    let max_indent = if opts.indent_wraps { cap } else { 0 };
+    let max_indent = cap * !opts.indent_wrap_chars.is_empty() as u32;
 
     // Line return variables.
     let (mut line, mut leftover_nl) = (Vec::<(u32, TextPlace)>::new(), None);
@@ -200,7 +200,9 @@ where
                         TextPart::Char('\t') if leftover > 0 => {
                             line.push((len - leftover, item));
                             next();
-                            if old_indent + leftover < max_indent && opts.indent_wraps {
+                            if old_indent + leftover < max_indent
+                                && !opts.indent_wrap_chars.is_empty()
+                            {
                                 old_indent + leftover
                             } else {
                                 leftover
@@ -209,7 +211,9 @@ where
                         TextPart::Char('\n') => {
                             if len > 0 && must_wrap {
                                 let position = old_indent
-                                    * (old_indent < max_indent && opts.indent_wraps) as u32;
+                                    * (old_indent < max_indent
+                                        && !opts.indent_wrap_chars.is_empty())
+                                        as u32;
                                 leftover_nl = Some((position, item))
                             } else {
                                 line.push((len, item));
@@ -225,7 +229,9 @@ where
                                 next();
                             }
 
-                            old_indent * (old_indent < max_indent && opts.indent_wraps) as u32
+                            old_indent
+                                * (old_indent < max_indent && !opts.indent_wrap_chars.is_empty())
+                                    as u32
                         }
                     };
 
@@ -245,7 +251,7 @@ where
 /// Wether the [`TwoPoints`] actually does start a wrapped line.
 pub fn is_starting_points(text: &Text, points: TwoPoints, width: u32, opts: PrintOpts) -> bool {
     let start_points = text.visual_line_start(points, 0);
-    let max_indent = if opts.indent_wraps { width } else { 0 };
+    let max_indent = width * !opts.indent_wrap_chars.is_empty() as u32;
     let cap = opts.wrap_width(width).unwrap_or(width);
 
     // Line construction variables.
@@ -298,7 +304,7 @@ fn _words<'t, 'i>(
     (mut indent, mut on_indent, mut wrapped_indent): (u32, bool, u32),
     (cap, opts): (u32, PrintOpts),
 ) -> impl Iterator<Item = (PrintedPlace, TextPlace<'t>)> + Clone {
-    let max_indent = if opts.indent_wraps { cap } else { 0 };
+    let max_indent = cap * !opts.indent_wrap_chars.is_empty() as u32;
 
     // Line return variables.
     let (mut line, mut leftover_nl): (Vec<(u32, TextPlace)>, _) = (Vec::new(), None);
@@ -358,7 +364,9 @@ fn _words<'t, 'i>(
                         '\t' if leftover > 0 => {
                             line.push((len - leftover, item));
                             iter.next();
-                            if old_indent + leftover < max_indent && opts.indent_wraps {
+                            if old_indent + leftover < max_indent
+                                && !opts.indent_wrap_chars.is_empty()
+                            {
                                 old_indent + leftover
                             } else {
                                 leftover
@@ -368,7 +376,9 @@ fn _words<'t, 'i>(
                             match (opts.print_new_line, total_len > cap) {
                                 (true, true) => {
                                     let position = old_indent
-                                        * (old_indent < max_indent && opts.indent_wraps) as u32;
+                                        * (old_indent < max_indent
+                                            && !opts.indent_wrap_chars.is_empty())
+                                            as u32;
                                     leftover_nl = Some((position, iter.next().unwrap()))
                                 }
                                 (true, false) => line.push((1, iter.next().unwrap())),
@@ -376,7 +386,11 @@ fn _words<'t, 'i>(
                             }
                             0
                         }
-                        _ => old_indent * (old_indent < max_indent && opts.indent_wraps) as u32,
+                        _ => {
+                            old_indent
+                                * (old_indent < max_indent && !opts.indent_wrap_chars.is_empty())
+                                    as u32
+                        }
                     };
 
                     total_len = wrapped_indent;
@@ -434,12 +448,13 @@ fn process_char(
             *indent = 0;
             opts.print_new_line as u32
         }
-        char => {
+        char if *on_indent => {
             let len = len_from(char, x, opts);
-            *on_indent &= char == ' ' || char == '\t';
+            *on_indent &= opts.indent_wrap_chars.contains(&char);
             *indent += len * *on_indent as u32;
             len
         }
+        char => len_from(char, x, opts),
     }
 }
 

@@ -81,7 +81,7 @@
 //!
 //!     opts.wrap_lines = true;
 //!     opts.scrolloff.y = 5;
-//!     opts.line_numbers.align = std::fmt::Alignment::Right;
+//!     opts.linenumbers.align = std::fmt::Alignment::Right;
 //!     opts.fmt_status(|pa| {
 //!         let upper_mode = mode_name().map(|m| m.to_uppercase());
 //!

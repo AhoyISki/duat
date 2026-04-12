@@ -9,6 +9,7 @@
 //!
 //! [`Buffer`]: duat_core::buffer::Buffer
 use std::{
+    iter::Peekable,
     ops::Range,
     sync::{LazyLock, Mutex, Once},
 };
@@ -21,7 +22,7 @@ use duat_core::{
     form::{self, Form, FormId},
     hook::{self, BufferOpened, BufferUpdated, OnMouseEvent},
     opts::PrintOpts,
-    text::{Inlay, Mask, Overlay, Text, TextParts, TextRange, TwoPoints},
+    text::{Builder, Inlay, Mask, Overlay, Point, Text, TextRange, TwoPoints},
     txt,
     ui::{Area, Coord, PushSpecs, Side, Widget},
 };
@@ -63,37 +64,53 @@ fn initial_setup() {
             return;
         }
 
-        gtr.apply_changes(buf.moment_for(*MOMENT_NS), buf.text_parts());
+        gtr.apply_changes(buf.moment_for(*MOMENT_NS));
 
         let (gtr, buf, area) = pa.write_many((&gutter, buffer, buffer.area()));
         let popts = buf.print_opts();
 
-        let (related_ids, hovered_ids) =
-            gtr.mouse_coord
-                .filter(|&coord| coord >= area.top_left() && coord < area.bottom_right())
-                .and_then(|coord| {
-                    let real = area
-                        .points_at_coord(buf.text(), coord, popts)?
-                        .as_within()?
-                        .real;
+        let get_entry_lists = |point: Point, on_whole_line: bool| {
+            let direct = Vec::from_iter(gtr.entries.iter().filter_map(|entry| {
+                if on_whole_line {
+                    let range = {
+                        let range = buf.text()[entry.range.clone()].range();
+                        range.start.line()..range.end.line() + 1
+                    };
+                    range.contains(&point.line()).then_some(entry.id)
+                } else {
+                    entry.range.contains(&point.byte()).then_some(entry.id)
+                }
+            }));
 
-                    let ids = Vec::from_iter(gtr.entries.iter().filter_map(|entry| {
-                        entry.range.contains(&real.byte()).then_some(entry.id)
-                    }));
+            let related = Vec::from_iter(
+                ID_RELATIONS
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|related| direct.iter().any(|id| related.contains(id)))
+                    .flatten()
+                    .copied(),
+            );
 
-                    let related = Vec::from_iter(
-                        ID_RELATIONS
-                            .lock()
-                            .unwrap()
-                            .iter()
-                            .filter(|related| ids.iter().any(|id| related.contains(id)))
-                            .flatten()
-                            .copied(),
-                    );
+            (direct, related)
+        };
 
-                    Some((related, ids))
-                })
-                .unwrap_or_default();
+        let (hovered_ids, mut related_ids) = gtr
+            .mouse_coord
+            .filter(|&coord| coord >= area.top_left() && coord < area.bottom_right())
+            .and_then(|coord| {
+                let real = area
+                    .points_at_coord(buf.text(), coord, popts)?
+                    .as_within()?
+                    .real;
+                Some(get_entry_lists(real, gtr.opts.hover_whole_line))
+            })
+            .unwrap_or_default();
+
+        let (cursored_ids, more_related_ids) =
+            get_entry_lists(buf.selections().main().cursor(), false);
+
+        related_ids.extend_from_slice(&more_related_ids);
 
         let mut entries = gtr
             .entries
@@ -101,6 +118,8 @@ fn initial_setup() {
             .map(|entry| {
                 if hovered_ids.contains(&entry.id) {
                     (entry, Some(Movement::Hovered))
+                } else if cursored_ids.contains(&entry.id) {
+                    (entry, Some(Movement::Cursored))
                 } else if related_ids.contains(&entry.id) {
                     (entry, Some(Movement::Related))
                 } else {
@@ -113,6 +132,8 @@ fn initial_setup() {
             let lnum = buf.text().point_at_byte(entry.range.end).line();
             insert_gutter_entries(&mut entries, gtr.ns, lnum, &gtr.opts, buf, area);
         }
+
+        gtr.mouse_coord = None;
     })
     .lateness(100_000_000);
 
@@ -176,6 +197,7 @@ impl Gutter {
             },
             corner: Corner::TopRight,
             spawn_on_window_corner: false,
+            hover_whole_line: true,
         }
     }
 
@@ -230,7 +252,7 @@ impl Gutter {
         builder.build()
     }
 
-    fn apply_changes(&mut self, moment: Moment, mut parts: TextParts) {
+    fn apply_changes(&mut self, moment: Moment) {
         let sh = |value: &mut usize, shift: i32| {
             *value = value.saturating_add_signed(shift as isize);
         };
@@ -240,11 +262,6 @@ impl Gutter {
         let mut to_remove = Vec::new();
 
         for change in moment.iter() {
-            let line_range = change.line_range(parts.strs);
-            parts
-                .tags
-                .remove(self.ns, line_range.start..=line_range.end);
-
             let mut is_contained = |i: usize, range: Range<usize>| {
                 let change_range = change.taken_range();
                 let change_range = change_range.start.byte()..change_range.end.byte();
@@ -337,8 +354,7 @@ pub struct GutterOpts {
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
     pub error: GutterSymbolOpts,
-    /// Which [`Corner`] to spawn when the mode is
-    /// [`GutterDisplay::SpawnCorner`].
+    /// Which [`Corner`] to spawn when spawning a corner widget.
     ///
     /// The default is [`Corner::TopRight`].
     pub corner: Corner,
@@ -347,6 +363,14 @@ pub struct GutterOpts {
     ///
     /// The default is `false`.
     pub spawn_on_window_corner: bool,
+    /// Wether to consider the whole line as hovered instead of just
+    /// the entries containing the mouse pointer.
+    ///
+    /// This is useful because a hover is "deliberate", so you
+    /// probably want as much information out of it as possible.
+    ///
+    /// The default is `true`.
+    pub hover_whole_line: bool,
 }
 
 impl GutterOpts {
@@ -440,7 +464,7 @@ pub struct GutterEntry {
 
 /// Inserts multiple [`GutterEntry`]s that are in the same line.
 fn insert_gutter_entries<'g>(
-    list: impl Iterator<Item = (&'g mut GutterEntry, Option<Movement>)>,
+    iter: &mut Peekable<impl Iterator<Item = (&'g mut GutterEntry, Option<Movement>)>>,
     ns: Ns,
     lnum: usize,
     opts: &GutterOpts,
@@ -457,19 +481,20 @@ fn insert_gutter_entries<'g>(
     let popts = buf.print_opts();
 
     let entries = Vec::from_iter(
-        list.take_while(|(entry, _)| buf.text().point_at_byte(entry.range.end).line() == lnum)
-            .map(|(entry, movement)| {
-                let place = match display(entry.kind, movement) {
-                    Some(GutterDisplay::EndOfLine) => Some(BufferPlace::EndOfLine),
-                    Some(GutterDisplay::RightUnder) => {
-                        inlay_column(entry.range.clone(), buf, area, popts)
-                            .map(BufferPlace::RightUnder)
-                    }
-                    Some(GutterDisplay::Spawn) => Some(BufferPlace::Spawned),
-                    Some(GutterDisplay::Corner) | None => None,
-                };
-                (entry, movement, place)
-            }),
+        std::iter::from_fn(|| {
+            iter.next_if(|(entry, _)| buf.text().point_at_byte(entry.range.end).line() == lnum)
+        })
+        .map(|(entry, movement)| {
+            let place = match display(entry.kind, movement) {
+                Some(GutterDisplay::EndOfLine) => Some(BufferPlace::EndOfLine),
+                Some(GutterDisplay::RightUnder) => {
+                    inlay_column(entry.range.clone(), buf, area, popts).map(BufferPlace::RightUnder)
+                }
+                Some(GutterDisplay::Spawn) => Some(BufferPlace::Spawned),
+                Some(GutterDisplay::Corner) | None => None,
+            };
+            (entry, movement, place)
+        }),
     );
 
     // Most likely scenario: Nothing has changed in how these Gutter
@@ -540,18 +565,18 @@ fn make_inlay(mut inlays: Vec<(usize, EntryKind, &Text)>) -> Inlay {
     let mut prev_column = None;
 
     for (column, _, msg) in inlays {
-        let columns_are_eq = prev_column.is_some_and(|c| c == column);
+        let columns_are_eq = prev_column == Some(column);
         let char = if columns_are_eq { '├' } else { '└' };
-
-        if columns_are_eq {
-            prefix.remove_tags(Ns::basic(), column);
-        }
 
         let mut line_prefix = prefix.clone();
         line_prefix.replace_range(
             column..prefix_len,
             format!("{char}{}", &LINES[..(prefix_len - column - 1) * LEN]),
         );
+
+        if columns_are_eq {
+            line_prefix.remove_tags(Ns::basic(), column);
+        }
 
         let line_ranges = Vec::from_iter(msg.lines().map(|line| line.byte_range()));
 
@@ -561,13 +586,17 @@ fn make_inlay(mut inlays: Vec<(usize, EntryKind, &Text)>) -> Inlay {
         for (i, line_range) in line_ranges.into_iter().enumerate().rev() {
             if i == 0 {
                 msg.insert_text(line_range.start, &line_prefix);
+                // Add it now, so the next lines are also connected.
             } else {
                 msg.insert_text(line_range.start, &prefix);
             }
         }
 
+        if !columns_are_eq {
+            prefix.insert_tag(Ns::basic(), column, conn.clone());
+        }
+
         text.insert_text(0, &msg);
-        prefix.insert_tag(Ns::basic(), column, conn.clone());
         prev_column = Some(column)
     }
 
@@ -581,18 +610,28 @@ fn make_overlay(mut overlays: Vec<(EntryKind, &Text)>) -> Overlay {
         l_kind.cmp(r_kind).then(l_text.len().cmp(&r_text.len()))
     });
 
+    let fmt = |i: usize, mut builder: Builder, msg: &Text| {
+        if i == 0 {
+            builder.push(Mask("diagnostic"));
+            builder.push(txt!("  {msg}"));
+        } else {
+            builder.push(txt!(" [diagnostic.line]│[] {msg}"));
+        }
+        builder
+    };
+
     Overlay::new(
         overlays
             .into_iter()
             .enumerate()
-            .fold(Text::builder(), |mut builder, (i, (_, msg))| {
-                if i == 0 {
-                    builder.push(Mask("diagnostic"));
-                    builder.push(txt!("  {msg}"));
+            .fold(Text::builder(), |builder, (i, (_, msg))| {
+                if msg.end_point().line() > 1 {
+                    let mut msg = msg.clone();
+                    msg.replace_range(msg.lines().next().unwrap().byte_range().end - 1.., "");
+                    fmt(i, builder, &msg)
                 } else {
-                    builder.push(txt!(" [diagnostic.line] {msg}"));
+                    fmt(i, builder, msg)
                 }
-                builder
             })
             .build(),
     )
@@ -702,7 +741,7 @@ impl GutterBuffer for Handle {
                     let lnum = buf.text().point_at_byte(entry.range.end).line();
                     let line_range = buf.text().line(lnum).byte_range();
                     buf.text_mut()
-                        .remove_tags(gtr.ns, line_range.end - 1..line_range.end);
+                        .remove_tags(gtr.ns, line_range.end - 1..=line_range.end);
                     line_range
                 }),
         );
@@ -747,7 +786,7 @@ impl GutterBuffer for Handle {
         let (gtr, buf) = pa.write_many((&gutter, self));
         let moment = buf.moment_for(*MOMENT_NS);
         if !moment.is_empty() {
-            gtr.apply_changes(moment, buf.text_parts());
+            gtr.apply_changes(moment);
         }
 
         let (Ok(idx) | Err(idx)) = gtr
@@ -789,7 +828,7 @@ impl GutterBuffer for Handle {
         let (gtr, buf) = pa.write_many((&gutter, self));
         let moment = buf.moment_for(*MOMENT_NS);
         if !moment.is_empty() {
-            gtr.apply_changes(moment, buf.text_parts());
+            gtr.apply_changes(moment);
         }
 
         let (Ok(idx) | Err(idx)) = gtr
@@ -825,7 +864,7 @@ impl GutterBuffer for Handle {
         let (gtr, buf) = pa.write_many((&gutter, self));
         let moment = buf.moment_for(*MOMENT_NS);
         if !moment.is_empty() {
-            gtr.apply_changes(moment, buf.text_parts());
+            gtr.apply_changes(moment);
         }
 
         let (Ok(idx) | Err(idx)) = gtr
