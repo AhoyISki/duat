@@ -303,7 +303,7 @@ pub fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug,
         }
     };
 
-    // On SelectionMuts, the SelectionMuts can intersect, so we need to check
+    // On Cursors, the Cursors can intersect, so we need to check
     while m_range.start > 0 && start <= end_of(m_range.start - 1) {
         m_range.start -= 1;
     }
@@ -472,7 +472,7 @@ macro_rules! doc_duat {
                     Ns, buffer::Buffer, cmd,
                     context::{self, Handle},
                     data::{self, Pass},
-                    form::{self, SelectionMutShape, Form},
+                    form::{self, CursorShape, Form},
                     hook::{
                         self, BufferOpened, BufferSaved, BufferUpdated, ColorschemeSet,
                         ConfigLoaded, ConfigUnloaded, FocusChanged, FocusedOn, FocusedOnDuat,

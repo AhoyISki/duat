@@ -91,8 +91,8 @@ fn setup(opts: &mut Opts) {
     opts.wrap_on_word = false;
     // Where to wrap, as opposed to at the rightmost edge.
     opts.wrapping_cap = None::<u32>;
-    // Indent wrapped lines.
-    opts.indent_wraps = true;
+    // Characters that increase indentation in wraps.
+    opts.indent_wrap_chars = &[' ', '\t', '│', '─', '├', '└'];
     // How many spaces a tab (key included) should be.
     opts.tabstop = 4;
     // Minimum cursor distance from the top and bottom edges.
@@ -154,15 +154,15 @@ fn setup(opts: &mut Opts) {
     opts.duatmode.set_brackets([["(", ")"], ["{", "}"], ["[", "]"]]);
 
     // LineNumbers options:
-    opts.line_numbers.relative = false;
+    opts.linenumbers.relative = false;
     // Where to align the numbers
-    opts.line_numbers.align = std::fmt::Alignment::Left;
+    opts.linenumbers.align = std::fmt::Alignment::Left;
     // Where to align the main line number
-    opts.line_numbers.main_align = std::fmt::Alignment::Right;
+    opts.linenumbers.main_align = std::fmt::Alignment::Right;
     // Wether to show wrapped line's numbers
-    opts.line_numbers.show_wraps = false;
+    opts.linenumbers.show_wraps = false;
     // Place the widget on the right, as opposed to on the left
-    opts.line_numbers.on_the_right = false;
+    opts.linenumbers.on_the_right = false;
 
     // Notifications options:
     // Reformat the notifications messages

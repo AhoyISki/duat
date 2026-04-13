@@ -212,7 +212,7 @@ impl PrintOpts {
     ///     wrap_lines: false,
     ///     wrap_on_word: false,
     ///     wrapping_cap: None,
-    ///     indent_wraps: &[' ', '\t'],
+    ///     indent_wrap_chars: &[' ', '\t'],
     ///     tabstop: 4,
     ///     print_new_line: true,
     ///     scrolloff: ScrollOff { x: 3, y: 3 },

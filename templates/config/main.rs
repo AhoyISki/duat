@@ -17,8 +17,8 @@ fn setup(opts: &mut Opts) {
 
     opts.wrap_lines = true;
     opts.scrolloff.y = 5;
-    opts.line_numbers.align = std::fmt::Alignment::Right;
-    opts.line_numbers.main_align = std::fmt::Alignment::Left;
+    opts.linenumbers.align = std::fmt::Alignment::Right;
+    opts.linenumbers.main_align = std::fmt::Alignment::Left;
     opts.fmt_status(|_| {
         let upper_mode = mode_name().map(|m| m.to_uppercase());
         status!("[mode]{upper_mode}{Spacer}{custom_name_txt} {sels_txt} {main_txt}")
