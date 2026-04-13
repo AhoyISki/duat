@@ -45,13 +45,15 @@ mod namespace {
     //! A namespace for Duat operations.
 
     use std::{
+        collections::HashMap,
         ops::Range,
         sync::{
-            LazyLock,
+            LazyLock, Mutex,
             atomic::{AtomicU32, Ordering::Relaxed},
         },
     };
 
+    static NAMESPACE_ASSOC: LazyLock<Mutex<HashMap<Ns, Ns>>> = LazyLock::new(Mutex::default);
     static NAMESPACE_COUNT: AtomicU32 = AtomicU32::new(3);
 
     /// A namespace for Duat operations.
@@ -94,9 +96,7 @@ mod namespace {
     /// [removing]: crate::hook::remove
     /// [hooks]: crate::hook
     /// [`Gutter`]: ../duat/widgets/struct.Gutter.html
-    #[derive(
-        Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, bincode::Decode, bincode::Encode,
-    )]
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct Ns(u32);
 
     impl Ns {
@@ -157,7 +157,7 @@ mod namespace {
             Self(1)
         }
 
-		/// A `Ns` specifically for toggles.
+        /// A `Ns` specifically for toggles.
         pub(crate) const fn for_toggle() -> Self {
             Self(2)
         }
@@ -175,6 +175,26 @@ mod namespace {
     impl std::fmt::Debug for Ns {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "Ns({})", self.0)
+        }
+    }
+
+    impl<Context> bincode::Decode<Context> for Ns {
+        fn decode<D: bincode::de::Decoder<Context = Context>>(
+            decoder: &mut D,
+        ) -> Result<Self, bincode::error::DecodeError> {
+            let ns = Ns(u32::decode(decoder)?);
+            Ok(*NAMESPACE_ASSOC.lock().unwrap().entry(ns).or_default())
+        }
+    }
+
+    bincode::impl_borrow_decode!(Ns);
+
+    impl bincode::Encode for Ns {
+        fn encode<E: bincode::enc::Encoder>(
+            &self,
+            encoder: &mut E,
+        ) -> Result<(), bincode::error::EncodeError> {
+            self.0.encode(encoder)
         }
     }
 }
