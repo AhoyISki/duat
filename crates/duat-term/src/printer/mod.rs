@@ -9,7 +9,7 @@ use crossterm::{
     style::ResetColor,
 };
 use duat_core::{
-    form,
+    form::{self, FormId},
     ui::{Axis, SpawnId},
 };
 use kasuari::{Expression, Variable};
@@ -287,7 +287,7 @@ impl Printer {
 
     /// Main printing function, responsible for keeping things
     /// consistent.
-    pub fn print(&self) {
+    pub fn print(&self, terminal_border_id: FormId) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
 
         let new_lines = std::mem::take(&mut *self.new_lines.lock().unwrap());
@@ -299,11 +299,8 @@ impl Printer {
         write!(stdout, "\x1b[?2026h").unwrap();
 
         if has_to_print_edges {
-            let edge_form = form::from_id(form::id_of!("terminal.border"));
-            self.vars
-                .lock()
-                .unwrap()
-                .print_edges(&mut stdout, edge_form);
+            let form = form::from_id(terminal_border_id);
+            self.vars.lock().unwrap().print_edges(&mut stdout, form);
         }
 
         let spawned_lines = self.spawned_lines.lock().unwrap();
@@ -360,7 +357,7 @@ impl Printer {
             CURSOR_IS_REAL.load(Ordering::Relaxed)
         };
 
-        let frame_form = form::from_id(form::id_of!("terminal.frame"));
+        let frame_form = form::from_id(terminal_border_id);
 
         for (list, _, frame) in spawned_lines.iter() {
             let tl = list.iter().map(|(_, lines)| lines.coords.tl).min().unwrap();

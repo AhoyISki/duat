@@ -128,6 +128,7 @@ impl RawUi for Ui {
         rules::add_vertrule_hook();
 
         let (term_tx, term_rx) = mpsc::channel();
+        let terminal_border_id = form::id_of!("terminal.border");
 
         let print_thread = std::thread::Builder::new().name("print loop".to_string());
         let _ = print_thread.spawn(move || {
@@ -143,7 +144,7 @@ impl RawUi for Ui {
 
             for event in term_rx {
                 match event {
-                    Event::Print => printer.print(),
+                    Event::Print => printer.print(terminal_border_id),
                     Event::UpdatePrinter => printer.update(true, true),
                     Event::ClearPrinter => printer.clear(),
                     Event::NewPrinter(new_printer) => printer = new_printer,
