@@ -9,7 +9,7 @@ use std::{
 };
 
 use duat_core::{
-    context,
+    Ns, context,
     data::Pass,
     process::{PersistentChild, PersistentWriter},
     storage::{
@@ -26,7 +26,6 @@ use lsp_types::{
 };
 use serde_json::Value;
 
-pub use crate::server::bridge::id::ServerId;
 use crate::{
     Encoding,
     config::LanguageServerConfig,
@@ -36,12 +35,12 @@ use crate::{
 /// Communication abstraction for communication with language servers.
 #[derive(Clone)]
 pub struct ServerBridge {
+    ns: Ns,
     name: String,
     child: Arc<Mutex<PersistentChild>>,
     server_tx: Sender<JsonRpcFn>,
     callbacks: Callbacks,
     initialize_backlog: Arc<Mutex<Option<Vec<JsonRpcFn>>>>,
-    bridge_id: ServerId,
     pub(super) encoding: Arc<OnceLock<Encoding>>,
 }
 
@@ -69,10 +68,15 @@ impl ServerBridge {
             })?
         };
 
-        Ok(Self::from_parts(server_name.to_string(), child, true))
+        Ok(Self::from_parts(
+            Ns::new(),
+            server_name.to_string(),
+            child,
+            true,
+        ))
     }
 
-    fn from_parts(name: String, mut child: PersistentChild, is_initializing: bool) -> Self {
+    fn from_parts(ns: Ns, name: String, mut child: PersistentChild, is_initializing: bool) -> Self {
         let (server_tx, server_rx) = mpsc::channel();
 
         let mut stdin = child.stdin.take().unwrap();
@@ -103,7 +107,7 @@ impl ServerBridge {
             server_tx,
             callbacks: Callbacks::default(),
             initialize_backlog: Arc::new(Mutex::new(is_initializing.then_some(Vec::new()))),
-            bridge_id: ServerId::new(),
+            ns,
             encoding: Arc::new(OnceLock::new()),
         };
 
@@ -249,9 +253,9 @@ impl ServerBridge {
         &self.name
     }
 
-    /// A unique for a [`ServerBridge`].
-    pub fn id(&self) -> ServerId {
-        self.bridge_id
+    /// This `ServerBridge`'s [`Ns`].
+    pub fn ns(&self) -> Ns {
+        self.ns
     }
 }
 
@@ -259,9 +263,10 @@ impl<Context> Decode<Context> for ServerBridge {
     fn decode<D: storage::bincode::de::Decoder<Context = Context>>(
         decoder: &mut D,
     ) -> Result<Self, storage::bincode::error::DecodeError> {
-        let server_name = Decode::decode(decoder)?;
-        let child = Decode::decode(decoder)?;
-        Ok(Self::from_parts(server_name, child, false))
+        let ns = Ns::decode(decoder)?;
+        let server_name = String::decode(decoder)?;
+        let child = PersistentChild::decode(decoder)?;
+        Ok(Self::from_parts(ns, server_name, child, false))
     }
 }
 
@@ -272,6 +277,7 @@ impl Encode for ServerBridge {
         &self,
         encoder: &mut E,
     ) -> Result<(), storage::bincode::error::EncodeError> {
+        self.ns.encode(encoder)?;
         self.name.encode(encoder)?;
         self.child.lock().unwrap().encode(encoder)
     }
@@ -279,7 +285,7 @@ impl Encode for ServerBridge {
 
 impl std::hash::Hash for ServerBridge {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.bridge_id.hash(state);
+        self.ns.hash(state);
     }
 }
 
@@ -443,21 +449,3 @@ fn method_id(method_name: &str) -> Option<Id> {
 
 type JsonRpcFn = Box<dyn FnOnce() -> std::io::Result<JsonRpc> + Send>;
 type Callbacks = Arc<Mutex<HashMap<Id, Box<dyn FnOnce(&mut Pass, Value) + Send + 'static>>>>;
-
-mod id {
-    use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
-
-    /// A unique identifier for a [`ServerBridge`].
-    ///
-    /// [`ServerBridge`]: super::ServerBridge
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct ServerId(usize);
-
-    impl ServerId {
-        /// Returns a new unique `BridgeId`.
-        pub(super) fn new() -> Self {
-            static BRIDGE_ID: AtomicUsize = AtomicUsize::new(0);
-            Self(BRIDGE_ID.fetch_add(1, Relaxed))
-        }
-    }
-}

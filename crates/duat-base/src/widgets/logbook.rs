@@ -22,7 +22,8 @@ use duat_core::{
 
 use crate::widgets::Info;
 
-pub fn add_logbook_hooks() {
+/// Initial setup for the [`LogBook`].
+pub fn logbook_setup() {
     use duat_core::mode::MouseEventKind::*;
     hook::add::<MsgLogged>(|pa, rec| {
         let Some(logbook) = context::handle_of::<LogBook>(pa) else {
@@ -102,7 +103,7 @@ pub fn add_logbook_hooks() {
             if let Some((_, location)) = lb.location_ranges.get(i).cloned()
                 && cmd::call(pa, format!("edit {}", location.file())).is_ok()
             {
-                let buffer = context::get_buffer_by_path(pa, Path::new(location.file())).unwrap();
+                let buffer = context::buffer_from_path(pa, Path::new(location.file())).unwrap();
                 mode::reset_to(pa, &buffer);
                 buffer.selections_mut(pa).remove_extras();
                 buffer.edit_main(pa, |mut s| {

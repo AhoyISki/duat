@@ -30,7 +30,7 @@ use duat_core::{
 use crate::modes::PromptMode;
 
 /// Add the [`PromptLine`] hooks.
-pub fn add_promptline_hooks() {
+pub fn promptline_setup() {
     let ns = Ns::new();
 
     hook::add::<FocusedOn<PromptLine>>(move |_, (_, promptline)| {

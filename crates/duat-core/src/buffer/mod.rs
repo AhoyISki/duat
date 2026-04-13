@@ -296,11 +296,11 @@ impl Buffer {
             let opts = self.opts.to_print_opts();
             let start = area.start_points(&self.text, opts).real;
             let end = area.end_points(&self.text, opts).real;
-            let printed_linenumbers = area.get_printed_lines(&self.text, opts).unwrap();
+            let printed_line_numbers = area.get_printed_lines(&self.text, opts).unwrap();
 
             *cached_print_info = Some(CachedPrintInfo {
                 range: start..end,
-                printed_linenumbers,
+                printed_line_numbers,
                 printed_line_ranges: None,
                 _visible_line_ranges: None,
                 text_state: self.text.version(),
@@ -543,10 +543,10 @@ impl Handle {
     /// of only the _visible_ portion of these lines, check out
     /// [`Handle::visible_lines`].
     #[track_caller]
-    pub fn printed_linenumbers(&self, pa: &Pass) -> Vec<PrintedLine> {
+    pub fn printed_line_numbers(&self, pa: &Pass) -> Vec<PrintedLine> {
         let buffer = self.read(pa);
         let cpi = buffer.reset_print_info_if_needed(self.area().read(pa));
-        cpi.as_ref().unwrap().printed_linenumbers.clone()
+        cpi.as_ref().unwrap().printed_line_numbers.clone()
     }
 
     /// The printed [`Range<Point>`], from the top of the screen to
@@ -582,14 +582,14 @@ impl Handle {
     /// [`Handle::full_printed_range`].
     ///
     /// If you just want the line numbers of the printed lines, check
-    /// out [`Handle::printed_linenumbers`].
+    /// out [`Handle::printed_line_numbers`].
     ///
     /// [concealed]: crate::text::Conceal
     pub fn printed_lines<'b>(&'b self, pa: &'b Pass) -> Vec<&'b Strs> {
         let buffer = self.read(pa);
         let mut cpi = buffer.reset_print_info_if_needed(self.area().read(pa));
         let cpi = cpi.as_mut().unwrap();
-        let lines = &cpi.printed_linenumbers;
+        let lines = &cpi.printed_line_numbers;
 
         let printed_lines = if let Some(printed_lines) = &cpi.printed_line_ranges {
             printed_lines
@@ -809,7 +809,7 @@ impl<P: AsRef<Path>> From<P> for PathKind {
 /// Cached information about the printing of this [`Buffer`]
 struct CachedPrintInfo {
     range: Range<Point>,
-    printed_linenumbers: Vec<PrintedLine>,
+    printed_line_numbers: Vec<PrintedLine>,
     printed_line_ranges: Option<Vec<Range<Point>>>,
     _visible_line_ranges: Option<Vec<Range<Point>>>,
     text_state: TextVersion,

@@ -11,7 +11,7 @@ use std::{
 
 use duat_base::{
     modes::Pager,
-    widgets::{FooterWidgets, Gutter, LogBook, WhichKey, status},
+    widgets::{FooterWidgets, LogBook, WhichKey, status},
 };
 use duat_core::{
     buffer::{BufferOpts, History, PathKind},
@@ -110,7 +110,7 @@ fn enable_layout_hooks(opts: &mut Opts) {
             OPTS.lock().unwrap().linenumbers.push_on(pa, buffer);
             #[cfg(feature = "term-ui")]
             VertRule::builder().push_on(pa, buffer);
-            Gutter::builder().push_on(pa, buffer);
+            OPTS.lock().unwrap().gutter.push_on(pa, buffer);
         });
     }
 
@@ -315,7 +315,7 @@ static BUFFER_WATCHER: LazyLock<Watcher> = LazyLock::new(|| {
         {
             context::queue(move |pa| {
                 for path in paths {
-                    if let Some(buffer) = context::get_buffer_by_path(pa, &path)
+                    if let Some(buffer) = context::buffer_from_path(pa, &path)
                         && let Ok(new_string) = std::fs::read_to_string(path)
                     {
                         let old_string = buffer.text(pa).to_string();

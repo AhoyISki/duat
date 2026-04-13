@@ -12,8 +12,6 @@ use lsp_types::{
     SemanticToken, SemanticTokens, SemanticTokensDelta, SemanticTokensEdit, SemanticTokensLegend,
 };
 
-use crate::server::ServerId;
-
 static TOKEN_MAP: LazyLock<Mutex<HashMap<&str, &str>>> = LazyLock::new(|| {
     Mutex::new(HashMap::from_iter([
         ("struct", "type.struct"),
@@ -33,11 +31,10 @@ static TOKEN_MAP: LazyLock<Mutex<HashMap<&str, &str>>> = LazyLock::new(|| {
 
 #[derive(Default)]
 pub struct BufferTokens {
-    tokens_by_server: HashMap<ServerId, ServerTokens>,
+    tokens_by_server: HashMap<Ns, ServerTokens>,
 }
 
 struct ServerTokens {
-    ns: Ns,
     applied: GapBuffer<SemanticToken>,
     forms: Vec<FormTag>,
     result_id: Option<String>,
@@ -50,10 +47,10 @@ impl BufferTokens {
         &mut self,
         mut parts: TextParts,
         tokens: SemanticTokens,
-        id: ServerId,
+        ns: Ns,
         legend: &SemanticTokensLegend,
     ) {
-        let server_tokens = self.tokens_by_server.entry(id).or_insert_with(|| {
+        let server_tokens = self.tokens_by_server.entry(ns).or_insert_with(|| {
             let map = TOKEN_MAP.lock().unwrap();
 
             let forms = legend
@@ -66,7 +63,6 @@ impl BufferTokens {
                 .collect();
 
             ServerTokens {
-                ns: Ns::new(),
                 applied: GapBuffer::new(),
                 forms,
                 result_id: None,
@@ -78,7 +74,7 @@ impl BufferTokens {
         let mut line = 0;
         let mut byte = 0;
 
-        parts.tags.remove(server_tokens.ns, ..);
+        parts.tags.remove(ns, ..);
 
         for token in &semantic_tokens {
             (line, byte) = fwd_pos(line, byte, token);
@@ -87,7 +83,7 @@ impl BufferTokens {
             let start = parts.strs.point_at_coords(line, 0).byte() + byte;
             parts
                 .tags
-                .insert(server_tokens.ns, start..start + token.length as usize, tag);
+                .insert(ns, start..start + token.length as usize, tag);
         }
 
         server_tokens.applied = GapBuffer::from(semantic_tokens);
@@ -95,13 +91,8 @@ impl BufferTokens {
     }
 
     /// Apply a delta to the `BufferTokens`
-    pub fn apply_delta(
-        &mut self,
-        mut parts: TextParts,
-        mut delta: SemanticTokensDelta,
-        id: ServerId,
-    ) {
-        let server_tokens = self.tokens_by_server.get_mut(&id).unwrap();
+    pub fn apply_delta(&mut self, mut parts: TextParts, mut delta: SemanticTokensDelta, ns: Ns) {
+        let server_tokens = self.tokens_by_server.get_mut(&ns).unwrap();
 
         let mut delta_from = 0;
         let mut line = 0;
@@ -144,7 +135,7 @@ impl BufferTokens {
 
                     parts
                         .tags
-                        .remove_excl(server_tokens.ns, start..start + token.length as usize);
+                        .remove_excl(ns, start..start + token.length as usize);
 
                     (line, byte) = fwd_pos(line, byte, &token);
                 }
@@ -164,7 +155,7 @@ impl BufferTokens {
                     let start = parts.strs.point_at_coords(line, 0).byte() + byte;
                     parts
                         .tags
-                        .insert(server_tokens.ns, start..start + token.length as usize, tag);
+                        .insert(ns, start..start + token.length as usize, tag);
                 }
             }
 
@@ -173,8 +164,8 @@ impl BufferTokens {
     }
 
     /// The previous result id, used for delta calculation.
-    pub fn result_id(&self, server_id: ServerId) -> Option<String> {
-        self.tokens_by_server.get(&server_id)?.result_id.clone()
+    pub fn result_id(&self, ns: Ns) -> Option<String> {
+        self.tokens_by_server.get(&ns)?.result_id.clone()
     }
 }
 

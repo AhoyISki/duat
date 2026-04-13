@@ -11,7 +11,7 @@
 use std::{
     iter::Peekable,
     ops::Range,
-    sync::{LazyLock, Mutex, Once},
+    sync::{LazyLock, Mutex},
 };
 
 use duat_core::{
@@ -19,12 +19,13 @@ use duat_core::{
     buffer::{Buffer, Moment},
     context::{self, Handle},
     data::Pass,
-    form::{self, Form, FormId},
-    hook::{self, BufferOpened, BufferUpdated, OnMouseEvent},
+    form::{self, FormId},
+    hook::{self, BufferOpened, BufferUpdated, KeyTyped, OnMouseEvent},
     opts::PrintOpts,
+    storage::bincode,
     text::{Builder, Inlay, Mask, Overlay, Point, Text, TextRange, TwoPoints},
     txt,
-    ui::{Area, Coord, PushSpecs, Side, Widget},
+    ui::{Area, Coord, Corner, PushSpecs, Side, Widget},
 };
 
 /// A struct to hold diagnostic hints about a [`Buffer`].
@@ -38,104 +39,13 @@ pub struct Gutter {
     text: Text,
     entries: Vec<GutterEntry>,
     opts: GutterOpts,
-    mouse_coord: Option<Coord>,
     ns: Ns,
 }
 
-fn initial_setup() {
-    form::set_weak("gutter.hint", Form::mimic("default.info"));
-    form::set_weak("gutter.warn", Form::mimic("default.warn"));
-    form::set_weak("gutter.error", Form::mimic("default.error"));
-    form::set_weak("diagnostic.line", Form::mimic("replace"));
-    form::set_weak("buffer.hint", Form::new().underline_grey().underlined());
-    form::set_weak("buffer.warn", Form::new().underline_yellow().underlined());
-    form::set_weak("buffer.error", Form::new().underline_red().underlined());
-
-    form::enable_mask("diagnostic");
-
+/// Initial setup for the [`Gutter`].
+pub fn gutter_setup() {
     hook::add::<BufferOpened>(move |pa, buffer| _ = buffer.read(pa).moment_for(*MOMENT_NS));
-    hook::add::<BufferUpdated>(move |pa, buffer| {
-        let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
-            return;
-        };
-
-        let (gtr, buf) = pa.write_many((&gutter, buffer));
-        if gtr.entries.is_empty() {
-            return;
-        }
-
-        gtr.apply_changes(buf.moment_for(*MOMENT_NS));
-
-        let (gtr, buf, area) = pa.write_many((&gutter, buffer, buffer.area()));
-        let popts = buf.print_opts();
-
-        let get_entry_lists = |point: Point, on_whole_line: bool| {
-            let direct = Vec::from_iter(gtr.entries.iter().filter_map(|entry| {
-                if on_whole_line {
-                    let range = {
-                        let range = buf.text()[entry.range.clone()].range();
-                        range.start.line()..range.end.line() + 1
-                    };
-                    range.contains(&point.line()).then_some(entry.id)
-                } else {
-                    entry.range.contains(&point.byte()).then_some(entry.id)
-                }
-            }));
-
-            let related = Vec::from_iter(
-                ID_RELATIONS
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .filter(|related| direct.iter().any(|id| related.contains(id)))
-                    .flatten()
-                    .copied(),
-            );
-
-            (direct, related)
-        };
-
-        let (hovered_ids, mut related_ids) = gtr
-            .mouse_coord
-            .filter(|&coord| coord >= area.top_left() && coord < area.bottom_right())
-            .and_then(|coord| {
-                let real = area
-                    .points_at_coord(buf.text(), coord, popts)?
-                    .as_within()?
-                    .real;
-                Some(get_entry_lists(real, gtr.opts.hover_whole_line))
-            })
-            .unwrap_or_default();
-
-        let (cursored_ids, more_related_ids) =
-            get_entry_lists(buf.selections().main().cursor(), false);
-
-        related_ids.extend_from_slice(&more_related_ids);
-
-        let mut entries = gtr
-            .entries
-            .iter_mut()
-            .map(|entry| {
-                if hovered_ids.contains(&entry.id) {
-                    (entry, Some(Movement::Hovered))
-                } else if cursored_ids.contains(&entry.id) {
-                    (entry, Some(Movement::Cursored))
-                } else if related_ids.contains(&entry.id) {
-                    (entry, Some(Movement::Related))
-                } else {
-                    (entry, None)
-                }
-            })
-            .peekable();
-
-        while let Some((entry, _)) = entries.peek() {
-            let lnum = buf.text().point_at_byte(entry.range.end).line();
-            insert_gutter_entries(&mut entries, gtr.ns, lnum, &gtr.opts, buf, area);
-        }
-
-        gtr.mouse_coord = None;
-    })
-    .lateness(100_000_000);
+    hook::add::<BufferUpdated>(update).lateness(100_000_000);
 
     hook::add::<BufferUpdated>(|pa, buffer| {
         let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
@@ -146,59 +56,131 @@ fn initial_setup() {
     })
     .lateness(usize::MAX);
 
-    hook::add::<OnMouseEvent<Buffer>>(move |pa, event| {
-        let Some((gutter, _)) = event.handle.get_related::<Gutter>(pa).first().cloned() else {
-            return;
-        };
-
-        gutter.write(pa).mouse_coord = Some(event.coord);
+    hook::add::<OnMouseEvent<Buffer>>(move |_, event| {
+        let mut current = CURRENT.lock().unwrap();
+        current.mouse_coord = Some(event.coord);
+        current.related.clear();
     })
     .lateness(usize::MAX);
 
-    hook::add::<OnMouseEvent>(move |pa, _| {
-        for gutter in context::windows().handles_of::<Gutter>(pa) {
-            let gt = gutter.write(pa);
-            if gt.mouse_coord.take().is_some() {
-                let (buffer, _) = gutter.get_related::<Buffer>(pa).first().cloned().unwrap();
-                buffer.request_update();
+    hook::add::<KeyTyped>(|_, _| CURRENT.lock().unwrap().mouse_coord = None);
+}
+
+fn update(pa: &mut Pass, buffer: &Handle) {
+    let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
+        return;
+    };
+
+    let (gtr, buf) = pa.write_many((&gutter, buffer));
+    if gtr.entries.is_empty() {
+        return;
+    }
+
+    gtr.apply_changes(buf.moment_for(*MOMENT_NS));
+
+    let (gtr, buf, area) = pa.write_many((&gutter, buffer, buffer.area()));
+    let popts = buf.print_opts();
+
+    let get_entry_lists = |point: Point, on_whole_line: bool| {
+        let direct = Vec::from_iter(gtr.entries.iter().filter_map(|entry| {
+            if on_whole_line {
+                let range = {
+                    let range = buf.text()[entry.range.clone()].range();
+                    range.start.line()..range.end.line() + 1
+                };
+                range.contains(&point.line()).then_some(entry.id)
+            } else {
+                entry.range.contains(&point.byte()).then_some(entry.id)
             }
-        }
-    })
-    .lateness(usize::MAX);
+        }));
+
+        let related = Vec::from_iter(
+            ID_RELATIONS
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|related| direct.iter().any(|id| related.contains(id)))
+                .flatten()
+                .copied(),
+        );
+
+        (direct, related)
+    };
+
+    let mut current = CURRENT.lock().unwrap();
+
+    let (updated, active_entries) = if let Some(coord) = current.mouse_coord
+        && (coord >= area.top_left() && coord < area.bottom_right())
+        && let Some(point) = (|| {
+            Some(
+                area.points_at_coord(buf.text(), coord, popts)?
+                    .as_within()?
+                    .real,
+            )
+        })() {
+        (
+            true,
+            Some((
+                get_entry_lists(point, gtr.opts.hover_whole_line),
+                Movement::Hovered,
+            )),
+        )
+    } else if area.is_active() {
+        (
+            true,
+            Some((
+                get_entry_lists(buf.selections().main().cursor(), false),
+                Movement::Cursored,
+            )),
+        )
+    } else {
+        (false, None)
+    };
+
+    let direct = if let Some(((direct, related), movement)) = active_entries {
+        current.related = related;
+        Some((direct, movement))
+    } else {
+        None
+    };
+
+    let mut entries = gtr
+        .entries
+        .iter_mut()
+        .map(|entry| {
+            if let Some((direct, movement)) = &direct
+                && direct.contains(&entry.id)
+            {
+                (entry, Some(*movement))
+            } else if current.related.contains(&entry.id) {
+                (entry, Some(Movement::Related))
+            } else {
+                (entry, None)
+            }
+        })
+        .peekable();
+
+    while let Some((entry, _)) = entries.peek() {
+        let lnum = buf.text().point_at_byte(entry.range.end).line();
+        insert_gutter_entries(&mut entries, gtr.ns, lnum, &gtr.opts, buf, area);
+    }
+
+    if updated {
+        let buffer = buffer.clone();
+        context::queue(move |pa| {
+            for other in context::current_window(pa).buffers(pa) {
+                if other != buffer {
+                    update(pa, &other);
+                }
+            }
+        })
+    }
 }
 
 impl Gutter {
     /// A builder for a `Gutter`.
     pub fn builder() -> GutterOpts {
-        static ONCE: Once = Once::new();
-        ONCE.call_once(initial_setup);
-
-        GutterOpts {
-            hint: GutterSymbolOpts {
-                symbol: 'i',
-                default_display: None,
-                hover_display: Some(GutterDisplay::RightUnder),
-                cursor_display: Some(GutterDisplay::EndOfLine),
-                related_display: Some(GutterDisplay::EndOfLine),
-            },
-            warning: GutterSymbolOpts {
-                symbol: '!',
-                default_display: Some(GutterDisplay::EndOfLine),
-                hover_display: Some(GutterDisplay::RightUnder),
-                cursor_display: Some(GutterDisplay::EndOfLine),
-                related_display: Some(GutterDisplay::EndOfLine),
-            },
-            error: GutterSymbolOpts {
-                symbol: '*',
-                default_display: Some(GutterDisplay::EndOfLine),
-                hover_display: Some(GutterDisplay::RightUnder),
-                cursor_display: Some(GutterDisplay::EndOfLine),
-                related_display: Some(GutterDisplay::EndOfLine),
-            },
-            corner: Corner::TopRight,
-            spawn_on_window_corner: false,
-            hover_whole_line: true,
-        }
+        GutterOpts::default()
     }
 
     fn form_text(&self, pa: &Pass, buffer: &Handle) -> Text {
@@ -314,7 +296,7 @@ impl Widget for Gutter {
 ///
 /// You can change the character of hints, warnings and errors, and
 /// you can also set how they should be displayed by default.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct GutterOpts {
     /// Hints are information that doesn't necessarily indicate that
     /// something's wrong, but may be related to an actual issue.
@@ -374,6 +356,36 @@ pub struct GutterOpts {
 }
 
 impl GutterOpts {
+    /// Returns a new `GutterOpts`.
+    pub const fn new() -> Self {
+        Self {
+            hint: GutterSymbolOpts {
+                symbol: 'i',
+                default_display: None,
+                hover_display: Some(GutterDisplay::RightUnder),
+                cursor_display: Some(GutterDisplay::EndOfLine),
+                related_display: Some(GutterDisplay::EndOfLine),
+            },
+            warning: GutterSymbolOpts {
+                symbol: '!',
+                default_display: Some(GutterDisplay::EndOfLine),
+                hover_display: Some(GutterDisplay::RightUnder),
+                cursor_display: Some(GutterDisplay::EndOfLine),
+                related_display: Some(GutterDisplay::EndOfLine),
+            },
+            error: GutterSymbolOpts {
+                symbol: '*',
+                default_display: Some(GutterDisplay::EndOfLine),
+                hover_display: Some(GutterDisplay::RightUnder),
+                cursor_display: Some(GutterDisplay::EndOfLine),
+                related_display: Some(GutterDisplay::EndOfLine),
+            },
+            corner: Corner::TopRight,
+            spawn_on_window_corner: false,
+            hover_whole_line: true,
+        }
+    }
+
     /// Places a [`Gutter`] around a [`Buffer`].
     ///
     /// The [`Widget`] will be pushed on the "outside". That is, if
@@ -390,7 +402,6 @@ impl GutterOpts {
                 text,
                 entries: Vec::new(),
                 opts: self,
-                mouse_coord: None,
                 ns: Ns::new(),
             },
             PushSpecs {
@@ -422,6 +433,19 @@ impl GutterOpts {
     }
 }
 
+impl Default for GutterOpts {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Options for symbols in the [`Gutter`].
+///
+/// This includes how the message associated with the symbol should be
+/// displayed when the cursor is hovered, when the mouse is hovered,
+/// when [related to one of those two], and when not.
+///
+/// [related to one of those two]: GutterEntryId::relate_with_other_entries
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GutterSymbolOpts {
     /// Which symbol to show on the [`Gutter`]
@@ -486,7 +510,10 @@ fn insert_gutter_entries<'g>(
         })
         .map(|(entry, movement)| {
             let place = match display(entry.kind, movement) {
-                Some(GutterDisplay::EndOfLine) => Some(BufferPlace::EndOfLine),
+                Some(GutterDisplay::EndOfLine) => Some(BufferPlace::EndOfLine({
+                    let lnum = buf.text().point_at_byte(entry.range.end).line();
+                    buf.text().line(lnum).len()
+                })),
                 Some(GutterDisplay::RightUnder) => {
                     inlay_column(entry.range.clone(), buf, area, popts).map(BufferPlace::RightUnder)
                 }
@@ -520,7 +547,7 @@ fn insert_gutter_entries<'g>(
         };
 
         match place {
-            BufferPlace::EndOfLine => overlays.push((entry.kind, &entry.msg)),
+            BufferPlace::EndOfLine(_) => overlays.push((entry.kind, &entry.msg)),
             BufferPlace::RightUnder(column) => inlays.push((column, entry.kind, &entry.msg)),
             BufferPlace::Spawned => todo!(),
         }
@@ -676,15 +703,6 @@ pub enum GutterDisplay {
     RightUnder,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(unused)]
-pub enum Corner {
-    TopLeft,
-    TopRight,
-    BottomRight,
-    BottomLeft,
-}
-
 #[allow(private_bounds)]
 trait Sealed {}
 /// Trait for adding gutter entries to a [`Buffer`].
@@ -700,6 +718,10 @@ pub trait GutterBuffer: Sealed {
     /// This could just be useful information, like the fact that
     /// something won't be included in compilation because of a `cfg`
     /// attribute.
+    ///
+    /// Note: This function won't add duplicated entries, instead
+    /// returning the [`GutterEntryId`] of the entry that was already
+    /// in there.
     fn add_hint(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId;
 
     /// Add a warning to the [`Gutter`] and the [`Buffer`].
@@ -707,6 +729,10 @@ pub trait GutterBuffer: Sealed {
     /// This could be improvements that you could do to your code, or
     /// ways in which it is innadequate that don't necessarily hinder
     /// it from working properly.
+    ///
+    /// Note: This function won't add duplicated entries, instead
+    /// returning the [`GutterEntryId`] of the entry that was already
+    /// in there.
     fn add_warning(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text)
     -> GutterEntryId;
 
@@ -714,6 +740,10 @@ pub trait GutterBuffer: Sealed {
     ///
     /// These are fundamental issues in your code, and either prevent
     /// compilation, or prevent it from working properly.
+    ///
+    /// Note: This function won't add duplicated entries, instead
+    /// returning the [`GutterEntryId`] of the entry that was already
+    /// in there.
     fn add_error(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId;
 
     /// Wether  this [`Buffer`] has a [`Gutter`] or not.
@@ -733,6 +763,11 @@ impl GutterBuffer for Handle {
 
         let (gtr, buf) = pa.write_many((&gutter, self));
         buf.text_mut().remove_tags(ns, ..);
+
+        let moment = buf.moment_for(*MOMENT_NS);
+        if !moment.is_empty() {
+            gtr.apply_changes(moment);
+        }
 
         let removed_line_ranges = Vec::from_iter(
             gtr.entries
@@ -767,11 +802,19 @@ impl GutterBuffer for Handle {
             panic!("Tried to add a Gutter entry on Buffer with no Gutter");
         };
 
-        let mut text = self.text_mut(pa);
-        let range = range.to_range(text.len());
+        let (gtr, buf) = pa.write_many((&gutter, self));
+        let range = range.to_range(buf.text().len());
+
+        if let Some(entry) = gtr
+            .entries
+            .iter()
+            .find(|entry| entry.range == range && entry.msg == msg && entry.kind == EntryKind::Hint)
+        {
+            return entry.id;
+        }
 
         let form_tag = form::id_of!("buffer.hint").to_tag(190);
-        text.insert_tag(ns, range.clone(), form_tag);
+        buf.text_mut().insert_tag(ns, range.clone(), form_tag);
 
         let id = GutterEntryId::new(ns);
         let entry = GutterEntry {
@@ -783,7 +826,6 @@ impl GutterBuffer for Handle {
             ns,
         };
 
-        let (gtr, buf) = pa.write_many((&gutter, self));
         let moment = buf.moment_for(*MOMENT_NS);
         if !moment.is_empty() {
             gtr.apply_changes(moment);
@@ -809,11 +851,17 @@ impl GutterBuffer for Handle {
             panic!("Tried to add a Gutter entry on Buffer with no Gutter");
         };
 
-        let mut text = self.text_mut(pa);
-        let range = range.to_range(text.len());
+        let (gtr, buf) = pa.write_many((&gutter, self));
+        let range = range.to_range(buf.text().len());
+
+        if let Some(entry) = gtr.entries.iter().find(|entry| {
+            entry.range == range && entry.msg == msg && entry.kind == EntryKind::Warning
+        }) {
+            return entry.id;
+        }
 
         let form_tag = form::id_of!("buffer.warn").to_tag(191);
-        text.insert_tag(ns, range.clone(), form_tag);
+        buf.text_mut().insert_tag(ns, range.clone(), form_tag);
 
         let id = GutterEntryId::new(ns);
         let entry = GutterEntry {
@@ -825,7 +873,6 @@ impl GutterBuffer for Handle {
             ns,
         };
 
-        let (gtr, buf) = pa.write_many((&gutter, self));
         let moment = buf.moment_for(*MOMENT_NS);
         if !moment.is_empty() {
             gtr.apply_changes(moment);
@@ -845,11 +892,17 @@ impl GutterBuffer for Handle {
             panic!("Tried to add a Gutter entry on Buffer with no Gutter");
         };
 
-        let mut text = self.text_mut(pa);
-        let range = range.to_range(text.len());
+        let (gtr, buf) = pa.write_many((&gutter, self));
+        let range = range.to_range(buf.text().len());
+
+        if let Some(entry) = gtr.entries.iter().find(|entry| {
+            entry.range == range && entry.msg == msg && entry.kind == EntryKind::Error
+        }) {
+            return entry.id;
+        }
 
         let form_tag = form::id_of!("buffer.error").to_tag(192);
-        text.insert_tag(ns, range.clone(), form_tag);
+        buf.text_mut().insert_tag(ns, range.clone(), form_tag);
 
         let id = GutterEntryId::new(ns);
         let entry = GutterEntry {
@@ -881,7 +934,8 @@ impl GutterBuffer for Handle {
 }
 
 /// An id for a [`Gutter`] entry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, bincode::Decode, bincode::Encode)]
+#[bincode(crate = "duat_core::context::cache::bincode")]
 pub struct GutterEntryId(usize, Ns);
 
 impl GutterEntryId {
@@ -918,7 +972,10 @@ impl GutterEntryId {
             "Attempted to add entry relations to Gutter, but not all entries still exist"
         );
 
-        ID_RELATIONS.lock().unwrap().push(ids);
+        let mut id_relations = ID_RELATIONS.lock().unwrap();
+        if !id_relations.contains(&ids) {
+            id_relations.push(ids);
+        }
     }
 }
 
@@ -926,6 +983,7 @@ const SPACES: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
 static ID_RELATIONS: Mutex<Vec<Vec<GutterEntryId>>> = Mutex::new(Vec::new());
 static EXTANT_IDS: Mutex<Vec<GutterEntryId>> = Mutex::new(Vec::new());
 static MOMENT_NS: LazyLock<Ns> = Ns::new_lazy();
+static CURRENT: Mutex<Current> = Mutex::new(Current { related: Vec::new(), mouse_coord: None });
 
 #[derive(Debug, Clone, Copy)]
 enum Movement {
@@ -937,15 +995,23 @@ enum Movement {
 /// Where to place a [`GutterEntry`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BufferPlace {
-    EndOfLine,
+    EndOfLine(usize),
     RightUnder(usize),
     Spawned,
 }
 
 fn inlay_column(range: Range<usize>, buf: &Buffer, area: &Area, opts: PrintOpts) -> Option<usize> {
-    let line = buf.text()[range].lines().last()?;
+    let line_range = buf.text()[range.clone()]
+        .lines()
+        .last()
+        .unwrap_or(&buf.text()[range])
+        .range();
 
-    let line_range = line.range();
     let two_points = TwoPoints::new_after_ghost(line_range.start);
     Some(area.columns_at(buf.text(), two_points, opts)?.wrapped)
+}
+
+struct Current {
+    related: Vec<GutterEntryId>,
+    mouse_coord: Option<Coord>,
 }

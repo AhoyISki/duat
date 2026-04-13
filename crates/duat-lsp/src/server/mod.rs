@@ -4,6 +4,7 @@ use std::{
 };
 
 use duat_core::{
+    Ns,
     context::Handle,
     data::Pass,
     hook::{self, ConfigUnloaded},
@@ -19,7 +20,6 @@ use lsp_types::{
     request::{Initialize, Request, Shutdown},
 };
 
-pub use crate::server::bridge::ServerId;
 use crate::{
     config::{self, LanguageServerConfig, get_initialize_params},
     parser::Parser,
@@ -81,17 +81,6 @@ impl Server {
         self.bridge.send_request::<R>(params, callback)
     }
 
-    /// Try to get the [`ServerCapabilities`], will fail if they
-    /// haven't been set yet.
-    pub fn capabilities(&self) -> Option<&ServerCapabilities> {
-        Some(&self.init_parts.get()?.capabilities)
-    }
-
-    /// The `ServerId` of the `Server`.
-    pub fn id(&self) -> ServerId {
-        self.bridge.id()
-    }
-
     /// Send a request to refresh the semantic tokens of a given
     /// [`Handle`].
     pub fn send_semantic_tokens_request(&self, handle: &Handle, parser: &Parser) {
@@ -123,6 +112,17 @@ impl Server {
                     .unwrap();
             }
         });
+    }
+
+    /// Try to get the [`ServerCapabilities`], will fail if they
+    /// haven't been set yet.
+    pub fn capabilities(&self) -> Option<&ServerCapabilities> {
+        Some(&self.init_parts.get()?.capabilities)
+    }
+
+    /// The [`Ns`] of this `Server`
+    pub fn ns(&self) -> Ns {
+        self.bridge.ns()
     }
 }
 
@@ -168,6 +168,7 @@ pub fn get_servers_for(path: &Path) -> Option<Vec<Server>> {
                 .unwrap();
 
             defer_store(&server);
+            servers.push(server.clone());
 
             Some(server)
         } else {

@@ -18,15 +18,13 @@ use duat_core::{
 };
 
 pub(crate) use self::{
-    completions::setup_completions, info::add_info_hooks, logbook::add_logbook_hooks,
-    notifications::add_notifications_hook, promptline::add_promptline_hooks,
-    whichkey::add_whichkey_hooks,
+    completions::completions_setup, gutter::gutter_setup, info::info_setup,
+    linenumbers::linenumbers_setup, logbook::logbook_setup, notifications::notifications_setup,
+    promptline::promptline_setup, whichkey::whichkey_setup,
 };
 pub use self::{
     completions::{CommandsCompletions, Completions, CompletionsBuilder, CompletionsProvider},
-    gutter::{
-        Corner, Gutter, GutterBuffer, GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts,
-    },
+    gutter::{Gutter, GutterBuffer, GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts},
     info::Info,
     linenumbers::{LineNumbers, LineNumbersOpts},
     logbook::{LogBook, LogBookOpts},

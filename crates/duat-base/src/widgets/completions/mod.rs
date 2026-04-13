@@ -52,7 +52,7 @@ static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (usize, ParamCompletions)>>> 
 ///
 /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
 #[doc(hidden)]
-pub fn setup_completions() {
+pub fn completions_setup() {
     words::track_words();
     Completions::set_for_parameter::<ValidFilePath>(75, |_, builder| {
         builder.with_provider(paths::PathCompletions::new(true))

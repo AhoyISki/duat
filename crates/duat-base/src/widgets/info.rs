@@ -16,7 +16,7 @@ use duat_core::{
 };
 
 /// Adds the hooks for the [`Info`] widget.
-pub fn add_info_hooks() {
+pub fn info_setup() {
     use MouseEventKind::{ScrollDown, ScrollUp};
 
     hook::add::<OnMouseEvent<Info>>(|pa, event| match event.kind {

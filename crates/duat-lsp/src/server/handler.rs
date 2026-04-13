@@ -20,7 +20,10 @@ use lsp_types::{
 };
 use serde_json::Value;
 
-use crate::{parser::Parser, server::bridge::ServerBridge, uri_to_path};
+use crate::{
+    parser::{self, Parser},
+    server::bridge::ServerBridge,
+};
 
 macro_rules! get_method_params {
     ($Type:ty, $params:expr, $Trait:ident) => {{
@@ -103,7 +106,7 @@ pub fn handle_request(bridge: &ServerBridge, request: jsonrpc_lite::Request) {
                             };
 
                             if let Some((_, subs)) =
-                                subs.iter_mut().find(|(b, _)| b.id() == bridge.id())
+                                subs.iter_mut().find(|(b, _)| b.ns() == bridge.ns())
                             {
                                 subs.push(subscription);
                             } else {
@@ -151,18 +154,11 @@ pub fn handle_notification(bridge: &ServerBridge, notification: jsonrpc_lite::No
             };
 
             let params = get_method_params!(PublishDiagnostics, notification.params, Notification);
-            let path = uri_to_path(params.uri.clone());
+            let ns = bridge.ns();
 
             context::queue(move |pa| {
-                let Some(buffer) = context::get_buffer_by_path(pa, &path) else {
-                    return;
-                };
-                let Some((parser, _)) = Parser::write_for(pa, &buffer) else {
-                    return;
-                };
-
-                let add_diagnostics = parser.diagnostics.handle_published(params, encoding);
-                add_diagnostics(pa);
+                let (uri, list) = (params.uri, params.diagnostics);
+                parser::diagnostics::add(pa, ns, uri, list, encoding)
             });
         }
         "$/progress" => {}
@@ -176,11 +172,11 @@ impl ServerBridge {
     pub fn send_semantic_tokens_request(&self, buffer: &Handle, parser: &Parser) {
         use lsp_types::SemanticTokensServerCapabilities::*;
 
-        let server_id = self.id();
+        let server_ns = self.ns();
         if !parser
             .servers
             .iter()
-            .any(|server| server.bridge.id() == server_id)
+            .any(|server| server.bridge.ns() == server_ns)
         {
             return;
         }
@@ -190,7 +186,7 @@ impl ServerBridge {
         let text_document = TextDocumentIdentifier { uri: parser.uri().clone() };
         let handle = buffer.clone();
 
-        if let Some(result_id) = parser.tokens.result_id(self.id()) {
+        if let Some(result_id) = parser.tokens.result_id(self.ns()) {
             self.send_request::<SemanticTokensFullDeltaRequest>(
                 SemanticTokensDeltaParams {
                     work_done_progress_params,
@@ -207,7 +203,7 @@ impl ServerBridge {
                     if let Some(server) = parser
                         .servers
                         .iter()
-                        .find(|server| server.id() == server_id)
+                        .find(|server| server.ns() == server_ns)
                         && let Some(cap) = server.capabilities()
                         && let Some(options) = &cap.semantic_tokens_provider
                     {
@@ -225,14 +221,14 @@ impl ServerBridge {
                                 parser.tokens.apply_full(
                                     buffer.text_mut().parts(),
                                     tokens,
-                                    server_id,
+                                    server_ns,
                                     &options.legend,
                                 );
                             }
                             TokensDelta(delta) => parser.tokens.apply_delta(
                                 buffer.text_mut().parts(),
                                 delta,
-                                server_id,
+                                server_ns,
                             ),
                             PartialTokensDelta { .. } => todo!(),
                         }
@@ -255,7 +251,7 @@ impl ServerBridge {
                     if let Some(server) = parser
                         .servers
                         .iter()
-                        .find(|server| server.id() == server_id)
+                        .find(|server| server.ns() == server_ns)
                         && let Some(cap) = server.capabilities()
                         && let Some(options) = &cap.semantic_tokens_provider
                     {
@@ -269,7 +265,7 @@ impl ServerBridge {
                         parser.tokens.apply_full(
                             buffer.text_mut().parts(),
                             tokens,
-                            server_id,
+                            server_ns,
                             &options.legend,
                         );
                     }
@@ -299,25 +295,28 @@ static WATCHER: LazyLock<Watcher> = LazyLock::new(|| {
         };
 
         for (bridge, subs) in subs.iter() {
-            let changes = event
-                .paths
-                .iter()
-                .filter(|path| {
-                    subs.iter().any(|sub| {
-                        path.starts_with(&sub.root)
-                            && sub.glob.as_ref().is_none_or(|glob| glob.is_match(path))
-                            && sub.kind.contains(watch_kind)
+            let changes = Vec::from_iter(
+                event
+                    .paths
+                    .iter()
+                    .filter(|path| {
+                        subs.iter().any(|sub| {
+                            path.starts_with(&sub.root)
+                                && sub.glob.as_ref().is_none_or(|glob| glob.is_match(path))
+                                && sub.kind.contains(watch_kind)
+                        })
                     })
-                })
-                .map(|path| FileEvent {
-                    uri: crate::path_to_uri(path).unwrap(),
-                    typ: change_type,
-                })
-                .collect();
+                    .map(|path| FileEvent {
+                        uri: crate::path_to_uri(path).unwrap(),
+                        typ: change_type,
+                    }),
+            );
 
-            bridge.send_notification::<DidChangeWatchedFiles>(DidChangeWatchedFilesParams {
-                changes,
-            });
+            if !changes.is_empty() {
+                bridge.send_notification::<DidChangeWatchedFiles>(DidChangeWatchedFilesParams {
+                    changes,
+                });
+            }
         }
     })
     .unwrap()

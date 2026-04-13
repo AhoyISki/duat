@@ -10,7 +10,7 @@
 //! selection's line number.
 //!
 //! [`Buffer`]: duat_core::buffer::Buffer
-use std::{fmt::Alignment, sync::Once};
+use std::fmt::Alignment;
 
 use duat_core::{
     buffer::Buffer,
@@ -22,6 +22,66 @@ use duat_core::{
     text::{Builder, Spacer, Text, TextMut},
     ui::{PushSpecs, Side, Widget},
 };
+
+/// Initial setup for the [`LineNumbers`].
+pub fn linenumbers_setup() {
+    hook::add::<BufferUpdated>(|pa, buffer| {
+        for (linenumbers, _) in buffer.get_related::<LineNumbers>(pa) {
+            let width = linenumbers.read(pa).calculate_width(pa, buffer);
+            linenumbers.area().set_width(pa, width + 1.0).unwrap();
+
+            linenumbers.write(pa).text = linenumbers.read(pa).form_text(pa, buffer);
+        }
+    })
+    .lateness(usize::MAX);
+
+    hook::add::<OnMouseEvent<LineNumbers>>(|pa, event| {
+        let line = |pa, handle: &Handle| {
+            let lines = handle.printed_line_numbers(pa);
+            event
+                .points
+                .and_then(|tpp| lines.get(tpp.points().real.line()))
+                .map(|line| line.number)
+                .unwrap_or(handle.text(pa).end_point().line())
+        };
+
+        let (buffer, _) = event.handle.get_related::<Buffer>(pa).remove(0);
+
+        match event.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                let line = line(pa, &buffer);
+
+                buffer.selections_mut(pa).remove_extras();
+                buffer.edit_main(pa, |mut s| {
+                    s.unset_anchor();
+                    s.move_to_coords(line, 0)
+                })
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                let line = line(pa, &buffer);
+
+                buffer.selections_mut(pa).remove_extras();
+                buffer.edit_main(pa, |mut s| {
+                    s.set_anchor_if_needed();
+                    s.move_to_coords(line, 0)
+                })
+            }
+            MouseEventKind::ScrollDown => {
+                let opts = buffer.opts(pa);
+                let (buf, area) = buffer.write_with_area(pa);
+
+                area.scroll_ver(buf.text(), 3, opts);
+            }
+            MouseEventKind::ScrollUp => {
+                let opts = buffer.opts(pa);
+                let (buf, area) = buffer.write_with_area(pa);
+
+                area.scroll_ver(buf.text(), -3, opts);
+            }
+            _ => {}
+        }
+    });
+}
 
 /// Shows a column of line numbers beside the [`Buffer`]
 ///
@@ -69,8 +129,8 @@ impl LineNumbers {
     }
 
     fn form_text(&self, pa: &Pass, buffer: &Handle) -> Text {
-        let (main_line_num, printed_linenumbers) = {
-            let printed_linenumbers = buffer.printed_linenumbers(pa);
+        let (main_line_num, printed_line_numbers) = {
+            let printed_line_numbers = buffer.printed_line_numbers(pa);
             let buf = buffer.read(pa);
 
             let main_line = if buf.selections().is_empty() {
@@ -79,13 +139,13 @@ impl LineNumbers {
                 buf.selections().main().cursor().line()
             };
 
-            (main_line, printed_linenumbers)
+            (main_line, printed_line_numbers)
         };
 
         let mut builder = Text::builder();
         let mut last_was_ghost = false;
 
-        for (idx, line) in printed_linenumbers.iter().enumerate() {
+        for (idx, line) in printed_line_numbers.iter().enumerate() {
             if line.is_ghost {
                 last_was_ghost = true;
                 builder.push("\n");
@@ -102,14 +162,14 @@ impl LineNumbers {
                 builder.push(Spacer);
             }
 
-			let is_wrapped = line.is_wrapped && idx > 0 && !last_was_ghost;
+            let is_wrapped = line.is_wrapped && idx > 0 && !last_was_ghost;
             match (line.number == main_line_num, is_wrapped) {
                 (false, false) => {}
                 (true, false) => builder.push(form::id_of!("linenum.main")),
                 (false, true) => builder.push(form::id_of!("linenum.wrapped")),
                 (true, true) => builder.push(form::id_of!("linenum.wrapped.main")),
             }
-            
+
             push_text(&mut builder, line.number, main_line_num, is_wrapped, self);
 
             if align == Alignment::Center {
@@ -187,66 +247,6 @@ impl LineNumbersOpts {
     /// there are other widgets pushed on the buffer, this one will be
     /// placed around them.
     pub fn push_on(self, pa: &mut Pass, buffer: &Handle) -> Handle<LineNumbers> {
-        static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            hook::add::<BufferUpdated>(|pa, buffer| {
-                for (linenumbers, _) in buffer.get_related::<LineNumbers>(pa) {
-                    let width = linenumbers.read(pa).calculate_width(pa, buffer);
-                    linenumbers.area().set_width(pa, width + 1.0).unwrap();
-
-                    linenumbers.write(pa).text = linenumbers.read(pa).form_text(pa, buffer);
-                }
-            })
-            .lateness(usize::MAX);
-
-            hook::add::<OnMouseEvent<LineNumbers>>(|pa, event| {
-                let line = |pa, handle: &Handle| {
-                    let lines = handle.printed_linenumbers(pa);
-                    event
-                        .points
-                        .and_then(|tpp| lines.get(tpp.points().real.line()))
-                        .map(|line| line.number)
-                        .unwrap_or(handle.text(pa).end_point().line())
-                };
-
-                let (buffer, _) = event.handle.get_related::<Buffer>(pa).remove(0);
-
-                match event.kind {
-                    MouseEventKind::Down(MouseButton::Left) => {
-                        let line = line(pa, &buffer);
-
-                        buffer.selections_mut(pa).remove_extras();
-                        buffer.edit_main(pa, |mut s| {
-                            s.unset_anchor();
-                            s.move_to_coords(line, 0)
-                        })
-                    }
-                    MouseEventKind::Drag(MouseButton::Left) => {
-                        let line = line(pa, &buffer);
-
-                        buffer.selections_mut(pa).remove_extras();
-                        buffer.edit_main(pa, |mut s| {
-                            s.set_anchor_if_needed();
-                            s.move_to_coords(line, 0)
-                        })
-                    }
-                    MouseEventKind::ScrollDown => {
-                        let opts = buffer.opts(pa);
-                        let (buf, area) = buffer.write_with_area(pa);
-
-                        area.scroll_ver(buf.text(), 3, opts);
-                    }
-                    MouseEventKind::ScrollUp => {
-                        let opts = buffer.opts(pa);
-                        let (buf, area) = buffer.write_with_area(pa);
-
-                        area.scroll_ver(buf.text(), -3, opts);
-                    }
-                    _ => {}
-                }
-            });
-        });
-
         let mut linenumbers = LineNumbers {
             text: Text::default(),
             relative: self.relative,

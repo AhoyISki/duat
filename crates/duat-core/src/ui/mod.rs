@@ -404,9 +404,27 @@ impl Default for StaticSpawnSpecs {
     }
 }
 
+/// A corner.
+///
+/// This, for now, isn't used in Duat, but it's nice to have a
+/// defition that will be common to plugins.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, bincode::Decode, bincode::Encode)]
+#[allow(unused)]
+pub enum Corner {
+    /// The top left corner.
+    TopLeft,
+    #[default]
+    /// The top right corner.
+    TopRight,
+    /// The bottom right corner.
+    BottomRight,
+    /// The bottom left corner.
+    BottomLeft,
+}
+
 /// A direction, where a [`Widget`] will be placed in relation to
 /// another.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, bincode::Decode, bincode::Encode)]
 pub enum Side {
     /// Put the [`Widget`] above another.
     Above,
@@ -730,7 +748,7 @@ pub struct PrintedLine {
     /// Wether the line is wrapped.
     pub is_wrapped: bool,
     /// Wether the wrapped line was entirely a ghost line.
-    pub is_ghost: bool
+    pub is_ghost: bool,
 }
 
 /// Information about the horizontal place of a [`TwoPoints`]

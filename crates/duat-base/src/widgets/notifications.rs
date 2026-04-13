@@ -18,7 +18,7 @@ use duat_core::{
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
-pub fn add_notifications_hook() {
+pub fn notifications_setup() {
     hook::add::<MsgLogged>(|pa, rec| {
         let Some(notifications) = context::handle_of::<Notifications>(pa) else {
             return;

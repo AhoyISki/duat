@@ -5,13 +5,13 @@ FOR NEXT UPDATE:
   [ ] Goto locations.
   [ ] Autocompletions.
   [ ] Formatting.
-  [ ] Caching of certain things.
+  [ ] Caching.
 [ ] Snippet support.
 [ ] More work on the Gutter.
   [x] Diferentiate hovering, cursoring, related and default display.
   [ ] Implement Widget spawning.
   [x] More functional style.
-  [ ] Add user configuration.
+  [x] Add user configuration.
 [ ] Perfect print iterators.
   [ ] Perfect words iterator.
 [ ] Fix pager search.

@@ -155,12 +155,14 @@ impl DuatBase {
     #[doc(hidden)]
     #[inline(never)]
     pub fn _plug(self) {
-        widgets::add_info_hooks();
-        widgets::add_logbook_hooks();
-        widgets::add_notifications_hook();
-        widgets::add_promptline_hooks();
-        widgets::add_whichkey_hooks();
-        widgets::setup_completions();
+        widgets::linenumbers_setup();
+        widgets::gutter_setup();
+        widgets::info_setup();
+        widgets::logbook_setup();
+        widgets::notifications_setup();
+        widgets::promptline_setup();
+        widgets::whichkey_setup();
+        widgets::completions_setup();
 
         modes::add_prompt_hook();
         if self.default_opts_parser {
@@ -179,6 +181,30 @@ impl DuatBase {
         form::set_weak("mode", Form::new().green());
         form::set_weak("default.StatusLine", Form::new().on_dark_grey());
 
+        // Setup for the PromptLine
+        form::set_weak("prompt.preview", Form::mimic("comment"));
+
+        // Setup for Completions
+        form::set_weak("default.Completions", Form::new().on_dark_grey());
+        form::set_weak("selected.Completions", Form::new().black().on_grey());
+
+		// Setup for the Gutter
+        form::set_weak("gutter.hint", Form::mimic("default.info"));
+        form::set_weak("gutter.warn", Form::mimic("default.warn"));
+        form::set_weak("gutter.error", Form::mimic("default.error"));
+        form::set_weak("diagnostic.line", Form::mimic("replace"));
+        form::set_weak("buffer.hint", Form::new().underline_grey().underlined());
+        form::set_weak("buffer.warn", Form::new().underline_yellow().underlined());
+        form::set_weak("buffer.error", Form::new().underline_red().underlined());
+        form::enable_mask("diagnostic");
+
+        // Setup for WhichKey
+        form::set_weak("key", Form::mimic("const"));
+        form::set_weak("key.mod", Form::mimic("punctuation.bracket"));
+        form::set_weak("key.angle", Form::mimic("punctuation.bracket"));
+        form::set_weak("key.special", Form::new().yellow());
+        form::set_weak("remap", Form::new().italic());
+
         // Setup for the LogBook
         form::set_weak("default.LogBook", Form::new().on_dark_grey());
         form::set_weak("logbook.error", Form::mimic("default.error"));
@@ -188,20 +214,6 @@ impl DuatBase {
         form::set_weak("logbook.colon", Form::mimic("prompt.colon"));
         form::set_weak("logbook.bracket", Form::mimic("punctuation.bracket"));
         form::set_weak("logbook.target", Form::mimic("module"));
-
-        // Setup for the PromptLine
-        form::set_weak("prompt.preview", Form::mimic("comment"));
-
-        // Setup for Completions
-        form::set_weak("default.Completions", Form::new().on_dark_grey());
-        form::set_weak("selected.Completions", Form::new().black().on_grey());
-
-        // Setup for WhichKey
-        form::set_weak("key", Form::mimic("const"));
-        form::set_weak("key.mod", Form::mimic("punctuation.bracket"));
-        form::set_weak("key.angle", Form::mimic("punctuation.bracket"));
-        form::set_weak("key.special", Form::new().yellow());
-        form::set_weak("remap", Form::new().italic());
 
         cmd::add("logs", |pa: &mut _| {
             mode::set(pa, Pager::<LogBook>::new());

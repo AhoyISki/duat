@@ -182,9 +182,12 @@ impl Mode for Normal {
             event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
             alt!('o' | 'O') => txt!("Add new line {below}"),
             event!('.') => txt!("Repeats the last [mode]Insert[] command"),
-            event!('r') => (txt!("Replace range"), match _ {
-                event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
-            }),
+            event!('r') => (
+                txt!("Replace range"),
+                match _ {
+                    event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
+                }
+            ),
             event!('`') => txt!("Lowercase the selection"),
             event!('~') => txt!("Uppercase the selection"),
             alt!('`') => txt!("Swap case of selection"),

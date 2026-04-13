@@ -777,6 +777,7 @@ impl Default for Opts {
             footer_on_top: false,
             help_key: Some(KeyEvent::new(KeyCode::Char('h'), KeyMod::CONTROL)),
             linenumbers: LineNumbersOpts::default(),
+            gutter: GutterOpts::default(),
             notifications: NotificationsOpts::default(),
             whichkey: WhichKeyOpts::default(),
             logs: LogBookOpts::default(),

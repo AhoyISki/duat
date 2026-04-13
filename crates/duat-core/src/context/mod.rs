@@ -143,7 +143,7 @@ mod global {
     /// Returns a [`Handle`] for a [`Buffer`] with the given name.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn get_buffer(pa: &Pass, name: impl ToString) -> Option<Handle> {
+    pub fn buffer_from(pa: &Pass, name: impl ToString) -> Option<Handle> {
         let (.., handle) = windows().named_buffer_entry(pa, &name.to_string())?;
         Some(handle)
     }
@@ -151,7 +151,7 @@ mod global {
     /// Returns a [`Handle`] for a [`Buffer`] with the given [`Path`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn get_buffer_by_path(pa: &Pass, path: &Path) -> Option<Handle> {
+    pub fn buffer_from_path(pa: &Pass, path: &Path) -> Option<Handle> {
         let (.., handle) = windows().path_buffer_entry(pa, path)?;
         Some(handle)
     }

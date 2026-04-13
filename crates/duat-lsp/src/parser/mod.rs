@@ -25,12 +25,12 @@ use lsp_types::{
 
 use crate::{
     Encoding,
-    parser::{diagnostics::Diagnostics, semantic_tokens::BufferTokens},
+    parser::semantic_tokens::BufferTokens,
     path_to_uri,
     server::{self, Server},
 };
 
-mod diagnostics;
+pub mod diagnostics;
 mod semantic_tokens;
 
 /// The struct responsible for updating each individual [`Buffer`].
@@ -42,10 +42,6 @@ pub struct Parser {
     ///
     /// [`SemanticToken`]: lsp_types::SemanticToken
     pub tokens: BufferTokens,
-    /// The [`Diagnostic`]s that have been published on the `Buffer`.
-    ///
-    /// [`Diagnostic`]: lsp_types::Diagnostic
-    pub diagnostics: Diagnostics,
 }
 
 impl Parser {
@@ -108,12 +104,13 @@ pub fn setup_hooks() {
                 ns: Ns::new(),
                 servers: servers.clone(),
                 tokens: BufferTokens::default(),
-                diagnostics: Diagnostics::new(),
             });
 
-            for server in servers {
+            for server in &servers {
                 server.send_semantic_tokens_request(buffer, parser);
             }
+
+            diagnostics::add_initial(pa, &servers, buffer);
         }
     });
 
