@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-988232b1.js";
+            window.path_to_searchindex_js = "searchindex-e8e08dda.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-74f781a9.js"></script>
@@ -202,13 +202,13 @@ impl duat::Plugin for HighlightMatches {
             let lines = handle.printed_line_ranges(pa);
 
             handle.text_mut(pa).remove_tags(ns, ..);
-            let caret = handle.text(pa).main_sel().caret();
-            let Some(range) = handle.text(pa).search(r"\A\w+").range(caret..).next() else {
+            let cursor = handle.text(pa).main_sel().cursor();
+            let Some(range) = handle.text(pa).search(r"\A\w+").range(cursor..).next() else {
                 return;
             };
 
             let start = handle
-                .edit_main(pa, |c| c.search(r"\w*\z").to_caret().next_back())
+                .edit_main(pa, |s| s.search(r"\w*\z").to_cursor().next_back())
                 .map(|range| range.start)
                 .unwrap_or(range.start);
 
