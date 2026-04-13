@@ -31,7 +31,7 @@ static DIAGNOSTICS: LazyLock<Mutex<Diagnostics>> = LazyLock::new(|| {
 });
 
 /// Handles a list of diagnostics.
-pub fn add(pa: &mut Pass, ns: Ns, uri: Uri, mut list: Vec<Diagnostic>, encoding: Encoding) {
+pub fn add(pa: &mut Pass, server_ns: Ns, uri: Uri, mut list: Vec<Diagnostic>, encoding: Encoding) {
     list.sort_unstable_by(|lhs, rhs| {
         lhs.severity
             .cmp(&rhs.severity)
@@ -40,7 +40,7 @@ pub fn add(pa: &mut Pass, ns: Ns, uri: Uri, mut list: Vec<Diagnostic>, encoding:
     });
 
     let mut diagnostics = DIAGNOSTICS.lock().unwrap();
-    let added = added_for(&mut diagnostics, ns, &uri);
+    let (ns, added) = added_for(&mut diagnostics, server_ns, &uri);
     added.clear();
 
     let Some(buffer) = context::buffer_from_path(pa, &uri_to_path(uri.clone()))
@@ -96,7 +96,7 @@ pub fn add(pa: &mut Pass, ns: Ns, uri: Uri, mut list: Vec<Diagnostic>, encoding:
                 continue;
             }
 
-            let added = added_for(&mut diagnostics, ns, &related.location.uri);
+            let (ns, added) = added_for(&mut diagnostics, server_ns, &related.location.uri);
             let entry = Entry::Related(None, related.location.range, related.message.clone());
 
             let entry = if let Some(entry) = added.iter_mut().find(|other| **other == entry) {
@@ -122,10 +122,11 @@ pub fn add(pa: &mut Pass, ns: Ns, uri: Uri, mut list: Vec<Diagnostic>, encoding:
             entry.set_id(Some(buffer.add_hint(pa, ns, range, msg)));
         }
 
-        added_for(&mut diagnostics, ns, &uri).push(Entry::Diagnostic(Some(entry_id), diagnostic));
+        let (_, added) = added_for(&mut diagnostics, server_ns, &uri);
+        added.push(Entry::Diagnostic(Some(entry_id), diagnostic));
     }
 
-    for (_, entries) in diagnostics.0[&ns].iter() {
+    for (_, entries) in diagnostics.0[&server_ns].1.iter() {
         for entry in entries.iter() {
             let Entry::Diagnostic(Some(id), diagnostic) = entry else {
                 continue;
@@ -139,7 +140,7 @@ pub fn add(pa: &mut Pass, ns: Ns, uri: Uri, mut list: Vec<Diagnostic>, encoding:
             };
 
             let iter = related.iter().filter_map(|related| {
-                let entries = diagnostics.0[&ns].get(&related.location.uri)?;
+                let entries = diagnostics.0[&server_ns].1.get(&related.location.uri)?;
                 let entry = entries.iter().find(|entry| {
                     entry.range() == related.location.range && entry.message() == related.message
                 })?;
@@ -164,17 +165,17 @@ pub fn add_initial(pa: &mut Pass, servers: &[Server], buffer: &Handle) {
 
     let mut to_add = Vec::new();
 
-    for (ns, entries) in diagnostics.0.iter_mut() {
+    for (server_ns, (_, list)) in diagnostics.0.iter_mut() {
         let encoding = Encoding::new(
             servers
                 .iter()
-                .find(|server| server.ns() == *ns)
+                .find(|server| server.ns() == *server_ns)
                 .unwrap()
                 .capabilities()
                 .unwrap(),
         );
 
-        let Some(entries) = entries.get_mut(&uri) else {
+        let Some(entries) = list.get_mut(&uri) else {
             continue;
         };
 
@@ -184,14 +185,14 @@ pub fn add_initial(pa: &mut Pass, servers: &[Server], buffer: &Handle) {
         }));
 
         if !list.is_empty() {
-            to_add.push((list, *ns, encoding));
+            to_add.push((list, *server_ns, encoding));
         }
     }
 
     drop(diagnostics);
 
-    for (list, ns, encoding) in to_add {
-        add(pa, ns, uri.clone(), list, encoding);
+    for (list, server_ns, encoding) in to_add {
+        add(pa, server_ns, uri.clone(), list, encoding);
     }
 }
 
@@ -221,16 +222,16 @@ fn byte_range(strs: &Strs, range: lsp_types::Range, encoding: Encoding) -> Range
 // This is fine, because fluent_uri doesn't actually internally
 // mutate.
 #[allow(clippy::mutable_key_type)]
-fn added_for<'e>(diagnostics: &'e mut Diagnostics, ns: Ns, uri: &Uri) -> &'e mut Vec<Entry> {
-    let buffer_diagnostics = diagnostics.0.entry(ns).or_default();
+fn added_for<'e>(diagnostics: &'e mut Diagnostics, ns: Ns, uri: &Uri) -> (Ns, &'e mut Vec<Entry>) {
+    let (ns, buffer_diagnostics) = diagnostics.0.entry(ns).or_default();
     if buffer_diagnostics.contains_key(uri) {
-        buffer_diagnostics.get_mut(uri).unwrap()
+        (*ns, buffer_diagnostics.get_mut(uri).unwrap())
     } else {
-        buffer_diagnostics.entry(uri.clone()).or_default()
+        (*ns, buffer_diagnostics.entry(uri.clone()).or_default())
     }
 }
 
-type ServerDiagnostics = HashMap<Uri, Vec<Entry>>;
+type ServerDiagnostics = (Ns, HashMap<Uri, Vec<Entry>>);
 
 #[derive(Debug, Default)]
 struct Diagnostics(HashMap<Ns, ServerDiagnostics>);
@@ -239,14 +240,17 @@ impl<Context> bincode::Decode<Context> for Diagnostics {
     fn decode<D: bincode::de::Decoder<Context = Context>>(
         decoder: &mut D,
     ) -> Result<Self, bincode::error::DecodeError> {
-        let servers = Vec::<(Ns, Vec<(String, Vec<Entry>)>)>::decode(decoder)?;
+        let servers = Vec::<(Ns, (Ns, Vec<(String, Vec<Entry>)>))>::decode(decoder)?;
         Ok(Self(HashMap::from_iter(servers.into_iter().map(
-            |(ns, list)| {
+            |(server_ns, (ns, list))| {
                 (
-                    ns,
-                    HashMap::from_iter(
-                        list.into_iter()
-                            .map(|(uri, entries)| (uri.parse().unwrap(), entries)),
+                    server_ns,
+                    (
+                        ns,
+                        HashMap::from_iter(
+                            list.into_iter()
+                                .map(|(uri, entries)| (uri.parse().unwrap(), entries)),
+                        ),
                     ),
                 )
             },
@@ -259,10 +263,13 @@ impl bincode::Encode for Diagnostics {
         &self,
         encoder: &mut E,
     ) -> Result<(), bincode::error::EncodeError> {
-        let servers = Vec::from_iter(self.0.iter().map(|(ns, list)| {
+        let servers = Vec::from_iter(self.0.iter().map(|(server_ns, (ns, list))| {
             (
-                *ns,
-                Vec::from_iter(list.iter().map(|(uri, entries)| (uri.to_string(), entries))),
+                *server_ns,
+                (
+                    *ns,
+                    Vec::from_iter(list.iter().map(|(uri, entries)| (uri.to_string(), entries))),
+                ),
             )
         }));
         servers.encode(encoder)

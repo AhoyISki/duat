@@ -9,7 +9,7 @@ use duat_core::{
     buffer::{Buffer, PerBuffer},
     context::{self, Handle},
     data::Pass,
-    hook::{self, BufferClosed, BufferOpened, BufferSaved, BufferUpdated},
+    hook::{self, BufferClosed, BufferOpened, BufferSaved, BufferUpdated, ConfigUnloaded},
     storage,
 };
 use duat_filetype::PassFileType;
@@ -63,12 +63,14 @@ impl Parser {
 static PARSERS: PerBuffer<Parser> = PerBuffer::new();
 
 pub fn setup_hooks() {
-    #[derive(Default, storage::bincode::Decode, storage::bincode::Encode)]
-    #[bincode(crate = "duat_core::storage::bincode")]
-    struct OpenedBuffers(Mutex<HashSet<PathBuf>>);
+    static OPENED_BUFFERS: LazyLock<Mutex<HashSet<PathBuf>>> =
+        LazyLock::new(|| Mutex::new(storage::get_if(|_| true).unwrap_or_default()));
 
-    static OPENED_BUFFERS: LazyLock<OpenedBuffers> =
-        LazyLock::new(|| storage::get_if(|_| true).unwrap_or_default());
+    hook::add::<ConfigUnloaded>(|pa, is_quitting| {
+        if !is_quitting {
+            _ = storage::store(pa, std::mem::take(&mut *OPENED_BUFFERS.lock().unwrap()))
+        }
+    });
 
     hook::add::<BufferOpened>(|pa, buffer| {
         if let Some(filetype) = buffer.filetype(pa) {
@@ -85,7 +87,7 @@ pub fn setup_hooks() {
 
             let text = buffer.text(pa);
 
-            let mut opened_buffers = OPENED_BUFFERS.0.lock().unwrap();
+            let mut opened_buffers = OPENED_BUFFERS.lock().unwrap();
             if opened_buffers.insert(path) {
                 server::on_all_servers(|server| {
                     server.send_notification::<DidOpenTextDocument>(DidOpenTextDocumentParams {
@@ -193,7 +195,7 @@ pub fn setup_hooks() {
                     text_document: TextDocumentIdentifier { uri: uri.clone() },
                 });
             });
-            OPENED_BUFFERS.0.lock().unwrap().remove(&path);
+            OPENED_BUFFERS.lock().unwrap().remove(&path);
         }
     });
 }

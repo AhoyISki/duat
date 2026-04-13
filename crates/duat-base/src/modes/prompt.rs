@@ -46,9 +46,9 @@ use duat_core::{
 use crate::widgets::{CommandsCompletions, Completions, PromptLine};
 
 static HISTORY: Mutex<Vec<(TypeId, Vec<String>)>> = Mutex::new(Vec::new());
-static PROMPT_TAGGER: LazyLock<Ns> = LazyLock::new(Ns::new);
-static TAGGER: LazyLock<Ns> = LazyLock::new(Ns::new);
-static PREVIEW_TAGGER: LazyLock<Ns> = LazyLock::new(Ns::new);
+static PROMPT_NS: LazyLock<Ns> = LazyLock::new(Ns::new);
+static NS: LazyLock<Ns> = LazyLock::new(Ns::new);
+static PREVIEW_NS: LazyLock<Ns> = LazyLock::new(Ns::new);
 
 /// Add the [`Prompt`] hook.
 pub fn add_prompt_hook() {
@@ -67,7 +67,7 @@ pub fn add_prompt_hook() {
                     Some(text) => txt!("{text}[prompt.colon]:"),
                     None => txt!("{}[prompt.colon]:", prompt.mode.prompt()),
                 });
-                pl.text_mut().insert_tag(*PROMPT_TAGGER, 0, tag);
+                pl.text_mut().insert_tag(*PROMPT_NS, 0, tag);
 
                 std::mem::take(&mut pl.text)
             };
@@ -171,7 +171,7 @@ impl Prompt {
             && let Some((_, ty_history)) = history.iter().find(|(ty, _)| *ty == self.ty)
         {
             handle.text_mut(pa).insert_tag_after(
-                *PREVIEW_TAGGER,
+                *PREVIEW_NS,
                 0,
                 Inlay::new(txt!("[prompt.preview]{}", ty_history.last().unwrap())),
             );
@@ -214,7 +214,7 @@ impl mode::Mode for Prompt {
             }
         };
 
-        promptline.text_mut(pa).remove_tags(*PREVIEW_TAGGER, ..);
+        promptline.text_mut(pa).remove_tags(*PREVIEW_NS, ..);
 
         match key {
             event!(Char(char)) => {
@@ -507,26 +507,26 @@ impl PromptMode for RunCommands {
     type ExitWidget = Buffer;
 
     fn update(&mut self, pa: &mut Pass, mut text: Text, _: &RwArea) -> Text {
-        text.remove_tags(*TAGGER, ..);
+        text.remove_tags(*NS, ..);
 
         let command = text.to_string();
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
             if let Some((ok_ranges, err_range)) = cmd::check_args(pa, &command) {
                 let id = form::id_of!("caller.info");
-                text.insert_tag(*TAGGER, 0..caller.len(), id.to_tag(0));
+                text.insert_tag(*NS, 0..caller.len(), id.to_tag(0));
 
                 let default_id = form::id_of!("param.info");
                 for (range, id) in ok_ranges {
-                    text.insert_tag(*TAGGER, range, id.unwrap_or(default_id).to_tag(0));
+                    text.insert_tag(*NS, range, id.unwrap_or(default_id).to_tag(0));
                 }
                 if let Some((range, _)) = err_range {
                     let id = form::id_of!("param.error");
-                    text.insert_tag(*TAGGER, range, id.to_tag(0));
+                    text.insert_tag(*NS, range, id.to_tag(0));
                 }
             } else {
                 let id = form::id_of!("caller.error");
-                text.insert_tag(*TAGGER, 0..caller.len(), id.to_tag(0));
+                text.insert_tag(*NS, 0..caller.len(), id.to_tag(0));
             }
         }
 
@@ -616,7 +616,7 @@ impl PromptMode for PipeSelections {
             false
         }
 
-        text.remove_tags(*TAGGER, ..);
+        text.remove_tags(*NS, ..);
 
         let command = text.to_string();
         let Some(caller) = command.split_whitespace().next() else {
@@ -632,10 +632,10 @@ impl PromptMode for PipeSelections {
         };
 
         let c_s = command.len() - command.trim_start().len();
-        text.insert_tag(*TAGGER, c_s..c_s + caller.len(), caller_id.to_tag(0));
+        text.insert_tag(*NS, c_s..c_s + caller.len(), caller_id.to_tag(0));
 
         for (_, range, _) in args {
-            text.insert_tag(*TAGGER, range, args_id.to_tag(0));
+            text.insert_tag(*NS, range, args_id.to_tag(0));
         }
 
         text

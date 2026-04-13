@@ -112,7 +112,7 @@ impl Node {
 
                 Arc::new(move |pa, orig_handle| {
                     Buffer::update(pa, &buffer);
-
+                    
                     handle.area.print(
                         pa,
                         handle.text(pa),
@@ -123,6 +123,7 @@ impl Node {
                     hook::trigger(pa, BufferPrinted(buffer.clone()));
                     orig_handle.declare_as_read();
                     orig_handle.area().0.declare_as_read();
+
                 })
             } else {
                 let handle = handle.clone();

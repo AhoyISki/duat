@@ -460,6 +460,7 @@ impl Text {
     /// same priority.
     ///
     /// [`insert_tag`]: Self::insert_tag
+    #[track_caller]
     pub fn insert_tag_after<Idx>(&mut self, ns: Ns, idx: Idx, tag: impl Tag<Idx>) {
         self.0.tags.insert_inner(ns, idx, tag, true)
     }
@@ -493,6 +494,7 @@ impl Text {
     /// [range]: std::ops::RangeBounds
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`BufferUpdated`]: crate::hook::BufferUpdated
+    #[track_caller]
     pub fn remove_tags(&mut self, ns: Ns, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len() + 1);
         self.0.tags.remove_from(ns, range)
@@ -509,6 +511,7 @@ impl Text {
     /// instead.
     ///
     /// [`remove_tags`]: Self::remove_tags
+    #[track_caller]
     pub fn remove_tags_excl(&mut self, ns: Ns, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len() + 1);
         self.0.tags.remove_from_excl(ns, range)
@@ -520,6 +523,7 @@ impl Text {
     /// that every [`RawTag`] in here is guaranteed to have the same
     /// [`Ns`] as the one passed to the function, so you don't
     /// need to chack for that.
+    #[track_caller]
     pub fn remove_tags_if(
         &mut self,
         ns: Ns,
@@ -792,6 +796,7 @@ impl<'t> TextMut<'t> {
     }
 
     /// Inserts a [`Tag`] at the given position.
+    #[track_caller]
     pub fn insert_tag<Idx>(&mut self, ns: Ns, idx: Idx, tag: impl Tag<Idx>) {
         self.text.insert_tag(ns, idx, tag)
     }
@@ -800,6 +805,7 @@ impl<'t> TextMut<'t> {
     /// same priority.
     ///
     /// [`insert_tag`]: Self::insert_tag
+    #[track_caller]
     pub fn insert_tag_after<Idx>(&mut self, ns: Ns, idx: Idx, tag: impl Tag<Idx>) {
         self.text.insert_tag_after(ns, idx, tag)
     }
@@ -833,6 +839,7 @@ impl<'t> TextMut<'t> {
     /// [range]: std::ops::RangeBounds
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`BufferUpdated`]: crate::hook::BufferUpdated
+    #[track_caller]
     pub fn remove_tags(&mut self, ns: Ns, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len() + 1);
         self.text.remove_tags(ns, range)
@@ -849,6 +856,7 @@ impl<'t> TextMut<'t> {
     /// instead.
     ///
     /// [`remove_tags`]: Self::remove_tags
+    #[track_caller]
     pub fn remove_tags_excl(&mut self, ns: Ns, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len() + 1);
         self.text.remove_tags_excl(ns, range)
@@ -861,6 +869,7 @@ impl<'t> TextMut<'t> {
     /// that every [`RawTag`] in here is guaranteed to have the same
     /// [`Ns`] as the one passed to the function, so you don't
     /// need to chack for that.
+    #[track_caller]
     pub fn remove_tags_if(
         &mut self,
         ns: Ns,

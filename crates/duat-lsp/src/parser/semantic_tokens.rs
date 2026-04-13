@@ -31,13 +31,14 @@ static TOKEN_MAP: LazyLock<Mutex<HashMap<&str, &str>>> = LazyLock::new(|| {
 
 #[derive(Default)]
 pub struct BufferTokens {
-    tokens_by_server: HashMap<Ns, ServerTokens>,
+    tokens_by_server: HashMap<Ns, Added>,
 }
 
-struct ServerTokens {
+struct Added {
     applied: GapBuffer<SemanticToken>,
     forms: Vec<FormTag>,
     result_id: Option<String>,
+    ns: Ns,
 }
 
 impl BufferTokens {
@@ -47,10 +48,10 @@ impl BufferTokens {
         &mut self,
         mut parts: TextParts,
         tokens: SemanticTokens,
-        ns: Ns,
+        server_ns: Ns,
         legend: &SemanticTokensLegend,
     ) {
-        let server_tokens = self.tokens_by_server.entry(ns).or_insert_with(|| {
+        let added = self.tokens_by_server.entry(server_ns).or_insert_with(|| {
             let map = TOKEN_MAP.lock().unwrap();
 
             let forms = legend
@@ -62,10 +63,11 @@ impl BufferTokens {
                 })
                 .collect();
 
-            ServerTokens {
+            Added {
                 applied: GapBuffer::new(),
                 forms,
                 result_id: None,
+                ns: Ns::new(),
             }
         });
 
@@ -74,25 +76,30 @@ impl BufferTokens {
         let mut line = 0;
         let mut byte = 0;
 
-        parts.tags.remove(ns, ..);
+        parts.tags.remove(added.ns, ..);
 
         for token in &semantic_tokens {
             (line, byte) = fwd_pos(line, byte, token);
 
-            let tag = server_tokens.forms[token.token_type as usize];
+            let tag = added.forms[token.token_type as usize];
             let start = parts.strs.point_at_coords(line, 0).byte() + byte;
             parts
                 .tags
-                .insert(ns, start..start + token.length as usize, tag);
+                .insert(added.ns, start..start + token.length as usize, tag);
         }
 
-        server_tokens.applied = GapBuffer::from(semantic_tokens);
-        server_tokens.result_id = result_id;
+        added.applied = GapBuffer::from(semantic_tokens);
+        added.result_id = result_id;
     }
 
     /// Apply a delta to the `BufferTokens`
-    pub fn apply_delta(&mut self, mut parts: TextParts, mut delta: SemanticTokensDelta, ns: Ns) {
-        let server_tokens = self.tokens_by_server.get_mut(&ns).unwrap();
+    pub fn apply_delta(
+        &mut self,
+        mut parts: TextParts,
+        mut delta: SemanticTokensDelta,
+        server_ns: Ns,
+    ) {
+        let added = self.tokens_by_server.get_mut(&server_ns).unwrap();
 
         let mut delta_from = 0;
         let mut line = 0;
@@ -115,7 +122,7 @@ impl BufferTokens {
             let new_tokens_len = edit.data.as_ref().map(Vec::len).unwrap_or(0);
             removed_entries += (end_index - start_index) as u32;
 
-            for token in &server_tokens.applied.range(delta_from..start_index) {
+            for token in &added.applied.range(delta_from..start_index) {
                 (line, byte) = fwd_pos(line, byte, token);
             }
 
@@ -124,10 +131,7 @@ impl BufferTokens {
                 let mut byte = byte;
 
                 let new_tokens = edit.data.into_iter().flatten();
-                for token in server_tokens
-                    .applied
-                    .splice(start_index..end_index, new_tokens)
-                {
+                for token in added.applied.splice(start_index..end_index, new_tokens) {
                     let start = parts.strs.point_at_coords(line, 0).byte() + byte;
                     if start > parts.strs.len() {
                         break;
@@ -135,7 +139,7 @@ impl BufferTokens {
 
                     parts
                         .tags
-                        .remove_excl(ns, start..start + token.length as usize);
+                        .remove_excl(added.ns, start..start + token.length as usize);
 
                     (line, byte) = fwd_pos(line, byte, &token);
                 }
@@ -145,17 +149,17 @@ impl BufferTokens {
                 let mut line = line;
                 let mut byte = byte;
 
-                for token in &server_tokens
+                for token in &added
                     .applied
                     .range(start_index..start_index + new_tokens_len)
                 {
                     (line, byte) = fwd_pos(line, byte, token);
 
-                    let tag = server_tokens.forms[token.token_type as usize];
+                    let tag = added.forms[token.token_type as usize];
                     let start = parts.strs.point_at_coords(line, 0).byte() + byte;
                     parts
                         .tags
-                        .insert(ns, start..start + token.length as usize, tag);
+                        .insert(added.ns, start..start + token.length as usize, tag);
                 }
             }
 

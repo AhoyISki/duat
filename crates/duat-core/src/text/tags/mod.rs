@@ -110,6 +110,7 @@ impl Tags<'_> {
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`BufferUpdated`]: crate::hook::BufferUpdated
     /// [ns]: Ns
+    #[track_caller]
     pub fn remove(&mut self, ns: Ns, from: impl TextRangeOrIndex) {
         let range = from.to_range(self.0.len_bytes() + 1);
         self.0.remove_from(ns, range)
@@ -126,6 +127,7 @@ impl Tags<'_> {
     /// instead.
     ///
     /// [`remove`]: Self::remove
+    #[track_caller]
     pub fn remove_excl(&mut self, ns: Ns, from: impl TextRangeOrIndex) {
         let range = from.to_range(self.0.len_bytes() + 1);
         self.0.remove_from_excl(ns, range);
@@ -137,6 +139,7 @@ impl Tags<'_> {
     /// that every [`RawTag`] in here is guaranteed to have the same
     /// [`Ns`] as the one passed to the function, so you don't
     /// need to chack for that.
+    #[track_caller]
     pub fn remove_if(
         &mut self,
         ns: Ns,
@@ -347,13 +350,22 @@ impl InnerTags {
     }
 
     /// Removes all [`RawTag`]s of a given [`Ns`]
+    #[track_caller]
     pub(super) fn remove_from(&mut self, ns: Ns, within: Range<usize>) {
+        if format!("{ns:?}") == "Ns(19)" {
+            crate::debug!("removed on {within:?}");
+        }
         for extent in self.extents.remove(within.clone(), |other| other == ns) {
             self.remove_inner(extent.clone(), |(_, tag), _, _| tag.ns() == ns);
         }
     }
 
+    #[track_caller]
     pub(super) fn remove_from_excl(&mut self, ns: Ns, within: Range<usize>) {
+        if format!("{ns:?}") == "Ns(19)" {
+            crate::debug!("removed on {within:?}");
+        }
+        
         let mut remained_on = [false; 2];
 
         for extent in self.extents.remove(within.clone(), |other| other == ns) {
@@ -786,11 +798,7 @@ impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
 
             f.write_str("[\n")?;
 
-            for (i, (b, tag)) in
-                self.0.list.iter_fwd(..).filter(|(_, (_, tag))| {
-                    matches!(tag, RawTag::PushMask(..) | RawTag::PopMask(..))
-                })
-            {
+            for (i, (b, tag)) in self.0.list.iter_fwd(..) {
                 nesting = nesting.saturating_sub(tag.is_end() as usize);
                 if (range.start as u32..=range.end as u32).contains(&(b as u32)) {
                     let space = " ".repeat(nesting);
