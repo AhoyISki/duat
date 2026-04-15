@@ -352,9 +352,6 @@ impl InnerTags {
     /// Removes all [`RawTag`]s of a given [`Ns`]
     #[track_caller]
     pub(super) fn remove_from(&mut self, ns: Ns, within: Range<usize>) {
-        if format!("{ns:?}") == "Ns(19)" {
-            crate::debug!("removed on {within:?}");
-        }
         for extent in self.extents.remove(within.clone(), |other| other == ns) {
             self.remove_inner(extent.clone(), |(_, tag), _, _| tag.ns() == ns);
         }
@@ -362,10 +359,6 @@ impl InnerTags {
 
     #[track_caller]
     pub(super) fn remove_from_excl(&mut self, ns: Ns, within: Range<usize>) {
-        if format!("{ns:?}") == "Ns(19)" {
-            crate::debug!("removed on {within:?}");
-        }
-        
         let mut remained_on = [false; 2];
 
         for extent in self.extents.remove(within.clone(), |other| other == ns) {
