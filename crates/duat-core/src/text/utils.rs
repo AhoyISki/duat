@@ -164,6 +164,7 @@ impl Point {
 
     /// Returns the number of bytes between this `Point` and the start
     /// of the line.
+    #[track_caller]
     pub fn byte_col(&self, strs: &Strs) -> usize {
         self.byte() - strs.point_at_coords(self.line(), 0).byte()
     }

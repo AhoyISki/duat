@@ -207,15 +207,9 @@ impl Strs {
         }
     }
 
-    /// The [`Point`] where the `l`th line starts, 0 indexed.
+    /// Returns the [`Point`] at a certain `line` and `column` offset.
     ///
-    /// If `l == number_of_lines`, returns the last point of the
-    /// `Strs`.
-    ///
-    /// # Panics
-    ///
-    /// Will panic if the number `l` is greater than the number of
-    /// lines on the text.
+    /// The `column` offset is measured in characters.
     #[inline(always)]
     #[track_caller]
     pub fn point_at_coords(&self, line: usize, column: usize) -> Point {

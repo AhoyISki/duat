@@ -503,10 +503,21 @@ fn insert_gutter_entries<'g>(
     };
 
     let popts = buf.print_opts();
+    let mut start_of_next = buf.text().len();
 
     let entries = Vec::from_iter(
         std::iter::from_fn(|| {
-            iter.next_if(|(entry, _)| buf.text().point_at_byte(entry.range.end).line() == lnum)
+            iter.next_if(|(entry, _)| {
+                let next_lnum = buf.text().point_at_byte(entry.range.end).line();
+                if next_lnum == lnum {
+                    true
+                } else {
+                    if next_lnum < buf.text().end_point().line() {
+                        start_of_next = buf.text().line(next_lnum).byte_range().start;
+                    }
+                    false
+                }
+            })
         })
         .map(|(entry, movement)| {
             let place = match display(entry.kind, movement) {
@@ -535,7 +546,9 @@ fn insert_gutter_entries<'g>(
 
     let mut parts = buf.text_parts();
     let line_range = parts.strs.line(lnum).byte_range();
-    parts.tags.remove(ns, line_range.start + 1..=line_range.end);
+    // Pick as much range as possible, in order to account for the
+    // possibility of the RightUnder Tag having moved because of changes.
+    parts.tags.remove(ns, line_range.start + 1..=start_of_next);
 
     let mut inlays = Vec::new();
     let mut overlays = Vec::new();

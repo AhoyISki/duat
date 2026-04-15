@@ -120,7 +120,12 @@ impl Server {
         Some(&self.init_parts.get()?.capabilities)
     }
 
-    /// The [`Ns`] of this `Server`
+	/// The name of the language server.
+    pub fn name(&self) -> &str {
+        self.bridge.name()
+    }
+
+    /// The [`Ns`] of this `Server`.
     pub fn ns(&self) -> Ns {
         self.bridge.ns()
     }

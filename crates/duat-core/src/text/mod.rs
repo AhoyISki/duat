@@ -1036,21 +1036,24 @@ impl<'t> TextParts<'t> {
 /// `TextVersion`s from two different `Text`s is pointless.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TextVersion {
-    /// The current version of the [`Strs`].
+    /// The current version of the [`Strs`], this is the actual text
+    /// content of the `Buffer`.
     ///
     /// Any change to the `Strs`, even undoing, will incur a version
     /// increment.
     pub strs: u64,
-    /// the current version of [`Tags`].
+    /// the current version of [`Tags`], also including meta `Tag`s.
     ///
     /// Any change to the `Tags`, be it addition or removal of
-    /// [`Tag`]s, will incur a version increment.
+    /// [`Tag`]s, or changes to the text causing them to shift around,
+    /// will incur a version increment.
     pub tags: u64,
     /// The current version of meta [`Tag`]s.
     ///
     /// Meta tags are those that can change what is even shown on the
     /// screen, all else being equal. Any addition or removal of meta
-    /// `Tag`s will incur a version increment.
+    /// `Tag`s, as well as any transformation of the text, will incur
+    /// a version increment.
     pub meta_tags: u64,
 }
 

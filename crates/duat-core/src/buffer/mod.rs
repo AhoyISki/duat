@@ -43,6 +43,7 @@ mod opts;
 pub(crate) fn add_buffer_hooks() {
     hook::add::<OnMouseEvent<Buffer>>(|pa, event| match event.kind {
         MouseEventKind::Down(MouseButton::Left) => {
+            crate::mode::reset_to(pa, event.handle);
             let point = match event.points {
                 Some(TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points)) => {
                     points.real
@@ -338,7 +339,9 @@ impl Buffer {
     /// This is the same as [`Widget::text_mut`], but doesn't need the
     /// [`Widget`] trait to be in scope.
     pub fn text_mut(&mut self) -> TextMut<'_> {
-        self.text.as_mut()
+        let mut text = self.text.as_mut();
+        text.attach_history(&mut self.history);
+        text
     }
 
     /// The parts that make up a [`Text`].
@@ -437,9 +440,7 @@ impl Widget for Buffer {
     }
 
     fn text_mut(&mut self) -> TextMut<'_> {
-        let mut text_mut = self.text.as_mut();
-        text_mut.attach_history(&mut self.history);
-        text_mut
+        Buffer::text_mut(self)
     }
 
     fn print_opts(&self) -> PrintOpts {
@@ -915,9 +916,9 @@ impl<T: 'static> PerBuffer<T> {
     /// `Buffer`.
     ///
     /// For now, the two types that can be used as [`BufferPass`]es
-    /// are the [`Buffer`] itself and a [`SelectionMut<Buffer>`]. These
-    /// types are allowed to do this because they are impossible
-    /// to acquire without first borrowing from an
+    /// are the [`Buffer`] itself and a [`SelectionMut<Buffer>`].
+    /// These types are allowed to do this because they are
+    /// impossible to acquire without first borrowing from an
     /// [`RwData<Buffer>`], either directly or through a [`Handle`]
     ///
     /// Will return [`None`] if the `Buffer` in question wasn't
@@ -958,10 +959,11 @@ impl<T: 'static> PerBuffer<T> {
     /// `Buffer`.
     ///
     /// For now, the two types that can be used as [`BufferPass`]es
-    /// are the [`Buffer`] itself and a [`SelectionMut<Buffer>`]. These
-    /// types are allowed to do this because they are impossible
-    /// to acquire without first borrowing from an [`RwData<Buffer>`],
-    /// either directly or through a [`Handle`]
+    /// are the [`Buffer`] itself and a [`SelectionMut<Buffer>`].
+    /// These types are allowed to do this because they are
+    /// impossible to acquire without first borrowing from an
+    /// [`RwData<Buffer>`], either directly or through a
+    /// [`Handle`]
     ///
     /// Will return [`None`] if the `Buffer` in question wasn't
     /// [registered] or was [unregistered].

@@ -62,6 +62,7 @@ pub fn start(setup: fn() -> (Ui, BufferOpts)) -> std::io::Result<()> {
         use std::backtrace::{Backtrace, BacktraceStatus};
 
         context::log_panic(panic_info);
+        crate::log_to_file!("{panic_info}");
 
         let backtrace = Backtrace::capture();
         *PANIC_INFO.lock().unwrap() = Some(

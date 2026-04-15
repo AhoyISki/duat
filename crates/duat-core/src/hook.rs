@@ -805,6 +805,9 @@ impl Hookable for ConfigLoaded {
 
 /// [`Hookable`]: Triggers when Duat closes or has to reload.
 ///
+/// This function will trigger right after a triggering of
+/// [`BufferUnloaded`] on each open [`Buffer`].
+///
 /// # Arguments
 ///
 /// - Wether duat is in the process of quitting.

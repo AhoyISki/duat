@@ -136,7 +136,7 @@ impl WhichKey {
                 ..Frame::default()
             };
             frame.set_text(Side::Above, move |_| {
-                txt!("{Spacer}[terminal.frame]┤[]{title}[terminal.frame]├{Spacer}")
+                txt!("{Spacer}[terminal.border]┤[]{title}[terminal.border]├{Spacer}")
             });
             area.set_frame(frame);
         }

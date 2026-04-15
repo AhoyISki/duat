@@ -1,10 +1,20 @@
-use std::path::{Path, PathBuf};
+use std::{
+    ops::ControlFlow,
+    path::{Path, PathBuf},
+};
 
 use duat_core::{
+    buffer::Buffer,
+    context::Handle,
+    data::Pass,
     form::{self, Form},
+    mode::{self, KeyEvent, Mode, User, event},
     text::{Point, Strs},
+    txt,
 };
 use lsp_types::{Position, ServerCapabilities, Uri};
+
+pub use crate::parser::LspBuffer;
 
 mod config;
 mod parser;
@@ -29,6 +39,28 @@ impl DuatLsp {
         form::set("lsp.tt.error", Form::mimic("accent.error"));
 
         parser::setup_hooks();
+
+        mode::map::<User>("l", |pa: &mut _| mode::set(pa, Lsp)).doc(txt!("Enter [mode]Lsp[] mode"));
+    }
+}
+
+struct Lsp;
+
+impl Mode for Lsp {
+    type Widget = Buffer;
+
+    fn bindings() -> duat_core::mode::Bindings {
+        mode::bindings!(match _ {
+            event!('f') => txt!("Format the buffer"),
+        })
+    }
+
+    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, buffer: Handle<Self::Widget>) {
+        match key_event {
+            event!('f') => buffer.lsp_format(pa, None),
+            _ => {}
+        }
+        mode::reset::<Buffer>(pa);
     }
 }
 
@@ -95,7 +127,6 @@ enum Encoding {
     Utf8,
     #[default]
     Utf16,
-    Utf32,
 }
 
 impl Encoding {
@@ -104,25 +135,82 @@ impl Encoding {
         match cap.position_encoding.as_ref().map(|enc| enc.as_str()) {
             Some("utf-8") | None => Encoding::Utf8,
             Some("utf-16") => Encoding::Utf16,
-            Some("utf-32") => Encoding::Utf32,
+            Some("utf-32") => panic!("utf-32 is not supported"),
             Some(_) => Encoding::Utf16,
         }
     }
 
-    /// The number of bytes occupied by a single code point.
-    const fn num_bytes(&self) -> usize {
+    /// Returns a codepoint index from a [`Position`].
+    #[track_caller]
+    fn byte_from_pos(&self, strs: &Strs, pos: Position) -> usize {
         match self {
-            Encoding::Utf8 => 1,
-            Encoding::Utf16 => 2,
-            Encoding::Utf32 => 4,
+            Encoding::Utf8 => {
+                let byte = strs.point_at_coords(pos.line as usize, 0).byte();
+                byte + pos.character as usize
+            }
+            Encoding::Utf16 => {
+                let line = strs.line(pos.line as usize);
+                let mut codepoints = 0;
+                let (ControlFlow::Continue(byte) | ControlFlow::Break(byte)) = line
+                    .chars()
+                    .try_fold(line.start_point().byte(), |byte, char| {
+                        if codepoints == pos.character {
+                            ControlFlow::Break(byte)
+                        } else {
+                            codepoints += if char as u32 > 0xffff { 2 } else { 1 };
+                            ControlFlow::Continue(byte + char.len_utf8())
+                        }
+                    });
+                byte
+            }
         }
     }
-}
 
-#[track_caller]
-fn point_from_position(strs: &Strs, position: Position, encoding: Encoding) -> Point {
-    strs.point_at_coords(
-        position.line as usize,
-        position.character as usize / encoding.num_bytes(),
-    )
+    /// Returns a [`Position`] from a [`Point`].
+    #[track_caller]
+    fn pos_from_point(&self, strs: &Strs, point: Point) -> Position {
+        match self {
+            Encoding::Utf8 => {
+                lsp_types::Position::new(point.line() as u32, point.byte_col(strs) as u32)
+            }
+            Encoding::Utf16 => {
+                let start = strs.line(point.line()).range().start;
+                let codepoints = strs[start..point]
+                    .chars()
+                    .fold(0, |cp, char| cp + if char as u32 > 0xffff { 2 } else { 1 });
+
+                lsp_types::Position::new(point.line() as u32, codepoints as u32)
+            }
+        }
+    }
+
+    /// Returns a [`Position`] from a [`taken_end`] and [`taken_str`].
+    ///
+    /// [`taken_end`]: duat_core::buffer::Change::taken_end
+    /// [`taken_str`]: duat_core::buffer::Change::taken_str
+    #[track_caller]
+    fn taken_end_pos(&self, start: Position, taken_end: Point, taken_str: &str) -> Position {
+        let start = if start.line as usize == taken_end.line() {
+            start.character
+        } else {
+            0
+        };
+
+        let last_line = match taken_str.rsplit_once('\n') {
+            Some((_, last_line)) => last_line,
+            None => taken_str,
+        };
+
+        match self {
+            Encoding::Utf8 => {
+                lsp_types::Position::new(taken_end.line() as u32, start + last_line.len() as u32)
+            }
+            Encoding::Utf16 => {
+                let character = last_line.chars().fold(start, |cp, char| {
+                    cp + if char as u32 > 0xffff { 2 } else { 1 }
+                });
+                lsp_types::Position::new(taken_end.line() as u32, character)
+            }
+        }
+    }
 }
