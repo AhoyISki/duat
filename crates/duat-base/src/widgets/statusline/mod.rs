@@ -212,7 +212,7 @@ impl StatusLineFmt {
 
                 let handles: Vec<Handle<StatusLine>> = context::current_window(pa)
                     .handles(pa)
-                    .filter_map(Handle::try_downcast)
+                    .filter_map(Handle::get_as)
                     .filter(|statusline| !handles.iter().any(|(other, _)| other == statusline))
                     .collect();
 
@@ -229,7 +229,7 @@ impl StatusLineFmt {
                 }
             });
 
-            hook::add::<BufferClosed>(|pa, buffer| {
+            hook::add::<BufferClosed>(|pa, (buffer, _)| {
                 for (statusline, _) in buffer.get_related::<StatusLine>(pa) {
                     SENDER.send(StatusLineEvent::Closed(statusline)).unwrap();
                 }

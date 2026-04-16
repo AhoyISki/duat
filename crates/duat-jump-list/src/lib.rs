@@ -19,7 +19,7 @@ use duat_core::{
     buffer::{Buffer, PerBuffer},
     context::Handle,
     data::Pass,
-    hook::{self, BufferClosed, BufferOpened},
+    hook::{self, BufferOpened, BufferClosed},
 };
 use gap_buf::GapBuffer;
 
@@ -41,8 +41,8 @@ impl JumpList {
     #[doc(hidden)]
     #[inline(never)]
     pub fn _plug(self) {
-        hook::add::<BufferOpened>(|pa, handle| _ = PARSERS.register(pa, handle, Parser::new()));
-        hook::add::<BufferClosed>(|pa, handle| _ = PARSERS.unregister(pa, handle));
+        hook::add::<BufferOpened>(|pa, buffer| _ = PARSERS.register(pa, buffer, Parser::new()));
+        hook::add::<BufferClosed>(|pa, (buffer, _)| _ = PARSERS.unregister(pa, buffer));
     }
 }
 
@@ -85,20 +85,20 @@ impl Jump {
     /// Applies the `Jump` to the [`Selections`] of a [`Buffer`]
     ///
     /// [`Selections`]: duat_core::mode::Selections
-    pub fn apply(&self, pa: &mut Pass, handle: &Handle) {
+    pub fn apply(&self, pa: &mut Pass, buffer: &Handle) {
         match self {
             Jump::Single(selection) => {
-                handle.write(pa).selections_mut().remove_extras();
-                handle.edit_main(pa, |mut s| {
+                buffer.write(pa).selections_mut().remove_extras();
+                buffer.edit_main(pa, |mut s| {
                     let start = s.text().point_at_byte(selection.start);
                     let end = s.text().point_at_byte(selection.end);
                     s.move_to(start..end)
                 });
             }
             Jump::Multiple(selections, main) => {
-                handle.write(pa).selections_mut().remove_extras();
+                buffer.write(pa).selections_mut().remove_extras();
 
-                handle.edit_main(pa, |mut s| {
+                buffer.edit_main(pa, |mut s| {
                     let mut is_first = true;
                     for selection in selections {
                         if !is_first {
@@ -111,7 +111,7 @@ impl Jump {
                         is_first = false;
                     }
                 });
-                handle.write(pa).selections_mut().set_main(*main);
+                buffer.write(pa).selections_mut().set_main(*main);
             }
         }
     }
@@ -432,13 +432,13 @@ impl BufferJumps for Handle {
 }
 
 fn get_jump(
-    handle: &Handle,
+    buffer: &Handle,
     pa: &mut Pass,
     jump_list_id: JumpListId,
     id: JumpId,
     do_jump: bool,
 ) -> Option<Jump> {
-    let (parser, buf) = PARSERS.write(pa, handle).unwrap();
+    let (parser, buf) = PARSERS.write(pa, buffer).unwrap();
     parser.update(buf);
 
     let (list, cur) = parser.0.entry(jump_list_id).or_default();

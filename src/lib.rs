@@ -563,10 +563,8 @@ pub mod hook {
     //!
     //! - [`BufferOpened`] is an alias for [`WidgetOpened<Buffer>`].
     //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
-    //! - [`BufferClosed`] triggers on buffers upon closing Duat.
-    //! - [`BufferUnloaded`] triggers on buffers when unloading Duat.
+    //! - [`BufferClosed`] triggers when you close/unload a buffer.
     //! - [`BufferUpdated`] triggers whenever a buffer changes.
-    //! - [`BufferPrinted`] triggers after a buffer has been printed.
     //! - [`BufferSwitched`] triggers when switching buffers.
     //! - [`ConfigLoaded`] triggers after loading the config crate.
     //! - [`ConfigUnloaded`] triggers after unloading the config.
@@ -574,9 +572,6 @@ pub mod hook {
     //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
     //! - [`WidgetOpened`] triggers when a [`Widget`] is opened.
     //! - [`WindowOpened`] triggers when a [`Window`] is created.
-    //! - [`FocusedOn`] triggers when a [widget] is focused.
-    //! - [`UnfocusedFrom`] triggers when a [widget] is unfocused.
-    //! - [`FocusChanged`], like [`FocusedOn`] but on [dyn `Widget`]s.
     //! - [`ModeSwitched`] triggers when you change [`Mode`].
     //! - [`KeySent`] triggers when a keys are sent.
     //! - [`KeyTyped`] triggers when keys are _typed_, not _sent_.
@@ -708,12 +703,11 @@ pub mod prelude {
         context::{self, Handle},
         cursor,
         data::{self, Pass, RwData},
-        form::{self, Form, CursorShape},
+        form::{self, CursorShape, Form},
         hook::{
-            self, BufferClosed, BufferOpened, BufferPrinted, BufferSaved, BufferSwitched,
-            BufferUnloaded, BufferUpdated, ColorschemeSet, ConfigLoaded, ConfigUnloaded,
-            FocusChanged, FocusedOn, FocusedOnDuat, FormSet, Hookable, KeySent, KeyTyped,
-            ModeSwitched, SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat,
+            self, BufferClosed, BufferOpened, BufferSaved, BufferSwitched, BufferUpdated,
+            ColorschemeSet, ConfigLoaded, ConfigUnloaded, FocusedOnDuat, FormSet, Hookable,
+            KeySent, KeyTyped, ModeSwitched, SearchPerformed, SearchUpdated, UnfocusedFromDuat,
             WidgetOpened, WindowOpened,
         },
         mode::{

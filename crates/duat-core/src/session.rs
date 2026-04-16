@@ -20,8 +20,8 @@ use crate::{
     context::{self, cache},
     data::Pass,
     hook::{
-        self, BufferClosed, BufferUnloaded, ConfigLoaded, ConfigUnloaded, FocusedOnDuat,
-        OnMouseEvent, UnfocusedFromDuat,
+        self, BufferClosed, ConfigLoaded, ConfigUnloaded, FocusedOnDuat, OnMouseEvent,
+        UnfocusedFromDuat,
     },
     mode::{self, Selection, Selections},
     session::ipc::{InitialState, MsgFromChild},
@@ -267,7 +267,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
                     context::declare_will_unload();
 
                     for handle in context::windows().buffers(pa) {
-                        hook::trigger(pa, BufferUnloaded(handle));
+                        hook::trigger(pa, BufferClosed((handle, true)));
                     }
 
                     hook::trigger(pa, ConfigUnloaded(false));
@@ -284,7 +284,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
                     context::declare_will_unload();
 
                     for handle in context::windows().buffers(pa) {
-                        hook::trigger(pa, BufferClosed(handle));
+                        hook::trigger(pa, BufferClosed((handle, false)));
                     }
 
                     hook::trigger(pa, ConfigUnloaded(true));

@@ -1,6 +1,5 @@
 //! Access the state of Duat.
 use std::{
-    any::TypeId,
     sync::{
         atomic::{AtomicUsize, Ordering::Relaxed},
         mpsc,
@@ -480,23 +479,6 @@ impl Clone for DynBuffer {
 pub(crate) struct CurWidgetNode(RwData<Node>);
 
 impl CurWidgetNode {
-    /// The [`Widget`]'s [`TypeId`].
-    pub fn type_id(&self, pa: &Pass) -> TypeId {
-        self.0.read(pa).widget().type_id()
-    }
-
-    /// Reads the [`Widget`] and its [`Area`].
-    pub fn _read<R>(&self, pa: &Pass, f: impl FnOnce(&dyn Widget, &Area) -> R) -> R {
-        let node = self.0.read(pa);
-        f(node.handle().read(pa), node.area().read(pa))
-    }
-
-    /// Reads the [`Widget`] as `W` and its [`Area`].
-    pub fn _read_as<W: Widget, R>(&self, pa: &Pass, f: impl FnOnce(&W, &Area) -> R) -> Option<R> {
-        let node = self.0.read(pa);
-        Some(f(node.read_as(pa)?, node.area().read(pa)))
-    }
-
     /// Mutates the [`RwData<dyn Widget>`], its [`Area`], and related
     /// [`Widget`]s.
     pub(crate) fn mutate_data<R>(&self, pa: &Pass, f: impl FnOnce(&Handle<dyn Widget>) -> R) -> R {

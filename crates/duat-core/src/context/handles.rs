@@ -273,7 +273,7 @@ impl<W: 'static + ?Sized> Handle<W> {
     }
 
     /// Tries to downcast from `dyn Widget` to a concrete [`Widget`].
-    pub fn try_downcast<W2: Widget>(&self) -> Option<Handle<W2>> {
+    pub fn get_as<W2: Widget>(&self) -> Option<Handle<W2>> {
         Some(Handle {
             widget: self.widget.try_downcast()?,
             area: self.area.clone(),
@@ -353,7 +353,7 @@ impl<W: 'static + ?Sized> Handle<W> {
     pub fn master_buffer(&self, pa: &Pass) -> Option<Handle> {
         self.related.read(pa).iter().find_map(|(handle, relation)| {
             handle
-                .try_downcast()
+                .get_as()
                 .filter(|_| *relation == WidgetRelation::Main)
         })
     }
@@ -401,7 +401,7 @@ impl<W: 'static + ?Sized> Handle<W> {
         self.related
             .read(pa)
             .iter()
-            .filter_map(|(handle, rel)| handle.try_downcast().zip(Some(*rel)))
+            .filter_map(|(handle, rel)| handle.get_as().zip(Some(*rel)))
             .collect()
     }
 

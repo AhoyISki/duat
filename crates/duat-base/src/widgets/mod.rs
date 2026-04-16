@@ -12,7 +12,7 @@
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
 use duat_core::{
     data::Pass,
-    hook::{self, FocusedOn, UnfocusedFrom},
+    hook::{self, ModeSwitched},
     try_or_log_err,
     ui::PushTarget,
 };
@@ -126,26 +126,22 @@ impl FooterWidgets {
             self.notifs.push_on(pa, &prompt_line)
         };
 
-        hook::add::<FocusedOn<PromptLine>>({
+        hook::add::<ModeSwitched>({
             let notifications = notifications.clone();
-            move |pa, (_, handle)| {
-                try_or_log_err! {
-                    notifications.area().hide(pa)?;
-                    handle.area().reveal(pa)?;
+            move |pa, switch| {
+                if let Some(promptline) = switch.new.handle.get_as::<PromptLine>() {
+                    try_or_log_err! {
+                        notifications.area().hide(pa)?;
+                        promptline.area().reveal(pa)?;
+                    }
+                } else if let Some(promptline) = switch.old.handle.get_as::<PromptLine>() {
+                    try_or_log_err! {
+                        notifications.area().reveal(pa)?;
+                        promptline.area().hide(pa)?;
+                    }
                 }
             }
-        })
-        .filter(prompt_line.clone());
-
-        hook::add::<UnfocusedFrom<PromptLine>>({
-            move |pa, (handle, _)| {
-                try_or_log_err! {
-                    notifications.area().reveal(pa)?;
-                    handle.area().hide(pa)?;
-                }
-            }
-        })
-        .filter(prompt_line);
+        });
     }
 
     /// Returns a new [`FooterWidgets`], with a [`StatusLine`] and

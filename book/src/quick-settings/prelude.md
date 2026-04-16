@@ -48,7 +48,7 @@ fn setup(opts: &mut Opts) {
     cmd::add("set-rel-lines", |pa: &mut Pass| {
         let handles: Vec<_> = context::windows()
             .handles(pa)
-            .filter_map(|handle| handle.try_downcast::<widgets::LineNumbers>())
+            .filter_map(|handle| handle.get_as::<widgets::LineNumbers>())
             .collect();
 
         for handle in handles {

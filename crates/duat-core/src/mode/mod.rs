@@ -324,16 +324,16 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// fn add_menu_hooks() {
 ///     let mask_ns = Ns::new();
 ///
-///     hook::add::<FocusedOn<Menu>>(move |pa, (_, menu)| {
-///         menu.text_parts(pa).tags.remove(mask_ns, ..);
-///         menu.text_parts(pa).tags.insert(mask_ns, .., Mask("active"));
-///     });
-///
-///     hook::add::<UnfocusedFrom<Menu>>(move |pa, (menu, _)| {
-///         menu.text_parts(pa).tags.remove(mask_ns, ..);
-///         menu.text_parts(pa)
-///             .tags
-///             .insert(mask_ns, .., Mask("inactive"));
+///     hook::add::<ModeSwitched>(move |pa, switch| {
+///         if let Some(menu) = switch.new.handle.get_as::<Menu>() {
+///             menu.text_parts(pa).tags.remove(mask_ns, ..);
+///             menu.text_parts(pa).tags.insert(mask_ns, .., Mask("active"));
+///         } else if let Some(menu) = switch.old.handle.get_as::<Menu>() {
+///             menu.text_parts(pa).tags.remove(mask_ns, ..);
+///             menu.text_parts(pa)
+///                 .tags
+///                 .insert(mask_ns, .., Mask("inactive"));
+///         }
 ///     });
 /// }
 /// # impl Widget for Menu {

@@ -1,43 +1,38 @@
 # Key bindings
 
-Duat's default mode is one heavily inspired by Kakoune. This means that it is 
-modal, and follows "object action" semantics, unlike (neo)vim, which follows 
+Duat's default mode is one heavily inspired by Kakoune. This means that it is
+modal, and follows "object action" semantics, unlike (neo)vim, which follows
 "action object" semantics.
 
-Duat is extremely capable in the multi-cursor department, so Duat's default 
-mode makes heavy use of multiple cursors. Every action will be done on every 
+Duat is extremely capable in the multi-cursor department, so Duat's default
+mode makes heavy use of multiple cursors. Every action will be done on every
 cursor, unless specified otherwise.
 
 Given that, here are the bindings for `duatmode`:
 
-# Keymaps
+## Insert mode
 
-On every key, if the action involves selections, unless stated
-otherwise, it will take place in all selections.
-
-## `Insert` mode
-
-Insert mode is the text editing mode of Duat, much like Vim's. It
+Insert mode is the text editing mode of Duat, much like Vim’s. It
 is also entered via various keys in `Normal` mode.
 
 On insert mode, keys are sent normally, with the exception of the
 following:
 
-`<Tab>` and `<S-Tab>` will do different things depending on your
+`<Tab>` and `<s-Tab>` will do different things depending on your
 [tab mode].
 
-`<C-n>` and `<C-p>` go to the next and previous completion
+`<s-n>` and `<s-p>` go to the next and previous completion
 entries.
 
-`<Esc>` exits insert mode, returning to `Normal` mode`.
+`<Esc>` exits insert mode, returning to `Normal` mode\`.
 
 ## Normal mode
 
 The keys in `normal` mode follow the following patterns:
 
-- `word` characters follow Duat's [word chars], which are normally
+* `word` characters follow Duat’s [word chars], which are normally
   used to define where lines wrap.
-- `WORD` characters are just any non-whitespace character.
+* `WORD` characters are just any non-whitespace character.
 
 In normal mode, another factor is the `param` value, which is
 incremented by typing digits.  For example, if you type
@@ -46,9 +41,9 @@ incremented by typing digits.  For example, if you type
 <details>
 <summary><b>Object selection</b></summary>
 
-In Duat, there are various types of "objects" for selection. These
-get used on `Normal` mode key sequences, most notably on `<A-i>`
-and `<A-a>`. Each of them defines something to be selected:
+In Duat, there are various types of “objects” for selection. These
+get used on `Normal` mode key sequences, most notably on `'` and
+`"`. Each of them defines something to be selected:
 
 `b`, `(`, `)`\
 Inside/around parenthesis.
@@ -71,7 +66,7 @@ Inside/around double quotes.
 `g`, `` ` ``\
 Inside/around graves.
 
-`w`, `<A-w>`
+`w`, `e`
 Inside/around `word`s and `WORD`s.
 
 `s`\
@@ -98,37 +93,34 @@ Move left. Wraps around lines.
 Move down
 
 `<Down>`\
-Move down to the next wrapped line (i.s vim's `gj`).
+Move down to the next wrapped line (i.s vim’s `gj`).
 
 `k`\
 Move up.
 
 `<Up>`\
-Move up to the previous wrapped line (i.e. vim's `gk`).
+Move up to the previous wrapped line (i.e. vim’s `gk`).
 
 `l`, `<Right>`\
 Move right. Wraps around lines.
 
-`H`, `<S-Left>`, `J`, `<S-Down>`, `K`, `<S-Up>`, `L`, `<S-Right>`\
+`H`, `<s-Left>`, `J`, `<s-Down>`, `K`, `<s-Up>`, `L`, `<s-Right>`\
 Same as the previous characters, but extends the selection
 
 `w`\
-Selects the `word` and following space ahead of the selection.
-
-`b`\
-Selects the `word` followed by spaces behind the selection.
+Selects the `word`/spaces ahead of the selection.
 
 `e`\
-Selects to the end of the next `word` ahead of the selection.
+Selects the `WORD`/spaces ahead of the selection.
 
-`<(W|B|E)>`\
-The same as `(w|b|e)`, but extends the selection.
+`b`\
+Selects the `word`/spaces behind the selection.
 
-`<A-(w|b|e)>`\
-The same as `(w|b|e)`, but over a `WORD`.
+`v`\
+Selects the `WORD`/spaces behind the selection
 
-`<A-(W|B|E)>`\
-The same as `<A-(w|b|e)>`, but extends the selection.
+`<(W|E|B|V)>`\
+The same as `(w|b|e|v)`, but extends the selection.
 
 `f{char}`\
 Selects to the next occurrence of the `{char}`.
@@ -139,19 +131,18 @@ Selects until the next occurrence of the `{char}`.
 `<(F|T)>{char}`\
 Same as `(f|t)`, but extends the selection.
 
-`<A-(f|t)>{char}`\
+`<a-(f|t)>{char}`\
 Same as `(f|t)`, but in the opposite direction.
 
-`<A-(F|T)>{char}`\
-Same as `<A-(f|t)>`, but in extends the selection.
+`<a-(F|T)>{char}`\
+Same as `<a-(f|t)>`, but in extends the selection.
 
 `{param}g`\
 Goes to the `{param}`th line. If param was not set, enters `go to`
 mode.
 
 `{param}G`\
-Extends to the `{param}`th line. If param was not set, enters `go
-to` mode, and actions will extend.
+Extends to the `{param}`th line. If param was not set, enters `go to` mode, and actions will extend.
 
 `x`\
 Extends selection to encompass full lines.
@@ -159,35 +150,53 @@ Extends selection to encompass full lines.
 `%`\
 Selects the whole buffer.
 
-`<A-h>`, `<Home>`\
+`<a-h>`, `<Home>`\
 Selects to the start of the line.
 
-`<A-l>`, `<End>`\
+`<a-l>`, `<End>`\
 Selects until the end of the line.
 
-`<A-H>`, `<S-Home>`, `<A-L>`, `<S-End>`\
+`<a-H>`, `<s-Home>`, `<a-L>`, `<s-End>`\
 Same as the previous two, but extends the selection.
+
+`"`\
+Select around object
+
+`[`,`]`\
+Select around start/end of object
+
+`{`,`}`\
+Extend around start/end of object
+
+`'`\
+Select inside object
+
+`<a-[>`,`<a-]>`\
+Select inside start/end of object
+
+`<a-{>`,`<a-}>`\
+Extend inside start/end of object
 
 `m`\
 Selects to the next pair of matching brackets.
 
-`<A-m>`\
+`<a-m>`\
 Selects the previous pair of matching brackets.
 
-`M`, `<A-M>`\
+`M`, `<a-M>`\
 Same as the previous two, but extends the selection.
 
-`<A-u>`\
+`<a-u>`\
 Returns to the previous state for the selections.
 
-`<A-U>`\
+`<a-U>`\
 Goes to the next state for the selections.
 
 `;`\
-Reduces selections to just the [cursor].
+Reduces selections to just the cursor.
 
-`<A-;>`\
-Flips the [cursor] and [anchor] of selectionss around.
+`<a-;>`\
+Flips the cursor and anchor of selectionss around.
 
 `,`\
 Removes extra selections.
@@ -195,20 +204,29 @@ Removes extra selections.
 `C`\
 Creates a selection on the column below the last one.
 
-`<A-C>`\
+`<a-C>`\
 Creates a selection on the column above the first one.
 
-`<A-:>`\
-Places the [cursor] ahead of the [anchor] in all selections.
+`<a-:>`\
+Places the cursor ahead of the anchor in all selections.
 
-`<A-s>`\
+`X`\
 Divides selection into multiple selections, one per line.
 
-`<A-S>`\
+`D`\
 Splits into two selections, one at each end of the selection.
 
-`<A-_>`\
+`<a-_>`\
 Merges all adjacent selections.
+
+`<a-q>`\
+Replays the recorded macro.
+
+`<a-Q>`\
+Starts/stops recording a macro.
+
+`<c-r>`\
+Reloads the configuration crate.
 
 </details>
 
@@ -297,18 +315,20 @@ Rotates each selection's content forwards.
 Rotates each selection's content backwards.
 
 `|`\
-Changes mode to [`PipeSelections`], letting you pipe each
-selection to an external program.
+Pipes the selections to an external command, replacing
+their content with the output.
+
+`<c-r>`\
+Reload Duat's config.
 
 </details>
 
 <details>
 <summary><b>Search</b></summary>
 
-The searching in this plugin is done through the [`IncSearch`]
-[`Mode`] from Duat, with some [`IncSearcher`]s defined in this
-crate. This means that search will be done incrementally over a
-Regex pattern.
+Searching in Duat is incremental in nature. It takes a regex
+pattern and applies it in real time, which will yield multiple
+selections, depending on which key you typed to start searching:
 
 `/`\
 Searches forward for the next pattern.
@@ -348,13 +368,17 @@ Create a new cursor on the previous match for pattern.
 
 `*`\
 Makes the main selection the searching pattern.
+
 </details>
 
-## goto mode
+### goto mode
 
 Goto mode is accessed by the `g` and `G` keys in `normal` mode.
-It serves a s a way to quickly move places, be it on selections or to other 
+It serves a s a way to quickly move places, be it on selections or to other
 `Buffer`s and such.
+
+Note that if these keys are preceded by a count, like `10g`, you
+will instead immediately go to the 10th line, instead of goto mode.
 
 <details>
 <summary><b>Key bindings</b></summary>
@@ -393,11 +417,34 @@ Go to the previous buffer (includes other windows).
 ## User mode
 
 In Duat, `User` mode is a "generalized mode", which should be
-used by `Plugin`s for key maps. For example, you could map `l`
-on `User` mode to do LSP related actions.
+used by `Plugin`s for key maps. As an example, [`duat-sneak`]
+makes use of this mode to enter `Sneak` mode.
 
 Other "monolithic modes" (Vim, Helix, Emacs, etc) should make use
 of this `User` mode for the same purpose. Think of it like the
 leader key in (neo)vim.
 
 To enter `User` mode, you type `<Space>` in `Normal` mode.
+
+<details>
+<summary><b>Key bindings</b></summary>
+
+`l`\
+Enter LSP mode, giving you access to a bunch of LSP related actions.
+
+`L`\
+Enter the logs, letting you see the history of notifications to
+Duat.
+</details>
+
+### LSP mode
+
+<details>
+<summary<b>Key bindings</b></summary>
+
+`f`\
+Format the current `Buffer`.
+
+[tab mode]: https://docs.rs/duat/latest/duat/prelude/enum.TabMode.html
+[word chars]: https://docs.rs/duat/latest/duat/opts/struct.Opts.html#structfield.extra_word_chars
+[`duat-sneak`]: https://github.com/AhoyISki/duat-sneak

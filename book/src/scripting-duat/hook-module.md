@@ -13,16 +13,17 @@ use widgets::*;
 
 fn setup(opts: &mut Opts) {
     // Note the Pass, so you have mutable global state access.
-    // The type of the second argument is inferred, it is only
-    // included here for example's sake.
+    // The type of the second argument is inferred.
     hook::add::<ModeSwitched>(|pa, switch| {
         if switch.old.name == "Insert" && switch.new.name == "Normal" {
             _ = context::current_buffer(pa).save(pa);
         }
     });
 
-    hook::add::<BufferOpened>(|pa, handle: &Handle| {
-        let buf = handle.write(pa);
+    // Handle is an alias for Handle<Buffer> and is frequently
+    // seen in various hooks.
+    hook::add::<BufferOpened>(|pa, buffer: &Handle| {
+        let buf = buffer.write(pa);
         match buf.filetype() {
             Some("rust" | "cpp") => {
                 buf.opts.wrap_lines = true;
@@ -44,6 +45,8 @@ fn setup(opts: &mut Opts) {
         VertRule::builder().push_on(pa, handle);
     });
 
+    // In this hook, I'm incrementing a key_count every time a key is
+    // typed...
     let key_count = RwData::new(0);
     hook::add::<KeyTyped>({
         let key_count = key_count.clone();
@@ -52,6 +55,7 @@ fn setup(opts: &mut Opts) {
         }
     });
 
+    // ...then I'm adding said key_count to the status line.
     opts.fmt_status(move |_| {
         let mode_txt = mode_txt();
         let key_count = key_count.clone();
@@ -116,8 +120,8 @@ fn setup_hook() {
                 // We have to queue it, since this is being
                 // called from another thread.
                 context::queue(|pa| {
-                    let handle = context::current_buffer(pa);
-                    hook::trigger(pa, OnIdle(handle));
+                    let buffer = context::current_buffer(pa);
+                    hook::trigger(pa, OnIdle(buffer));
                 });
             }
         }
@@ -208,8 +212,8 @@ fn setup(opts: &mut Opts) {
     opts.tabstop = 4;
 
     // Changing those options on a buffer by buffer basis.
-    hook::add::<BufferOpened>(|pa, handle| {
-        let buf = handle.write(pa);
+    hook::add::<BufferOpened>(|pa, buffer| {
+        let buf = buffer.write(pa);
 
         match buf.filetype() {
             Some("haskell" | "commonlisp") => buf.opts.tabstop = 2,
@@ -224,10 +228,78 @@ fn setup(opts: &mut Opts) {
 }
 ```
 
+Note that this hook is just a an alias for `WidgetOpened<Buffer>`.
+
 *Arguments*
 
 - The `Handle<Buffer>` of the `Buffer` that was
   opened.
+
+### `BufferClosed`
+
+Triggers as a `Buffer` is being closed. This can happen for two reasons:
+
+- The `Buffer` has been closed, through something like `:q` or `:wq`.
+- The `Buffer` is being unloaded to be reloaded after reloading the config,
+  because you called `:reload` or typed `<c-r>` in normal mode.
+
+*Arguments*
+
+- The `Handle<Buffer>` that was unloaded.
+- `true` if the `Buffer` is going to reload, `false` if it is just being closed.
+
+### `BufferUpdated`
+
+Triggers whenever the `Buffer` is modified in any way.
+
+In order to trigger many things automatically, this is the most frequently used
+hook in Duat. It is useful in many areas, most notably to keep track of every
+change that takes place in `Buffer`s:
+
+```rust
+use duat::prelude::*;
+struct MyPlugin;
+
+impl duat::Plugin for MyPlugin {
+    fn plug(self, opts: &mut Opts, _: &duat::Plugins) {
+        // A namespace used to track changes to every `Buffer`.
+        let tracker_ns = Ns::new();
+
+        hook::add::<BufferOpened>(move |pa, buffer| {
+            // Flush initial empty moment.
+            _ = buffer.read(pa).moment_for(tracker_ns)
+        });
+
+        hook::add::<BufferUpdated>(move |pa, buffer| {
+            let moment = buffer.read(pa).moment_for(tracker_ns);
+
+            for change in moment.iter() {
+                // Update Plugin state based on changes.
+            }
+        });
+    }
+}
+```
+
+This particular pattern can be found all over the place. Two major examples being
+`duat-lsp` and `duat-treesitter`.
+
+Do note here that the `Buffer::moment_for` function may be called from _anywhere_
+it'll just retrieve all the `Change`s that took place since the last call with the
+same `Ns`.
+
+*Arguments*
+
+- The `Handle<Buffer>` that was updated.
+
+### `BufferSwitched`
+
+Triggers whenever you switch the active `Buffer`.
+
+*Arguments*
+
+- The previous `Handle<Buffer>`.
+- The current `Handle<Buffer>`.
 
 ### `BufferSaved`
 
@@ -239,26 +311,6 @@ of the `write` family of commands, or if `Handle::<Buffer>::save` is called.
 - The `Handle<Buffer>` that was saved.
 - A `bool`, which is `true` if the `Buffer` is being closed, through commands
   like `wq`.
-
-### `BufferClosed`
-
-Triggers as a `Buffer` is being closed, after `BufferSaved`. This will happen
-when you run a command like `q` or `wq`, or after calling
-`Handle::<Buffer>::close`. It will also happen after quitting Duat, after
-`ConfigUnloaded` but before `ExitedDuat`.
-
-*Arguments*
-
-- The `Handle<Buffer>` that was closed.
-
-### `BufferReloaded`
-
-Triggers on every `Buffer` after the config gets reloaded. This _won't_ happen
-on the first config that was loaded.
-
-*Arguments*
-
-- The `Handle<Buffer>` that was reloaded.
 
 ### `ConfigLoaded`
 
@@ -277,16 +329,7 @@ This will also trigger upon exiting Duat.
 
 *Arguments*
 
-- There are no arguments, just the normal `&mut Pass`
-
-### `ExitedDuat`
-
-Triggers after quitting Duat, after `ConfigUnloaded` and after triggering
-`BufferClosed` on each `Buffer`.
-
-*Arguments*
-
-- There are no arguments, just the normal `&mut Pass`
+- Wether we are also about to quit Duat (i.e. after `:q`, `:wq`, etc).
 
 ### `FocusedOnDuat`
 
@@ -303,3 +346,33 @@ Triggers when Duat loses focus from the operating system.
 *Arguments*
 
 - There are no arguments, just the normal `&mut Pass`
+
+### `WidgetOpened<W>`
+
+Triggers when a widget `W` is opened. Its most common form is
+`WidgetOpened<Buffer>`, which is aliased to `BufferOpened`.
+
+This hook is very useful for building the layout of Duat. In fact, it's
+what places all the widgets on screen, including line numbers, gutters,
+etc.
+
+It's also used in other scenarios, like delayed setup of widgets, which
+is sometimes necessary when spawning them.
+
+*Arguments*
+
+- The `Handle<W>` that was just opened.
+
+### `WindowOpened`
+
+Triggers when a new window is opened. This includes the first one.
+
+Much like `WidgetOpened`, this hook is very useful for building the
+layout of Duat. By default, it's what adds the footer widgets and the
+logs.
+
+*Arguments*
+
+- The `Window` that was just opened.
+
+### `ModeSwitched`

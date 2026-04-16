@@ -16,7 +16,7 @@ use crate::{
     buffer::Buffer,
     context::{self, Handle},
     data::{Pass, RwData},
-    hook::{self, FocusChanged, KeySent, ModeSwitched},
+    hook::{self, KeySent, ModeSwitched},
     ui::{Node, Widget},
     utils::{catch_panic, duat_name},
 };
@@ -71,8 +71,10 @@ pub fn set_default<M: Mode + Clone>(mode: M) {
 ///
 /// [`Widget`]: Mode::Widget
 pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
+    let old_handle = context::current_widget(pa).clone();
+
     // If we are on the correct widget, no switch is needed.
-    if context::current_widget_node(pa).type_id(pa) != TypeId::of::<M::Widget>() {
+    if old_handle.widget().is::<M::Widget>() {
         let node = {
             let windows = context::windows();
             if TypeId::of::<M::Widget>() == TypeId::of::<Buffer>() {
@@ -86,15 +88,15 @@ pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
         };
 
         match node {
-            Ok(node) => switch_widget(pa, node),
+            Ok(node) => context::set_current_node(pa, node.clone()),
             Err(err) => {
                 context::error!("{err}");
                 return;
             }
         }
-    } else {
-        context::current_widget(pa).clone()
     };
+
+    let new_handle = context::current_widget(pa).clone();
 
     let new_name = duat_name::<M>();
     let old_name = std::mem::replace(context::mode_name().write(pa), new_name);
@@ -105,10 +107,10 @@ pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
 
     // This is the case if we're not in a send_key call.
     let new_mode = if let Some(old_mode) = mode_opt {
-        let new = (new_name, Box::new(mode) as Box<dyn Any + Send>);
-        let old = (old_name, old_mode);
+        let old = (old_mode, old_name, old_handle);
+        let new = (Box::new(mode) as Box<dyn Any + Send>, new_name, new_handle);
         let ms = hook::trigger(pa, ModeSwitched { old, new });
-        ms.new.1
+        ms.new.0
     } else {
         Box::new(mode)
     };
@@ -163,8 +165,7 @@ pub fn reset_to(pa: &mut Pass, handle: &Handle<impl Widget + ?Sized>) {
             .map(|(.., node)| node.clone());
 
         if let Some(node) = node {
-            let node = node.clone();
-            switch_widget(pa, node);
+            context::set_current_node(pa, node.clone());
             reset_fn(pa);
         } else {
             context::error!("The Handle was already closed");
@@ -172,21 +173,6 @@ pub fn reset_to(pa: &mut Pass, handle: &Handle<impl Widget + ?Sized>) {
     } else {
         context::error!("There is no default [a]Mode[] set for the [a]Widget",);
     };
-}
-
-/// Switches to a certain widget
-pub(super) fn switch_widget(pa: &mut Pass, node: Node) -> Handle<dyn Widget> {
-    let cur_widget = context::current_widget_node(pa);
-    let former = cur_widget.node(pa).handle().clone();
-    let current = node.handle().clone();
-
-    hook::trigger(pa, FocusChanged((former.clone(), current.clone())));
-
-    cur_widget.node(pa).on_unfocus(pa, current.clone());
-    context::set_current_node(pa, node.clone());
-    node.on_focus(pa, former.clone());
-
-    former.clone()
 }
 
 /// Sends the [`KeyEvent`] to the active [`Mode`]
@@ -219,14 +205,15 @@ fn send_key_fn<M: Mode>(pa: &mut Pass, key_event: KeyEvent) {
     // A new mode may have been set in the send_key function.
     match mode_opt {
         Some(new_mode) => {
+            let new_handle = context::current_widget(pa).clone();
             // Where the mode switch actually happens.
             let old_name = duat_name::<M>();
             let new_name = *context::mode_name().read(pa);
 
-            let new = (new_name, new_mode);
-            let old = (old_name, mode as Box<dyn Any + Send>);
+            let old = (mode as Box<dyn Any + Send>, old_name, handle.to_dyn());
+            let new = (new_mode, new_name, new_handle);
             let ms = hook::trigger(pa, ModeSwitched { old, new });
-            *MODE.write(pa) = Some(ms.new.1);
+            *MODE.write(pa) = Some(ms.new.0);
         }
         None => *MODE.write(pa) = Some(mode),
     }

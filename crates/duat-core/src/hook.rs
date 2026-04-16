@@ -33,10 +33,8 @@
 //!
 //! - [`BufferOpened`] is an alias for [`WidgetOpened<Buffer>`].
 //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
-//! - [`BufferClosed`] triggers on every buffer upon closing Duat.
-//! - [`BufferUnloaded`] triggers on every buffer upon reloading Duat.
+//! - [`BufferClosed`] triggers when you close/unload a buffer.
 //! - [`BufferUpdated`] triggers whenever a buffer changes.
-//! - [`BufferPrinted`] triggers after a buffer has been printed.
 //! - [`BufferSwitched`] triggers when switching the active buffer.
 //! - [`ConfigLoaded`] triggers after loading the config crate.
 //! - [`ConfigUnloaded`] triggers after unloading the config crate.
@@ -44,9 +42,6 @@
 //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
 //! - [`WidgetOpened`] triggers when a [`Widget`] is opened.
 //! - [`WindowOpened`] triggers when a [`Window`] is created.
-//! - [`FocusedOn`] triggers when a [widget] is focused.
-//! - [`UnfocusedFrom`] triggers when a [widget] is unfocused.
-//! - [`FocusChanged`] is like [`FocusedOn`], but on [dyn `Widget`]s.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`KeySent`] triggers when a keys are sent.
 //! - [`KeyTyped`] triggers when keys are _typed_, not _sent_.
@@ -213,11 +208,11 @@ mod global {
     ///   allowing them to all be [removed] at once.
     /// - [`HookBuilder::filter`]: Filters when this hook should be
     ///   called, by giving a struct for which  `H` implements
-    ///   [`PartialEq`]. An example is the [`FocusedOn`] hook, which
-    ///   accepts [`Handle`]s and [`Handle`] pairs.
+    ///   [`PartialEq`]. An example is the [`BufferClosed`] hook,
+    ///   which accepts [`Handle`]s.
     ///
     /// [hook]: crate::hook
-    /// [`FocusedOn`]: super::FocusedOn
+    /// [`BufferClosed`]: super::BufferClosed
     /// [`Handle`]: crate::context::Handle
     /// [removed]: remove
     pub struct HookBuilder<H: Hookable> {
@@ -485,28 +480,6 @@ impl<W: 'static> Hookable for WidgetOpened<W> {
     }
 }
 
-/// An alias for [`WidgetOpened<Buffer>`].
-pub type BufferOpened = WidgetOpened<Buffer>;
-
-/// [`Hookable`]: Triggers after [`Handle::save`] or [`Handle::save_to`].
-///
-/// Only triggers if the buffer was actually updated.
-///
-/// # Arguments
-///
-/// - The [`Handle`] of said [`Buffer`]
-/// - Wether the `Buffer` will be closed (happens when calling the
-///   `wq` or `waq` commands)
-pub struct BufferSaved(pub(crate) (Handle, bool));
-
-impl Hookable for BufferSaved {
-    type Input<'h> = (&'h Handle, bool);
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        (&self.0.0, self.0.1)
-    }
-}
-
 /// [`Hookable`]: Triggers when a new window is opened.
 ///
 /// # Arguments
@@ -585,57 +558,33 @@ impl Hookable for WindowOpened {
     }
 }
 
-/// [`Hookable`]: Triggers before closing a [`Buffer`].
+/// [`Hookable`]: Triggers after loading a [`Buffer`].
 ///
 /// # Arguments
 ///
-/// - The [`Buffer`]'s [`Handle`].
-///
-/// This will be triggered whenever a `Buffer` is closed. Note that
-/// this does not count when a `Buffer` is closed in order to be
-/// reopened in a reloaded config.
-///
-/// If you want to handle that scenario, check out [`BufferUnloaded`].
-pub struct BufferClosed(pub(crate) Handle);
-
-impl Hookable for BufferClosed {
-    type Input<'h> = &'h Handle;
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        &self.0
-    }
-}
-
-impl PartialEq<Handle> for BufferClosed {
-    fn eq(&self, other: &Handle) -> bool {
-        self.0 == *other
-    }
-}
+/// - The `Buffer`'s [`Handle`].
+pub type BufferOpened = WidgetOpened<Buffer>;
 
 /// [`Hookable`]: Triggers before unloading a [`Buffer`].
 ///
 /// # Arguments
 ///
 /// - The `Buffer`'s [`Handle`].
-///
-/// This will happen before reloading Duat, on every `Buffer` that is
-/// open at that point.
-///
-/// If you want to handle the closure of buffers, see the hook for
-/// [`BufferClosed`].
-pub struct BufferUnloaded(pub(crate) Handle);
+/// - A `bool` indicating if it is being closed. If `true`, it's being
+///   closed, otherwise, it's being unloaded for a config reload.
+pub struct BufferClosed(pub(crate) (Handle, bool));
 
-impl Hookable for BufferUnloaded {
-    type Input<'h> = &'h Handle;
+impl Hookable for BufferClosed {
+    type Input<'h> = (&'h Handle, bool);
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        &self.0
+        (&self.0.0, self.0.1)
     }
 }
 
-impl PartialEq<Handle> for BufferUnloaded {
+impl PartialEq<Handle> for BufferClosed {
     fn eq(&self, other: &Handle) -> bool {
-        self.0 == *other
+        self.0.0 == *other
     }
 }
 
@@ -708,7 +657,7 @@ impl PartialEq<Handle> for BufferUnloaded {
 ///
 /// # Arguments
 ///
-/// - The [`Buffer`]'s [`Handle`]
+/// - The [`Buffer`]'s [`Handle`].
 ///
 /// [`Area`]: crate::ui::Area
 /// [`Buffer`]: crate::buffer::Buffer
@@ -739,33 +688,6 @@ impl PartialEq<Handle> for BufferUpdated {
     }
 }
 
-/// [`Hookable`]: Triggers after a [`Buffer`] is printed.
-///
-/// The primary purpose of this `Widget` is to do cleanup on temporary
-/// changes made during a `BufferUpdated` triggering.
-///
-/// One example of this is with the default `BufferOpts`, which allow
-/// you to hightlight the current cursor line. Since this makes use of
-/// disruptive `Tag`s, it is best to do this only during the printing
-/// process, then get rid of said tags.
-///
-/// # Warning
-///
-/// Any changes done to the [`Buffer`] or [`Area`] from this hook will
-/// _not_ be checked in order for a reprint. This is to avoid
-/// repeatedly printing over and over again.
-///
-/// [`Area`]: crate::ui::Area
-pub struct BufferPrinted(pub(crate) Handle);
-
-impl Hookable for BufferPrinted {
-    type Input<'h> = &'h Handle;
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        &self.0
-    }
-}
-
 /// [`Hookable`]: Triggers whenever the active [`Buffer`] changes.
 ///
 /// # Arguments
@@ -781,6 +703,31 @@ impl Hookable for BufferSwitched {
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         (&self.0.0, &self.0.1)
+    }
+}
+
+/// [`Hookable`]: Triggers after [`Handle::save`] or [`Handle::save_to`].
+///
+/// Only triggers if the buffer was actually updated.
+///
+/// # Arguments
+///
+/// - The [`Handle`] of said [`Buffer`].
+/// - Wether the `Buffer` will be closed (happens when calling the
+///   `wq` or `waq` commands).
+pub struct BufferSaved(pub(crate) (Handle, bool));
+
+impl Hookable for BufferSaved {
+    type Input<'h> = (&'h Handle, bool);
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        (&self.0.0, self.0.1)
+    }
+}
+
+impl PartialEq<Handle> for BufferSaved {
+    fn eq(&self, other: &Handle) -> bool {
+        self.0.0 == *other
     }
 }
 
@@ -806,7 +753,7 @@ impl Hookable for ConfigLoaded {
 /// [`Hookable`]: Triggers when Duat closes or has to reload.
 ///
 /// This function will trigger right after a triggering of
-/// [`BufferUnloaded`] on each open [`Buffer`].
+/// [`BufferClosed`] on each open [`Buffer`].
 ///
 /// # Arguments
 ///
@@ -847,103 +794,18 @@ impl Hookable for UnfocusedFromDuat {
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
 }
 
-/// [`Hookable`]: Triggers when the [`Widget`] is focused.
-///
-/// # Arguments
-///
-/// - The [`Handle<dyn Widget>`] for the unfocused `Widget`.
-/// - The [`Handle<W>`] for the newly focused `Widget`.
-///
-/// # Filters
-///
-/// This `Hookable` can be filtered in two ways
-///
-/// - By a focused [`Handle<_>`].
-/// - By a `(Handle<_>, Handle<_>)` pair.
-pub struct FocusedOn<W>(pub(crate) (Handle<dyn Widget>, Handle<W>));
-
-impl<W: 'static> Hookable for FocusedOn<W> {
-    type Input<'h> = &'h (Handle<dyn Widget>, Handle<W>);
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        &self.0
-    }
-}
-
-impl<W1, W2: ?Sized> PartialEq<Handle<W2>> for FocusedOn<W1> {
-    fn eq(&self, other: &Handle<W2>) -> bool {
-        self.0.1 == *other
-    }
-}
-
-impl<W1: Widget, W2: Widget + ?Sized, W3: Widget + ?Sized> PartialEq<(Handle<W2>, Handle<W3>)>
-    for FocusedOn<W1>
-{
-    fn eq(&self, other: &(Handle<W2>, Handle<W3>)) -> bool {
-        self.0.0 == other.0 && self.0.1 == other.1
-    }
-}
-
-/// [`Hookable`]: Triggers when the [`Widget`] is unfocused.
-///
-/// # Arguments
-///
-/// - The [`Handle<W>`] for the unfocused `Widget`
-/// - The [`Handle<dyn Widget>`] for the newly focused `Widget`
-pub struct UnfocusedFrom<W: Widget>(pub(crate) (Handle<W>, Handle<dyn Widget>));
-
-impl<W: Widget> Hookable for UnfocusedFrom<W> {
-    type Input<'h> = &'h (Handle<W>, Handle<dyn Widget>);
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        &self.0
-    }
-}
-
-impl<W1: Widget, W2: Widget + ?Sized> PartialEq<Handle<W2>> for UnfocusedFrom<W1> {
-    fn eq(&self, other: &Handle<W2>) -> bool {
-        self.0.0 == *other
-    }
-}
-
-impl<W1: Widget, W2: Widget + ?Sized, W3: Widget + ?Sized> PartialEq<(Handle<W2>, Handle<W3>)>
-    for UnfocusedFrom<W1>
-{
-    fn eq(&self, other: &(Handle<W2>, Handle<W3>)) -> bool {
-        self.0.0 == other.0 && self.0.1 == other.1
-    }
-}
-
-/// [`Hookable`]: Triggers when focus changes between two [`Widget`]s.
-///
-/// # Arguments
-///
-/// - The [`Handle<dyn Widget>`] for the unfocused `Widget`
-/// - The [`Handle<dyn Widget>`] for the newly focused `Widget`
-///
-/// This `Hookable` is triggered _before_ [`FocusedOn`] and
-/// [`UnfocusedFrom`] are triggered.
-pub struct FocusChanged(pub(crate) (Handle<dyn Widget>, Handle<dyn Widget>));
-
-impl Hookable for FocusChanged {
-    type Input<'h> = &'h (Handle<dyn Widget>, Handle<dyn Widget>);
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        &self.0
-    }
-}
-
 /// [`Hookable`]: Triggers when the [`Mode`] is changed.
 ///
 /// # Arguments
 ///
-/// - The previous mode.
-/// - The current mode.
+/// - A [`ModeSwitch`], which contains information about the `old` and
+///   `new` `Mode`s. This includes the `Mode` itself, its name, and
+///   its active [`Handle<dyn Widget>`].
 ///
 /// [`Mode`]: crate::mode::Mode
 pub struct ModeSwitched {
-    pub(crate) old: (&'static str, Box<dyn Any + Send>),
-    pub(crate) new: (&'static str, Box<dyn Any + Send>),
+    pub(crate) old: (Box<dyn Any + Send>, &'static str, Handle<dyn Widget>),
+    pub(crate) new: (Box<dyn Any + Send>, &'static str, Handle<dyn Widget>),
 }
 
 impl Hookable for ModeSwitched {
@@ -952,12 +814,14 @@ impl Hookable for ModeSwitched {
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         ModeSwitch {
             old: ModeParts {
-                name: self.old.0,
-                mode: self.old.1.as_mut(),
+                mode: self.old.0.as_mut(),
+                name: self.old.1,
+                handle: &self.old.2,
             },
             new: ModeParts {
-                name: self.new.0,
-                mode: self.new.1.as_mut(),
+                name: self.new.1,
+                mode: self.new.0.as_mut(),
+                handle: &self.new.2,
             },
         }
     }
@@ -984,11 +848,15 @@ pub struct ModeSwitch<'h> {
 /// [`hook`]: self
 /// [`Mode`]: crate::mode::Mode
 pub struct ModeParts<'h> {
+    pub(crate) mode: &'h mut dyn Any,
     /// The name of this [`Mode`].
     ///
     /// [`Mode`]: crate::mode::Mode
     pub name: &'static str,
-    pub(crate) mode: &'h mut dyn Any,
+    /// The handle of this [`Mode`].
+    ///
+    /// [`Mode`]: crate::mode::Mode
+    pub handle: &'h Handle<dyn Widget>,
 }
 
 impl ModeParts<'_> {

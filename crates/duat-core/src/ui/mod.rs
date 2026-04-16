@@ -699,7 +699,7 @@ impl<W: Widget> PushTarget for Handle<W> {
     }
 
     fn try_downcast<DW: Widget>(&self) -> Option<Handle<DW>> {
-        self.try_downcast()
+        self.get_as()
     }
 }
 

@@ -13,7 +13,7 @@ use duat_core::{
     Ns, cmd,
     context::{self, Handle, Location, Record},
     data::Pass,
-    hook::{self, FocusedOn, MsgLogged, OnMouseEvent, UnfocusedFrom},
+    hook::{self, ModeSwitched, MsgLogged, OnMouseEvent},
     mode::{self, MouseButton, TwoPointsPlace},
     opts::PrintOpts,
     text::{Point, Spawn, Text, TextMut, txt},
@@ -53,10 +53,12 @@ pub fn logbook_setup() {
         area.scroll_ver(&lb.text, i32::MAX, lb.print_opts());
     });
 
-    hook::add::<FocusedOn<LogBook>>(|pa, (_, logbook)| logbook.area().reveal(pa).unwrap());
-
-    hook::add::<UnfocusedFrom<LogBook>>(|pa, (logbook, _)| {
-        if logbook.read(pa).close_on_unfocus {
+    hook::add::<ModeSwitched>(|pa, switch| {
+        if let Some(logbook) = switch.new.handle.get_as::<LogBook>() {
+            logbook.area().reveal(pa).unwrap()
+        } else if let Some(logbook) = switch.old.handle.get_as::<LogBook>()
+            && logbook.read(pa).close_on_unfocus
+        {
             logbook.area().hide(pa).unwrap()
         }
     });

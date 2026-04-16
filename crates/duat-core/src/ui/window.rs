@@ -20,7 +20,7 @@ use crate::{
     buffer::{Buffer, BufferOpts, PathKind},
     context::{self, Handle},
     data::{Pass, RwData},
-    hook::{self, BufferClosed, BufferSwitched, WidgetOpened, WindowOpened},
+    hook::{self, BufferSwitched, BufferClosed, WidgetOpened, WindowOpened},
     mode,
     session::UiMouseEvent,
     text::{Text, txt},
@@ -74,7 +74,7 @@ impl Windows {
         hook::trigger(pa, WindowOpened(window));
         hook::trigger(
             pa,
-            WidgetOpened(node.handle().try_downcast::<Buffer>().unwrap()),
+            WidgetOpened(node.handle().get_as::<Buffer>().unwrap()),
         );
     }
 
@@ -93,7 +93,7 @@ impl Windows {
         hook::trigger(pa, WindowOpened(self.inner.read(pa).list[win].clone()));
         hook::trigger(
             pa,
-            WidgetOpened(node.handle().try_downcast::<Buffer>().unwrap()),
+            WidgetOpened(node.handle().get_as::<Buffer>().unwrap()),
         );
 
         node
@@ -109,7 +109,7 @@ impl Windows {
     ) -> Option<Handle<W>> {
         self.push(pa, (target, on_buffers, specs), widget, master)?
             .handle()
-            .try_downcast()
+            .get_as()
     }
 
     /// Spawn a [`Widget`] on a [`Handle`].
@@ -172,11 +172,11 @@ impl Windows {
         window.add(pa, node.clone(), None, Location::Spawned(id));
         self.inner.write(pa).list.insert(win, window);
 
-        hook::trigger(pa, WidgetOpened(node.handle().try_downcast::<W>().unwrap()));
+        hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
 
         callback(pa, node.handle().clone());
 
-        node.handle().try_downcast()
+        node.handle().get_as()
     }
 
     /// Spawns a [`Widget`] on [`Text`].
@@ -203,9 +203,9 @@ impl Windows {
         window.add(pa, node.clone(), None, Location::Spawned(id));
         self.inner.write(pa).list.insert(win, window);
 
-        hook::trigger(pa, WidgetOpened(node.handle().try_downcast::<W>().unwrap()));
+        hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
 
-        node.handle().try_downcast().unwrap()
+        node.handle().get_as().unwrap()
     }
 
     /// Spawn a static floating `Widget`.
@@ -236,9 +236,9 @@ impl Windows {
         window.add(pa, node.clone(), None, Location::Spawned(id));
         self.inner.write(pa).list.insert(win, window);
 
-        hook::trigger(pa, WidgetOpened(node.handle().try_downcast::<W>().unwrap()));
+        hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
 
-        node.handle().try_downcast()
+        node.handle().get_as()
     }
 
     /// Pushes a [`Buffer`] to the buffer's parent.
@@ -331,7 +331,7 @@ impl Windows {
         window.add(pa, node.clone(), parent, location);
         self.inner.write(pa).list.insert(win, window);
 
-        hook::trigger(pa, WidgetOpened(node.handle().try_downcast::<W>().unwrap()));
+        hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
 
         Some(node)
     }
@@ -348,8 +348,8 @@ impl Windows {
 
         // If it's a Buffer, swap all buffers ahead, so this one becomes the
         // last.
-        if let Some(buf_handle) = handle.try_downcast::<Buffer>() {
-            hook::trigger(pa, BufferClosed(buf_handle.clone()));
+        if let Some(buf_handle) = handle.get_as::<Buffer>() {
+            hook::trigger(pa, BufferClosed((buf_handle.clone(), false)));
 
             let buffers_ahead: Vec<Node> = self.inner.read(pa).list[win]
                 .nodes(pa)
@@ -385,7 +385,7 @@ impl Windows {
         // If this is the active Handle, pick another one to make active.
         let inner = self.inner.read(pa);
         if handle == inner.cur_widget.read(pa).handle() || handle == inner.cur_buffer.read(pa) {
-            if let Some(handle) = handle.try_downcast::<Buffer>() {
+            if let Some(handle) = handle.get_as::<Buffer>() {
                 self.inner.write(pa).buffer_history.remove(&handle);
 
                 let entry = self
@@ -425,7 +425,7 @@ impl Windows {
         let lhs_win = self.handle_window(pa, lhs)?;
         let rhs_win = self.handle_window(pa, rhs)?;
 
-        let [lhs_buffer, rhs_buffer] = [lhs.try_downcast::<Buffer>(), rhs.try_downcast()];
+        let [lhs_buffer, rhs_buffer] = [lhs.get_as::<Buffer>(), rhs.get_as()];
 
         if let [Some(lhs), Some(rhs)] = [lhs_buffer, rhs_buffer] {
             let lhs_lo = lhs.read(pa).layout_order;
@@ -808,7 +808,7 @@ impl Windows {
             .read(pa)
             .list
             .iter()
-            .flat_map(|w| w.nodes(pa).filter_map(|n| n.handle().try_downcast()))
+            .flat_map(|w| w.nodes(pa).filter_map(|n| n.handle().get_as()))
             .collect()
     }
 

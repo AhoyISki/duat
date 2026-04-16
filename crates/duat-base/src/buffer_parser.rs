@@ -15,7 +15,7 @@ use duat_core::{
     Ns,
     buffer::{Buffer, BufferOpts, Moment, PerBuffer},
     form::{self, FormId},
-    hook::{self, BufferClosed, BufferOpened, BufferPrinted, BufferUpdated},
+    hook::{self, BufferOpened, BufferClosed, BufferUpdated},
     text::{Mask, Overlay, RegexHaystack, Strs, Tags, txt},
     utils::Memoized,
 };
@@ -27,12 +27,12 @@ struct BufferOptsParser {
 static PARSERS: PerBuffer<BufferOptsParser> = PerBuffer::new();
 
 pub fn enable_parser() {
-    hook::add::<BufferOpened>(move |pa, handle| {
-        let opts_parser = BufferOptsParser { opts: handle.read(pa).opts };
-        PARSERS.register(pa, handle, opts_parser);
+    hook::add::<BufferOpened>(move |pa, buffer| {
+        let opts_parser = BufferOptsParser { opts: buffer.read(pa).opts };
+        PARSERS.register(pa, buffer, opts_parser);
     });
 
-    hook::add::<BufferClosed>(|pa, handle| _ = PARSERS.unregister(pa, handle));
+    hook::add::<BufferClosed>(|pa, (buffer, _)| _ = PARSERS.unregister(pa, buffer));
 
     let [nl_ns, space_ns] = [Ns::new(), Ns::new()];
     let cur_line_ns = Ns::new();
@@ -53,12 +53,11 @@ pub fn enable_parser() {
 
         show_indents(buf, &moment, &printed_line_ranges, indent_ns, opts_changed);
 
+        buf.text_mut().remove_tags(cur_line_ns, ..);
         if parser.opts.highlight_current_line {
             hightlight_current_line(buf, cur_line_ns);
         }
     });
-
-    hook::add::<BufferPrinted>(move |pa, buffer| buffer.text_mut(pa).remove_tags(cur_line_ns, ..));
 
     form::enable_mask("indent");
 }

@@ -205,15 +205,11 @@ pub fn setup_hooks() {
                 });
             }
 
-            let (parser, buf) = PARSERS.register(
-                pa,
-                buffer,
-                Parser {
-                    uri,
-                    servers: servers.clone(),
-                    tokens: BufferTokens::default(),
-                },
-            );
+            let (parser, buf) = PARSERS.register(pa, buffer, Parser {
+                uri,
+                servers: servers.clone(),
+                tokens: BufferTokens::default(),
+            });
 
             for server in &servers {
                 server.send_semantic_tokens_request(buffer, parser);
@@ -289,7 +285,11 @@ pub fn setup_hooks() {
         }
     });
 
-    hook::add::<BufferClosed>(|pa, buffer| {
+    hook::add::<BufferClosed>(|pa, (buffer, is_reloading)| {
+        if is_reloading {
+            return;
+        }
+
         let path = buffer.read(pa).path();
         if let Some(uri) = path_to_uri(&path) {
             server::on_all_servers(|server| {

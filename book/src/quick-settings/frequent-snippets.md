@@ -45,7 +45,7 @@ fn setup(opts: &mut Opts) {
 }
 ```
 
-If you want to, you can also have this behavioron the `PromptLine`, i.e., while 
+If you want to, you can also have this behavior on the `PromptLine`, i.e., while
 writing commands and searches:
 
 ```rust
@@ -326,6 +326,64 @@ fn setup(opts: &mut Opts) {
         };
 
         status.above().push_on(pa, buffer);
+    });
+}
+```
+
+## Frequent auto saving
+
+One way you could automatically save frequently is by doing
+that every time you enter `Normal` mode:
+
+```rust
+use duat::prelude::*;
+setup_duat!(setup);
+
+fn setup(opts: &mut Opts) {
+    hook::add::<ModeSwitched>(|pa, switch| {
+        if switch.new.is::<Normal>() {
+            let buffer = context::current_buffer(pa);
+            _ = buffer.save(pa);
+        }
+    });
+}
+```
+
+You could also have this behavior only on some languages, or with
+some specific conditions:
+
+```rust
+use duat::prelude::*;
+setup_duat!(setup);
+
+fn setup(opts: &mut Opts) {
+    hook::add::<ModeSwitched>(|pa, switch| {
+        if switch.new.is::<Normal>()
+            && let buffer = context::current_buffer(pa)
+            && let Some("rust" | "markdown" | "html") = buffer.filetype(pa)
+        {
+            _ = buffer.save(pa);
+        }
+    });
+}
+```
+
+You might also want some frequency of automatic saves on `Insert`
+mode. You could do that with certain keys:
+
+```rust
+use duat::prelude::*;
+setup_duat!(setup);
+
+fn setup(opts: &mut Opts) {
+    hook::add::<KeyTyped>(|pa, key_event| {
+        let buffer = context::current_buffer(pa);
+
+        if let Some("rust") = buffer.filetype(pa)
+            && let event!('}' | ')' | ']') = key_event
+        {
+            _ = buffer.save(pa);
+        }
     });
 }
 ```

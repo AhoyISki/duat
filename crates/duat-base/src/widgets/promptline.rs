@@ -21,7 +21,7 @@ use duat_core::{
     Ns,
     context::Handle,
     data::Pass,
-    hook::{self, FocusedOn, KeySent, UnfocusedFrom},
+    hook::{self, KeySent, ModeSwitched},
     opts::PrintOpts,
     text::{Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
@@ -31,10 +31,13 @@ use crate::modes::PromptMode;
 
 /// Add the [`PromptLine`] hooks.
 pub fn promptline_setup() {
-    let ns = Ns::new();
+    let hook_ns = Ns::new();
 
-    hook::add::<FocusedOn<PromptLine>>(move |_, (_, promptline)| {
-        let promptline = promptline.clone();
+    hook::add::<ModeSwitched>(move |_, switch| {
+        hook::remove(hook_ns);
+        let Some(promptline) = switch.new.handle.get_as::<PromptLine>() else {
+            return;
+        };
 
         hook::add::<KeySent>(move |pa, _| {
             let (pl, area) = promptline.write_with_area(pa);
@@ -53,10 +56,8 @@ pub fn promptline_setup() {
                 );
             }
         })
-        .grouped(ns);
+        .grouped(hook_ns);
     });
-
-    hook::add::<UnfocusedFrom<PromptLine>>(move |_, _| hook::remove(ns));
 }
 
 /// A multi purpose text [`Widget`]

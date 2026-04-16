@@ -45,7 +45,7 @@ use crate::{
     context::Handle,
     data::{Pass, RwData},
     form,
-    hook::{self, BufferPrinted, FocusedOn, OnMouseEvent, UnfocusedFrom},
+    hook::{self, OnMouseEvent},
     mode::{ToggleEvent, TwoPointsPlace},
     opts::PrintOpts,
     session::UiMouseEvent,
@@ -86,8 +86,6 @@ pub trait Widget: Send + 'static {
 pub(crate) struct Node {
     handle: Handle<dyn Widget>,
     print: Arc<dyn Fn(&mut Pass, &Handle<dyn Widget>) + Send + Sync>,
-    on_focus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
-    on_unfocus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
     on_mouse_event: Arc<dyn Fn(&mut Pass, UiMouseEvent) + Send + Sync>,
 }
 
@@ -107,12 +105,12 @@ impl Node {
     pub(crate) fn from_handle<W: Widget>(handle: Handle<W>) -> Self {
         Self {
             handle: handle.to_dyn(),
-            print: if let Some(buffer) = handle.try_downcast::<Buffer>() {
+            print: if let Some(buffer) = handle.get_as::<Buffer>() {
                 let handle = handle.clone();
 
                 Arc::new(move |pa, orig_handle| {
                     Buffer::update(pa, &buffer);
-                    
+
                     handle.area.print(
                         pa,
                         handle.text(pa),
@@ -120,10 +118,8 @@ impl Node {
                         form::painter_with_widget::<W>(),
                     );
 
-                    hook::trigger(pa, BufferPrinted(buffer.clone()));
                     orig_handle.declare_as_read();
                     orig_handle.area().0.declare_as_read();
-
                 })
             } else {
                 let handle = handle.clone();
@@ -136,14 +132,6 @@ impl Node {
                     );
                 })
             },
-            on_focus: Arc::new({
-                let handle = handle.clone();
-                move |pa, old| _ = hook::trigger(pa, FocusedOn((old, handle.clone())))
-            }),
-            on_unfocus: Arc::new({
-                let handle = handle.clone();
-                move |pa, new| _ = hook::trigger(pa, UnfocusedFrom((handle.clone(), new)))
-            }),
             on_mouse_event: Arc::new({
                 let handle = handle.clone();
                 let dyn_handle = handle.to_dyn();
@@ -153,26 +141,20 @@ impl Node {
 
                     let points = handle.area().points_at_coord(pa, text, event.coord, opts);
 
-                    hook::trigger(
-                        pa,
-                        OnMouseEvent {
-                            handle: dyn_handle.clone(),
-                            points,
-                            coord: event.coord,
-                            kind: event.kind,
-                            modifiers: event.modifiers,
-                        },
-                    );
-                    hook::trigger(
-                        pa,
-                        OnMouseEvent {
-                            handle: handle.clone(),
-                            points,
-                            coord: event.coord,
-                            kind: event.kind,
-                            modifiers: event.modifiers,
-                        },
-                    );
+                    hook::trigger(pa, OnMouseEvent {
+                        handle: dyn_handle.clone(),
+                        points,
+                        coord: event.coord,
+                        kind: event.kind,
+                        modifiers: event.modifiers,
+                    });
+                    hook::trigger(pa, OnMouseEvent {
+                        handle: handle.clone(),
+                        points,
+                        coord: event.coord,
+                        kind: event.kind,
+                        modifiers: event.modifiers,
+                    });
 
                     if let Some(TwoPointsPlace::Within(points)) = points {
                         let event = ToggleEvent {
@@ -213,7 +195,7 @@ impl Node {
 
     /// Returns the downcast ref of this [`Widget`].
     pub(crate) fn try_downcast<W: Widget>(&self) -> Option<Handle<W>> {
-        self.handle.try_downcast()
+        self.handle.get_as()
     }
 
     /// The "parts" of this [`Node`]
@@ -264,17 +246,6 @@ impl Node {
         }
 
         (self.print)(pa, &self.handle);
-    }
-
-    /// What to do when focusing
-    pub(crate) fn on_focus(&self, pa: &mut Pass, old: Handle<dyn Widget>) {
-        self.handle.area().set_as_active(pa);
-        (self.on_focus)(pa, old)
-    }
-
-    /// What to do when unfocusing
-    pub(crate) fn on_unfocus(&self, pa: &mut Pass, new: Handle<dyn Widget>) {
-        (self.on_unfocus)(pa, new)
     }
 
     pub(crate) fn on_mouse_event(&self, pa: &mut Pass, mouse_event: UiMouseEvent) {

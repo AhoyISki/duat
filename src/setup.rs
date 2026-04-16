@@ -28,7 +28,7 @@ use duat_term::VertRule;
 
 use crate::{
     form,
-    hook::{self, BufferClosed, BufferUnloaded, WindowOpened},
+    hook::{self, BufferClosed, WindowOpened},
     mode,
     opts::Opts,
     prelude::BufferSaved,
@@ -228,60 +228,61 @@ fn enable_whichkey_hooks(opts: &Opts) {
 }
 
 fn enable_buffer_hooks(opts: &Opts) {
-    hook::add::<BufferClosed>(|pa, handle| {
-        let buffer = handle.write(pa);
+    hook::add::<BufferClosed>(|pa, (buffer, is_closing)| {
+        let buf = buffer.write(pa);
 
-        let path = buffer.path();
-        cache::delete_for::<History>(&path);
-        if !buffer.exists() || buffer.has_unsaved_changes() {
-            cache::delete(path);
-        }
-    });
-
-    hook::add::<BufferUnloaded>(|pa, handle| {
-        let buffer = handle.write(pa);
-
-        let path = buffer.path();
-        buffer.text_mut().new_moment();
-
-        if let Some(main) = buffer.selections().get_main()
-            && let Err(err) = cache::store(&path, main.clone())
-        {
-            context::error!("{err}");
-        }
-
-        duat_core::try_or_log_err! {
-            handle.area().store_cache(pa, &path)?;
-        }
-    });
-
-    if opts.enabled_hooks.cache_cursor_position {
-        hook::add::<BufferClosed>(|pa, handle| {
-            let buffer = handle.write(pa);
-
-            let path = buffer.path();
-            buffer.text_mut().new_moment();
-
-            if let Some("gitcommit") = path.filetype() {
+        if is_closing {
+            let path = buf.path();
+            cache::delete_for::<History>(&path);
+            if !buf.exists() || buf.has_unsaved_changes() {
                 cache::delete(path);
-                return;
             }
+        } else {
+            let path = buf.path();
+            buf.text_mut().new_moment();
 
-            if let Some(main) = buffer.selections().get_main()
+            if let Some(main) = buf.selections().get_main()
                 && let Err(err) = cache::store(&path, main.clone())
             {
                 context::error!("{err}");
             }
 
             duat_core::try_or_log_err! {
-                handle.area().store_cache(pa, &path)?;
+                buffer.area().store_cache(pa, &path)?;
+            }
+        }
+    });
+
+    if opts.enabled_hooks.cache_cursor_position {
+        hook::add::<BufferClosed>(|pa, (buffer, is_closing)| {
+            if !is_closing {
+                return;
+            }
+            let buf = buffer.write(pa);
+
+            let path = buf.path();
+            buf.text_mut().new_moment();
+
+            if let Some("gitcommit") = path.filetype() {
+                cache::delete(path);
+                return;
+            }
+
+            if let Some(main) = buf.selections().get_main()
+                && let Err(err) = cache::store(&path, main.clone())
+            {
+                context::error!("{err}");
+            }
+
+            duat_core::try_or_log_err! {
+                buffer.area().store_cache(pa, &path)?;
             }
         });
     }
 
     if opts.enabled_hooks.reload_on_save {
-        hook::add::<BufferSaved>(|pa, (handle, is_closing)| {
-            let path = handle.read(pa).path();
+        hook::add::<BufferSaved>(|pa, (buffer, is_closing)| {
+            let path = buffer.read(pa).path();
             let path = Path::new(&path);
             if !is_closing
                 && let Ok(crate_dir) = crate::utils::crate_dir()
@@ -293,8 +294,8 @@ fn enable_buffer_hooks(opts: &Opts) {
     }
 
     if opts.enabled_hooks.auto_reload_buffers {
-        hook::add::<BufferOpened>(|pa, handle| {
-            if let PathKind::SetExists(path) = handle.read(pa).path_kind()
+        hook::add::<BufferOpened>(|pa, buffer| {
+            if let PathKind::SetExists(path) = buffer.read(pa).path_kind()
                 && let Err(err) = BUFFER_WATCHER.watch(&path)
             {
                 context::warn!("{err}");

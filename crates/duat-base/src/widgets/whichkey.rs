@@ -9,7 +9,7 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     form::{self, Form},
-    hook::{self, FocusChanged, KeyTyped, OnMouseEvent},
+    hook::{self, KeyTyped, ModeSwitched, OnMouseEvent},
     mode::{self, Description, MouseEventKind},
     text::{Text, TextMut, txt},
     ui::{DynSpawnSpecs, PushSpecs, Side, Widget},
@@ -166,7 +166,7 @@ impl WhichKey {
             }
         });
 
-        hook::add_once::<FocusChanged>(move |pa, _| {
+        hook::add_once::<ModeSwitched>(move |pa, _| {
             _ = keys_handle.close(pa);
             _ = descs_handle.close(pa);
         });

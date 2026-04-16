@@ -24,7 +24,7 @@ following:
 `<Tab>` and `<s-Tab>` will do different things depending on your
 [tab mode][__link4].
 
-`<s-n>` and `<s-p>` go to the next and previous completion
+`<c-n>` and `<c-p>` go to the next and previous completion
 entries.
 
 `<Esc>` exits insert mode, returning to `Normal` mode\`.
@@ -236,7 +236,7 @@ Replays the recorded macro.
 `<a-Q>`  
 Starts/stops recording a macro.
 
-`<s-r>`  
+`<c-r>`  
 Reloads the configuration crate.
 
 </details>

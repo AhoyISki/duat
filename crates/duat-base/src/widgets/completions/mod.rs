@@ -25,7 +25,7 @@ use duat_core::{
     },
     context::{self, Handle},
     data::Pass,
-    hook::{self, FocusChanged, KeySent, OnMouseEvent, WidgetOpened},
+    hook::{self, KeySent, ModeSwitched, OnMouseEvent, WidgetOpened},
     mode::MouseEventKind,
     text::{Point, Spawn, Strs, Text, TextMut, txt},
     ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
@@ -125,7 +125,9 @@ pub fn completions_setup() {
         .grouped(ns);
     });
 
-    hook::add::<FocusChanged>(move |pa, (prev, _)| prev.text_mut(pa).remove_tags(*NS, ..));
+    hook::add::<ModeSwitched>(move |pa, switch| {
+        switch.old.handle.text_mut(pa).remove_tags(*NS, ..);
+    });
 
     hook::add::<OnMouseEvent<Completions>>(|pa, event| match event.kind {
         MouseEventKind::ScrollDown => _ = Completions::scroll(pa, 1),
