@@ -66,10 +66,10 @@ setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup(opts: &mut Opts) {
-    hook::add::<BufferOpened>(|pa, handle| {
+    hook::add::<BufferOpened>(|pa, buffer| {
         status!("{name_txt}{Spacer}{main_txt}")
             .above()
-            .push_on(pa, handle);
+            .push_on(pa, buffer);
     });
 }
 ```
@@ -194,21 +194,21 @@ fn setup(opts: &mut Opts) {
     });
 }
 
-fn name_txt(buffer: &Buffer) -> Text {
+fn name_txt(buf: &Buffer) -> Text {
     let mut b = Text::builder();
 
-    if let Some(name) = buffer.name_set() {
-        b.push(txt!("[buffer]{name}"));
-        if !buffer.exists() {
-            b.push(txt!("[buffer.new][[new buffer]]"));
-        } else if buffer.text().has_unsaved_changes() {
-            b.push(txt!("[buffer.unsaved][[has changes]]"));
+    if let Some(name) = buf.name_set() {
+        b.push(txt!("[buf]{name}"));
+        if !buf.exists() {
+            b.push(txt!("[buf.new][[new buf]]"));
+        } else if buf.has_unsaved_changes() {
+            b.push(txt!("[buf.unsaved][[has changes]]"));
         }
-        if let Some("rust") = buffer.filetype() {
+        if let Some("rust") = buf.filetype() {
             b.push(txt!("[[🦀]]"));
         }
     } else {
-        b.push(txt!("[buffer.new.scratch]?!?!?!"));
+        b.push(txt!("[buf.new.scratch]?!?!?!"));
     }
 
     b.build()
@@ -225,9 +225,9 @@ following  snippet:
 setup_duat!(setup);
 
 fn setup(opts: &mut Opts) {
-    hook::add::<BufferOpened>(|pa, handle| {
-        let buffer = handle.write(pa);
-        buffer.opts.tabstop = match buffer.filetype() {
+    hook::add::<BufferOpened>(|pa, buffer| {
+        let buf = buffer.write(pa);
+        buf.opts.tabstop = match buf.filetype() {
             Some("markdown" | "bash" | "lua" | "javascript" | "commonlisp") => 2, 
             _ => 4
         };
@@ -243,17 +243,17 @@ should be a part of words. In this case, I'm adding `'-'` to the list:
 setup_duat!(setup);
 
 fn setup(opts: &mut Opts) {
-    hook::add::<BufferOpened>(|pa, handle| {
-        let buffer = handle.write(pa);
-        match buffer.filetype() {
+    hook::add::<BufferOpened>(|pa, buffer| {
+        let buf = buffer.write(pa);
+        match buf.filetype() {
             Some("lisp" | "scheme" | "markdown" | "css" | "html") => {
-                buffer.opts.tabstop = 2;
-                buffer.opts.extra_word_chars = &['-'];
+                buf.opts.tabstop = 2;
+                buf.opts.extra_word_chars = &['-'];
             }
             Some("bash" | "lua" | "javascript" | "typescript") => {
-                buffer.opts.tabstop = 2;
+                buf.opts.tabstop = 2;
             }
-            _ => buffer.opts.tabstop = 4
+            _ => buf.opts.tabstop = 4
         }
     });
 }
@@ -274,18 +274,18 @@ the status line parts:
 ```rust
 use duat::prelude::*;
 
-fn name_txt(buffer: &Buffer) -> Text {
+fn name_txt(buf: &Buffer) -> Text {
     let mut b = Text::builder();
 
-    if let Some(name) = buffer.name_set() {
-        b.push(txt!("[buffer]{name}"));
-        if !buffer.exists() {
-            b.push(txt!(" [buffer.new]󰎔 "));
-        } else if buffer.text().has_unsaved_changes() {
-            b.push(txt!(" [buffer.unsaved] "));
+    if let Some(name) = buf.name_set() {
+        b.push(txt!("[buf]{name}"));
+        if !buf.exists() {
+            b.push(txt!(" [buf.new]󰎔 "));
+        } else if buf.has_unsaved_changes() {
+            b.push(txt!(" [buf.unsaved] "));
         }
     } else {
-        b.push(txt!(" [buffer.new.scratch]{}󰏫 ", buffer.name()));
+        b.push(txt!(" [buf.new.scratch]{}󰏫 ", buf.name()));
     }
 
     b.build()
@@ -301,8 +301,8 @@ If you want to have a `StatusLine` per `Buffer`, you can add the following:
 setup_duat!(setup);
 
 fn setup(opts: &mut Opts) {
-    hook::add::<BufferOpened>(|pa, handle| {
-        status!("{name_txt}{Spacer}{main_txt}").above().push_on(pa, handle);
+    hook::add::<BufferOpened>(|pa, buffer| {
+        status!("{name_txt}{Spacer}{main_txt}").above().push_on(pa, buffer);
     });
 }
 ```
@@ -317,15 +317,15 @@ depending on the `Buffer`?
 setup_duat!(setup);
 
 fn setup(opts: &mut Opts) {
-    hook::add::<BufferOpened>(|pa, handle| {
+    hook::add::<BufferOpened>(|pa, buffer| {
         let status = if let Ok(crate_dir) = duat::utils::crate_dir()
-            && handle.read(pa).path().starts_with(crate_dir) {
+            && buffer.read(pa).path().starts_with(crate_dir) {
             status!("{name_txt}[config] []{Spacer}{main_txt}")
         } else {
             status!("{name_txt}{Spacer}{main_txt}")
         };
 
-        status.above().push_on(pa, handle);
+        status.above().push_on(pa, buffer);
     });
 }
 ```

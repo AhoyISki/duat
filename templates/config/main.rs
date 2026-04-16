@@ -1,4 +1,4 @@
-// This is an example configuration file.
+// This is an example configuration buffer.
 // Note that
 // ```rust
 // setup_duat!(setup);
@@ -33,7 +33,7 @@ fn setup(opts: &mut Opts) {
         _ = context::current_buffer(pa).save(pa);
     });
 
-	// On Rust, diagnostics rely on file saving, so this hook should
+	// On Rust, diagnostics rely on buffer saving, so this hook should
 	// provide a reload whenever switching to Normal mode.
     hook::add::<ModeSwitched>(|pa, switch| {
         if switch.new.is::<Normal>()
@@ -48,21 +48,21 @@ fn setup(opts: &mut Opts) {
 }
 
 /// A custom function to show the name differently.
-fn custom_name_txt(file: &Buffer) -> Text {
-    if let Some(name) = file.name_set() {
+fn custom_name_txt(buffer: &Buffer) -> Text {
+    if let Some(name) = buffer.name_set() {
         // A TextBuilder lets you build Text incrementally.
         let mut builder = Text::builder();
         // [] pairs change the Form of the text
-        builder.push(txt!("[file]{name}"));
+        builder.push(txt!("[buffer]{name}"));
 
-        if !file.exists() {
+        if !buffer.exists() {
             // Like in regular Rust formatting, double a "[" to escape it.
-            builder.push(txt!("[file.new][[new file]]"))
-        } else if file.text().has_unsaved_changes() {
-            builder.push(txt!("[file.unsaved][[+]]"))
+            builder.push(txt!("[buffer.new][[new buffer]]"))
+        } else if buffer.has_unsaved_changes() {
+            builder.push(txt!("[buffer.unsaved][[+]]"))
         }
 
-        match file.filetype() {
+        match buffer.filetype() {
             Some("rust") => builder.push(" 🦀"),
             Some("python") => builder.push(" 🐍"),
             Some("perl") => builder.push(" 🐫"),
@@ -74,6 +74,6 @@ fn custom_name_txt(file: &Buffer) -> Text {
     } else {
         // But you can also create Text directly
         // The second thing is a non identifier expression.
-        txt!("[file.new.scratch]{} ✍", file.name())
+        txt!("[buffer.new.scratch]{} ✍", buffer.name())
     }
 }

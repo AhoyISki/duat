@@ -148,8 +148,8 @@ fn setup(opts: &mut Opts) {
     hook::add::<OnIdle>(|pa, _| {
         let mut saved = 0;
 
-        for handle in context::buffers(pa) {
-            if let Ok(true) = handle.save(pa) {
+        for buffer in context::buffers(pa) {
+            if buffer.read(pa).has_unsaved_changes() && buffer.save(pa).is_ok() {
                 saved += 1;
             }
         }
