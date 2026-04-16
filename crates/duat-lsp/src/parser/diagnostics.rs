@@ -243,27 +243,46 @@ pub fn add(pa: &mut Pass, server_ns: Ns, uri: Uri, mut list: Vec<Diagnostic>, en
 
     // Declare that the current entries are correctly shifted.
     let moment = buffer.read(pa).moment_for(*NS);
-    if moment.is_empty() || diagnostics.0.len() == 1 {
+    if moment.is_empty() {
         return;
     }
-    
-    let other_servers = Vec::from_iter(
-        diagnostics
-            .0
-            .iter()
-            .filter_map(|(other_ns, _)| (*other_ns != server_ns).then_some(*other_ns)),
-    );
 
+    // Shifting the related entries as well 😒.
     let text = buffer.text(pa);
-    for server_ns in other_servers {
-        let (_, added) = added_for(&mut diagnostics, server_ns, &uri);
-        let ranges = added
-            .iter_mut()
-            .enumerate()
-            .map(|(i, entry)| (i, entry.range_mut()));
-        let to_remove = apply_changes(ranges, &moment, text, encoding);
-        for idx in to_remove.into_iter().rev() {
-            added.remove(idx);
+    for (other_ns, (_, buffer_entries)) in diagnostics.0.iter_mut() {
+        for (other_uri, entries) in buffer_entries {
+            if *other_ns == server_ns && *other_uri == uri {
+                continue;
+            }
+
+            let ranges = entries
+                .iter_mut()
+                .enumerate()
+                .map(|(i, entry)| (i, entry.range_mut()));
+            let to_remove = apply_changes(ranges, &moment, text, encoding);
+            for idx in to_remove.into_iter().rev() {
+                entries.remove(idx);
+            }
+
+            for entry in entries {
+                let Entry::Diagnostic(_, diagnostic, _) = entry else {
+                    continue;
+                };
+                let Some(related) = diagnostic.related_information.as_mut() else {
+                    continue;
+                };
+
+                let ranges = related
+                    .iter_mut()
+                    .enumerate()
+                    .filter(|(_, related)| related.location.uri == uri)
+                    .map(|(i, related)| (i, &mut related.location.range));
+
+                let to_remove = apply_changes(ranges, &moment, text, encoding);
+                for idx in to_remove.into_iter().rev() {
+                    related.remove(idx);
+                }
+            }
         }
     }
 }
