@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e8e08dda.js";
+            window.path_to_searchindex_js = "../searchindex-6433a3a2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -225,10 +225,10 @@ fn setup(opts: &amp;mut Opts) {
 use duat::prelude::*;
 
 fn setup(opts: &amp;mut Opts) {
-    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
+    hook::add::&lt;BufferOpened&gt;(|pa, buffer| {
         status!("{name_txt}{Spacer}{main_txt}")
             .above()
-            .push_on(pa, handle);
+            .push_on(pa, buffer);
     });
 }</code></pre>
 <h2 id="prompt-and-status-on-same-line"><a class="header" href="#prompt-and-status-on-same-line">Prompt and status on same line</a></h2>
@@ -341,21 +341,21 @@ fn setup(opts: &amp;mut Opts) {
     });
 }
 
-fn name_txt(buffer: &amp;Buffer) -&gt; Text {
+fn name_txt(buf: &amp;Buffer) -&gt; Text {
     let mut b = Text::builder();
 
-    if let Some(name) = buffer.name_set() {
-        b.push(txt!("[buffer]{name}"));
-        if !buffer.exists() {
-            b.push(txt!("[buffer.new][[new buffer]]"));
-        } else if buffer.text().has_unsaved_changes() {
-            b.push(txt!("[buffer.unsaved][[has changes]]"));
+    if let Some(name) = buf.name_set() {
+        b.push(txt!("[buf]{name}"));
+        if !buf.exists() {
+            b.push(txt!("[buf.new][[new buf]]"));
+        } else if buf.has_unsaved_changes() {
+            b.push(txt!("[buf.unsaved][[has changes]]"));
         }
-        if let Some("rust") = buffer.filetype() {
+        if let Some("rust") = buf.filetype() {
             b.push(txt!("[[🦀]]"));
         }
     } else {
-        b.push(txt!("[buffer.new.scratch]?!?!?!"));
+        b.push(txt!("[buf.new.scratch]?!?!?!"));
     }
 
     b.build()
@@ -367,9 +367,9 @@ following  snippet:</p>
 </span>setup_duat!(setup);
 
 fn setup(opts: &amp;mut Opts) {
-    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
-        let buffer = handle.write(pa);
-        buffer.opts.tabstop = match buffer.filetype() {
+    hook::add::&lt;BufferOpened&gt;(|pa, buffer| {
+        let buf = buffer.write(pa);
+        buf.opts.tabstop = match buf.filetype() {
             Some("markdown" | "bash" | "lua" | "javascript" | "commonlisp") =&gt; 2, 
             _ =&gt; 4
         };
@@ -381,17 +381,17 @@ should be a part of words. In this case, I’m adding <code>'-'</code> to the li
 </span>setup_duat!(setup);
 
 fn setup(opts: &amp;mut Opts) {
-    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
-        let buffer = handle.write(pa);
-        match buffer.filetype() {
+    hook::add::&lt;BufferOpened&gt;(|pa, buffer| {
+        let buf = buffer.write(pa);
+        match buf.filetype() {
             Some("lisp" | "scheme" | "markdown" | "css" | "html") =&gt; {
-                buffer.opts.tabstop = 2;
-                buffer.opts.extra_word_chars = &amp;['-'];
+                buf.opts.tabstop = 2;
+                buf.opts.extra_word_chars = &amp;['-'];
             }
             Some("bash" | "lua" | "javascript" | "typescript") =&gt; {
-                buffer.opts.tabstop = 2;
+                buf.opts.tabstop = 2;
             }
-            _ =&gt; buffer.opts.tabstop = 4
+            _ =&gt; buf.opts.tabstop = 4
         }
     });
 }</code></pre>
@@ -407,18 +407,18 @@ characters being displayed.</p>
 the status line parts:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 
-fn name_txt(buffer: &amp;Buffer) -&gt; Text {
+fn name_txt(buf: &amp;Buffer) -&gt; Text {
     let mut b = Text::builder();
 
-    if let Some(name) = buffer.name_set() {
-        b.push(txt!("[buffer]{name}"));
-        if !buffer.exists() {
-            b.push(txt!(" [buffer.new]󰎔 "));
-        } else if buffer.text().has_unsaved_changes() {
-            b.push(txt!(" [buffer.unsaved] "));
+    if let Some(name) = buf.name_set() {
+        b.push(txt!("[buf]{name}"));
+        if !buf.exists() {
+            b.push(txt!(" [buf.new]󰎔 "));
+        } else if buf.has_unsaved_changes() {
+            b.push(txt!(" [buf.unsaved] "));
         }
     } else {
-        b.push(txt!(" [buffer.new.scratch]{}󰏫 ", buffer.name()));
+        b.push(txt!(" [buf.new.scratch]{}󰏫 ", buf.name()));
     }
 
     b.build()
@@ -429,8 +429,8 @@ fn name_txt(buffer: &amp;Buffer) -&gt; Text {
 </span>setup_duat!(setup);
 
 fn setup(opts: &amp;mut Opts) {
-    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
-        status!("{name_txt}{Spacer}{main_txt}").above().push_on(pa, handle);
+    hook::add::&lt;BufferOpened&gt;(|pa, buffer| {
+        status!("{name_txt}{Spacer}{main_txt}").above().push_on(pa, buffer);
     });
 }</code></pre>
 <p>The snippet above will place a <code>StatusLine</code> above every single <code>Buffer</code>.</p>
@@ -440,15 +440,15 @@ depending on the <code>Buffer</code>?</p>
 </span>setup_duat!(setup);
 
 fn setup(opts: &amp;mut Opts) {
-    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
+    hook::add::&lt;BufferOpened&gt;(|pa, buffer| {
         let status = if let Ok(crate_dir) = duat::utils::crate_dir()
-            &amp;&amp; handle.read(pa).path().starts_with(crate_dir) {
+            &amp;&amp; buffer.read(pa).path().starts_with(crate_dir) {
             status!("{name_txt}[config] []{Spacer}{main_txt}")
         } else {
             status!("{name_txt}{Spacer}{main_txt}")
         };
 
-        status.above().push_on(pa, handle);
+        status.above().push_on(pa, buffer);
     });
 }</code></pre>
 
