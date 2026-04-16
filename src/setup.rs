@@ -233,7 +233,7 @@ fn enable_buffer_hooks(opts: &Opts) {
 
         let path = buffer.path();
         cache::delete_for::<History>(&path);
-        if !buffer.exists() || buffer.text().has_unsaved_changes() {
+        if !buffer.exists() || buffer.has_unsaved_changes() {
             cache::delete(path);
         }
     });

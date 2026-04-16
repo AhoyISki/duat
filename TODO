@@ -4,8 +4,8 @@ FOR NEXT UPDATE:
   [x] Diagnostics.
   [ ] Goto locations.
   [ ] Autocompletions.
-  [ ] Formatting.
-  [ ] Caching.
+  [x] Formatting.
+  [x] Caching.
 [ ] Snippet support.
 [ ] More work on the Gutter.
   [x] Diferentiate hovering, cursoring, related and default display.
@@ -16,8 +16,11 @@ FOR NEXT UPDATE:
   [ ] Perfect words iterator.
 [ ] Fix pager search.
 [ ] Stop eagerly merging Selections.
-[ ] Additional wrap continuation characters.
+[x] Additional wrap continuation characters.
 [ ] Add a donation splash screen.
+[ ] Some QoL features:
+  [ ] Autocompletions only after n characters.
+  [ ] Remember if a buffer needed to be saved.
 
 KNOWN BUGS:
  HIGH PRIORITY:

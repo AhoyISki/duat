@@ -130,18 +130,6 @@ pub fn handle_request(bridge: &ServerBridge, request: jsonrpc_lite::Request) {
 
             bridge.send_success(request.id, Value::Null);
         }
-        // SemanticTokensRefresh::METHOD => {
-        //     let bridge = bridge.clone();
-        //     context::queue(move |pa| {
-        //         for buffer in context::buffers(pa) {
-        //             let Some((parser, _)) = Parser::write_for(pa, &buffer) else {
-        //                 continue;
-        //             };
-
-        //             bridge.send_semantic_tokens_request(&buffer, parser);
-        //         }
-        //     })
-        // }
         _ => bridge.send_success(request.id, Value::Null),
     }
 }

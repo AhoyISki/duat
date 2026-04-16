@@ -399,6 +399,14 @@ impl Buffer {
         self.was_reloaded
     }
 
+    /// Wether any changes took place on the `Buffer`'s [`Text`] since
+    /// the last time it was saved.
+    ///
+    /// This includes things like undoing and redoing changes.
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.history.has_unsaved_changes()
+    }
+
     /// Prepare this `Buffer` for reloading.
     ///
     /// This works by creating a new [`Buffer`], which will take
@@ -450,45 +458,41 @@ impl Widget for Buffer {
 
 impl Handle {
     /// Writes the buffer to the current [`PathBuf`], if one was set.
-    pub fn save(&self, pa: &mut Pass) -> Result<bool, Text> {
+    pub fn save(&self, pa: &mut Pass) -> Result<(), Text> {
         self.save_quit(pa, false)
     }
 
     /// Saves and quits, resulting in no config reload.
     ///
-    /// Returns `Ok(true)` if it saved, `Ok(false)` if that wasn't
-    /// necessary, and `Err` if there was some problem.
-    pub(crate) fn save_quit(&self, pa: &mut Pass, quit: bool) -> Result<bool, Text> {
+    /// Returns `Err` if there was some problem.
+    pub(crate) fn save_quit(&self, pa: &mut Pass, quit: bool) -> Result<(), Text> {
         let buf = self.write(pa);
 
         if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &buf.path {
             let path = path.clone();
-            if buf.text.has_unsaved_changes() {
-                crate::notify::set_next_write_as_from_duat(path.clone());
+            crate::notify::set_next_write_as_from_duat(path.clone());
 
-                let file = match std::fs::File::create(&path) {
-                    Ok(file) => file,
-                    Err(err) => {
-                        crate::notify::unset_next_write_as_from_duat(path.clone());
-                        return Err(err.into());
-                    }
-                };
-
-                if let Err(err) = buf
-                    .text
-                    .save_on(std::io::BufWriter::new(file))
-                    .inspect(|_| buf.path = PathKind::SetExists(path.clone()))
-                {
+            let file = match std::fs::File::create(&path) {
+                Ok(file) => file,
+                Err(err) => {
                     crate::notify::unset_next_write_as_from_duat(path.clone());
                     return Err(err.into());
                 }
+            };
 
-                hook::trigger(pa, BufferSaved((self.clone(), quit)));
-
-                Ok(true)
-            } else {
-                Ok(false)
+            if let Err(err) = buf
+                .text
+                .save_on(std::io::BufWriter::new(file))
+                .inspect(|_| buf.path = PathKind::SetExists(path.clone()))
+            {
+                crate::notify::unset_next_write_as_from_duat(path.clone());
+                return Err(err.into());
             }
+
+            buf.history.declare_saved();
+            hook::trigger(pa, BufferSaved((self.clone(), quit)));
+
+            Ok(())
         } else {
             Err(txt!("No buffer was set"))
         }
@@ -497,11 +501,7 @@ impl Handle {
     /// Writes the buffer to the given [`Path`].
     ///
     /// [`Path`]: std::path::Path
-    pub fn save_to(
-        &self,
-        pa: &mut Pass,
-        path: impl AsRef<std::path::Path>,
-    ) -> std::io::Result<bool> {
+    pub fn save_to(&self, pa: &mut Pass, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
         self.save_quit_to(pa, path, false)
     }
 
@@ -513,24 +513,24 @@ impl Handle {
         pa: &mut Pass,
         path: impl AsRef<std::path::Path>,
         quit: bool,
-    ) -> std::io::Result<bool> {
+    ) -> std::io::Result<()> {
         let buf = self.write(pa);
 
-        if buf.text.has_unsaved_changes() {
-            let path = path.as_ref();
-            let res = buf
-                .text
-                .save_on(std::io::BufWriter::new(fs::File::create(path)?));
+        let path = path.as_ref();
+        let res = buf
+            .text
+            .save_on(std::io::BufWriter::new(fs::File::create(path)?));
+
+        if let PathKind::SetExists(own_path) | PathKind::SetAbsent(own_path) = &buf.path
+            && path == own_path
+        {
             buf.history.declare_saved();
-
-            if res.as_ref().is_ok() {
-                hook::trigger(pa, BufferSaved((self.clone(), quit)));
-            }
-
-            res.and(Ok(true))
-        } else {
-            Ok(false)
         }
+        if res.as_ref().is_ok() {
+            hook::trigger(pa, BufferSaved((self.clone(), quit)));
+        }
+
+        Ok(())
     }
 
     /// Returns the list of printed line numbers.

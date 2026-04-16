@@ -76,10 +76,6 @@ impl NsExtents {
     ) -> Vec<Range<usize>> {
         const MAX_FOR_JOINING: usize = 32;
 
-        if filter(Ns::basic()) {
-            return vec![range];
-        }
-
         let mut ranges = Vec::new();
         let mut rampant_matches = false;
 
@@ -126,7 +122,11 @@ impl NsExtents {
             }
         });
 
-        ranges
+        if filter(Ns::basic()) {
+            vec![range]
+        } else {
+            ranges
+        }
     }
 
     /// Which ranges should be checked, given a removal of this

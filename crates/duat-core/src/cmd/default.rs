@@ -41,23 +41,22 @@ pub fn add_defalt_commands() {
     );
 
     add("write", |pa: &mut Pass, path: Option<ValidFilePath>| {
-        let handle = context::current_buffer(pa);
+        let buffer = context::current_buffer(pa);
 
-        let (has_written, name) = if let Some(path) = path {
-            (handle.save_to(pa, &path.0)?, path.0)
-        } else if let Some(name) = handle.read(pa).name_set() {
-            (handle.save(pa)?, std::path::PathBuf::from(name))
+        let name = if let Some(path) = path {
+            buffer.save_to(pa, &path.0)?;
+            path.0
+        } else if let Some(name) = buffer.read(pa).name_set() {
+            buffer.save(pa)?;
+            std::path::PathBuf::from(name)
         } else {
             return Err(txt!("Buffer has no name path to write to"));
         };
 
-        match has_written {
-            true => Ok(Some(txt!(
-                "Wrote [a]{}[] bytes to [buffer]{name}",
-                handle.text(pa).len()
-            ))),
-            false => Ok(Some(txt!("Nothing to be written"))),
-        }
+        Ok(Some(txt!(
+            "Wrote [a]{}[] bytes to [buffer]{name}",
+            buffer.text(pa).len()
+        )))
     })
     .doc(
         txt!("Saves the [a]Buffer[] in storage"),
@@ -76,26 +75,23 @@ pub fn add_defalt_commands() {
     add(
         "write-quit",
         |pa: &mut Pass, path: Option<ValidFilePath>| {
-            let handle = context::current_buffer(pa);
+            let buffer = context::current_buffer(pa);
 
-            let (has_written, name) = {
-                let bytes = if let Some(path) = path {
-                    handle.save_quit_to(pa, path.0, true)?
+            let name = {
+                if let Some(path) = path {
+                    buffer.save_quit_to(pa, path.0, true)?
                 } else {
-                    handle.save_quit(pa, true)?
+                    buffer.save_quit(pa, true)?
                 };
-                (bytes, handle.read(pa).name())
+                buffer.read(pa).name()
             };
 
-            context::windows().close(pa, &handle)?;
+            context::windows().close(pa, &buffer)?;
 
-            match has_written {
-                true => Ok(Some(txt!(
-                    "Closed [buffer]{name}[], writing [a]{}[] bytes",
-                    handle.text(pa).len()
-                ))),
-                false => Ok(Some(txt!("Closed [buffer]{name}[]"))),
-            }
+            Ok(Some(txt!(
+                "Closed [buffer]{name}[], writing [a]{}[] bytes",
+                buffer.text(pa).len()
+            )))
         },
     )
     .doc(
@@ -119,20 +115,20 @@ pub fn add_defalt_commands() {
         let windows = context::windows();
 
         let mut written = 0;
-        let handles: Vec<_> = windows
+        let buffers: Vec<_> = windows
             .buffers(pa)
             .into_iter()
-            .filter(|handle| handle.read(pa).path_set().is_some())
+            .filter(|buffer| buffer.read(pa).path_set().is_some())
             .collect();
 
-        for handle in &handles {
-            written += handle.save(pa).is_ok() as usize;
+        for buffer in &buffers {
+            written += buffer.save(pa).is_ok() as usize;
         }
 
-        if written == handles.len() {
+        if written == buffers.len() {
             Ok(Some(txt!("Wrote to [a]{written}[] buffers")))
         } else {
-            let unwritten = handles.len() - written;
+            let unwritten = buffers.len() - written;
             let plural = if unwritten == 1 { "" } else { "s" };
             Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}"))
         }
@@ -144,20 +140,20 @@ pub fn add_defalt_commands() {
         let windows = context::windows();
 
         let mut written = 0;
-        let handles: Vec<_> = windows
+        let buffers: Vec<_> = windows
             .buffers(pa)
             .into_iter()
-            .filter(|handle| handle.read(pa).path_set().is_some())
+            .filter(|buffer| buffer.read(pa).path_set().is_some())
             .collect();
-        for handle in &handles {
-            written += handle.save_quit(pa, true).is_ok() as usize;
+        for buffer in &buffers {
+            written += buffer.save_quit(pa, true).is_ok() as usize;
         }
 
-        if written == handles.len() {
+        if written == buffers.len() {
             sender().send(DuatEvent::Quit);
             Ok(None)
         } else {
-            let unwritten = handles.len() - written;
+            let unwritten = buffers.len() - written;
             let plural = if unwritten == 1 { "" } else { "s" };
             Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}"))
         }
@@ -171,8 +167,8 @@ pub fn add_defalt_commands() {
     alias("waq", "write-all-quit");
 
     add("write-all-quit!", |pa: &mut Pass| {
-        for handle in context::windows().buffers(pa) {
-            let _ = handle.save_quit(pa, true);
+        for buffer in context::windows().buffers(pa) {
+            let _ = buffer.save_quit(pa, true);
         }
 
         sender().send(DuatEvent::Quit);
@@ -186,20 +182,20 @@ pub fn add_defalt_commands() {
     );
     alias("waq!", "write-all-quit!");
 
-    add("quit", |pa: &mut Pass, handle: Option<Handle>| {
-        let handle = match handle {
-            Some(handle) => handle,
+    add("quit", |pa: &mut Pass, buffer: Option<Handle>| {
+        let buffer = match buffer {
+            Some(buffer) => buffer,
             None => context::current_buffer(pa),
         };
 
-        let buffer = handle.read(pa);
-        if buffer.text().has_unsaved_changes() && buffer.exists() {
-            return Err(txt!("{} has unsaved changes", buffer.name()));
+        let buf = buffer.read(pa);
+        if buf.has_unsaved_changes() && buf.exists() {
+            return Err(txt!("{} has unsaved changes", buf.name()));
         }
 
-        context::windows().close(pa, &handle)?;
+        context::windows().close(pa, &buffer)?;
 
-        Ok(Some(txt!("Closed [buffer]{}", handle.read(pa).name())))
+        Ok(Some(txt!("Closed [buffer]{}", buffer.read(pa).name())))
     })
     .doc(
         txt!("Close a [a]Buffer[]"),
@@ -215,15 +211,15 @@ pub fn add_defalt_commands() {
     );
     alias("q", "quit");
 
-    add("quit!", |pa: &mut Pass, handle: Option<Handle>| {
-        let handle = match handle {
-            Some(handle) => handle,
+    add("quit!", |pa: &mut Pass, buffer: Option<Handle>| {
+        let buffer = match buffer {
+            Some(buffer) => buffer,
             None => context::current_buffer(pa),
         };
 
-        context::windows().close(pa, &handle)?;
+        context::windows().close(pa, &buffer)?;
 
-        Ok(Some(txt!("Forcibly closed {}", handle.read(pa).name())))
+        Ok(Some(txt!("Forcibly closed {}", buffer.read(pa).name())))
     })
     .doc(
         txt!("[a]Forcibly[] close a [a]Buffer[]"),
@@ -241,9 +237,9 @@ pub fn add_defalt_commands() {
         let unwritten = windows
             .buffers(pa)
             .into_iter()
-            .filter(|handle| {
-                let buffer = handle.read(pa);
-                buffer.text().has_unsaved_changes() && buffer.exists()
+            .filter(|buffer| {
+                let buf = buffer.read(pa);
+                buf.has_unsaved_changes() && buf.exists()
             })
             .count();
 
@@ -323,9 +319,9 @@ pub fn add_defalt_commands() {
                     PathKind::from(crate::utils::crate_dir()?.join("Cargo.toml"))
                 }
                 PathOrBufferOrCfg::Path(path) => PathKind::from(path),
-                PathOrBufferOrCfg::Buffer(handle) => {
-                    mode::reset_to(pa, &handle);
-                    return Ok(Some(txt!("Switched to {}", handle.read(pa).name())));
+                PathOrBufferOrCfg::Buffer(buffer) => {
+                    mode::reset_to(pa, &buffer);
+                    return Ok(Some(txt!("Switched to {}", buffer.read(pa).name())));
                 }
             };
 
@@ -377,8 +373,8 @@ pub fn add_defalt_commands() {
                     None,
                 ),
                 PathOrBufferOrCfg::Path(path) => (PathKind::from(path), None),
-                PathOrBufferOrCfg::Buffer(handle) => {
-                    let pk = handle.read(pa).path_kind();
+                PathOrBufferOrCfg::Buffer(buffer) => {
+                    let pk = buffer.read(pa).path_kind();
                     let (win, ..) = windows.buffer_entry(pa, pk.clone()).unwrap();
                     if windows.get(pa, win).unwrap().buffers(pa).len() == 1 {
                         (pk.clone(), Some(txt!("Switched to {pk}")))
@@ -410,9 +406,9 @@ pub fn add_defalt_commands() {
     );
     alias("o", "open");
 
-    add("buffer", |pa: &mut Pass, handle: OtherBuffer| {
-        mode::reset_to(pa, &handle);
-        Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
+    add("buffer", |pa: &mut Pass, buffer: OtherBuffer| {
+        mode::reset_to(pa, &buffer);
+        Ok(Some(txt!("Switched to [buffer]{}", buffer.read(pa).name())))
     })
     .doc(txt!("Switch to an open [a]Buffer[]"), None)
     .doc_param(txt!("The name of an open [a]Buffer"), None, None);
@@ -420,17 +416,17 @@ pub fn add_defalt_commands() {
 
     add("next-buffer", |pa: &mut Pass, scope: Scope| {
         let windows = context::windows();
-        let handle = context::current_buffer(pa);
+        let buffer = context::current_buffer(pa);
         let win = context::current_win_index(pa);
 
         let wid = windows
             .get(pa, win)
             .unwrap()
             .nodes(pa)
-            .position(|node| handle.ptr_eq(node.widget()))
-            .unwrap_or_else(|| panic!("{}, {win}", handle.read(pa).name()));
+            .position(|node| buffer.ptr_eq(node.widget()))
+            .unwrap_or_else(|| panic!("{}, {win}", buffer.read(pa).name()));
 
-        let handle = if scope == Scope::Global {
+        let buffer = if scope == Scope::Global {
             windows
                 .iter_around(pa, win, wid)
                 .find_map(as_buffer_handle)
@@ -443,8 +439,8 @@ pub fn add_defalt_commands() {
                 .ok_or_else(|| txt!("There are no other buffers open in this window"))?
         };
 
-        mode::reset_to(pa, &handle);
-        Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
+        mode::reset_to(pa, &buffer);
+        Ok(Some(txt!("Switched to [buffer]{}", buffer.read(pa).name())))
     })
     .doc(
         txt!("Switch to the next [a]Buffer[]"),
@@ -456,17 +452,17 @@ pub fn add_defalt_commands() {
 
     add("prev-buffer", |pa: &mut Pass, scope: Scope| {
         let windows = context::windows();
-        let handle = context::current_buffer(pa);
+        let buffer = context::current_buffer(pa);
         let win = context::current_win_index(pa);
 
         let wid = windows
             .get(pa, win)
             .unwrap()
             .nodes(pa)
-            .position(|node| handle.ptr_eq(node.widget()))
+            .position(|node| buffer.ptr_eq(node.widget()))
             .unwrap();
 
-        let handle = if scope == Scope::Global {
+        let buffer = if scope == Scope::Global {
             windows
                 .iter_around_rev(pa, win, wid)
                 .find_map(as_buffer_handle)
@@ -479,8 +475,8 @@ pub fn add_defalt_commands() {
                 .ok_or_else(|| txt!("There are no other buffers open in this window"))?
         };
 
-        mode::reset_to(pa, &handle);
-        Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
+        mode::reset_to(pa, &buffer);
+        Ok(Some(txt!("Switched to [buffer]{}", buffer.read(pa).name())))
     })
     .doc(
         txt!("Switch to the previous [a]Buffer[]"),
@@ -492,8 +488,8 @@ pub fn add_defalt_commands() {
     .doc_param(txt!("Also consider other windows"), None, None);
 
     add("last-switched-buffer", |pa: &mut Pass| {
-        let handle = context::windows().last_switched_buffer(pa)?;
-        Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
+        let buffer = context::windows().last_switched_buffer(pa)?;
+        Ok(Some(txt!("Switched to [buffer]{}", buffer.read(pa).name())))
     })
     .doc(
         txt!("Switch to the last switched [a]Buffer[]"),

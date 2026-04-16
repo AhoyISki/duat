@@ -97,7 +97,7 @@ impl History {
         self.undo_redo_moments.truncate(self.cur_moment);
 
         if let Some(saved_moment) = self.saved_moment
-            && saved_moment >= self.cur_moment
+            && saved_moment > self.cur_moment
         {
             self.saved_moment = None;
         }
@@ -111,9 +111,7 @@ impl History {
     ///
     /// Applying these [`Change`]s in the order that they're given
     /// will result in a correct redoing.
-    pub(crate) fn move_forward(
-        &mut self,
-    ) -> Option<(impl ExactSizeIterator<Item = Change<'_>>, bool)> {
+    pub(crate) fn move_forward(&mut self) -> Option<impl ExactSizeIterator<Item = Change<'_>>> {
         self.new_moment();
         if self.cur_moment == self.undo_redo_moments.len() {
             None
@@ -147,8 +145,7 @@ impl History {
                     change
                 });
 
-            let is_saved = self.saved_moment.is_some_and(|m| m == self.cur_moment);
-            Some((iter, is_saved))
+            Some(iter)
         }
     }
 
@@ -157,9 +154,7 @@ impl History {
     /// These [`Change`]s will already be shifted corectly, such that
     /// applying them in sequential order, without further
     /// modifications, will result in a correct undoing.
-    pub(crate) fn move_backwards(
-        &mut self,
-    ) -> Option<(impl ExactSizeIterator<Item = Change<'_>>, bool)> {
+    pub(crate) fn move_backwards(&mut self) -> Option<impl ExactSizeIterator<Item = Change<'_>>> {
         self.new_moment();
         if self.cur_moment == 0 {
             None
@@ -194,15 +189,23 @@ impl History {
                     change
                 });
 
-            let is_saved = self.saved_moment.is_some_and(|m| m == self.cur_moment);
-            Some((iter, is_saved))
+            Some(iter)
         }
     }
 
     /// Declares that the current state of the [`Text`] was saved on
     /// disk.
     pub(super) fn declare_saved(&mut self) {
-        self.saved_moment = Some(self.cur_moment)
+        self.saved_moment = Some(self.cur_moment);
+    }
+
+    /// Wether there are any unsaved changes.
+    pub(super) fn has_unsaved_changes(&self) -> bool {
+        !self.new_moment.is_empty()
+            || (self
+                .saved_moment
+                .is_none_or(|saved| saved != self.cur_moment)
+                && !self.undo_redo_moments.is_empty())
     }
 }
 

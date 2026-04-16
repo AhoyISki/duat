@@ -135,7 +135,6 @@ struct InnerText {
     buf: StrsBuf,
     tags: InnerTags,
     selections: Selections,
-    has_unsaved_changes: bool,
 }
 
 impl Text {
@@ -170,12 +169,7 @@ impl Text {
             selections
         };
 
-        Self(Box::new(InnerText {
-            buf,
-            tags,
-            selections,
-            has_unsaved_changes: false,
-        }))
+        Self(Box::new(InnerText { buf, tags, selections }))
     }
 
     /// Returns a [`Builder`] for [`Text`].
@@ -365,7 +359,6 @@ impl Text {
             before,
         );
 
-        self.0.has_unsaved_changes = true;
         self.0.selections.apply_change(guess_i, change)
     }
 
@@ -431,21 +424,8 @@ impl Text {
     ///
     /// [writer]: std::io::Write
     pub fn save_on(&mut self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
-        self.0.has_unsaved_changes = false;
-
         let [s0, s1] = self.0.buf.slices(..);
         Ok(writer.write(s0)? + writer.write(s1)?)
-    }
-
-    /// Wether or not the content has changed since the last [save].
-    ///
-    /// Returns `true` only if the actual buf of the [`Text`] have
-    /// been changed, ignoring [`Tag`]s and all the other things,
-    /// since those are not written to the filesystem.
-    ///
-    /// [save]: Text::save_on
-    pub fn has_unsaved_changes(&self) -> bool {
-        self.0.has_unsaved_changes
     }
 
     ////////// Tag addition/deletion functions
@@ -928,22 +908,20 @@ impl<'t> TextMut<'t> {
     /// Undoes the last moment, if there was one.
     pub fn undo(&mut self) {
         if let Some(history) = &mut self.history
-            && let Some((changes, saved_moment)) = history.move_backwards()
+            && let Some(changes) = history.move_backwards()
         {
             self.text.apply_and_process_changes(changes);
             self.text.0.buf.increment_version();
-            self.text.0.has_unsaved_changes = !saved_moment;
         }
     }
 
     /// Redoes the last moment in the history, if there is one.
     pub fn redo(&mut self) {
         if let Some(history) = &mut self.history
-            && let Some((changes, saved_moment)) = history.move_forward()
+            && let Some(changes) = history.move_forward()
         {
             self.text.apply_and_process_changes(changes);
             self.text.0.buf.increment_version();
-            self.text.0.has_unsaved_changes = !saved_moment;
         }
     }
 

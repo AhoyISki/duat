@@ -952,10 +952,10 @@ pub enum TagPart<'t> {
     /// Appends mask to map [`Form`]s given a suffix, to the stack.
     ///
     /// [`Form`]: crate::form::Form
-    PushMask(&'static str),
+    PushMask(MaskId),
     /// Removes a mask from the stack. It won't always be the last
     /// one.
-    PopMask(&'static str),
+    PopMask(MaskId),
 }
 
 impl<'t> TagPart<'t> {
@@ -983,8 +983,8 @@ impl<'t> TagPart<'t> {
             StartToggle(_, idx) => Self::StartToggle(&toggles[idx as usize].as_ref().unwrap().0),
             EndToggle(_, idx) => Self::EndToggle(&toggles[idx as usize].as_ref().unwrap().0),
             SpawnedWidget(_, spawn_id) => Self::SpawnedWidget(spawn_id),
-            PushMask(_, mask_id) => Self::PushMask(mask_id.name()),
-            PopMask(_, mask_id) => Self::PopMask(mask_id.name()),
+            PushMask(_, mask_id) => Self::PushMask(mask_id),
+            PopMask(_, mask_id) => Self::PopMask(mask_id),
         }
     }
 }

@@ -59,7 +59,7 @@ pub fn name_txt(buffer: &Buffer) -> Text {
     builder.push(buffer.name_txt());
     if !buffer.exists() {
         builder.push(txt!("[buffer.new][[new buffer]]"));
-    } else if buffer.text().has_unsaved_changes() {
+    } else if buffer.has_unsaved_changes() {
         builder.push(txt!("[buffer.unsaved][[+]]"));
     }
 
@@ -96,7 +96,7 @@ pub fn path_txt(buffer: &Buffer) -> Text {
     builder.push(buffer.name_txt());
     if !buffer.exists() {
         builder.push(txt!("[buffer.new][[new buffer]]"));
-    } else if buffer.text().has_unsaved_changes() {
+    } else if buffer.has_unsaved_changes() {
         builder.push(txt!("[buffer.unsaved][[+]]"));
     }
 
