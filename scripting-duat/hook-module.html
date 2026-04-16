@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6433a3a2.js";
+            window.path_to_searchindex_js = "../searchindex-054b0a12.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -192,16 +192,17 @@ use widgets::*;
 
 fn setup(opts: &amp;mut Opts) {
     // Note the Pass, so you have mutable global state access.
-    // The type of the second argument is inferred, it is only
-    // included here for example's sake.
+    // The type of the second argument is inferred.
     hook::add::&lt;ModeSwitched&gt;(|pa, switch| {
         if switch.old.name == "Insert" &amp;&amp; switch.new.name == "Normal" {
             _ = context::current_buffer(pa).save(pa);
         }
     });
 
-    hook::add::&lt;BufferOpened&gt;(|pa, handle: &amp;Handle| {
-        let buf = handle.write(pa);
+    // Handle is an alias for Handle&lt;Buffer&gt; and is frequently
+    // seen in various hooks.
+    hook::add::&lt;BufferOpened&gt;(|pa, buffer: &amp;Handle| {
+        let buf = buffer.write(pa);
         match buf.filetype() {
             Some("rust" | "cpp") =&gt; {
                 buf.opts.wrap_lines = true;
@@ -223,6 +224,8 @@ fn setup(opts: &amp;mut Opts) {
         VertRule::builder().push_on(pa, handle);
     });
 
+    // In this hook, I'm incrementing a key_count every time a key is
+    // typed...
     let key_count = RwData::new(0);
     hook::add::&lt;KeyTyped&gt;({
         let key_count = key_count.clone();
@@ -231,6 +234,7 @@ fn setup(opts: &amp;mut Opts) {
         }
     });
 
+    // ...then I'm adding said key_count to the status line.
     opts.fmt_status(move |_| {
         let mode_txt = mode_txt();
         let key_count = key_count.clone();
@@ -286,8 +290,8 @@ fn setup_hook() {
                 // We have to queue it, since this is being
                 // called from another thread.
                 context::queue(|pa| {
-                    let handle = context::current_buffer(pa);
-                    hook::trigger(pa, OnIdle(handle));
+                    let buffer = context::current_buffer(pa);
+                    hook::trigger(pa, OnIdle(buffer));
                 });
             }
         }
@@ -362,8 +366,8 @@ fn setup(opts: &amp;mut Opts) {
     opts.tabstop = 4;
 
     // Changing those options on a buffer by buffer basis.
-    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
-        let buf = handle.write(pa);
+    hook::add::&lt;BufferOpened&gt;(|pa, buffer| {
+        let buf = buffer.write(pa);
 
         match buf.filetype() {
             Some("haskell" | "commonlisp") =&gt; buf.opts.tabstop = 2,
@@ -376,10 +380,66 @@ fn setup(opts: &amp;mut Opts) {
         }
     });
 }</code></pre>
+<p>Note that this hook is just a an alias for <code>WidgetOpened&lt;Buffer&gt;</code>.</p>
 <p><em>Arguments</em></p>
 <ul>
 <li>The <code>Handle&lt;Buffer&gt;</code> of the <code>Buffer</code> that was
 opened.</li>
+</ul>
+<h3 id="bufferclosed"><a class="header" href="#bufferclosed"><code>BufferClosed</code></a></h3>
+<p>Triggers as a <code>Buffer</code> is being closed. This can happen for two reasons:</p>
+<ul>
+<li>The <code>Buffer</code> has been closed, through something like <code>:q</code> or <code>:wq</code>.</li>
+<li>The <code>Buffer</code> is being unloaded to be reloaded after reloading the config,
+because you called <code>:reload</code> or typed <code>&lt;c-r&gt;</code> in normal mode.</li>
+</ul>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;Buffer&gt;</code> that was unloaded.</li>
+<li><code>true</code> if the <code>Buffer</code> is going to reload, <code>false</code> if it is just being closed.</li>
+</ul>
+<h3 id="bufferupdated"><a class="header" href="#bufferupdated"><code>BufferUpdated</code></a></h3>
+<p>Triggers whenever the <code>Buffer</code> is modified in any way.</p>
+<p>In order to trigger many things automatically, this is the most frequently used
+hook in Duat. It is useful in many areas, most notably to keep track of every
+change that takes place in <code>Buffer</code>s:</p>
+<pre><code class="language-rust">use duat::prelude::*;
+struct MyPlugin;
+
+impl duat::Plugin for MyPlugin {
+    fn plug(self, opts: &amp;mut Opts, _: &amp;duat::Plugins) {
+        // A namespace used to track changes to every `Buffer`.
+        let tracker_ns = Ns::new();
+
+        hook::add::&lt;BufferOpened&gt;(move |pa, buffer| {
+            // Flush initial empty moment.
+            _ = buffer.read(pa).moment_for(tracker_ns)
+        });
+
+        hook::add::&lt;BufferUpdated&gt;(move |pa, buffer| {
+            let moment = buffer.read(pa).moment_for(tracker_ns);
+
+            for change in moment.iter() {
+                // Update Plugin state based on changes.
+            }
+        });
+    }
+}</code></pre>
+<p>This particular pattern can be found all over the place. Two major examples being
+<code>duat-lsp</code> and <code>duat-treesitter</code>.</p>
+<p>Do note here that the <code>Buffer::moment_for</code> function may be called from <em>anywhere</em>
+it’ll just retrieve all the <code>Change</code>s that took place since the last call with the
+same <code>Ns</code>.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;Buffer&gt;</code> that was updated.</li>
+</ul>
+<h3 id="bufferswitched"><a class="header" href="#bufferswitched"><code>BufferSwitched</code></a></h3>
+<p>Triggers whenever you switch the active <code>Buffer</code>.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The previous <code>Handle&lt;Buffer&gt;</code>.</li>
+<li>The current <code>Handle&lt;Buffer&gt;</code>.</li>
 </ul>
 <h3 id="buffersaved"><a class="header" href="#buffersaved"><code>BufferSaved</code></a></h3>
 <p>Triggers right after saving a <code>Buffer</code>. This will happen whenever you call any
@@ -389,22 +449,6 @@ of the <code>write</code> family of commands, or if <code>Handle::&lt;Buffer&gt;
 <li>The <code>Handle&lt;Buffer&gt;</code> that was saved.</li>
 <li>A <code>bool</code>, which is <code>true</code> if the <code>Buffer</code> is being closed, through commands
 like <code>wq</code>.</li>
-</ul>
-<h3 id="bufferclosed"><a class="header" href="#bufferclosed"><code>BufferClosed</code></a></h3>
-<p>Triggers as a <code>Buffer</code> is being closed, after <code>BufferSaved</code>. This will happen
-when you run a command like <code>q</code> or <code>wq</code>, or after calling
-<code>Handle::&lt;Buffer&gt;::close</code>. It will also happen after quitting Duat, after
-<code>ConfigUnloaded</code> but before <code>ExitedDuat</code>.</p>
-<p><em>Arguments</em></p>
-<ul>
-<li>The <code>Handle&lt;Buffer&gt;</code> that was closed.</li>
-</ul>
-<h3 id="bufferreloaded"><a class="header" href="#bufferreloaded"><code>BufferReloaded</code></a></h3>
-<p>Triggers on every <code>Buffer</code> after the config gets reloaded. This <em>won’t</em> happen
-on the first config that was loaded.</p>
-<p><em>Arguments</em></p>
-<ul>
-<li>The <code>Handle&lt;Buffer&gt;</code> that was reloaded.</li>
 </ul>
 <h3 id="configloaded"><a class="header" href="#configloaded"><code>ConfigLoaded</code></a></h3>
 <p>Will trigger right after initially loading the config crate on
@@ -419,14 +463,7 @@ on the first config that was loaded.</p>
 This will also trigger upon exiting Duat.</p>
 <p><em>Arguments</em></p>
 <ul>
-<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
-</ul>
-<h3 id="exitedduat"><a class="header" href="#exitedduat"><code>ExitedDuat</code></a></h3>
-<p>Triggers after quitting Duat, after <code>ConfigUnloaded</code> and after triggering
-<code>BufferClosed</code> on each <code>Buffer</code>.</p>
-<p><em>Arguments</em></p>
-<ul>
-<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
+<li>Wether we are also about to quit Duat (i.e. after <code>:q</code>, <code>:wq</code>, etc).</li>
 </ul>
 <h3 id="focusedonduat"><a class="header" href="#focusedonduat"><code>FocusedOnDuat</code></a></h3>
 <p>Triggers when Duat gains focus from the operating system.</p>
@@ -440,6 +477,28 @@ This will also trigger upon exiting Duat.</p>
 <ul>
 <li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
 </ul>
+<h3 id="widgetopenedw"><a class="header" href="#widgetopenedw"><code>WidgetOpened&lt;W&gt;</code></a></h3>
+<p>Triggers when a widget <code>W</code> is opened. Its most common form is
+<code>WidgetOpened&lt;Buffer&gt;</code>, which is aliased to <code>BufferOpened</code>.</p>
+<p>This hook is very useful for building the layout of Duat. In fact, it’s
+what places all the widgets on screen, including line numbers, gutters,
+etc.</p>
+<p>It’s also used in other scenarios, like delayed setup of widgets, which
+is sometimes necessary when spawning them.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;W&gt;</code> that was just opened.</li>
+</ul>
+<h3 id="windowopened"><a class="header" href="#windowopened"><code>WindowOpened</code></a></h3>
+<p>Triggers when a new window is opened. This includes the first one.</p>
+<p>Much like <code>WidgetOpened</code>, this hook is very useful for building the
+layout of Duat. By default, it’s what adds the footer widgets and the
+logs.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Window</code> that was just opened.</li>
+</ul>
+<h3 id="modeswitched"><a class="header" href="#modeswitched"><code>ModeSwitched</code></a></h3>
 
                     </main>
 

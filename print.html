@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6433a3a2.js";
+            window.path_to_searchindex_js = "searchindex-054b0a12.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-74f781a9.js"></script>
@@ -296,23 +296,20 @@ modal, and follows “object action” semantics, unlike (neo)vim, which follows
 mode makes heavy use of multiple cursors. Every action will be done on every
 cursor, unless specified otherwise.</p>
 <p>Given that, here are the bindings for <code>duatmode</code>:</p>
-<h1 id="keymaps"><a class="header" href="#keymaps">Keymaps</a></h1>
-<p>On every key, if the action involves selections, unless stated
-otherwise, it will take place in all selections.</p>
-<h2 id="insert-mode"><a class="header" href="#insert-mode"><code>Insert</code> mode</a></h2>
+<h2 id="insert-mode"><a class="header" href="#insert-mode">Insert mode</a></h2>
 <p>Insert mode is the text editing mode of Duat, much like Vim’s. It
 is also entered via various keys in <code>Normal</code> mode.</p>
 <p>On insert mode, keys are sent normally, with the exception of the
 following:</p>
-<p><code>&lt;Tab&gt;</code> and <code>&lt;S-Tab&gt;</code> will do different things depending on your
-[tab mode].</p>
-<p><code>&lt;C-n&gt;</code> and <code>&lt;C-p&gt;</code> go to the next and previous completion
+<p><code>&lt;Tab&gt;</code> and <code>&lt;s-Tab&gt;</code> will do different things depending on your
+<a href="https://docs.rs/duat/latest/duat/prelude/enum.TabMode.html">tab mode</a>.</p>
+<p><code>&lt;s-n&gt;</code> and <code>&lt;s-p&gt;</code> go to the next and previous completion
 entries.</p>
 <p><code>&lt;Esc&gt;</code> exits insert mode, returning to <code>Normal</code> mode`.</p>
 <h2 id="normal-mode"><a class="header" href="#normal-mode">Normal mode</a></h2>
 <p>The keys in <code>normal</code> mode follow the following patterns:</p>
 <ul>
-<li><code>word</code> characters follow Duat’s [word chars], which are normally
+<li><code>word</code> characters follow Duat’s <a href="https://docs.rs/duat/latest/duat/opts/struct.Opts.html#structfield.extra_word_chars">word chars</a>, which are normally
 used to define where lines wrap.</li>
 <li><code>WORD</code> characters are just any non-whitespace character.</li>
 </ul>
@@ -322,8 +319,8 @@ incremented by typing digits.  For example, if you type
 <details>
 <summary><b>Object selection</b></summary>
 <p>In Duat, there are various types of “objects” for selection. These
-get used on <code>Normal</code> mode key sequences, most notably on <code>&lt;A-i&gt;</code>
-and <code>&lt;A-a&gt;</code>. Each of them defines something to be selected:</p>
+get used on <code>Normal</code> mode key sequences, most notably on <code>'</code> and
+<code>"</code>. Each of them defines something to be selected:</p>
 <p><code>b</code>, <code>(</code>, <code>)</code><br>Inside/around parenthesis.</p>
 <p><code>B</code>, <code>{</code>, <code>}</code><br>Inside/around curly braces.</p>
 <p><code>r</code>, <code>[</code>, <code>]</code><br>Inside/around brackets.</p>
@@ -331,7 +328,7 @@ and <code>&lt;A-a&gt;</code>. Each of them defines something to be selected:</p>
 <p><code>q</code>, <code>'</code><br>Inside/around single quotes.</p>
 <p><code>Q</code>, <code>"</code><br>Inside/around double quotes.</p>
 <p><code>g</code>, <code>`</code><br>Inside/around graves.</p>
-<p><code>w</code>, <code>&lt;A-w&gt;</code>
+<p><code>w</code>, <code>e</code>
 Inside/around <code>word</code>s and <code>WORD</code>s.</p>
 <p><code>s</code><br>Inside/around sentences.</p>
 <p><code>p</code><br>Inside/around paragraphs.</p>
@@ -346,40 +343,48 @@ Inside/around <code>word</code>s and <code>WORD</code>s.</p>
 <p><code>k</code><br>Move up.</p>
 <p><code>&lt;Up&gt;</code><br>Move up to the previous wrapped line (i.e. vim’s <code>gk</code>).</p>
 <p><code>l</code>, <code>&lt;Right&gt;</code><br>Move right. Wraps around lines.</p>
-<p><code>H</code>, <code>&lt;S-Left&gt;</code>, <code>J</code>, <code>&lt;S-Down&gt;</code>, <code>K</code>, <code>&lt;S-Up&gt;</code>, <code>L</code>, <code>&lt;S-Right&gt;</code><br>Same as the previous characters, but extends the selection</p>
-<p><code>w</code><br>Selects the <code>word</code> and following space ahead of the selection.</p>
-<p><code>b</code><br>Selects the <code>word</code> followed by spaces behind the selection.</p>
-<p><code>e</code><br>Selects to the end of the next <code>word</code> ahead of the selection.</p>
-<p><code>&lt;(W|B|E)&gt;</code><br>The same as <code>(w|b|e)</code>, but extends the selection.</p>
-<p><code>&lt;A-(w|b|e)&gt;</code><br>The same as <code>(w|b|e)</code>, but over a <code>WORD</code>.</p>
-<p><code>&lt;A-(W|B|E)&gt;</code><br>The same as <code>&lt;A-(w|b|e)&gt;</code>, but extends the selection.</p>
+<p><code>H</code>, <code>&lt;s-Left&gt;</code>, <code>J</code>, <code>&lt;s-Down&gt;</code>, <code>K</code>, <code>&lt;s-Up&gt;</code>, <code>L</code>, <code>&lt;s-Right&gt;</code><br>Same as the previous characters, but extends the selection</p>
+<p><code>w</code><br>Selects the <code>word</code>/spaces ahead of the selection.</p>
+<p><code>e</code><br>Selects the <code>WORD</code>/spaces ahead of the selection.</p>
+<p><code>b</code><br>Selects the <code>word</code>/spaces behind the selection.</p>
+<p><code>v</code><br>Selects the <code>WORD</code>/spaces behind the selection</p>
+<p><code>&lt;(W|E|B|V)&gt;</code><br>The same as <code>(w|b|e|v)</code>, but extends the selection.</p>
 <p><code>f{char}</code><br>Selects to the next occurrence of the <code>{char}</code>.</p>
 <p><code>t{char}</code><br>Selects until the next occurrence of the <code>{char}</code>.</p>
 <p><code>&lt;(F|T)&gt;{char}</code><br>Same as <code>(f|t)</code>, but extends the selection.</p>
-<p><code>&lt;A-(f|t)&gt;{char}</code><br>Same as <code>(f|t)</code>, but in the opposite direction.</p>
-<p><code>&lt;A-(F|T)&gt;{char}</code><br>Same as <code>&lt;A-(f|t)&gt;</code>, but in extends the selection.</p>
+<p><code>&lt;a-(f|t)&gt;{char}</code><br>Same as <code>(f|t)</code>, but in the opposite direction.</p>
+<p><code>&lt;a-(F|T)&gt;{char}</code><br>Same as <code>&lt;a-(f|t)&gt;</code>, but in extends the selection.</p>
 <p><code>{param}g</code><br>Goes to the <code>{param}</code>th line. If param was not set, enters <code>go to</code>
 mode.</p>
 <p><code>{param}G</code><br>Extends to the <code>{param}</code>th line. If param was not set, enters <code>go to</code> mode, and actions will extend.</p>
 <p><code>x</code><br>Extends selection to encompass full lines.</p>
 <p><code>%</code><br>Selects the whole buffer.</p>
-<p><code>&lt;A-h&gt;</code>, <code>&lt;Home&gt;</code><br>Selects to the start of the line.</p>
-<p><code>&lt;A-l&gt;</code>, <code>&lt;End&gt;</code><br>Selects until the end of the line.</p>
-<p><code>&lt;A-H&gt;</code>, <code>&lt;S-Home&gt;</code>, <code>&lt;A-L&gt;</code>, <code>&lt;S-End&gt;</code><br>Same as the previous two, but extends the selection.</p>
+<p><code>&lt;a-h&gt;</code>, <code>&lt;Home&gt;</code><br>Selects to the start of the line.</p>
+<p><code>&lt;a-l&gt;</code>, <code>&lt;End&gt;</code><br>Selects until the end of the line.</p>
+<p><code>&lt;a-H&gt;</code>, <code>&lt;s-Home&gt;</code>, <code>&lt;a-L&gt;</code>, <code>&lt;s-End&gt;</code><br>Same as the previous two, but extends the selection.</p>
+<p><code>"</code><br>Select around object</p>
+<p><code>[</code>,<code>]</code><br>Select around start/end of object</p>
+<p><code>{</code>,<code>}</code><br>Extend around start/end of object</p>
+<p><code>'</code><br>Select inside object</p>
+<p><code>&lt;a-[&gt;</code>,<code>&lt;a-]&gt;</code><br>Select inside start/end of object</p>
+<p><code>&lt;a-{&gt;</code>,<code>&lt;a-}&gt;</code><br>Extend inside start/end of object</p>
 <p><code>m</code><br>Selects to the next pair of matching brackets.</p>
-<p><code>&lt;A-m&gt;</code><br>Selects the previous pair of matching brackets.</p>
-<p><code>M</code>, <code>&lt;A-M&gt;</code><br>Same as the previous two, but extends the selection.</p>
-<p><code>&lt;A-u&gt;</code><br>Returns to the previous state for the selections.</p>
-<p><code>&lt;A-U&gt;</code><br>Goes to the next state for the selections.</p>
-<p><code>;</code><br>Reduces selections to just the [cursor].</p>
-<p><code>&lt;A-;&gt;</code><br>Flips the [cursor] and [anchor] of selectionss around.</p>
+<p><code>&lt;a-m&gt;</code><br>Selects the previous pair of matching brackets.</p>
+<p><code>M</code>, <code>&lt;a-M&gt;</code><br>Same as the previous two, but extends the selection.</p>
+<p><code>&lt;a-u&gt;</code><br>Returns to the previous state for the selections.</p>
+<p><code>&lt;a-U&gt;</code><br>Goes to the next state for the selections.</p>
+<p><code>;</code><br>Reduces selections to just the cursor.</p>
+<p><code>&lt;a-;&gt;</code><br>Flips the cursor and anchor of selectionss around.</p>
 <p><code>,</code><br>Removes extra selections.</p>
 <p><code>C</code><br>Creates a selection on the column below the last one.</p>
-<p><code>&lt;A-C&gt;</code><br>Creates a selection on the column above the first one.</p>
-<p><code>&lt;A-:&gt;</code><br>Places the [cursor] ahead of the [anchor] in all selections.</p>
-<p><code>&lt;A-s&gt;</code><br>Divides selection into multiple selections, one per line.</p>
-<p><code>&lt;A-S&gt;</code><br>Splits into two selections, one at each end of the selection.</p>
-<p><code>&lt;A-_&gt;</code><br>Merges all adjacent selections.</p>
+<p><code>&lt;a-C&gt;</code><br>Creates a selection on the column above the first one.</p>
+<p><code>&lt;a-:&gt;</code><br>Places the cursor ahead of the anchor in all selections.</p>
+<p><code>X</code><br>Divides selection into multiple selections, one per line.</p>
+<p><code>D</code><br>Splits into two selections, one at each end of the selection.</p>
+<p><code>&lt;a-_&gt;</code><br>Merges all adjacent selections.</p>
+<p><code>&lt;a-q&gt;</code><br>Replays the recorded macro.</p>
+<p><code>&lt;a-Q&gt;</code><br>Starts/stops recording a macro.</p>
+<p><code>&lt;c-r&gt;</code><br>Reloads the configuration crate.</p>
 </details>
 <details>
 <summary><b>Text modification</b></summary>
@@ -412,15 +417,15 @@ placed on the previous line).</p>
 <p><code>&lt;A-`&gt;</code><br>Swaps the case of each character.</p>
 <p><code>&lt;A-)&gt;</code><br>Rotates each selection’s content forwards.</p>
 <p><code>&lt;A-(&gt;</code><br>Rotates each selection’s content backwards.</p>
-<p><code>|</code><br>Changes mode to [<code>PipeSelections</code>], letting you pipe each
-selection to an external program.</p>
+<p><code>|</code><br>Pipes the selections to an external command, replacing
+their content with the output.</p>
+<p><code>&lt;c-r&gt;</code><br>Reload Duat’s config.</p>
 </details>
 <details>
 <summary><b>Search</b></summary>
-<p>The searching in this plugin is done through the [<code>IncSearch</code>]
-[<code>Mode</code>] from Duat, with some [<code>IncSearcher</code>]s defined in this
-crate. This means that search will be done incrementally over a
-Regex pattern.</p>
+<p>Searching in Duat is incremental in nature. It takes a regex
+pattern and applies it in real time, which will yield multiple
+selections, depending on which key you typed to start searching:</p>
 <p><code>/</code><br>Searches forward for the next pattern.</p>
 <p><code>&lt;A-/&gt;</code><br>Searches backwards for the previous pattern.</p>
 <p><code>?</code><br>Extends forward for the next pattern.</p>
@@ -435,10 +440,12 @@ Regex pattern.</p>
 <p><code>&lt;A-N&gt;</code><br>Create a new cursor on the previous match for pattern.</p>
 <p><code>*</code><br>Makes the main selection the searching pattern.</p>
 </details>
-<h2 id="goto-mode"><a class="header" href="#goto-mode">goto mode</a></h2>
+<h3 id="goto-mode"><a class="header" href="#goto-mode">goto mode</a></h3>
 <p>Goto mode is accessed by the <code>g</code> and <code>G</code> keys in <code>normal</code> mode.
 It serves a s a way to quickly move places, be it on selections or to other
 <code>Buffer</code>s and such.</p>
+<p>Note that if these keys are preceded by a count, like <code>10g</code>, you
+will instead immediately go to the 10th line, instead of goto mode.</p>
 <details>
 <summary><b>Key bindings</b></summary>
 <p><code>goto</code> mode is entered with the <code>g</code> or <code>G</code> keys in <code>normal</code> mode.</p>
@@ -455,13 +462,23 @@ extending the selection instead.</p>
 </details>
 <h2 id="user-mode"><a class="header" href="#user-mode">User mode</a></h2>
 <p>In Duat, <code>User</code> mode is a “generalized mode”, which should be
-used by <code>Plugin</code>s for key maps. For example, you could map <code>l</code>
-on <code>User</code> mode to do LSP related actions.</p>
+used by <code>Plugin</code>s for key maps. As an example, <a href="https://github.com/AhoyISki/duat-sneak"><code>duat-sneak</code></a>
+makes use of this mode to enter <code>Sneak</code> mode.</p>
 <p>Other “monolithic modes” (Vim, Helix, Emacs, etc) should make use
 of this <code>User</code> mode for the same purpose. Think of it like the
 leader key in (neo)vim.</p>
 <p>To enter <code>User</code> mode, you type <code>&lt;Space&gt;</code> in <code>Normal</code> mode.</p>
-<div style="break-before: page; page-break-before: always;"></div>
+<details>
+<summary><b>Key bindings</b></summary>
+<p><code>l</code><br>Enter LSP mode, giving you access to a bunch of LSP related actions.</p>
+<p><code>L</code><br>Enter the logs, letting you see the history of notifications to
+Duat.</p>
+</details>
+<h3 id="lsp-mode"><a class="header" href="#lsp-mode">LSP mode</a></h3>
+<details>
+<summary<b>Key bindings
+<p><code>f</code><br>Format the current <code>Buffer</code>.</p>
+</summary<b></details><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="commands"><a class="header" href="#commands">Commands</a></h1>
 <p>In Duat, you can run commands by pressing the <code>:</code> key. This will focus on the
 <code>PromptLine</code> <code>Widget</code>, where you can run commands.</p>
@@ -586,7 +603,7 @@ fn setup(opts: &amp;mut Opts) {
     cmd::add("set-rel-lines", |pa: &amp;mut Pass| {
         let handles: Vec&lt;_&gt; = context::windows()
             .handles(pa)
-            .filter_map(|handle| handle.try_downcast::&lt;widgets::LineNumbers&gt;())
+            .filter_map(|handle| handle.get_as::&lt;widgets::LineNumbers&gt;())
             .collect();
 
         for handle in handles {
@@ -1180,7 +1197,7 @@ setup_duat!(setup);
 fn setup(opts: &amp;mut Opts) {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
 }</code></pre>
-<p>If you want to, you can also have this behavioron the <code>PromptLine</code>, i.e., while
+<p>If you want to, you can also have this behavior on the <code>PromptLine</code>, i.e., while
 writing commands and searches:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
@@ -1418,6 +1435,51 @@ fn setup(opts: &amp;mut Opts) {
         };
 
         status.above().push_on(pa, buffer);
+    });
+}</code></pre>
+<h2 id="frequent-auto-saving"><a class="header" href="#frequent-auto-saving">Frequent auto saving</a></h2>
+<p>One way you could automatically save frequently is by doing
+that every time you enter <code>Normal</code> mode:</p>
+<pre><code class="language-rust">use duat::prelude::*;
+setup_duat!(setup);
+
+fn setup(opts: &amp;mut Opts) {
+    hook::add::&lt;ModeSwitched&gt;(|pa, switch| {
+        if switch.new.is::&lt;Normal&gt;() {
+            let buffer = context::current_buffer(pa);
+            _ = buffer.save(pa);
+        }
+    });
+}</code></pre>
+<p>You could also have this behavior only on some languages, or with
+some specific conditions:</p>
+<pre><code class="language-rust">use duat::prelude::*;
+setup_duat!(setup);
+
+fn setup(opts: &amp;mut Opts) {
+    hook::add::&lt;ModeSwitched&gt;(|pa, switch| {
+        if switch.new.is::&lt;Normal&gt;()
+            &amp;&amp; let buffer = context::current_buffer(pa)
+            &amp;&amp; let Some("rust" | "markdown" | "html") = buffer.filetype(pa)
+        {
+            _ = buffer.save(pa);
+        }
+    });
+}</code></pre>
+<p>You might also want some frequency of automatic saves on <code>Insert</code>
+mode. You could do that with certain keys:</p>
+<pre><code class="language-rust">use duat::prelude::*;
+setup_duat!(setup);
+
+fn setup(opts: &amp;mut Opts) {
+    hook::add::&lt;KeyTyped&gt;(|pa, key_event| {
+        let buffer = context::current_buffer(pa);
+
+        if let Some("rust") = buffer.filetype(pa)
+            &amp;&amp; let event!('}' | ')' | ']') = key_event
+        {
+            _ = buffer.save(pa);
+        }
     });
 }</code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -1797,16 +1859,17 @@ use widgets::*;
 
 fn setup(opts: &amp;mut Opts) {
     // Note the Pass, so you have mutable global state access.
-    // The type of the second argument is inferred, it is only
-    // included here for example's sake.
+    // The type of the second argument is inferred.
     hook::add::&lt;ModeSwitched&gt;(|pa, switch| {
         if switch.old.name == "Insert" &amp;&amp; switch.new.name == "Normal" {
             _ = context::current_buffer(pa).save(pa);
         }
     });
 
-    hook::add::&lt;BufferOpened&gt;(|pa, handle: &amp;Handle| {
-        let buf = handle.write(pa);
+    // Handle is an alias for Handle&lt;Buffer&gt; and is frequently
+    // seen in various hooks.
+    hook::add::&lt;BufferOpened&gt;(|pa, buffer: &amp;Handle| {
+        let buf = buffer.write(pa);
         match buf.filetype() {
             Some("rust" | "cpp") =&gt; {
                 buf.opts.wrap_lines = true;
@@ -1828,6 +1891,8 @@ fn setup(opts: &amp;mut Opts) {
         VertRule::builder().push_on(pa, handle);
     });
 
+    // In this hook, I'm incrementing a key_count every time a key is
+    // typed...
     let key_count = RwData::new(0);
     hook::add::&lt;KeyTyped&gt;({
         let key_count = key_count.clone();
@@ -1836,6 +1901,7 @@ fn setup(opts: &amp;mut Opts) {
         }
     });
 
+    // ...then I'm adding said key_count to the status line.
     opts.fmt_status(move |_| {
         let mode_txt = mode_txt();
         let key_count = key_count.clone();
@@ -1891,8 +1957,8 @@ fn setup_hook() {
                 // We have to queue it, since this is being
                 // called from another thread.
                 context::queue(|pa| {
-                    let handle = context::current_buffer(pa);
-                    hook::trigger(pa, OnIdle(handle));
+                    let buffer = context::current_buffer(pa);
+                    hook::trigger(pa, OnIdle(buffer));
                 });
             }
         }
@@ -1967,8 +2033,8 @@ fn setup(opts: &amp;mut Opts) {
     opts.tabstop = 4;
 
     // Changing those options on a buffer by buffer basis.
-    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
-        let buf = handle.write(pa);
+    hook::add::&lt;BufferOpened&gt;(|pa, buffer| {
+        let buf = buffer.write(pa);
 
         match buf.filetype() {
             Some("haskell" | "commonlisp") =&gt; buf.opts.tabstop = 2,
@@ -1981,10 +2047,66 @@ fn setup(opts: &amp;mut Opts) {
         }
     });
 }</code></pre>
+<p>Note that this hook is just a an alias for <code>WidgetOpened&lt;Buffer&gt;</code>.</p>
 <p><em>Arguments</em></p>
 <ul>
 <li>The <code>Handle&lt;Buffer&gt;</code> of the <code>Buffer</code> that was
 opened.</li>
+</ul>
+<h3 id="bufferclosed"><a class="header" href="#bufferclosed"><code>BufferClosed</code></a></h3>
+<p>Triggers as a <code>Buffer</code> is being closed. This can happen for two reasons:</p>
+<ul>
+<li>The <code>Buffer</code> has been closed, through something like <code>:q</code> or <code>:wq</code>.</li>
+<li>The <code>Buffer</code> is being unloaded to be reloaded after reloading the config,
+because you called <code>:reload</code> or typed <code>&lt;c-r&gt;</code> in normal mode.</li>
+</ul>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;Buffer&gt;</code> that was unloaded.</li>
+<li><code>true</code> if the <code>Buffer</code> is going to reload, <code>false</code> if it is just being closed.</li>
+</ul>
+<h3 id="bufferupdated"><a class="header" href="#bufferupdated"><code>BufferUpdated</code></a></h3>
+<p>Triggers whenever the <code>Buffer</code> is modified in any way.</p>
+<p>In order to trigger many things automatically, this is the most frequently used
+hook in Duat. It is useful in many areas, most notably to keep track of every
+change that takes place in <code>Buffer</code>s:</p>
+<pre><code class="language-rust">use duat::prelude::*;
+struct MyPlugin;
+
+impl duat::Plugin for MyPlugin {
+    fn plug(self, opts: &amp;mut Opts, _: &amp;duat::Plugins) {
+        // A namespace used to track changes to every `Buffer`.
+        let tracker_ns = Ns::new();
+
+        hook::add::&lt;BufferOpened&gt;(move |pa, buffer| {
+            // Flush initial empty moment.
+            _ = buffer.read(pa).moment_for(tracker_ns)
+        });
+
+        hook::add::&lt;BufferUpdated&gt;(move |pa, buffer| {
+            let moment = buffer.read(pa).moment_for(tracker_ns);
+
+            for change in moment.iter() {
+                // Update Plugin state based on changes.
+            }
+        });
+    }
+}</code></pre>
+<p>This particular pattern can be found all over the place. Two major examples being
+<code>duat-lsp</code> and <code>duat-treesitter</code>.</p>
+<p>Do note here that the <code>Buffer::moment_for</code> function may be called from <em>anywhere</em>
+it’ll just retrieve all the <code>Change</code>s that took place since the last call with the
+same <code>Ns</code>.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;Buffer&gt;</code> that was updated.</li>
+</ul>
+<h3 id="bufferswitched"><a class="header" href="#bufferswitched"><code>BufferSwitched</code></a></h3>
+<p>Triggers whenever you switch the active <code>Buffer</code>.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The previous <code>Handle&lt;Buffer&gt;</code>.</li>
+<li>The current <code>Handle&lt;Buffer&gt;</code>.</li>
 </ul>
 <h3 id="buffersaved"><a class="header" href="#buffersaved"><code>BufferSaved</code></a></h3>
 <p>Triggers right after saving a <code>Buffer</code>. This will happen whenever you call any
@@ -1994,22 +2116,6 @@ of the <code>write</code> family of commands, or if <code>Handle::&lt;Buffer&gt;
 <li>The <code>Handle&lt;Buffer&gt;</code> that was saved.</li>
 <li>A <code>bool</code>, which is <code>true</code> if the <code>Buffer</code> is being closed, through commands
 like <code>wq</code>.</li>
-</ul>
-<h3 id="bufferclosed"><a class="header" href="#bufferclosed"><code>BufferClosed</code></a></h3>
-<p>Triggers as a <code>Buffer</code> is being closed, after <code>BufferSaved</code>. This will happen
-when you run a command like <code>q</code> or <code>wq</code>, or after calling
-<code>Handle::&lt;Buffer&gt;::close</code>. It will also happen after quitting Duat, after
-<code>ConfigUnloaded</code> but before <code>ExitedDuat</code>.</p>
-<p><em>Arguments</em></p>
-<ul>
-<li>The <code>Handle&lt;Buffer&gt;</code> that was closed.</li>
-</ul>
-<h3 id="bufferreloaded"><a class="header" href="#bufferreloaded"><code>BufferReloaded</code></a></h3>
-<p>Triggers on every <code>Buffer</code> after the config gets reloaded. This <em>won’t</em> happen
-on the first config that was loaded.</p>
-<p><em>Arguments</em></p>
-<ul>
-<li>The <code>Handle&lt;Buffer&gt;</code> that was reloaded.</li>
 </ul>
 <h3 id="configloaded"><a class="header" href="#configloaded"><code>ConfigLoaded</code></a></h3>
 <p>Will trigger right after initially loading the config crate on
@@ -2024,14 +2130,7 @@ on the first config that was loaded.</p>
 This will also trigger upon exiting Duat.</p>
 <p><em>Arguments</em></p>
 <ul>
-<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
-</ul>
-<h3 id="exitedduat"><a class="header" href="#exitedduat"><code>ExitedDuat</code></a></h3>
-<p>Triggers after quitting Duat, after <code>ConfigUnloaded</code> and after triggering
-<code>BufferClosed</code> on each <code>Buffer</code>.</p>
-<p><em>Arguments</em></p>
-<ul>
-<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
+<li>Wether we are also about to quit Duat (i.e. after <code>:q</code>, <code>:wq</code>, etc).</li>
 </ul>
 <h3 id="focusedonduat"><a class="header" href="#focusedonduat"><code>FocusedOnDuat</code></a></h3>
 <p>Triggers when Duat gains focus from the operating system.</p>
@@ -2045,6 +2144,28 @@ This will also trigger upon exiting Duat.</p>
 <ul>
 <li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
 </ul>
+<h3 id="widgetopenedw"><a class="header" href="#widgetopenedw"><code>WidgetOpened&lt;W&gt;</code></a></h3>
+<p>Triggers when a widget <code>W</code> is opened. Its most common form is
+<code>WidgetOpened&lt;Buffer&gt;</code>, which is aliased to <code>BufferOpened</code>.</p>
+<p>This hook is very useful for building the layout of Duat. In fact, it’s
+what places all the widgets on screen, including line numbers, gutters,
+etc.</p>
+<p>It’s also used in other scenarios, like delayed setup of widgets, which
+is sometimes necessary when spawning them.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;W&gt;</code> that was just opened.</li>
+</ul>
+<h3 id="windowopened"><a class="header" href="#windowopened"><code>WindowOpened</code></a></h3>
+<p>Triggers when a new window is opened. This includes the first one.</p>
+<p>Much like <code>WidgetOpened</code>, this hook is very useful for building the
+layout of Duat. By default, it’s what adds the footer widgets and the
+logs.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Window</code> that was just opened.</li>
+</ul>
+<h3 id="modeswitched"><a class="header" href="#modeswitched"><code>ModeSwitched</code></a></h3>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-text-struct"><a class="header" href="#the-text-struct">The <code>Text</code> struct</a></h1>
 <div style="break-before: page; page-break-before: always;"></div>

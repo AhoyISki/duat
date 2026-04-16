@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6433a3a2.js";
+            window.path_to_searchindex_js = "../searchindex-054b0a12.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -211,7 +211,7 @@ setup_duat!(setup);
 fn setup(opts: &amp;mut Opts) {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
 }</code></pre>
-<p>If you want to, you can also have this behavioron the <code>PromptLine</code>, i.e., while
+<p>If you want to, you can also have this behavior on the <code>PromptLine</code>, i.e., while
 writing commands and searches:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
@@ -449,6 +449,51 @@ fn setup(opts: &amp;mut Opts) {
         };
 
         status.above().push_on(pa, buffer);
+    });
+}</code></pre>
+<h2 id="frequent-auto-saving"><a class="header" href="#frequent-auto-saving">Frequent auto saving</a></h2>
+<p>One way you could automatically save frequently is by doing
+that every time you enter <code>Normal</code> mode:</p>
+<pre><code class="language-rust">use duat::prelude::*;
+setup_duat!(setup);
+
+fn setup(opts: &amp;mut Opts) {
+    hook::add::&lt;ModeSwitched&gt;(|pa, switch| {
+        if switch.new.is::&lt;Normal&gt;() {
+            let buffer = context::current_buffer(pa);
+            _ = buffer.save(pa);
+        }
+    });
+}</code></pre>
+<p>You could also have this behavior only on some languages, or with
+some specific conditions:</p>
+<pre><code class="language-rust">use duat::prelude::*;
+setup_duat!(setup);
+
+fn setup(opts: &amp;mut Opts) {
+    hook::add::&lt;ModeSwitched&gt;(|pa, switch| {
+        if switch.new.is::&lt;Normal&gt;()
+            &amp;&amp; let buffer = context::current_buffer(pa)
+            &amp;&amp; let Some("rust" | "markdown" | "html") = buffer.filetype(pa)
+        {
+            _ = buffer.save(pa);
+        }
+    });
+}</code></pre>
+<p>You might also want some frequency of automatic saves on <code>Insert</code>
+mode. You could do that with certain keys:</p>
+<pre><code class="language-rust">use duat::prelude::*;
+setup_duat!(setup);
+
+fn setup(opts: &amp;mut Opts) {
+    hook::add::&lt;KeyTyped&gt;(|pa, key_event| {
+        let buffer = context::current_buffer(pa);
+
+        if let Some("rust") = buffer.filetype(pa)
+            &amp;&amp; let event!('}' | ')' | ']') = key_event
+        {
+            _ = buffer.save(pa);
+        }
     });
 }</code></pre>
 
