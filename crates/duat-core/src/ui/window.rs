@@ -526,6 +526,8 @@ impl Windows {
 
         if context::current_buffer(pa).read(pa).path_kind() != pk {
             mode::reset_to(pa, node.handle());
+        } else {
+            self.set_current_node(pa, node.clone()).unwrap();
         }
 
         node
