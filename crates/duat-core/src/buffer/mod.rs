@@ -467,6 +467,9 @@ impl Handle {
     /// Returns `Err` if there was some problem.
     pub(crate) fn save_quit(&self, pa: &mut Pass, quit: bool) -> Result<(), Text> {
         let buf = self.write(pa);
+        if !buf.has_unsaved_changes() {
+            return Ok(());
+        }
 
         if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &buf.path {
             let path = path.clone();
@@ -515,6 +518,9 @@ impl Handle {
         quit: bool,
     ) -> std::io::Result<()> {
         let buf = self.write(pa);
+        if !buf.has_unsaved_changes() {
+            return Ok(());
+        }
 
         let path = path.as_ref();
         let res = buf
