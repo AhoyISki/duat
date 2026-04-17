@@ -707,18 +707,19 @@ pub mod prelude {
         hook::{
             self, BufferClosed, BufferOpened, BufferSaved, BufferSwitched, BufferUpdated,
             ColorschemeSet, ConfigLoaded, ConfigUnloaded, FocusedOnDuat, FormSet, Hookable,
-            KeySent, KeyTyped, ModeSwitched, SearchPerformed, SearchUpdated, UnfocusedFromDuat,
-            WidgetOpened, WindowOpened,
+            KeySent, KeyTyped, ModeSwitched, OnMouseEvent, SearchPerformed, SearchUpdated,
+            UnfocusedFromDuat, WidgetOpened, WindowOpened,
         },
         mode::{
             self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,
-            User, alias, alt, ctrl, event, map, shift,
+            User, alias, alt, ctrl, event, map, shift, 
         },
         opts::{Opts, ScrollOff, TabMode},
         plug, setup_duat,
         state::*,
         text::{
-            self, Conceal, Inlay, Overlay, Point, RegexHaystack, Spacer, Spawn, Strs, Text, txt,
+            self, Conceal, Inlay, Mask, Overlay, Point, RegexHaystack, Spacer, Spawn, Strs, Text,
+            txt,
         },
         ui::{self, Area, Widget},
         widgets::{self, status},

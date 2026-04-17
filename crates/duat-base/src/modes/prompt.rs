@@ -164,6 +164,11 @@ impl Prompt {
         }
     }
 
+    /// Returns `true` if the [`PromptMode`] is `P`.
+    pub fn is<P: PromptMode>(&self) -> bool {
+        self.ty == TypeId::of::<P>()
+    }
+
     /// Shows the preview [`Inlay`]
     fn show_preview(&mut self, pa: &mut Pass, handle: Handle<PromptLine>) {
         let history = HISTORY.lock().unwrap();

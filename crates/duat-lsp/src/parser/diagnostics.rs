@@ -45,7 +45,9 @@ static DIAGNOSTICS: LazyLock<Mutex<Diagnostics>> = LazyLock::new(|| {
 
         for (&server_ns, (_, buffer_entries)) in diagnostics.0.iter_mut() {
             for (uri, entries) in buffer_entries.iter_mut() {
-                // I assume here that, when the Buffer isn't found, it means it hasn't been changed and saved. Otherwise, LSPs like rust-analyzer would've sent new diagnostics.
+                // I assume here that, when the Buffer isn't found, it means it hasn't
+                // been changed and saved. Otherwise, LSPs like rust-analyzer would've
+                // sent new diagnostics.
                 let Some((buffer, encoding)) = get_parts(pa, server_ns, uri.clone()) else {
                     continue;
                 };
@@ -115,7 +117,14 @@ static DIAGNOSTICS: LazyLock<Mutex<Diagnostics>> = LazyLock::new(|| {
 });
 
 /// Handles a list of diagnostics.
-pub fn add(pa: &mut Pass, server_ns: Ns, uri: Uri, mut list: Vec<Diagnostic>, encoding: Encoding) {
+pub fn add(
+    pa: &mut Pass,
+    server_ns: Ns,
+    uri: Uri,
+    mut list: Vec<Diagnostic>,
+    encoding: Encoding,
+    version: Option<i32>,
+) {
     list.sort_unstable_by(|lhs, rhs| {
         lhs.severity
             .cmp(&rhs.severity)
@@ -136,12 +145,19 @@ pub fn add(pa: &mut Pass, server_ns: Ns, uri: Uri, mut list: Vec<Diagnostic>, en
             .collect();
         return;
     };
+    if let Some(version) = version
+        && buffer.text(pa).version().strs as i32 != version
+    {
+        return;
+    }
 
     buffer.remove_gutter_entries(pa, ns);
 
     for diagnostic in list {
         let text = buffer.text(pa);
-        let range = get_byte_range(text, diagnostic.range, encoding);
+        let Some(range) = get_byte_range(text, diagnostic.range, encoding) else {
+            continue;
+        };
 
         let entry_id = match diagnostic.severity {
             Some(DiagnosticSeverity::INFORMATION) => {
@@ -200,7 +216,9 @@ pub fn add(pa: &mut Pass, server_ns: Ns, uri: Uri, mut list: Vec<Diagnostic>, en
 
             let text = buffer.text(pa);
             let mut msg = format_message(&related.message);
-            let range = get_byte_range(text, related.location.range, encoding);
+            let Some(range) = get_byte_range(text, related.location.range, encoding) else {
+                continue;
+            };
 
             msg.insert_tag(Ns::basic(), .., Mask("info"));
             entry.set_id(Some(buffer.add_hint(pa, ns, range, msg)));
@@ -208,11 +226,7 @@ pub fn add(pa: &mut Pass, server_ns: Ns, uri: Uri, mut list: Vec<Diagnostic>, en
 
         let (_, added) = added_for(&mut diagnostics, server_ns, &uri);
         let byte_range = get_byte_range(buffer.text(pa), diagnostic.range, encoding);
-        added.push(Entry::Diagnostic(
-            Some(entry_id),
-            diagnostic,
-            Some(byte_range),
-        ));
+        added.push(Entry::Diagnostic(Some(entry_id), diagnostic, byte_range));
     }
 
     for (_, entries) in diagnostics.0[&server_ns].1.iter() {
@@ -326,7 +340,7 @@ pub fn add_initial(pa: &mut Pass, servers: &[Server], buffer: &Handle) {
     drop(diagnostics);
 
     for (list, server_ns, encoding) in to_add {
-        add(pa, server_ns, uri.clone(), list, encoding);
+        add(pa, server_ns, uri.clone(), list, encoding, None);
     }
 }
 
@@ -414,10 +428,14 @@ fn apply_changes<'d>(
 }
 
 #[track_caller]
-fn get_byte_range(strs: &Strs, range: lsp_types::Range, encoding: Encoding) -> Range<usize> {
-    let start = encoding.byte_from_pos(strs, range.start);
-    let end = encoding.byte_from_pos(strs, range.end);
-    start..end
+fn get_byte_range(
+    strs: &Strs,
+    range: lsp_types::Range,
+    encoding: Encoding,
+) -> Option<Range<usize>> {
+    let start = encoding.byte_from_pos(strs, range.start)?;
+    let end = encoding.byte_from_pos(strs, range.end)?;
+    Some(start..end)
 }
 
 // This is fine, because fluent_uri doesn't actually internally

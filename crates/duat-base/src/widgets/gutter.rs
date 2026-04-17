@@ -71,6 +71,19 @@ fn update(pa: &mut Pass, buffer: &Handle) {
         return;
     };
 
+    if !gutter.read(pa).entries.is_empty() {
+        context::debug!(
+            "{:?}",
+            Vec::from_iter(
+                gutter
+                    .read(pa)
+                    .entries
+                    .iter()
+                    .map(|entry| entry.range.clone())
+            )
+        );
+    }
+
     let (gtr, buf) = pa.write_many((&gutter, buffer));
     if gtr.entries.is_empty() {
         return;
@@ -200,7 +213,7 @@ impl Gutter {
 
             let (Ok(idx) | Err(idx)) = self
                 .entries
-                .binary_search_by(|entry| entry.range.start.cmp(&range.start));
+                .binary_search_by(|entry| entry.range.end.cmp(&range.end));
 
             let mut iter = self.entries[idx..].iter();
             while let Some(entry) = iter.next()
@@ -809,7 +822,6 @@ impl GutterBuffer for Handle {
         });
     }
 
-    #[track_caller]
     fn add_hint(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId {
         let Some((gutter, _)) = self.get_related::<Gutter>(pa).first().cloned() else {
             panic!("Tried to add a Gutter entry on Buffer with no Gutter");
@@ -846,7 +858,7 @@ impl GutterBuffer for Handle {
 
         let (Ok(idx) | Err(idx)) = gtr
             .entries
-            .binary_search_by(|e| e.range.start.cmp(&entry.range.start));
+            .binary_search_by(|e| e.range.end.cmp(&entry.range.end));
         gtr.entries.insert(idx, entry);
 
         id
@@ -893,7 +905,7 @@ impl GutterBuffer for Handle {
 
         let (Ok(idx) | Err(idx)) = gtr
             .entries
-            .binary_search_by(|e| e.range.start.cmp(&entry.range.start));
+            .binary_search_by(|e| e.range.end.cmp(&entry.range.end));
         gtr.entries.insert(idx, entry);
 
         id
@@ -935,7 +947,7 @@ impl GutterBuffer for Handle {
 
         let (Ok(idx) | Err(idx)) = gtr
             .entries
-            .binary_search_by(|e| e.range.start.cmp(&entry.range.start));
+            .binary_search_by(|e| e.range.end.cmp(&entry.range.end));
         gtr.entries.insert(idx, entry);
 
         id

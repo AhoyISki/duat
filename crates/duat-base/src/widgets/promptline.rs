@@ -57,7 +57,8 @@ pub fn promptline_setup() {
             }
         })
         .grouped(hook_ns);
-    });
+    })
+    .lateness(0);
 }
 
 /// A multi purpose text [`Widget`]

@@ -74,7 +74,7 @@ pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
     let old_handle = context::current_widget(pa).clone();
 
     // If we are on the correct widget, no switch is needed.
-    if old_handle.widget().is::<M::Widget>() {
+    if !old_handle.widget().is::<M::Widget>() {
         let node = {
             let windows = context::windows();
             if TypeId::of::<M::Widget>() == TypeId::of::<Buffer>() {

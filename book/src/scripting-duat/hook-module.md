@@ -376,3 +376,186 @@ logs.
 - The `Window` that was just opened.
 
 ### `ModeSwitched`
+
+Triggers when switching `Mode`s, like going from `Normal` mode to `Prompt` mode.
+Note that this is triggered every time a mode switch happens, even if it's from
+one mode to the same mode.
+
+This is another hook that is very frequently used. Modes delineate clear changes
+id duat's behavior, so adding hooks for them makes a lot of sense:
+
+```rust
+setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup(opts: &mut Opts) {
+    form::enable_mask("hidden");
+    form::set("cursor.main.hidden", Form::default());
+    form::set("cursor.extra.hidden", Form::default());
+    form::set("selection.main.hidden", Form::default());
+    form::set("selection.extra.hidden", Form::default());
+
+    let mask_ns = Ns::new();
+
+    hook::add::<ModeSwitched>(move |pa, mut switch| {
+        let buffer = context::current_buffer(pa);
+        if let Some(prompt) = switch.new.get_as::<Prompt>()
+            && prompt.is::<mode::RunCommands>()
+        {
+            buffer.text_mut(pa).insert_tag(mask_ns, .., Mask("hidden"));
+        } else {
+            buffer.text_mut(pa).remove_tags(mask_ns, ..);
+        }
+    });
+}
+```
+
+This is a relatively simple hook, all it does is hide the cursors and
+selections of the current `Buffer` while you're running commands.
+
+*Arguments*
+
+- A `ModeSwitch`, which contains information about the `old` and `new` modes,
+  namely the `Mode` itself, which you can query with `old.is::<Normal>()` or
+  get directly via `old.get_as::<Normal>()`.
+  It also contains the `Handle<dyn Widget>`s active in the `old` and `new`
+  modes.
+
+### `KeySent`
+
+Whenever a `KeyEvent` is sent to Duat. This will include only the keys that
+"make it" to Duat. This means that, mapped keys are sent, but the keys that
+mapped to them are not. (i.e. `map::<Insert>("jk", "<Esc>")` will make it
+so `jk` isn't sent.
+
+For now, this only includes press and repeat keys.
+
+*Arguments*
+
+- The `KeyEvent` that was sent.
+
+### `KeyTyped`
+
+Contrary to `KeySent`, `KeyTyped` will trigger on keys that are actually
+typed. That is, even with `map::<Insert>("jk", "<Esc>")`, `jk` will be
+typed and `<Esc>` will not.
+
+*Arguments*
+
+- The `KeyEvent` that was typed.
+
+### `OnMouseEvent`
+
+Triggers whenever a `MouseEvent` takes place. You can do some fun things
+with this one, like creating spawned widgets that follow the mouse around:
+
+```rust
+setup_duat!(setup);
+use duat::prelude::*;
+use text::TagPart::{PopForm, PushForm};
+
+fn setup(opts: &mut Opts) {
+    let mut showing_forms = false;
+    let showing_forms_ns = Ns::new();
+
+    cmd::add("show-forms", move |pa: &mut Pass| {
+        if showing_forms {
+            let handles = Vec::from_iter(context::current_window(pa).handles(pa).cloned());
+            for handle in handles {
+                handle.text_mut(pa).remove_tags(showing_forms_ns, ..);
+            }
+            hook::remove(showing_forms_ns);
+            showing_forms = false;
+            return Ok(None);
+        }
+
+        showing_forms = true;
+        hook::add::<OnMouseEvent>(move |pa, event| {
+            let handles = Vec::from_iter(context::current_window(pa).handles(pa).cloned());
+            for handle in handles {
+                handle.text_mut(pa).remove_tags(showing_forms_ns, ..);
+            }
+
+            if let Some(points) = event.points
+                && let Some(tp) = points.as_within()
+            {
+                let forms = Vec::from_iter(
+                    event
+                        .handle
+                        .text(pa)
+                        .tag_parts_rev(tp.real.byte())
+                        .filter_map(|(byte, tag)| {
+                            if let PushForm(id, _) | PopForm(id) = tag {
+                                Some((byte, id, matches!(tag, PushForm(..))))
+                            } else {
+                                None
+                            }
+                        })
+                        .take(10),
+                );
+
+                let mut builder = Text::builder();
+
+                for (byte, id, is_pushing) in forms.into_iter().rev() {
+                    if is_pushing {
+                        builder.push(txt!("Pushed {id}{} on {byte}\n", id.name()));
+                    } else {
+                        builder.push(txt!("Popped {id}{} on {byte}\n", id.name()));
+                    }
+                }
+
+                let mut parts = event.handle.text_parts(pa);
+                parts.tags.insert(
+                    showing_forms_ns,
+                    tp.real,
+                    Spawn::new(
+                        widgets::Info::new(builder.build()),
+                        ui::DynSpawnSpecs::default(),
+                    ),
+                );
+            }
+        })
+        .grouped(showing_forms_ns);
+
+        Ok(None)
+    });
+}
+```
+
+The snippet above will show a `Widget` that displays some of the previous
+`Form` pushes and `Form` pops from the mouse position.
+
+<p align="center"><img src="../../../../assets/show-forms.gif"/></p>
+
+*Arguments*
+
+- The `MouseEvent`, which details the kind, modifier, `Coord`,
+  `TwoPointsPlace` and `Handle` of the event.
+
+### `FormSet`
+
+Triggers whenever a `Form` is added or altered.
+
+*Arguments*
+
+- The `Form`'s name as a `&'static str`.
+- The `FormId`.
+- The actual `Form` value.
+
+### `ColorschemeSet`
+
+Triggers whenever the colorscheme changes.
+
+*Arguments*
+
+- The colorscheme name as a `&'static str`.
+- A `&[(String, Form)]` association between each form name and its value.
+
+### `MsgLogged`
+
+Triggers whenever a message is logged, be it via `debug!`, `warn!`, `error!`
+or `info!`.
+
+*Arguments*
+
+- A `Record` representing the message that was logged.

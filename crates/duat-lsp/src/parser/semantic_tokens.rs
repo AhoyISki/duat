@@ -105,9 +105,7 @@ impl BufferTokens {
         let mut line = 0;
         let mut byte = 0;
 
-        delta
-            .edits
-            .sort_unstable_by(|lhs, rhs| lhs.start.cmp(&rhs.start));
+        delta.edits.sort_unstable_by_key(|lhs| lhs.start);
 
         let mut removed_entries = 0;
 

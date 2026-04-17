@@ -142,17 +142,20 @@ impl Encoding {
 
     /// Returns a codepoint index from a [`Position`].
     #[track_caller]
-    fn byte_from_pos(&self, strs: &Strs, pos: Position) -> usize {
+    fn byte_from_pos(&self, strs: &Strs, pos: Position) -> Option<usize> {
         match self {
             Encoding::Utf8 => {
-                let byte = strs.point_at_coords(pos.line as usize, 0).byte();
-                byte + pos.character as usize
+                let byte = strs.get_point_at_coords(pos.line as usize, 0)?.byte();
+                Some(byte + pos.character as usize)
             }
             Encoding::Utf16 => {
+                if pos.line as usize > strs.end_point().line() {
+                    return None;
+                }
+
                 let line = strs.line(pos.line as usize);
                 let mut codepoints = 0;
-                let (ControlFlow::Continue(byte) | ControlFlow::Break(byte)) = line
-                    .chars()
+                line.chars()
                     .try_fold(line.start_point().byte(), |byte, char| {
                         if codepoints == pos.character {
                             ControlFlow::Break(byte)
@@ -160,8 +163,8 @@ impl Encoding {
                             codepoints += if char as u32 > 0xffff { 2 } else { 1 };
                             ControlFlow::Continue(byte + char.len_utf8())
                         }
-                    });
-                byte
+                    })
+                    .break_value()
             }
         }
     }

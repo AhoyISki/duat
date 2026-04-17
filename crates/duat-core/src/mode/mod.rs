@@ -120,7 +120,7 @@ pub(crate) fn keys_were_sent(_: &mut Pass) -> bool {
 }
 
 /// Wether the currently active [`Mode`] is this one
-pub fn is_currently<M: Mode>() -> bool {
+pub fn is<M: Mode>() -> bool {
     current_type_id() == std::any::TypeId::of::<M>()
 }
 

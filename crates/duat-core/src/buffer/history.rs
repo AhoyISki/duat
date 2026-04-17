@@ -1062,7 +1062,7 @@ impl RangesToUpdate {
             }
         }
 
-        intersecting.sort_unstable_by(|lhs, rhs| lhs.start.cmp(&rhs.start));
+        intersecting.sort_unstable_by_key(|lhs| lhs.start);
         intersecting
     }
 

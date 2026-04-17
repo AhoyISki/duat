@@ -146,7 +146,7 @@ pub fn handle_notification(bridge: &ServerBridge, notification: jsonrpc_lite::No
 
             context::queue(move |pa| {
                 let (uri, list) = (params.uri, params.diagnostics);
-                parser::diagnostics::add(pa, ns, uri, list, encoding)
+                parser::diagnostics::add(pa, ns, uri, list, encoding, params.version)
             });
         }
         "$/progress" => {}

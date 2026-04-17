@@ -210,6 +210,13 @@ impl Strs {
     /// Returns the [`Point`] at a certain `line` and `column` offset.
     ///
     /// The `column` offset is measured in characters.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `line > self.end_point().line() || column >
+    /// self.line(line).chars().count()`. If you want an
+    /// [`Option`] return instead of a panic, checkout
+    /// [`Strs::get_point_at_coords`].
     #[inline(always)]
     #[track_caller]
     pub fn point_at_coords(&self, line: usize, column: usize) -> Point {
@@ -220,10 +227,24 @@ impl Strs {
             end_point.line()
         );
 
+        self.get_point_at_coords(line, column).unwrap()
+    }
+
+    /// Gets a [`Point`] from coordinates.
+    ///
+    /// Returns [`None`] if the `line > self.end_point().line() ||
+    /// column > self.line(line).chars().count()`. If you'd rather it
+    /// panic instead, checkout [`Strs::point_at_coords`].
+    pub fn get_point_at_coords(&self, line: usize, column: usize) -> Option<Point> {
+        let end_point = self.end_point();
+        if line > end_point.line() {
+            return None;
+        }
+
         let formed = FormedStrs::new(self);
 
         if line == end_point.line() {
-            end_point
+            Some(end_point)
         } else {
             let slices = unsafe {
                 let (s0, s1) = formed.buf.gapbuf.as_slices();
@@ -236,20 +257,14 @@ impl Strs {
 
             let point = formed.buf.line_ranges.point_at_coords(line, column, slices);
 
-            if let Some(point) = point {
-                point
-            } else {
+            point.or_else(|| {
                 let next_line_start = if line + 1 == end_point.line() {
-                    end_point
+                    Some(end_point)
                 } else {
-                    formed
-                        .buf
-                        .line_ranges
-                        .point_at_coords(line + 1, 0, slices)
-                        .unwrap()
+                    formed.buf.line_ranges.point_at_coords(line + 1, 0, slices)
                 };
-                next_line_start.rev('\n')
-            }
+                next_line_start.map(|point| point.rev('\n'))
+            })
         }
     }
 
@@ -266,7 +281,7 @@ impl Strs {
             "line out of bounds: the len is {}, but the line is {n}",
             end_point.line()
         );
-
+        
         let start = self.point_at_coords(n, 0);
         let end = if n + 1 == end_point.line() {
             end_point

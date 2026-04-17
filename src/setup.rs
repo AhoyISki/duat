@@ -228,16 +228,10 @@ fn enable_whichkey_hooks(opts: &Opts) {
 }
 
 fn enable_buffer_hooks(opts: &Opts) {
-    hook::add::<BufferClosed>(|pa, (buffer, is_closing)| {
+    hook::add::<BufferClosed>(|pa, (buffer, is_reloading)| {
         let buf = buffer.write(pa);
 
-        if is_closing {
-            let path = buf.path();
-            cache::delete_for::<History>(&path);
-            if !buf.exists() || buf.has_unsaved_changes() {
-                cache::delete(path);
-            }
-        } else {
+        if is_reloading {
             let path = buf.path();
             buf.text_mut().new_moment();
 
@@ -250,12 +244,17 @@ fn enable_buffer_hooks(opts: &Opts) {
             duat_core::try_or_log_err! {
                 buffer.area().store_cache(pa, &path)?;
             }
+        } else {
+            let path = buf.path();
+            if !buf.exists() || buf.has_unsaved_changes() {
+                cache::delete(path);
+            }
         }
     });
 
     if opts.enabled_hooks.cache_cursor_position {
-        hook::add::<BufferClosed>(|pa, (buffer, is_closing)| {
-            if !is_closing {
+        hook::add::<BufferClosed>(|pa, (buffer, is_reloading)| {
+            if is_reloading {
                 return;
             }
             let buf = buffer.write(pa);

@@ -1176,8 +1176,8 @@ impl InnerHooks {
 
             match &mut hook.callback {
                 Callback::FnMut(fn_mut) => {
-                    catch_panic(|| fn_mut(pa, input));
-                    !has_been_removed()
+                    let result = catch_panic(|| fn_mut(pa, input));
+                    result.is_some() && !has_been_removed()
                 }
                 Callback::FnOnce(fn_once) => {
                     catch_panic(|| fn_once.take().unwrap()(pa, input));

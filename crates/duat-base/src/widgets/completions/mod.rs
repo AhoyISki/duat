@@ -110,13 +110,16 @@ pub fn completions_setup() {
         let ns = Ns::new();
 
         hook::add::<KeySent>(move |pa, _| {
-            if completions.is_closed() {
+            let completions_master = completions.master(pa).unwrap();
+            if completions.is_closed()
+                || completions_master.is_closed()
+                || completions_master.selections(pa).is_empty()
+            {
                 hook::remove(ns);
                 return;
             }
 
             Completions::update_text_and_position(pa, &completions, 0);
-            let completions_master = completions.master(pa).unwrap();
             completions.write(pa).last_cursor = completions_master.selections(pa).main().cursor();
             if !completions.is_closed() {
                 Completions::set_frame(pa, &completions);
@@ -127,6 +130,7 @@ pub fn completions_setup() {
 
     hook::add::<ModeSwitched>(move |pa, switch| {
         switch.old.handle.text_mut(pa).remove_tags(*NS, ..);
+        Completions::close(pa);
     });
 
     hook::add::<OnMouseEvent<Completions>>(|pa, event| match event.kind {
@@ -637,6 +641,7 @@ pub trait CompletionsProvider: Send + Sized + 'static {
 
 trait ErasedInnerProvider: Any + Send {
     #[allow(clippy::type_complexity)]
+    #[track_caller]
     fn texts_and_match(
         &mut self,
         text: &Text,
@@ -705,7 +710,10 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         Option<((Text, Text), Option<(String, Option<(Text, Orientation)>)>)>,
     ) {
         let Some(cursor) = text.get_main_sel().map(|sel| sel.cursor()) else {
-            panic!("Tried to update completions on a Text with no main selection");
+            panic!(
+                "Tried to update completions on a Text with no main selection {}",
+                std::panic::Location::caller()
+            );
         };
 
         let start = self

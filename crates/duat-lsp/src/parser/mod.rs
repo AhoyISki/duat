@@ -127,7 +127,7 @@ impl LspBuffer for Handle {
                     return;
                 }
 
-                edits.sort_by(|lhs, rhs| lhs.range.start.cmp(&rhs.range.start));
+                edits.sort_by_key(|lhs| lhs.range.start);
 
                 let mut text = buf.text_mut();
                 for edit in edits.into_iter().rev() {
