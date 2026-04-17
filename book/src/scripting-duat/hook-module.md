@@ -525,7 +525,7 @@ fn setup(opts: &mut Opts) {
 The snippet above will show a `Widget` that displays some of the previous
 `Form` pushes and `Form` pops from the mouse position.
 
-<p align="center"><img src="/../assets/show-forms.gif"/></p>
+<p align="center"><img src="../assets/show-forms.gif"/></p>
 
 *Arguments*
 
