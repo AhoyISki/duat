@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-054b0a12.js";
+            window.path_to_searchindex_js = "../searchindex-a772b097.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -499,6 +499,166 @@ logs.</p>
 <li>The <code>Window</code> that was just opened.</li>
 </ul>
 <h3 id="modeswitched"><a class="header" href="#modeswitched"><code>ModeSwitched</code></a></h3>
+<p>Triggers when switching <code>Mode</code>s, like going from <code>Normal</code> mode to <code>Prompt</code> mode.
+Note that this is triggered every time a mode switch happens, even if it’s from
+one mode to the same mode.</p>
+<p>This is another hook that is very frequently used. Modes delineate clear changes
+id duat’s behavior, so adding hooks for them makes a lot of sense:</p>
+<pre><code class="language-rust">setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup(opts: &amp;mut Opts) {
+    form::enable_mask("hidden");
+    form::set("cursor.main.hidden", Form::default());
+    form::set("cursor.extra.hidden", Form::default());
+    form::set("selection.main.hidden", Form::default());
+    form::set("selection.extra.hidden", Form::default());
+
+    let mask_ns = Ns::new();
+
+    hook::add::&lt;ModeSwitched&gt;(move |pa, mut switch| {
+        let buffer = context::current_buffer(pa);
+        if let Some(prompt) = switch.new.get_as::&lt;Prompt&gt;()
+            &amp;&amp; prompt.is::&lt;mode::RunCommands&gt;()
+        {
+            buffer.text_mut(pa).insert_tag(mask_ns, .., Mask("hidden"));
+        } else {
+            buffer.text_mut(pa).remove_tags(mask_ns, ..);
+        }
+    });
+}</code></pre>
+<p>This is a relatively simple hook, all it does is hide the cursors and
+selections of the current <code>Buffer</code> while you’re running commands.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>A <code>ModeSwitch</code>, which contains information about the <code>old</code> and <code>new</code> modes,
+namely the <code>Mode</code> itself, which you can query with <code>old.is::&lt;Normal&gt;()</code> or
+get directly via <code>old.get_as::&lt;Normal&gt;()</code>.
+It also contains the <code>Handle&lt;dyn Widget&gt;</code>s active in the <code>old</code> and <code>new</code>
+modes.</li>
+</ul>
+<h3 id="keysent"><a class="header" href="#keysent"><code>KeySent</code></a></h3>
+<p>Whenever a <code>KeyEvent</code> is sent to Duat. This will include only the keys that
+“make it” to Duat. This means that, mapped keys are sent, but the keys that
+mapped to them are not. (i.e. <code>map::&lt;Insert&gt;("jk", "&lt;Esc&gt;")</code> will make it
+so <code>jk</code> isn’t sent.</p>
+<p>For now, this only includes press and repeat keys.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>KeyEvent</code> that was sent.</li>
+</ul>
+<h3 id="keytyped"><a class="header" href="#keytyped"><code>KeyTyped</code></a></h3>
+<p>Contrary to <code>KeySent</code>, <code>KeyTyped</code> will trigger on keys that are actually
+typed. That is, even with <code>map::&lt;Insert&gt;("jk", "&lt;Esc&gt;")</code>, <code>jk</code> will be
+typed and <code>&lt;Esc&gt;</code> will not.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>KeyEvent</code> that was typed.</li>
+</ul>
+<h3 id="onmouseevent"><a class="header" href="#onmouseevent"><code>OnMouseEvent</code></a></h3>
+<p>Triggers whenever a <code>MouseEvent</code> takes place. You can do some fun things
+with this one, like creating spawned widgets that follow the mouse around:</p>
+<pre><code class="language-rust">setup_duat!(setup);
+use duat::prelude::*;
+use text::TagPart::{PopForm, PushForm};
+
+fn setup(opts: &amp;mut Opts) {
+    let mut showing_forms = false;
+    let showing_forms_ns = Ns::new();
+
+    cmd::add("show-forms", move |pa: &amp;mut Pass| {
+        if showing_forms {
+            let handles = Vec::from_iter(context::current_window(pa).handles(pa).cloned());
+            for handle in handles {
+                handle.text_mut(pa).remove_tags(showing_forms_ns, ..);
+            }
+            hook::remove(showing_forms_ns);
+            showing_forms = false;
+            return Ok(None);
+        }
+
+        showing_forms = true;
+        hook::add::&lt;OnMouseEvent&gt;(move |pa, event| {
+            let handles = Vec::from_iter(context::current_window(pa).handles(pa).cloned());
+            for handle in handles {
+                handle.text_mut(pa).remove_tags(showing_forms_ns, ..);
+            }
+
+            if let Some(points) = event.points
+                &amp;&amp; let Some(tp) = points.as_within()
+            {
+                let forms = Vec::from_iter(
+                    event
+                        .handle
+                        .text(pa)
+                        .tag_parts_rev(tp.real.byte())
+                        .filter_map(|(byte, tag)| {
+                            if let PushForm(id, _) | PopForm(id) = tag {
+                                Some((byte, id, matches!(tag, PushForm(..))))
+                            } else {
+                                None
+                            }
+                        })
+                        .take(10),
+                );
+
+                let mut builder = Text::builder();
+
+                for (byte, id, is_pushing) in forms.into_iter().rev() {
+                    if is_pushing {
+                        builder.push(txt!("Pushed {id}{} on {byte}\n", id.name()));
+                    } else {
+                        builder.push(txt!("Popped {id}{} on {byte}\n", id.name()));
+                    }
+                }
+
+                let mut parts = event.handle.text_parts(pa);
+                parts.tags.insert(
+                    showing_forms_ns,
+                    tp.real,
+                    Spawn::new(
+                        widgets::Info::new(builder.build()),
+                        ui::DynSpawnSpecs::default(),
+                    ),
+                );
+            }
+        })
+        .grouped(showing_forms_ns);
+
+        Ok(None)
+    });
+}</code></pre>
+<p>The snippet above will show a <code>Widget</code> that displays some of the previous
+<code>Form</code> pushes and <code>Form</code> pops from the mouse position.</p>
+<p align="center"><img src="../../../../assets/show-forms.gif" /></p>
+
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>MouseEvent</code>, which details the kind, modifier, <code>Coord</code>,
+<code>TwoPointsPlace</code> and <code>Handle</code> of the event.</li>
+</ul>
+<h3 id="formset"><a class="header" href="#formset"><code>FormSet</code></a></h3>
+<p>Triggers whenever a <code>Form</code> is added or altered.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Form</code>’s name as a <code>&amp;'static str</code>.</li>
+<li>The <code>FormId</code>.</li>
+<li>The actual <code>Form</code> value.</li>
+</ul>
+<h3 id="colorschemeset"><a class="header" href="#colorschemeset"><code>ColorschemeSet</code></a></h3>
+<p>Triggers whenever the colorscheme changes.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The colorscheme name as a <code>&amp;'static str</code>.</li>
+<li>A <code>&amp;[(String, Form)]</code> association between each form name and its value.</li>
+</ul>
+<h3 id="msglogged"><a class="header" href="#msglogged"><code>MsgLogged</code></a></h3>
+<p>Triggers whenever a message is logged, be it via <code>debug!</code>, <code>warn!</code>, <code>error!</code>
+or <code>info!</code>.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>A <code>Record</code> representing the message that was logged.</li>
+</ul>
 
                     </main>
 
