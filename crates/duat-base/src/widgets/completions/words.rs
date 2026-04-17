@@ -60,7 +60,7 @@ impl CompletionsProvider for WordCompletions {
         let suffix = &text[text.search(r"\A\w*").range(cursor..).next().unwrap()];
 
         let (prefix, case_insensitive) =
-            if self.case_insensitive && prefix.chars().all(|char| char.is_lowercase()) {
+            if self.case_insensitive && prefix.chars().all(|char| !char.is_uppercase()) {
                 (prefix.to_uppercase(), true)
             } else {
                 (prefix.to_string(), false)

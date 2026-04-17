@@ -25,6 +25,7 @@ use crate::widgets::CompletionsProvider;
 /// [`PromptLine`]: crate::widgets::PromptLine
 #[derive(Clone)]
 pub struct PathCompletions {
+    case_insensitive: bool,
     for_parameters: bool,
 }
 
@@ -35,8 +36,8 @@ impl PathCompletions {
     /// completions to show up, a `/` must be part of the string (or
     /// `\` on Windows). This makes this completion more flexible when
     /// working with multiple completions at once.
-    pub fn new(for_parameters: bool) -> Self {
-        Self { for_parameters }
+    pub fn new(case_insensitive: bool, for_parameters: bool) -> Self {
+        Self { case_insensitive, for_parameters }
     }
 }
 
@@ -57,6 +58,13 @@ impl CompletionsProvider for PathCompletions {
             return Vec::new();
         };
 
+        let (prefix, case_insensitive) =
+            if self.case_insensitive && prefix.chars().all(|char| !char.is_uppercase()) {
+                (prefix.to_uppercase(), true)
+            } else {
+                (prefix.to_string(), false)
+            };
+
         let mut entries: Vec<(Arc<str>, _)> = entries
             .filter_map(|entry| entry.ok())
             .filter_map(|entry| {
@@ -76,16 +84,25 @@ impl CompletionsProvider for PathCompletions {
                     path.to_mut().insert(0, '\'');
                 }
 
-                super::string_cmp(&prefix, &path).map(|_| (path.to_string().into(), ()))
+                if case_insensitive {
+                    let upper = path.to_uppercase();
+                    super::string_cmp(&prefix, &upper).map(|_| (path.to_string().into(), ()))
+                } else {
+                    super::string_cmp(&prefix, &path).map(|_| (path.to_string().into(), ()))
+                }
             })
             .collect();
 
         entries.sort();
         entries.sort_by_key(|(path, _)| {
-            (
-                !path.ends_with(possible_separators()),
-                super::string_cmp(&prefix, path).unwrap(),
-            )
+            let similarity = if case_insensitive {
+                let upper = path.to_uppercase();
+                super::string_cmp(&prefix, &upper).unwrap()
+            } else {
+                super::string_cmp(&prefix, path).unwrap()
+            };
+
+            (!path.ends_with(possible_separators()), similarity)
         });
 
         entries

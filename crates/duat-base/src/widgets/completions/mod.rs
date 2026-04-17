@@ -57,7 +57,7 @@ static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (usize, ParamCompletions)>>> 
 pub fn completions_setup() {
     words::track_words();
     Completions::set_for_parameter::<ValidFilePath>(75, |_, builder| {
-        builder.with_provider(paths::PathCompletions::new(true))
+        builder.with_provider(paths::PathCompletions::new(true, true))
     });
 
     Completions::set_for_parameter::<Handle>(50, |pa, builder| {
@@ -307,7 +307,7 @@ impl Completions {
         } else {
             Self::builder()
                 .with_provider(WordCompletions::new(true))
-                .with_provider(PathCompletions::new(false))
+                .with_provider(PathCompletions::new(true, false))
                 .open(pa);
         }
     }
