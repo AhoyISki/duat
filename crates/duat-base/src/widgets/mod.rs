@@ -23,7 +23,10 @@ pub(crate) use self::{
     promptline::promptline_setup, whichkey::whichkey_setup,
 };
 pub use self::{
-    completions::{CommandsCompletions, Completions, CompletionsBuilder, CompletionsProvider},
+    completions::{
+        CommandsCompletions, Completions, CompletionsBuilder, CompletionsProvider, PathCompletions,
+        WordCompletions,
+    },
     gutter::{Gutter, GutterBuffer, GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts},
     info::Info,
     linenumbers::{LineNumbers, LineNumbersOpts},

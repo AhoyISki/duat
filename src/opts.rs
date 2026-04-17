@@ -300,6 +300,13 @@ pub struct Opts {
     /// [`Gutter`]: crate::widgets::Gutter
     /// [`Buffer`]: crate::widgets::Buffer
     pub gutter: GutterOpts,
+    /// Options for the [`Completions`] widget.
+    ///
+    /// This is the widget that shows alternatives that can be `Tab`
+    /// completed on various circumstances.
+    ///
+    /// [`Completions`]: crate::widgets::Completions
+    pub completions: CompletionsOpts,
     /// Options for the [`Notifications`] widget.
     ///
     /// The main purpose of these options is to modify how messages
@@ -778,6 +785,7 @@ impl Default for Opts {
             help_key: Some(KeyEvent::new(KeyCode::Char('h'), KeyMod::CONTROL)),
             linenumbers: LineNumbersOpts::default(),
             gutter: GutterOpts::default(),
+            completions: CompletionsOpts::default(),
             notifications: NotificationsOpts::default(),
             whichkey: WhichKeyOpts::default(),
             logs: LogBookOpts::default(),
@@ -793,6 +801,25 @@ impl Default for Opts {
             },
         }
     }
+}
+
+/// Options for the default [`Completions`] widget. Not to be confused
+/// with [`CompletionsBuilder`].
+///
+/// [`Completions`]: crate::widgets::Completions
+/// [`CompletionsBuilder`]: crate::widgets::CompletionsBuilder
+#[derive(Default)]
+pub struct CompletionsOpts {
+    /// How many characters should precede the cursor before showing
+    /// the [`Completions`].
+    ///
+    /// [`Completions`]: crate::widgets::Completions
+    pub min_prefix: usize,
+    /// On command callers or parameters, many characters should
+    /// precede the cursor before showing the [`Completions`].
+    ///
+    /// [`Completions`]: crate::widgets::Completions
+    pub cmd_min_prefix: usize,
 }
 
 /// Options for the [`WhichKey`] widget.

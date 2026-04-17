@@ -17,6 +17,13 @@ use duat_core::{
 
 use crate::widgets::CompletionsProvider;
 
+/// Completions for [`Path`]s.
+///
+/// `for_parameters` is used when writing completions on the
+/// [`PromptLine`], it adds support for quoted paths.
+///
+/// [`PromptLine`]: crate::widgets::PromptLine
+#[derive(Clone)]
 pub struct PathCompletions {
     for_parameters: bool,
 }

@@ -32,10 +32,10 @@ use duat_core::{
 };
 use duat_term::Frame;
 
-pub use self::{commands::CommandsCompletions, lists::ExhaustiveCompletionsList};
-use crate::widgets::{
-    Info,
-    completions::{paths::PathCompletions, words::WordCompletions},
+use crate::widgets::Info;
+pub use crate::widgets::completions::{
+    commands::CommandsCompletions, lists::ExhaustiveCompletionsList, paths::PathCompletions,
+    words::WordCompletions,
 };
 
 mod commands;
@@ -43,6 +43,8 @@ mod lists;
 mod paths;
 mod words;
 
+static BUFFER_COMPLETIONS: Mutex<Option<Box<dyn FnMut() -> CompletionsBuilder + Send>>> =
+    Mutex::new(None);
 static OPENED_PARAM_COMPLETION: Mutex<Option<Vec<TypeId>>> = Mutex::new(None);
 static NS: LazyLock<Ns> = Ns::new_lazy();
 static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (usize, ParamCompletions)>>> =
@@ -162,13 +164,15 @@ pub fn completions_setup() {
 /// [`Selection`]: duat_core::mode::Selection
 /// [cursor]: duat_core::mode::Selection::cursor
 /// [`show_without_prefix`]: Self::show_without_prefix
+#[derive(Default)]
 pub struct CompletionsBuilder {
     providers: Option<ProvidersFn>,
-    /// Show the [`Widget`] even if there is no word behind the cursor
-    /// This is set to `true` by default when first opening the
-    /// `Widget`, but is disabled if the cursor moves around, which
-    /// creates a smooth typing experience.
-    pub show_without_prefix: bool,
+    /// How many characters should precede the cursor before showing
+    /// the [`Completions`].
+    pub min_prefix: usize,
+    /// On command callers or parameters, many characters should
+    /// precede the cursor before showing the [`Completions`].
+    pub cmd_min_prefix: usize,
 }
 
 impl CompletionsBuilder {
@@ -197,7 +201,7 @@ impl CompletionsBuilder {
         };
 
         let Some((providers, start_byte, entries)) =
-            self.providers.map(|call| call(handle.text(pa), 20))
+            self.providers.map(|call| call(handle.text(pa), 20, self.min_prefix))
         else {
             return;
         };
@@ -210,7 +214,8 @@ impl CompletionsBuilder {
             sidebar,
             max_height: 20,
             start_byte,
-            show_without_prefix: self.show_without_prefix,
+            cur_min_prefix: self.min_prefix,
+            min_prefix: self.min_prefix,
             last_cursor: main.cursor(),
             info_handle: None,
         };
@@ -224,11 +229,12 @@ impl CompletionsBuilder {
     pub fn with_provider(mut self, provider: impl CompletionsProvider) -> Self {
         let prev = self.providers.take();
 
-        self.providers = Some(Box::new(move |text, height| {
-            let (inner, start_byte, entries) = InnerProvider::new(provider, text, height);
+        self.providers = Some(Box::new(move |text, height, min_prefix| {
+            let (inner, start_byte, entries) =
+                InnerProvider::new(provider, text, height, min_prefix);
 
             let Some((mut providers, reserve_start_byte, reserve_entries)) =
-                prev.map(|call| call(text, height))
+                prev.map(|call| call(text, height, min_prefix))
             else {
                 return (vec![Box::new(inner)], start_byte, entries);
             };
@@ -254,7 +260,8 @@ pub struct Completions {
     sidebar: Text,
     max_height: usize,
     start_byte: usize,
-    show_without_prefix: bool,
+    cur_min_prefix: usize,
+    min_prefix: usize,
     last_cursor: Point,
     info_handle: Option<Handle<Info>>,
 }
@@ -271,8 +278,14 @@ impl Completions {
     pub fn builder() -> CompletionsBuilder {
         CompletionsBuilder {
             providers: None,
-            show_without_prefix: true,
+            min_prefix: 0,
+            cmd_min_prefix: 0,
         }
+    }
+
+    /// Set the default completions for `Buffers`.
+    pub fn set_default(func: impl FnMut() -> CompletionsBuilder + Send + 'static) {
+        *BUFFER_COMPLETIONS.lock().unwrap() = Some(Box::new(func));
     }
 
     /// Set the [`CompletionsBuilder`] function for a [`Parameter`]
@@ -289,10 +302,14 @@ impl Completions {
 
     /// Spawn the `Completions` list
     pub fn open_default(pa: &mut Pass) {
-        Self::builder()
-            .with_provider(WordCompletions)
-            .with_provider(PathCompletions::new(false))
-            .open(pa);
+        if let Some(func) = BUFFER_COMPLETIONS.lock().unwrap().as_mut() {
+            func().open(pa);
+        } else {
+            Self::builder()
+                .with_provider(WordCompletions)
+                .with_provider(PathCompletions::new(false))
+                .open(pa);
+        }
     }
 
     /// Open the `Completions` for a given [`Parameter`]'s [`TypeId`]
@@ -307,7 +324,7 @@ impl Completions {
         let mut opened_param_completion = OPENED_PARAM_COMPLETION.lock().unwrap();
 
         let mut builder = Completions::builder();
-        builder.show_without_prefix = true;
+        builder.min_prefix = builder.cmd_min_prefix;
 
         let mut param_fns: Vec<_> = param_type_ids
             .iter()
@@ -354,7 +371,7 @@ impl Completions {
         let handle = context::handle_of::<Completions>(pa)?;
 
         let main_repl = Completions::update_text_and_position(pa, &handle, scroll);
-        handle.write(pa).show_without_prefix = true;
+        handle.write(pa).cur_min_prefix = 0;
         main_repl
     }
 
@@ -386,7 +403,7 @@ impl Completions {
                         scroll,
                         Some(area),
                         comp.max_height,
-                        comp.show_without_prefix,
+                        comp.cur_min_prefix,
                     );
                     (texts_and_match, inner.start_fn())
                 })
@@ -493,7 +510,8 @@ impl Completions {
                     sidebar: std::mem::take(&mut comp.sidebar),
                     max_height: comp.max_height,
                     start_byte: new_start_byte,
-                    show_without_prefix: false,
+                    cur_min_prefix: comp.min_prefix,
+                    min_prefix: comp.min_prefix,
                     last_cursor: comp.last_cursor,
                     info_handle: comp.info_handle.take(),
                 };
@@ -650,7 +668,7 @@ trait ErasedInnerProvider: Any + Send {
         scroll: i32,
         area: Option<&mut Area>,
         max_height: usize,
-        show_without_prefix: bool,
+        min_prefix: usize,
     ) -> (
         usize,
         Option<((Text, Text), Option<(String, Option<(Text, Orientation)>)>)>,
@@ -673,7 +691,12 @@ struct InnerProvider<P: CompletionsProvider> {
 
 impl<P: CompletionsProvider> InnerProvider<P> {
     #[allow(clippy::type_complexity)]
-    fn new(mut provider: P, text: &Text, height: usize) -> (Self, usize, Option<(Text, Text)>) {
+    fn new(
+        mut provider: P,
+        text: &Text,
+        height: usize,
+        min_prefix: usize,
+    ) -> (Self, usize, Option<(Text, Text)>) {
         let Some(main_cursor) = text.get_main_sel().map(|sel| sel.cursor()) else {
             panic!("Tried to spawn completions on a Text with no main selection");
         };
@@ -693,7 +716,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             fmt: Box::new(P::default_fmt),
         };
 
-        let (start, text) = inner.texts_and_match(text, 0, None, height, true);
+        let (start, text) = inner.texts_and_match(text, 0, None, height, min_prefix);
         (inner, start, text.unzip().0)
     }
 }
@@ -706,7 +729,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         scroll: i32,
         area: Option<&mut Area>,
         max_height: usize,
-        show_without_prefix: bool,
+        min_prefix: usize,
     ) -> (
         usize,
         Option<((Text, Text), Option<(String, Option<(Text, Orientation)>)>)>,
@@ -721,10 +744,14 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let start = self
             .provider
             .get_start(text, cursor)
-            .unwrap_or(cursor.byte());
+            .map(|byte| text.point_at_byte(byte))
+            .unwrap_or(cursor);
 
-        let Some(prefix) = text.get(start..cursor.byte()).map(Strs::to_string) else {
-            panic!("Failed to get prefix from {:?}", start..cursor.byte());
+        let Some(prefix) = text.get(start.byte()..cursor.byte()).map(Strs::to_string) else {
+            panic!(
+                "Failed to get prefix from {:?}",
+                start.byte()..cursor.byte()
+            );
         };
 
         // This should only be true if edits other than the one applied by
@@ -738,9 +765,9 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             self.orig_prefix = prefix;
         }
 
-        if self.matches.is_empty() || (start == cursor.byte() && !show_without_prefix) {
+        if self.matches.is_empty() || cursor.char() < start.char() + min_prefix {
             self.current = None;
-            return (start, None);
+            return (start.byte(), None);
         }
 
         let height = if let Some(area) = area {
@@ -822,7 +849,10 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
 
         let entries_text = entries_builder.build_no_double_nl();
         let sidebar_text = sidebar_builder.build_no_double_nl();
-        (start, Some(((entries_text, sidebar_text), replacement)))
+        (
+            start.byte(),
+            Some(((entries_text, sidebar_text), replacement)),
+        )
     }
 
     fn start_fn(&self) -> Box<dyn Fn(&Text, Point) -> usize + '_> {
@@ -871,13 +901,14 @@ const SPAWN_SPECS: DynSpawnSpecs = DynSpawnSpecs {
 
 type ProvidersFn = Box<
     dyn FnOnce(
-        &Text,
-        usize,
-    ) -> (
-        Vec<Box<dyn ErasedInnerProvider>>,
-        usize,
-        Option<(Text, Text)>,
-    ),
+            &Text,
+            usize,
+            usize,
+        ) -> (
+            Vec<Box<dyn ErasedInnerProvider>>,
+            usize,
+            Option<(Text, Text)>,
+        ) + Send,
 >;
 type ParamCompletions =
     Box<Mutex<dyn FnMut(&Pass, CompletionsBuilder) -> CompletionsBuilder + Send + Sync>>;

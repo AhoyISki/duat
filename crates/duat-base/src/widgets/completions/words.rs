@@ -31,6 +31,7 @@ use crate::widgets::completions::{CompletionsProvider, string_cmp};
 static BUFFER_WORDS: Mutex<BTreeMap<Arc<str>, WordInfo>> = Mutex::new(BTreeMap::new());
 
 /// Word completions provider.
+#[derive(Clone)]
 pub struct WordCompletions;
 
 impl CompletionsProvider for WordCompletions {

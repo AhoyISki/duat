@@ -9,12 +9,14 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
+#[cfg(feature = "term-ui")]
+use duat_base::widgets::{Completions, PathCompletions, WordCompletions};
 use duat_base::{
     modes::Pager,
     widgets::{FooterWidgets, LogBook, WhichKey, status},
 };
 use duat_core::{
-    buffer::{BufferOpts, History, PathKind},
+    buffer::{BufferOpts, PathKind},
     context::{self, cache},
     data::Pass,
     hook::{BufferOpened, KeyTyped, ModeSwitched},
@@ -75,6 +77,17 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
     enable_whichkey_hooks(&opts);
     enable_layout_hooks(&mut opts);
     enable_buffer_hooks(&opts);
+    let min_prefix = opts.completions.min_prefix;
+    let cmd_min_prefix = opts.completions.cmd_min_prefix;
+
+    Completions::set_default(move || {
+        let mut builder = Completions::builder()
+            .with_provider(WordCompletions)
+            .with_provider(PathCompletions::new(false));
+        builder.min_prefix = min_prefix;
+        builder.cmd_min_prefix = cmd_min_prefix;
+        builder
+    });
 
     // Layout hooks
 
