@@ -32,7 +32,19 @@ static BUFFER_WORDS: Mutex<BTreeMap<Arc<str>, WordInfo>> = Mutex::new(BTreeMap::
 
 /// Word completions provider.
 #[derive(Clone)]
-pub struct WordCompletions;
+pub struct WordCompletions {
+    case_insensitive: bool,
+}
+
+impl WordCompletions {
+    /// Returns a `WordCompletions`.
+    ///
+    /// Case insensitivity is only applied if the word being completed
+    /// is fully lowercase.
+    pub fn new(case_insensitive: bool) -> Self {
+        Self { case_insensitive }
+    }
+}
 
 impl CompletionsProvider for WordCompletions {
     type Info = WordInfo;
@@ -47,13 +59,21 @@ impl CompletionsProvider for WordCompletions {
     fn matches(&mut self, text: &Text, cursor: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
         let suffix = &text[text.search(r"\A\w*").range(cursor..).next().unwrap()];
 
+        let (prefix, case_insensitive) =
+            if self.case_insensitive && prefix.chars().all(|char| char.is_lowercase()) {
+                (prefix.to_uppercase(), true)
+            } else {
+                (prefix.to_string(), false)
+            };
+
         let mut matches: Vec<_> = BUFFER_WORDS
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .iter()
             .filter(|&(word, info)| {
-                if let Some(difference) = string_cmp(prefix, word) {
-                    !(difference == 0 && info.count == 1 && &word[prefix.len()..] == suffix)
+                let cmp = if case_insensitive { &info.upper } else { word };
+                if let Some(difference) = string_cmp(&prefix, cmp) {
+                    !(difference == 0 && info.count == 1 && &cmp[prefix.len()..] == suffix)
                 } else {
                     false
                 }
@@ -61,7 +81,10 @@ impl CompletionsProvider for WordCompletions {
             .map(|(entry, info)| (entry.clone(), info.clone()))
             .collect();
 
-        matches.sort_by_key(|(entry, _)| (string_cmp(prefix, entry), entry.len()));
+        matches.sort_by_key(|(word, info)| {
+            let cmp = if case_insensitive { &info.upper } else { word };
+            (string_cmp(&prefix, cmp), cmp.len())
+        });
 
         matches
     }
@@ -78,9 +101,12 @@ impl CompletionsProvider for WordCompletions {
 #[derive(Clone, Debug)]
 pub struct WordInfo {
     /// The first [`Buffer`] in which this word was found
+    ///
+    /// [`Buffer`]: duat_core::buffer::Buffer
     pub source: Arc<str>,
     /// How many times this word appears, always greater than 0
     pub count: usize,
+    upper: Arc<str>,
 }
 
 #[doc(hidden)]
@@ -94,10 +120,13 @@ pub(super) fn track_words() {
 
         let source: Arc<str> = buf.name().into();
         for range in buf.text().search(r"\w{3,}") {
-            let word = buf.text()[range].to_string().into();
-            let info = words
-                .entry(word)
-                .or_insert_with(|| WordInfo { source: source.clone(), count: 0 });
+            let word = buf.text()[range].to_string();
+            let upper = word.to_uppercase().into();
+            let info = words.entry(word.into()).or_insert_with(|| WordInfo {
+                source: source.clone(),
+                count: 0,
+                upper,
+            });
 
             info.count += 1;
         }
@@ -147,7 +176,12 @@ fn update_counts(pa: &mut Pass, buffer: &Handle, ns: Ns) {
         match (buffer_words.get_mut(word), is_taken) {
             (Some(info), false) => info.count += 1,
             (None, false) => {
-                buffer_words.insert(word.into(), WordInfo { source: source.clone(), count: 1 });
+                let upper = word.to_uppercase().into();
+                buffer_words.insert(word.into(), WordInfo {
+                    source: source.clone(),
+                    count: 1,
+                    upper,
+                });
             }
             (Some(info), true) if info.count > 1 => info.count -= 1,
             (Some(_), true) => {

@@ -19,8 +19,10 @@ FOR NEXT UPDATE:
 [x] Additional wrap continuation characters.
 [ ] Add a donation splash screen.
 [ ] Some QoL features:
-  [ ] Autocompletions only after n characters.
-  [ ] Remember if a buffer needed to be saved.
+  [x] Autocompletions only after n characters.
+  [x] Remember if a buffer needed to be saved.
+  [ ] Case insensitive completions.
+[ ] Include duat-lsp by default.
 
 KNOWN BUGS:
  HIGH PRIORITY:

@@ -306,7 +306,7 @@ impl Completions {
             func().open(pa);
         } else {
             Self::builder()
-                .with_provider(WordCompletions)
+                .with_provider(WordCompletions::new(true))
                 .with_provider(PathCompletions::new(false))
                 .open(pa);
         }

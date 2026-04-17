@@ -82,7 +82,7 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
 
     Completions::set_default(move || {
         let mut builder = Completions::builder()
-            .with_provider(WordCompletions)
+            .with_provider(WordCompletions::new(true))
             .with_provider(PathCompletions::new(false));
         builder.min_prefix = min_prefix;
         builder.cmd_min_prefix = cmd_min_prefix;
