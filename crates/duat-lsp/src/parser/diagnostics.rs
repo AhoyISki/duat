@@ -314,6 +314,10 @@ pub fn add_initial(pa: &mut Pass, servers: &[Server], buffer: &Handle) {
     let mut to_add = Vec::new();
 
     for (server_ns, (_, list)) in diagnostics.0.iter_mut() {
+        let Some(entries) = list.get_mut(&uri) else {
+            continue;
+        };
+
         let encoding = Encoding::new(
             servers
                 .iter()
@@ -322,10 +326,6 @@ pub fn add_initial(pa: &mut Pass, servers: &[Server], buffer: &Handle) {
                 .capabilities()
                 .unwrap(),
         );
-
-        let Some(entries) = list.get_mut(&uri) else {
-            continue;
-        };
 
         let list = Vec::from_iter(entries.drain(..).filter_map(|entry| match entry {
             Entry::Diagnostic(_, diagnostic, _) => Some(diagnostic),

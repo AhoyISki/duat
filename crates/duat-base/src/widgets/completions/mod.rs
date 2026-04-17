@@ -129,8 +129,10 @@ pub fn completions_setup() {
     });
 
     hook::add::<ModeSwitched>(move |pa, switch| {
-        switch.old.handle.text_mut(pa).remove_tags(*NS, ..);
-        Completions::close(pa);
+        if switch.old.handle != switch.new.handle {
+            switch.old.handle.text_mut(pa).remove_tags(*NS, ..);
+            Completions::close(pa);
+        }
     });
 
     hook::add::<OnMouseEvent<Completions>>(|pa, event| match event.kind {
