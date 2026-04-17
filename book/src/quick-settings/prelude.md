@@ -122,10 +122,10 @@ fn setup(opts: &mut Opts) {
     opts.footer_on_top = false;
     // Make the bottom widgets take up only one line of space.
     opts.one_line_footer = false;
-    // Shows available keybindings
+    // Shows available keybindings.
     opts.help_key = Some(KeyEvent::new(KeyCode::Char('?'), mode::KeyMod::CONTROL));
 
-    // Default formatting for the StatusLine
+    // Default formatting for the StatusLine.
     opts.fmt_status(|pa| {
         // If on one line footer mode:
         let mode = mode_txt();
@@ -138,38 +138,45 @@ fn setup(opts: &mut Opts) {
     });
 
     // duatmode settings:
-    // Inserts a \t instead of spaces when pressing Tab
+    // Inserts a \t instead of spaces when pressing Tab.
     opts.duatmode.insert_tabs = false;
-    // How to handle the Tab key
+    // How to handle the Tab key.
     opts.duatmode.tab_mode = TabMode::VerySmart;
-    // Auto indent new lines on tree-sitter Buffers
+    // Auto indent new lines on tree-sitter Buffers.
     opts.duatmode.auto_indent = true;
-    // Characters that trigger a reindentation
+    // Characters that trigger a reindentation.
     opts.duatmode.indent_chars = &['\n', '(', ')', '{', '}', '[', ']'];
-    // Reindent when pressing 'I' in normal mode
+    // Reindent when pressing 'I' in normal mode.
     opts.duatmode.indent_on_capital_i = true;
-    // Makes the 'f' and 't' keys set the search pattern
+    // Makes the 'f' and 't' keys set the search pattern.
     opts.duatmode.f_and_t_set_search = true;
-    // Bracket pairs to be considered by keys like 'm' and the 'u' object
+    // Bracket pairs to be considered by keys like 'm' and the 'u' object.
     opts.duatmode.set_brackets([["(", ")"], ["{", "}"], ["[", "]"]]);
 
     // LineNumbers options:
+    // Relative line numbers.
     opts.linenumbers.relative = false;
-    // Where to align the numbers
+    // Where to align the numbers.
     opts.linenumbers.align = std::fmt::Alignment::Left;
-    // Where to align the main line number
+    // Where to align the main line number.
     opts.linenumbers.main_align = std::fmt::Alignment::Right;
-    // Wether to show wrapped line's numbers
+    // Wether to show wrapped line's numbers.
     opts.linenumbers.show_wraps = false;
-    // Place the widget on the right, as opposed to on the left
+    // Place the widget on the right, as opposed to on the left.
     opts.linenumbers.on_the_right = false;
 
+    // Completions options:
+    // How many characters before the cursor to show the list.
+    opts.completions.min_prefix = 0;
+    // Same, but while typing a command.
+    opts.completions.cmd_min_prefix = 0;
+
     // Notifications options:
-    // Reformat the notifications messages
+    // Reformat the notifications messages.
     opts.notifications.fmt(|rec| todo!("default fmt function"));
-    // Which mask to use to show the messages
+    // Which mask to use to show the messages.
     opts.notifications.set_mask(|rec| todo!("error for error, info for info, etc"));
-    // Which log levels will actually show up on the notifications
+    // Which log levels will actually show up on the notifications.
     opts.notifications.set_allowed_levels([
         context::Level::Error,
         context::Level::Warn,
@@ -177,17 +184,17 @@ fn setup(opts: &mut Opts) {
     ]);
 
     // WhichKey options:
-    // How to format each keybinding entry on the widget
+    // How to format each keybinding entry on the widget.
     opts.whichkey.fmt(|desc| todo!("default fmt function"));
-    // Disable the widget for the given Mode
+    // Disable the widget for the given Mode.
     // opts.whichkey.disable_for::<{Mode in question}>();
     // Always show the widget for the given Mode
     opts.whichkey.always_show::<User>();
-    // Removes the Mode from the disable_for and always_show lists
+    // Removes the Mode from the disable_for and always_show lists.
     // opts.whichkey.show_normally::<{Mode in question}>();
 
     // LogBook options:
-    // How to format each message
+    // How to format each message.
     opts.logs.fmt(|rec| todo!("default log fmt"));
     opts.logs.close_on_unfocus = true;
     // It can be shown via the "logs" command.
@@ -334,7 +341,7 @@ of the `function` form, used to highlight function identifiers. If there is a
  `function.error` form, and I tell the `File` to use the `error` mask, instead
 of using the `function` form, Duat will use `function.error`.
 
-In duat, by default there are four masks: `error`, `warning`, `info`, and
+In duat, by default there are four masks: `error`, `warn`, `info`, and
 `inactive`. The first three are used primarily to show color coded
 notifications. The last one is unused, but you can use it to change how
 unfocused buffers should be displayed.
@@ -540,7 +547,7 @@ outputs the keys that were sent. `alias` does the same thing, but it also
 ""prints"" the sequence that was sent, making it _look_ like you are typing
 real text. Here's a showcase of the difference:
 
-<p align="center"><img src="../../../../assets/map-alias.gif"/></p>
+<p align="center"><img src="../assets/map-alias.gif"/></p>
 
 Both of these functions also take a _required_ type argument. This type
 argument is the `Mode` where this mapping will take place. So in the first
