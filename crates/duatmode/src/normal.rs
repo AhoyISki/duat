@@ -96,6 +96,7 @@ impl Mode for Normal {
                 event!('a') => txt!("last swapped [a]Buffer"),
                 event!('n') => txt!("next [a]Buffer"),
                 event!('N') => txt!("previous [a]Buffer"),
+                event!('o') => txt!("move [a]Buffer[] to new window"),
             })
         };
 

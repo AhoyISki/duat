@@ -59,7 +59,7 @@ impl BufferTokens {
                 .iter()
                 .map(|ty| {
                     let ty = ty.as_str();
-                    form::id_of_non_static(map.get(ty).copied().unwrap_or(ty)).to_tag(100)
+                    form::id_of_non_static(map.get(ty).copied().unwrap_or(ty)).to_tag(80)
                 })
                 .collect();
 

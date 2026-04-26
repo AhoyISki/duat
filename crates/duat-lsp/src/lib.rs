@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use duat_base::widgets::GutterBuffer;
 use duat_core::{
     buffer::Buffer,
     context::Handle,
@@ -14,7 +15,7 @@ use duat_core::{
 };
 use lsp_types::{Position, ServerCapabilities, Uri};
 
-pub use crate::parser::LspBuffer;
+pub use crate::parser::{LspBuffer, LspCompletions};
 
 mod config;
 mod parser;
@@ -44,13 +45,15 @@ impl DuatLsp {
     }
 }
 
-struct Lsp;
+/// The mode for lsp actions.
+pub struct Lsp;
 
 impl Mode for Lsp {
     type Widget = Buffer;
 
     fn bindings() -> duat_core::mode::Bindings {
         mode::bindings!(match _ {
+            event!('h') => txt!("Show hover info"),
             event!('f') => txt!("Format the buffer"),
         })
     }
@@ -58,6 +61,9 @@ impl Mode for Lsp {
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, buffer: Handle<Self::Widget>) {
         match key_event {
             event!('f') => buffer.lsp_format(pa, None),
+            event!('h') => {
+                buffer.hover_gutter_entries_on(pa, buffer.selections(pa).main().cursor())
+            }
             _ => {}
         }
         mode::reset::<Buffer>(pa);

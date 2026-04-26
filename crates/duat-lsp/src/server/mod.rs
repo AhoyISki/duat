@@ -251,7 +251,7 @@ impl<Context> Decode<Context> for ServerParts {
         let capabilities: String = Decode::decode(decoder)?;
         let info: Option<String> = Decode::decode(decoder)?;
 
-        let capabilities: ServerCapabilities = serde_json::from_str(&capabilities).unwrap();
+        let capabilities = serde_json::from_str(&capabilities).unwrap();
         let encoding = crate::Encoding::new(&capabilities);
 
         Ok(Self {

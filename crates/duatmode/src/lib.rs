@@ -489,7 +489,7 @@ use duat_core::{
     utils::Memoized,
 };
 use duat_jump_list::JumpList;
-use duat_treesitter::{TreeSitter, TsHandle};
+use duat_treesitter::{DuatTreeSitter, TsHandle};
 pub use parameter::{add_to_param, duat_param, duat_param_txt, take_param};
 
 mod parameter {
@@ -735,7 +735,7 @@ impl DuatMode {
     #[inline(never)]
     pub fn _plug(self, require: fn(TypeId, fn())) {
         require(TypeId::of::<JumpList>(), || JumpList._plug());
-        require(TypeId::of::<TreeSitter>(), || TreeSitter._plug());
+        require(TypeId::of::<DuatTreeSitter>(), || DuatTreeSitter._plug());
 
         mode::set_alt_is_reverse(true);
         mode::set_default(Normal::new());

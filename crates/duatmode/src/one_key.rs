@@ -126,10 +126,11 @@ fn match_goto(
             }
         }),
 
-        ////////// File change keys
+        ////////// Buffer change keys
         event!('a') => switch_and_register("last-switched-buffer"),
         event!('n') => switch_and_register("next-buffer --global"),
         event!('N') => switch_and_register("prev-buffer --global"),
+        event!('o') => _ = cmd::call(pa, "open"),
         _ => {}
     }
 

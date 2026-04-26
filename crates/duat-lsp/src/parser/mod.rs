@@ -32,8 +32,10 @@ use crate::{
     server::{self, Server},
 };
 
+mod completions;
 pub mod diagnostics;
 mod semantic_tokens;
+pub use completions::LspCompletions;
 
 /// LSP functions for a [`Buffer`].
 pub trait LspBuffer {
