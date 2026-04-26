@@ -13,6 +13,11 @@
 //! [`GapBuffer`]: gap_buf::GapBuffer
 use std::{ops::Range, sync::LazyLock};
 
+pub use pattern::{
+    DoubleEndedSearcher as StrsDoubleEndedSearcher, Pattern as StrsPattern,
+    Searcher as StrsSearcher,
+};
+
 pub(crate) use crate::text::strs::buf::StrsBuf;
 use crate::{
     opts::PrintOpts,
@@ -21,6 +26,8 @@ use crate::{
 
 mod buf;
 mod line_ranges;
+mod memchr;
+mod pattern;
 
 /// The [`str`] equivalent for Duat.
 ///
@@ -213,8 +220,7 @@ impl Strs {
     ///
     /// # Panics
     ///
-    /// Panics if `line > self.end_point().line() || column >
-    /// self.line(line).chars().count()`. If you want an
+    /// Panics if `line > self.end_point().line()`. If you want an
     /// [`Option`] return instead of a panic, checkout
     /// [`Strs::get_point_at_coords`].
     #[inline(always)]
@@ -232,9 +238,9 @@ impl Strs {
 
     /// Gets a [`Point`] from coordinates.
     ///
-    /// Returns [`None`] if the `line > self.end_point().line() ||
-    /// column > self.line(line).chars().count()`. If you'd rather it
-    /// panic instead, checkout [`Strs::point_at_coords`].
+    /// Returns [`None`] if the `line > self.end_point().line()`. If
+    /// you'd rather it panic instead, checkout
+    /// [`Strs::point_at_coords`].
     pub fn get_point_at_coords(&self, line: usize, column: usize) -> Option<Point> {
         let end_point = self.end_point();
         if line > end_point.line() {
@@ -258,7 +264,7 @@ impl Strs {
             let point = formed.buf.line_ranges.point_at_coords(line, column, slices);
 
             point.or_else(|| {
-                let next_line_start = if line + 1 == end_point.line() {
+                let next_line_start = if line + 1 >= end_point.line() {
                     Some(end_point)
                 } else {
                     formed.buf.line_ranges.point_at_coords(line + 1, 0, slices)
@@ -277,13 +283,13 @@ impl Strs {
     pub fn line(&self, n: usize) -> &Strs {
         let end_point = self.end_point();
         assert!(
-            n < end_point.line(),
+            n <= end_point.line(),
             "line out of bounds: the len is {}, but the line is {n}",
             end_point.line()
         );
-        
+
         let start = self.point_at_coords(n, 0);
-        let end = if n + 1 == end_point.line() {
+        let end = if n + 1 >= end_point.line() {
             end_point
         } else {
             self.point_at_coords(n + 1, 0)
@@ -435,10 +441,31 @@ impl Strs {
     }
 
     /// Returns an [`Iterator`] over the [`char`]s and their indices.
-    pub fn char_indices(&self) -> impl DoubleEndedIterator<Item = (usize, char)> {
+    pub fn char_indices(&self) -> CharIndices<'_> {
         let [s0, s1] = self.to_array();
-        s0.char_indices()
-            .chain(s1.char_indices().map(move |(b, s)| (b + s0.len(), s)))
+        CharIndices {
+            s0_iter: s0.char_indices(),
+            s1_iter: s1.char_indices(),
+        }
+    }
+
+    /// Checks that `index`-th byte is the first byte in a UTF-8 code
+    /// point sequence or the end of the `Strs`.
+    ///
+    /// The start, end and gap of the `Strs` (when `index ==
+    /// self.len()` or `index == self.to_array()[0].len()`) are
+    /// considered to be boundaries.
+    ///
+    /// Returns `false` if `index` is greater than `self.len()`.
+    pub fn is_char_boundary(&self, index: usize) -> bool {
+        let [s0, s1] = self.to_array();
+        if index > s0.len() {
+            s1.is_char_boundary(index - s0.len())
+        } else if index < s0.len() {
+            s0.is_char_boundary(index)
+        } else {
+            true
+        }
     }
 
     /// A [`Range<usize>`] of the bytes on this `Strs`.
@@ -703,3 +730,34 @@ impl<'b> FormedStrs<'b> {
 
 #[repr(transparent)]
 struct StrsDST([StrsBuf]);
+
+/// An iterator over the [`char`]s of an [`Strs`], and their
+/// positions.
+///
+/// This struct is created by the [`char_indices`] method on `Strs`.
+/// See its documentation for more.
+///
+/// [`char_indices`]: Strs::char_indices
+#[derive(Debug, Clone)]
+pub struct CharIndices<'s> {
+    s0_iter: std::str::CharIndices<'s>,
+    s1_iter: std::str::CharIndices<'s>,
+}
+
+impl<'s> Iterator for CharIndices<'s> {
+    type Item = (usize, char);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.s0_iter.next().or_else(|| self.s1_iter.next())
+    }
+}
+
+impl<'s> DoubleEndedIterator for CharIndices<'s> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.s1_iter
+            .next_back()
+            .or_else(|| self.s0_iter.next_back())
+    }
+}
+
+impl<'s> std::iter::FusedIterator for CharIndices<'s> {}

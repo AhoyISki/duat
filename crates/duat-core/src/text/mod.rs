@@ -102,7 +102,7 @@ pub use crate::{
         builder::{AsBuilderPart, Builder, BuilderPart},
         iter::{FwdIter, RevIter, TextPart, TextPlace},
         search::{Matches, RegexHaystack, RegexPattern},
-        strs::{Lines, Strs},
+        strs::{Lines, Strs, StrsDoubleEndedSearcher, StrsPattern, StrsSearcher},
         tags::{Conceal, FormTag, Inlay, Mask, Overlay, Spacer, Spawn, Tag, TagPart, Tags, Toggle},
         utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     },
