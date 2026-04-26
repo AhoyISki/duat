@@ -1,25 +1,17 @@
-use std::sync::Arc;
-
 use duat_core::text::{Point, RegexHaystack, Spacer, Text, txt};
 
 use crate::widgets::{CompletionsProvider, completions::string_cmp};
 
 impl<S: AsRef<str> + Send + 'static> CompletionsProvider for Vec<S> {
-    type Info = ();
+    type Entry<'e> = &'e str;
 
-    fn default_fmt(entry: &str, _: &Self::Info) -> Text {
-        txt!("{entry}{Spacer}")
-    }
-
-    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
-        let mut entries: Vec<(Arc<str>, _)> = self
+    fn matches<'e>(&'e mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry<'e>> {
+        let mut entries: Vec<&str> = self
             .iter()
-            .filter_map(|entry| {
-                string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().into(), ()))
-            })
+            .filter_map(|entry| string_cmp(prefix, entry.as_ref()).map(|_| entry.as_ref()))
             .collect();
 
-        entries.sort_by(|(lhs, _), (rhs, _)| {
+        entries.sort_by(|lhs, rhs| {
             string_cmp(prefix, lhs)
                 .unwrap()
                 .cmp(&string_cmp(prefix, rhs).unwrap())
@@ -30,25 +22,27 @@ impl<S: AsRef<str> + Send + 'static> CompletionsProvider for Vec<S> {
 
     fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
         Some(text.search(r"\S*").range(..cursor).next_back()?.start)
+    }
+
+    fn default_fmt(entry: &Self::Entry<'_>) -> Text {
+        txt!("[completion.entry]{entry}[]{Spacer}")
+    }
+
+    fn word<'e>(entry: &'e Self::Entry<'e>) -> &'e str {
+        entry
     }
 }
 
 impl<const N: usize, S: AsRef<str> + Send + 'static> CompletionsProvider for [S; N] {
-    type Info = ();
+    type Entry<'e> = &'e str;
 
-    fn default_fmt(entry: &str, _: &Self::Info) -> Text {
-        txt!("{entry}{Spacer}")
-    }
-
-    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
-        let mut entries: Vec<(Arc<str>, _)> = self
+    fn matches<'e>(&'e mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry<'e>> {
+        let mut entries: Vec<&str> = self
             .iter()
-            .filter_map(|entry| {
-                string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().into(), ()))
-            })
+            .filter_map(|entry| string_cmp(prefix, entry.as_ref()).map(|_| entry.as_ref()))
             .collect();
 
-        entries.sort_by(|(lhs, _), (rhs, _)| {
+        entries.sort_by(|lhs, rhs| {
             string_cmp(prefix, lhs)
                 .unwrap()
                 .cmp(&string_cmp(prefix, rhs).unwrap())
@@ -59,6 +53,14 @@ impl<const N: usize, S: AsRef<str> + Send + 'static> CompletionsProvider for [S;
 
     fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
         Some(text.search(r"\S*").range(..cursor).next_back()?.start)
+    }
+
+    fn default_fmt(entry: &Self::Entry<'_>) -> Text {
+        txt!("[completion.entry]{entry}[]{Spacer}")
+    }
+
+    fn word<'e>(entry: &'e Self::Entry<'e>) -> &'e str {
+        entry
     }
 }
 
@@ -76,13 +78,9 @@ pub struct ExhaustiveCompletionsList<S> {
 }
 
 impl<S: AsRef<str> + Send + 'static> CompletionsProvider for ExhaustiveCompletionsList<S> {
-    type Info = ();
+    type Entry<'e> = &'e str;
 
-    fn default_fmt(entry: &str, _: &Self::Info) -> Text {
-        txt!("{entry}{Spacer}")
-    }
-
-    fn matches(&mut self, text: &Text, cursor: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
+    fn matches<'e>(&'e mut self, text: &Text, cursor: Point, prefix: &str) -> Vec<Self::Entry<'e>> {
         let yet_to_be_typed: Vec<_> = self
             .list
             .iter()
@@ -93,14 +91,12 @@ impl<S: AsRef<str> + Send + 'static> CompletionsProvider for ExhaustiveCompletio
             return Vec::new();
         }
 
-        let mut entries: Vec<(Arc<str>, _)> = yet_to_be_typed
-            .iter()
-            .filter_map(|entry| {
-                string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().into(), ()))
-            })
+        let mut entries: Vec<&str> = yet_to_be_typed
+            .into_iter()
+            .filter_map(|entry| string_cmp(prefix, entry.as_ref()).map(|_| entry.as_ref()))
             .collect();
 
-        entries.sort_by(|(lhs, _), (rhs, _)| {
+        entries.sort_by(|lhs, rhs| {
             string_cmp(prefix, lhs)
                 .unwrap()
                 .cmp(&string_cmp(prefix, rhs).unwrap())
@@ -111,5 +107,13 @@ impl<S: AsRef<str> + Send + 'static> CompletionsProvider for ExhaustiveCompletio
 
     fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
         Some(text.search(r"\S*").range(..cursor).next_back()?.start)
+    }
+
+    fn default_fmt(entry: &Self::Entry<'_>) -> Text {
+        txt!("[completion.entry]{entry}[]{Spacer}")
+    }
+
+    fn word<'e>(entry: &'e Self::Entry<'e>) -> &'e str {
+        entry
     }
 }

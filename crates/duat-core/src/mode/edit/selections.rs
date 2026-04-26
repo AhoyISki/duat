@@ -481,7 +481,7 @@ mod selection {
         /// Returns `true` if the cursor was moved
         pub fn move_hor(&mut self, by: i32, text: &Text) -> i32 {
             let by = by as isize;
-            if by == 0 {
+            let (false, Some(last_point)) = (by == 0, text.last_point()) else {
                 return 0;
             };
 
@@ -494,8 +494,8 @@ mod selection {
 
             let point = if target_char == 0 {
                 Point::default()
-            } else if target_char >= text.last_point().char() {
-                text.last_point()
+            } else if target_char >= last_point.char() {
+                last_point
             } else if by.abs() < 500 {
                 if by > 0 {
                     text[cursor.point()..]

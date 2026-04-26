@@ -772,7 +772,7 @@ fn select_to_end_of_line(set_anchor: bool, mut s: SelectionMut) {
     set_anchor_if_needed(set_anchor, &mut s);
     s.set_desired_vcol(usize::MAX);
     let pre_nl = match s.char() {
-        '\n' => s.text()[..s.cursor()]
+        Some('\n') => s.text()[..s.cursor()]
             .char_indices()
             .rev()
             .map_while(|(b, char)| (char != '\n').then_some(b))

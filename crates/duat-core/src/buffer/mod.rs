@@ -46,32 +46,36 @@ pub(crate) fn add_buffer_hooks() {
             crate::mode::reset_to(pa, event.handle);
             let point = match event.points {
                 Some(TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points)) => {
-                    points.real
+                    Some(points.real)
                 }
                 _ => event.handle.text(pa).last_point(),
             };
 
-            event.handle.selections_mut(pa).remove_extras();
-            event.handle.edit_main(pa, |mut s| {
-                s.unset_anchor();
-                s.move_to(point)
-            })
+            if let Some(point) = point {
+                event.handle.selections_mut(pa).remove_extras();
+                event.handle.edit_main(pa, |mut s| {
+                    s.unset_anchor();
+                    s.move_to(point)
+                })
+            }
         }
         MouseEventKind::Down(_) => {}
         MouseEventKind::Up(_) => {}
         MouseEventKind::Drag(MouseButton::Left) => {
             let point = match event.points {
                 Some(TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points)) => {
-                    points.real
+                    Some(points.real)
                 }
                 _ => event.handle.text(pa).last_point(),
             };
 
-            event.handle.selections_mut(pa).remove_extras();
-            event.handle.edit_main(pa, |mut s| {
-                s.set_anchor_if_needed();
-                s.move_to(point);
-            })
+            if let Some(point) = point {
+                event.handle.selections_mut(pa).remove_extras();
+                event.handle.edit_main(pa, |mut s| {
+                    s.set_anchor_if_needed();
+                    s.move_to(point);
+                })
+            }
         }
         MouseEventKind::Drag(_) => {}
         MouseEventKind::Moved => {}

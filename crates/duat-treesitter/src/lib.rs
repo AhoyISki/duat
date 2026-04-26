@@ -62,9 +62,9 @@ mod tree;
 /// [tree-sitter]: https://tree-sitter.github.io/tree-sitter
 /// [`duat_treesitter::Parser`]: Parser
 #[derive(Default)]
-pub struct TreeSitter;
+pub struct DuatTreeSitter;
 
-impl TreeSitter {
+impl DuatTreeSitter {
     /// Adds the `TreeSitter` plugin.
     ///
     /// *DON'T USE THIS DIRECTLY, USE `duat::plug` INSTEAD*.

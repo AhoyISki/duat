@@ -358,6 +358,7 @@ dependencies = [
  "duat-base",
  "duat-core",
  "duat-filetype",
+ "duat-lsp",
  "duat-match-pairs",
  "duat-term",
  "duat-treesitter",

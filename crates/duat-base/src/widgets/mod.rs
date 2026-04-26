@@ -129,9 +129,16 @@ impl FooterWidgets {
             self.notifs.push_on(pa, &prompt_line)
         };
 
+        let hook_ns = duat_core::Ns::new();
+
         hook::add::<ModeSwitched>({
             let notifications = notifications.clone();
             move |pa, switch| {
+                if notifications.is_closed() {
+                    hook::remove(hook_ns);
+                    return;
+                }
+
                 if let Some(promptline) = switch.new.handle.get_as::<PromptLine>() {
                     try_or_log_err! {
                         notifications.area().hide(pa)?;
@@ -144,7 +151,8 @@ impl FooterWidgets {
                     }
                 }
             }
-        });
+        })
+        .grouped(hook_ns);
     }
 
     /// Returns a new [`FooterWidgets`], with a [`StatusLine`] and

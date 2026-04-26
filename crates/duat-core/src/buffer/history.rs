@@ -387,18 +387,7 @@ pub struct Change<'h, S = &'h str> {
 impl Change<'static, String> {
     /// Returns a new [Change].
     pub fn new(edit: impl ToString, range: Range<Point>, text: &Text) -> Self {
-        let added = {
-            let edit = edit.to_string();
-            // A '\n' must be kept at the end, no matter what.
-            if (range.start == text.end_point() || range.end == text.end_point())
-                && !edit.ends_with('\n')
-            {
-                edit + "\n"
-            } else {
-                edit
-            }
-        };
-
+        let added = edit.to_string();
         let taken = text[range.clone()].to_string();
         let added_end = add(
             range.start.as_signed(),

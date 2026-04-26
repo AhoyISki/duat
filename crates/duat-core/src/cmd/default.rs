@@ -360,20 +360,20 @@ pub fn add_defalt_commands() {
 
     add(
         "open",
-        |pa: &mut Pass, _: Existing, arg: PathOrBufferOrCfg| {
+        |pa: &mut Pass, _: Existing, arg: Option<PathOrBufferOrCfg>| {
             let windows = context::windows();
 
             let (pk, msg) = match arg {
-                PathOrBufferOrCfg::Cfg => (
+                Some(PathOrBufferOrCfg::Cfg) => (
                     PathKind::from(crate::utils::crate_dir()?.join("src").join("main.rs")),
                     None,
                 ),
-                PathOrBufferOrCfg::CfgManifest => (
+                Some(PathOrBufferOrCfg::CfgManifest) => (
                     PathKind::from(crate::utils::crate_dir()?.join("Cargo.toml")),
                     None,
                 ),
-                PathOrBufferOrCfg::Path(path) => (PathKind::from(path), None),
-                PathOrBufferOrCfg::Buffer(buffer) => {
+                Some(PathOrBufferOrCfg::Path(path)) => (PathKind::from(path), None),
+                Some(PathOrBufferOrCfg::Buffer(buffer)) => {
                     let pk = buffer.read(pa).path_kind();
                     let (win, ..) = windows.buffer_entry(pa, pk.clone()).unwrap();
                     if windows.get(pa, win).unwrap().buffers(pa).len() == 1 {
@@ -381,6 +381,10 @@ pub fn add_defalt_commands() {
                     } else {
                         (pk.clone(), Some(txt!("Moved {pk} to a new window")))
                     }
+                }
+                None => {
+                    let pk = context::current_buffer(pa).read(pa).path_kind();
+                    (pk.clone(), Some(txt!("Moved {pk} to a new window")))
                 }
             };
 
@@ -394,13 +398,14 @@ pub fn add_defalt_commands() {
         txt!("Switch to a [a]Buffer[] or open it on another window"),
         None,
     )
-    .doc_param(txt!("Fail if the file doesn't exist"), None, None)
+    .doc_param(txt!("Fails if the file doesn't exist"), None, None)
     .doc_param(
         txt!("Which [a]Buffer[] to open or switch to"),
         Some(txt!(
             "This accepts one of 4 types: an open [a]Buffer[]'s name, a valid file path, or the \
              one of the flags [param.flag]--cfg[] or [param.flag]--cfg-manifest[], which open \
-             configuration crate files"
+             configuration crate files.\nIf no path is given, the current [a]Buffer[] is used \
+             instead"
         )),
         None,
     );

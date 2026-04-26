@@ -2,8 +2,6 @@
 //!
 //! This provider will show all available commands, as well as
 //! information about the commands.
-use std::sync::Arc;
-
 use duat_core::{
     cmd::{CmdDoc, Description},
     data::Pass,
@@ -24,30 +22,22 @@ impl CommandsCompletions {
 }
 
 impl CompletionsProvider for CommandsCompletions {
-    type Info = CmdDoc;
+    type Entry<'e> = &'e CmdDoc;
 
-    fn default_fmt(entry: &str, _: &Self::Info) -> Text {
-        txt!("[cmd.Completions]{entry}{Spacer}")
-    }
+    fn matches<'e>(&'e mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry<'e>> {
+        let mut matches = Vec::from_iter(self.0.iter().filter_map(|desc| {
+            if let Description::Command(desc) = desc
+                && string_cmp(prefix, &desc.caller).is_some()
+            {
+                Some(desc)
+            } else {
+                None
+            }
+        }));
 
-    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
-        let mut matches = Vec::from_iter(
-            self.0
-                .iter()
-                .filter_map(|desc| {
-                    if let Description::Command(desc) = desc
-                        && string_cmp(prefix, &desc.caller).is_some()
-                    {
-                        Some(desc)
-                    } else {
-                        None
-                    }
-                })
-                .map(|desc| (desc.caller.clone(), desc.clone())),
-        );
-
-        matches.sort_by(|(lhs, _), (rhs, _)| {
-            (string_cmp(prefix, lhs), lhs).cmp(&(string_cmp(prefix, rhs), rhs))
+        matches.sort_by(|lhs, rhs| {
+            (string_cmp(prefix, &lhs.caller), &lhs.caller)
+                .cmp(&(string_cmp(prefix, &rhs.caller), &rhs.caller))
         });
 
         matches
@@ -57,7 +47,7 @@ impl CompletionsProvider for CommandsCompletions {
         Some(text.search(r"[^\s]*").range(..cursor).next_back()?.start)
     }
 
-    fn default_info_on(&self, _: &str, doc: &Self::Info) -> Option<(Text, Orientation)> {
+    fn default_info_on(doc: &Self::Entry<'_>) -> Option<(Text, Orientation)> {
         let mut builder = Text::builder();
 
         let short = doc.short.as_ref()?;
@@ -81,5 +71,13 @@ impl CompletionsProvider for CommandsCompletions {
         }
 
         Some((builder.build(), Orientation::HorTopRight))
+    }
+
+    fn default_fmt(entry: &Self::Entry<'_>) -> Text {
+        txt!("[cmd.Completions]{entry.caller}{Spacer}")
+    }
+
+    fn word<'e>(entry: &'e Self::Entry<'e>) -> &'e str {
+        &entry.caller
     }
 }

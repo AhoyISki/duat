@@ -861,6 +861,12 @@ type CheckedArgs = (
     Option<(Range<usize>, Text)>,
 );
 
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` doesn't implement `CmdFn`",
+    label = "Expected `FnMut(&mut Pass, ..args)`",
+    note = "Type can't be inferred for the `&mut Pass` argument",
+    note = "If you typed `|pa, args..|`, type `|pa: &mut Pass, args..|` instead"
+)]
 trait CmdFn<Arguments>: Send + 'static {
     fn call(&mut self, pa: &mut Pass, args: Args) -> CmdResult;
 
@@ -887,9 +893,9 @@ impl<F: FnMut(&mut Pass) -> CmdResult + Send + 'static> CmdFn<()> for F {
         Vec<(Range<usize>, Option<FormId>)>,
         Option<(Range<usize>, Text)>,
     ) {
-        if let Some(start) = args.next_start() {
+        if args.next().is_ok() {
             let err = txt!("Too many arguments");
-            return (Vec::new(), Some((start..args.param_range().end, err)));
+            return (Vec::new(), Some((args.param_range(), err)));
         }
 
         (Vec::new(), None)
@@ -942,9 +948,9 @@ macro_rules! implCmdFn {
                     }
 				)+
 
-                if let Some(start) = args.next_start() {
+                if args.next().is_ok() {
                     let err = txt!("Too many arguments");
-                    return (ok_ranges, Some((start..args.param_range().end, err)));
+                    return (ok_ranges, Some((args.param_range(), err)));
                 }
 
                 (ok_ranges, None)

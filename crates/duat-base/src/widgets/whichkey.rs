@@ -102,8 +102,8 @@ impl WhichKey {
             descs_builder.push('\n');
         }
 
-        let keys = WhichKey(keys_builder.build_no_double_nl(), None);
-        let mut descs = WhichKeyDescriptions(descs_builder.build_no_double_nl(), None);
+        let keys = WhichKey(keys_builder.build(), None);
+        let mut descs = WhichKeyDescriptions(descs_builder.build(), None);
 
         let handles: Vec<_> = context::windows()
             .handles(pa)

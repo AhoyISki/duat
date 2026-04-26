@@ -222,10 +222,7 @@ impl Inlay {
     /// check out [`Overlay`].
     #[track_caller]
     pub fn new(value: impl Into<Text>) -> Self {
-        let mut text = value.into();
-        text.0
-            .tags
-            .transform(text.len() - 1..text.len(), text.len() - 1, false);
+        let text = value.into();
 
         assert!(
             text.0
@@ -306,10 +303,7 @@ impl Overlay {
     /// check out [`Overlay`].
     #[track_caller]
     pub fn new(value: impl Into<Text>) -> Self {
-        let mut text = value.into();
-        text.0
-            .tags
-            .transform(text.len() - 1..text.len(), text.len() - 1, false);
+        let text = value.into();
 
         assert!(
             text.0

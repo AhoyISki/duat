@@ -49,13 +49,9 @@ impl<'t> FwdIter<'t> {
     /// Returns a new forward [`Iterator`] over the [`TextPlace`]s in
     /// the [`Text`].
     #[track_caller]
-    pub(super) fn new_at(text: &'t Text, points: TwoPoints, is_ghost: bool) -> Self {
+    pub(super) fn new_at(text: &'t Text, points: TwoPoints) -> Self {
         let TwoPoints { real, ghost } = points;
-        let point = real.min(if is_ghost {
-            text.last_point()
-        } else {
-            text.end_point()
-        });
+        let point = real.min(text.end_point());
 
         // The second usize argument of ghost is the "distance traversed".
         // When iterating over this starting point, the Tags iterator will
@@ -75,7 +71,7 @@ impl<'t> FwdIter<'t> {
             text,
             point,
             init_point: point,
-            chars: buf_chars_fwd(text, point.byte(), is_ghost),
+            chars: buf_chars_fwd(text, point.byte()),
             tags: text.tags_fwd(point.byte(), None),
             conceals: 0,
 
@@ -124,8 +120,8 @@ impl<'t> FwdIter<'t> {
                 let text = self.text.0.tags.get_ghost(*idx);
 
                 let (this_ghost, total_ghost) = if let Some((ghost, dist)) = &mut self.ghost {
-                    if ghost.byte() >= *dist + text.last_point().byte() {
-                        *dist += text.last_point().byte();
+                    if ghost.byte() >= *dist + text.end_point().byte() {
+                        *dist += text.end_point().byte();
                         return true;
                     }
                     (text.point_at_byte(ghost.byte() - *dist), *ghost)
@@ -133,7 +129,7 @@ impl<'t> FwdIter<'t> {
                     (Point::default(), Point::default())
                 };
 
-                let iter = FwdIter::new_at(text, this_ghost.to_two_points_before(), true);
+                let iter = FwdIter::new_at(text, this_ghost.to_two_points_before());
                 let point = std::mem::replace(&mut self.point, this_ghost);
                 let init_point = std::mem::replace(&mut self.init_point, this_ghost);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
@@ -157,12 +153,12 @@ impl<'t> FwdIter<'t> {
                     // longer valid.
                     self.ghost.take_if(|_| self.point.byte() < b);
                     self.point = self.point.max(self.text.point_at_byte(b));
-                    self.chars = buf_chars_fwd(self.text, self.point.byte(), false);
+                    self.chars = buf_chars_fwd(self.text, self.point.byte());
                 }
             }
             RawTag::ConcealUntil(b) => {
                 let point = self.text.point_at_byte(*b as usize);
-                *self = FwdIter::new_at(self.text, point.to_two_points_before(), false);
+                *self = FwdIter::new_at(self.text, point.to_two_points_before());
                 return false;
             }
             RawTag::Spacer(_) | RawTag::SpawnedWidget(..) | RawTag::Overlay(..)
@@ -297,16 +293,16 @@ impl<'t> RevIter<'t> {
                 let text = self.text.0.tags.get_ghost(*idx);
 
                 let (ghost_b, this_ghost) = if let Some((offset, dist)) = &mut self.ghost {
-                    if *dist - text.last_point().byte() >= offset.byte() {
-                        *dist -= text.last_point().byte();
+                    if *dist - text.end_point().byte() >= offset.byte() {
+                        *dist -= text.end_point().byte();
                         return true;
                     }
                     (
-                        text.point_at_byte(offset.byte() + text.last_point().byte() - *dist),
+                        text.point_at_byte(offset.byte() + text.end_point().byte() - *dist),
                         *offset,
                     )
                 } else {
-                    let this = text.last_point();
+                    let this = text.end_point();
                     let points = self.text.ghost_max_points_at(b);
                     (this, points.ghost.unwrap())
                 };
@@ -390,9 +386,9 @@ impl<'t> Iterator for RevIter<'t> {
     }
 }
 
-fn buf_chars_fwd(text: &Text, b: usize, minus_last_nl: bool) -> FwdChars<'_> {
+fn buf_chars_fwd(text: &Text, b: usize) -> FwdChars<'_> {
     let [s0, s1] = text
-        .slices(b..text.len() - minus_last_nl as usize)
+        .slices(b..text.len())
         .map(|s| unsafe { std::str::from_utf8_unchecked(s) });
     s0.chars().chain(s1.chars())
 }

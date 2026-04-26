@@ -7,7 +7,6 @@
 use std::{
     fs::ReadDir,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
 use duat_core::{
@@ -42,13 +41,9 @@ impl PathCompletions {
 }
 
 impl CompletionsProvider for PathCompletions {
-    type Info = ();
+    type Entry<'e> = String;
 
-    fn default_fmt(entry: &str, _: &Self::Info) -> Text {
-        txt!("[path.Completions]{entry}{Spacer}")
-    }
-
-    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
+    fn matches<'e>(&'e mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry<'e>> {
         let prefix = match prefix.strip_prefix("'") {
             Some(prefix) => prefix,
             None => prefix,
@@ -65,7 +60,7 @@ impl CompletionsProvider for PathCompletions {
                 (prefix.to_string(), false)
             };
 
-        let mut entries: Vec<(Arc<str>, _)> = entries
+        let mut entries: Vec<String> = entries
             .filter_map(|entry| entry.ok())
             .filter_map(|entry| {
                 let path = entry.path();
@@ -86,15 +81,15 @@ impl CompletionsProvider for PathCompletions {
 
                 if case_insensitive {
                     let upper = path.to_uppercase();
-                    super::string_cmp(&prefix, &upper).map(|_| (path.to_string().into(), ()))
+                    super::string_cmp(&prefix, &upper).map(|_| path.to_string())
                 } else {
-                    super::string_cmp(&prefix, &path).map(|_| (path.to_string().into(), ()))
+                    super::string_cmp(&prefix, &path).map(|_| path.to_string())
                 }
             })
             .collect();
 
         entries.sort();
-        entries.sort_by_key(|(path, _)| {
+        entries.sort_by_key(|path| {
             let similarity = if case_insensitive {
                 let upper = path.to_uppercase();
                 super::string_cmp(&prefix, &upper).unwrap()
@@ -140,6 +135,14 @@ impl CompletionsProvider for PathCompletions {
                 .next_back()
                 .map(|range| range.start)
         }
+    }
+
+    fn default_fmt(entry: &Self::Entry<'_>) -> Text {
+        txt!("[completion.path]{entry}[]{Spacer}")
+    }
+
+    fn word<'e>(entry: &'e Self::Entry<'e>) -> &'e str {
+        entry
     }
 }
 

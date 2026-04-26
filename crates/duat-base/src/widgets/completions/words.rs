@@ -47,16 +47,16 @@ impl WordCompletions {
 }
 
 impl CompletionsProvider for WordCompletions {
-    type Info = WordInfo;
+    type Entry<'e> = WordInfo;
 
-    fn default_fmt(entry: &str, info: &Self::Info) -> Text {
+    fn default_fmt(entry: &Self::Entry<'_>) -> Text {
         txt!(
-            "[word.Completions]{entry}[]{Spacer}[buffer.source.Completions]{}",
-            &info.source
+            "[completion.word]{entry.word}[]{Spacer}[completion.word.source]{}",
+            &entry.source
         )
     }
 
-    fn matches(&mut self, text: &Text, cursor: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)> {
+    fn matches<'e>(&'e mut self, text: &Text, cursor: Point, prefix: &str) -> Vec<Self::Entry<'e>> {
         let suffix = &text[text.search(r"\A\w*").range(cursor..).next().unwrap()];
 
         let (prefix, case_insensitive) =
@@ -70,19 +70,23 @@ impl CompletionsProvider for WordCompletions {
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .iter()
-            .filter(|&(word, info)| {
-                let cmp = if case_insensitive { &info.upper } else { word };
+            .filter_map(|(word, entry)| {
+                let cmp = if case_insensitive { &entry.upper } else { word };
                 if let Some(difference) = string_cmp(&prefix, cmp) {
-                    !(difference == 0 && info.count == 1 && &cmp[prefix.len()..] == suffix)
+                    (!(difference == 0 && entry.count == 1 && &cmp[prefix.len()..] == suffix))
+                        .then_some(entry.clone())
                 } else {
-                    false
+                    None
                 }
             })
-            .map(|(entry, info)| (entry.clone(), info.clone()))
             .collect();
 
-        matches.sort_by_key(|(word, info)| {
-            let cmp = if case_insensitive { &info.upper } else { word };
+        matches.sort_by_key(|entry| {
+            let cmp = if case_insensitive {
+                entry.upper.as_ref()
+            } else {
+                entry.word.as_ref()
+            };
             (string_cmp(&prefix, cmp), cmp.len())
         });
 
@@ -95,11 +99,16 @@ impl CompletionsProvider for WordCompletions {
             .next_back()
             .map(|r| r.start)
     }
+
+    fn word<'e>(entry: &'e Self::Entry<'e>) -> &'e str {
+        &entry.word
+    }
 }
 
 /// Information about an entry in the [`WordCompletions`]
 #[derive(Clone, Debug)]
 pub struct WordInfo {
+    pub word: String,
     /// The first [`Buffer`] in which this word was found
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
@@ -122,11 +131,14 @@ pub(super) fn track_words() {
         for range in buf.text().search(r"\w{3,}") {
             let word = buf.text()[range].to_string();
             let upper = word.to_uppercase().into();
-            let info = words.entry(word.into()).or_insert_with(|| WordInfo {
-                source: source.clone(),
-                count: 0,
-                upper,
-            });
+            let info = words
+                .entry(word.into())
+                .or_insert_with_key(|word| WordInfo {
+                    word: word.to_string(),
+                    source: source.clone(),
+                    count: 0,
+                    upper,
+                });
 
             info.count += 1;
         }
@@ -178,6 +190,7 @@ fn update_counts(pa: &mut Pass, buffer: &Handle, ns: Ns) {
             (None, false) => {
                 let upper = word.to_uppercase().into();
                 buffer_words.insert(word.into(), WordInfo {
+                    word: word.to_string(),
                     source: source.clone(),
                     count: 1,
                     upper,

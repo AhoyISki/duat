@@ -445,7 +445,7 @@ mod plugins {
         }
     }
 
-    impl Plugin for duat_match_pairs::MatchPairs {
+    impl Plugin for duat_match_pairs::DuatMatchPairs {
         fn plug(self, _: &mut Opts, _: &Plugins) {
             self._plug(adhoc_require);
         }
@@ -458,7 +458,13 @@ mod plugins {
     }
 
     #[cfg(feature = "treesitter")]
-    impl Plugin for duat_treesitter::TreeSitter {
+    impl Plugin for duat_treesitter::DuatTreeSitter {
+        fn plug(self, _: &mut Opts, _: &Plugins) {
+            self._plug()
+        }
+    }
+
+    impl Plugin for duat_lsp::DuatLsp {
         fn plug(self, _: &mut Opts, _: &Plugins) {
             self._plug()
         }

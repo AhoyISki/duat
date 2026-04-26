@@ -34,7 +34,6 @@ impl StrsBuf {
     /// Returns a new instance of [`StrsBuf`]
     ///
     /// Not intended for public use, it is necessary in duat
-    #[doc(hidden)]
     #[track_caller]
     pub(crate) fn new(string: String) -> Self {
         assert!(
@@ -48,20 +47,8 @@ impl StrsBuf {
             [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
         };
 
-        let records = LineRanges::new(slices);
-
-        let mut buf = Self {
-            gapbuf: buf,
-            line_ranges: records,
-            version: 0,
-        };
-
-        if buf.bytes().next_back().is_none_or(|b| b != b'\n') {
-            let end = buf.end_point();
-            buf.apply_change(Change::str_insert("\n", end));
-        }
-
-        buf
+        let line_ranges = LineRanges::new(slices);
+        Self { gapbuf: buf, line_ranges, version: 0 }
     }
 
     ////////// Modification functions
@@ -152,16 +139,16 @@ pub const fn utf8_char_width(b: u8) -> usize {
 }
 
 impl Eq for StrsBuf {}
-implPartialEq!(bytes: StrsBuf, other: StrsBuf, {
-    let (l_s0, l_s1) = bytes.gapbuf.as_slices();
+implPartialEq!(buf: StrsBuf, other: StrsBuf, {
+    let (l_s0, l_s1) = buf.gapbuf.as_slices();
     let (r_s0, r_s1) = other.gapbuf.as_slices();
     (l_s0.len() + l_s1.len() == r_s0.len() + r_s1.len()) && l_s0.iter().chain(l_s1).eq(r_s0.iter().chain(r_s1))
 });
-implPartialEq!(bytes: StrsBuf, other: &str, {
-    let [s0, s1] = bytes.to_array();
+implPartialEq!(buf: StrsBuf, other: &str, {
+    let [s0, s1] = buf.to_array();
     other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
 });
-implPartialEq!(bytes: StrsBuf, other: String, bytes == &&other.as_str());
+implPartialEq!(buf: StrsBuf, other: String, buf == &&other.as_str());
 implPartialEq!(str: &str, other: StrsBuf, other == *str);
 implPartialEq!(string: String, other: StrsBuf, other == *string);
 
@@ -175,8 +162,13 @@ implPartialEq!(strs: &Strs, other: &str, {
     let [s0, s1] = strs.to_array();
     other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
 });
-implPartialEq!(strs: &Strs, other: String, strs == &&other.as_str());
+implPartialEq!(strs: &Strs, other: str, {
+    let [s0, s1] = strs.to_array();
+    other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
+});
+implPartialEq!(strs: &Strs, other: String, strs == &other.as_str());
 implPartialEq!(str: &str, other: &Strs, other == *str);
+implPartialEq!(str: str, other: &Strs, other == str);
 implPartialEq!(string: String, other: &Strs, other == *string);
 
 /// Implements [`From<$T>`] for [`StrsBuf`] where `$T: ToString`

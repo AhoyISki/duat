@@ -231,7 +231,7 @@ impl mode::Mode for Prompt {
             }
 
             event!(Backspace) => {
-                if promptline.read(pa).text().is_empty() {
+                if promptline.read(pa).text() == "\n" {
                     promptline.write(pa).text_mut().selections_mut().clear();
 
                     update(pa);
@@ -243,18 +243,21 @@ impl mode::Mode for Prompt {
                     }
                 } else {
                     promptline.edit_main(pa, |mut s| {
-                        s.move_hor(-1);
-                        s.set_anchor_if_needed();
-                        s.replace("");
-                        s.unset_anchor();
+                        if s.move_hor(-1) == -1 {
+                            s.set_anchor_if_needed();
+                            s.replace("");
+                            s.unset_anchor();
+                        }
                     });
                     update(pa);
                 }
             }
             event!(Delete) => {
                 promptline.edit_main(pa, |mut s| {
-                    s.set_anchor_if_needed();
-                    s.replace("");
+                    if s.char() != Some('\n') {
+                        s.set_anchor_if_needed();
+                        s.replace("");
+                    }
                 });
                 update(pa);
             }
@@ -518,6 +521,7 @@ impl PromptMode for RunCommands {
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
             if let Some((ok_ranges, err_range)) = cmd::check_args(pa, &command) {
+                context::debug!("{ok_ranges:#?}, {err_range:?}");
                 let id = form::id_of!("caller.info");
                 text.insert_tag(*NS, 0..caller.len(), id.to_tag(0));
 

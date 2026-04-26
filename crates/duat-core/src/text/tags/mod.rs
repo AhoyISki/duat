@@ -305,11 +305,11 @@ impl InnerTags {
     }
 
     /// Insert another [`InnerTags`] into this one
-    pub fn insert_tags(&mut self, p: Point, cap: usize, other: &InnerTags) {
+    pub fn insert_tags(&mut self, p: Point, other: &InnerTags) {
         let mut starts = Vec::new();
 
         for (_, (b, tag)) in other.list.iter_fwd(..) {
-            let b = (b as usize).min(cap) + p.byte();
+            let b = b as usize + p.byte();
             match tag {
                 PushForm(..) | StartConceal(_) | PushMask(..) => starts.push((b, tag)),
                 PopForm(..) | EndConceal(_) | PopMask(..) => {
@@ -707,7 +707,7 @@ impl InnerTags {
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             TagPart::Inlay(inlay) => {
-                Some(p.map_or(inlay.text().last_point(), |p| p + inlay.text().last_point()))
+                Some(p.map_or(inlay.text().end_point(), |p| p + inlay.text().end_point()))
             }
             _ => p,
         })

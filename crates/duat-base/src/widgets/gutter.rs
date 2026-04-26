@@ -58,6 +58,7 @@ pub fn gutter_setup() {
 
     hook::add::<OnMouseEvent<Buffer>>(move |_, event| {
         let mut current = CURRENT.lock().unwrap();
+        current.hovered_point = None;
         current.mouse_coord = Some(event.coord);
         current.related.clear();
     })
@@ -70,19 +71,6 @@ fn update(pa: &mut Pass, buffer: &Handle) {
     let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
         return;
     };
-
-    if !gutter.read(pa).entries.is_empty() {
-        context::debug!(
-            "{:?}",
-            Vec::from_iter(
-                gutter
-                    .read(pa)
-                    .entries
-                    .iter()
-                    .map(|entry| entry.range.clone())
-            )
-        );
-    }
 
     let (gtr, buf) = pa.write_many((&gutter, buffer));
     if gtr.entries.is_empty() {
@@ -122,15 +110,21 @@ fn update(pa: &mut Pass, buffer: &Handle) {
 
     let mut current = CURRENT.lock().unwrap();
 
-    let (updated, active_entries) = if let Some(coord) = current.mouse_coord
-        && (coord >= area.top_left() && coord < area.bottom_right())
-        && let Some(point) = (|| {
+    let hovered_point = current.hovered_point.take();
+    let (updated, active_entries) = if let Some(point) = current
+        .mouse_coord
+        .filter(|coord| *coord >= area.top_left() && *coord < area.bottom_right())
+        .and_then(|coord| {
             Some(
                 area.points_at_coord(buf.text(), coord, popts)?
                     .as_within()?
                     .real,
             )
-        })() {
+        })
+        .or(hovered_point
+            .filter(|(handle, point)| handle == buffer && *point <= buf.text().end_point())
+            .map(|(_, point)| point))
+    {
         (
             true,
             Some((
@@ -737,6 +731,7 @@ trait Sealed {}
 #[allow(private_bounds)]
 pub trait GutterBuffer: Sealed {
     /// Remove all [`Gutter`] entries from a given [`Ns`].
+    #[track_caller]
     fn remove_gutter_entries(&self, pa: &mut Pass, ns: Ns);
 
     /// Add a hint to the [`Gutter`] and the [`Buffer`].
@@ -748,6 +743,7 @@ pub trait GutterBuffer: Sealed {
     /// Note: This function won't add duplicated entries, instead
     /// returning the [`GutterEntryId`] of the entry that was already
     /// in there.
+    #[track_caller]
     fn add_hint(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId;
 
     /// Add a warning to the [`Gutter`] and the [`Buffer`].
@@ -759,6 +755,7 @@ pub trait GutterBuffer: Sealed {
     /// Note: This function won't add duplicated entries, instead
     /// returning the [`GutterEntryId`] of the entry that was already
     /// in there.
+    #[track_caller]
     fn add_warning(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text)
     -> GutterEntryId;
 
@@ -777,6 +774,11 @@ pub trait GutterBuffer: Sealed {
     /// This should return `true` everytime, unless you disable this
     /// functionality.
     fn has_gutter(&self, pa: &Pass) -> bool;
+
+    /// Hovers over the gutter entries in a [`Point`], as if the mouse
+    /// had gone over them.
+    #[track_caller]
+    fn hover_gutter_entries_on(&self, pa: &Pass, point: Point);
 }
 
 impl Sealed for Handle {}
@@ -956,6 +958,14 @@ impl GutterBuffer for Handle {
     fn has_gutter(&self, pa: &Pass) -> bool {
         !self.get_related::<Gutter>(pa).is_empty()
     }
+
+    fn hover_gutter_entries_on(&self, pa: &Pass, point: Point) {
+        assert!(
+            point <= self.text(pa).end_point(),
+            "{point:?} out of bounds"
+        );
+        CURRENT.lock().unwrap().hovered_point = Some((self.clone(), point));
+    }
 }
 
 /// An id for a [`Gutter`] entry.
@@ -1008,7 +1018,11 @@ const SPACES: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
 static ID_RELATIONS: Mutex<Vec<Vec<GutterEntryId>>> = Mutex::new(Vec::new());
 static EXTANT_IDS: Mutex<Vec<GutterEntryId>> = Mutex::new(Vec::new());
 static MOMENT_NS: LazyLock<Ns> = Ns::new_lazy();
-static CURRENT: Mutex<Current> = Mutex::new(Current { related: Vec::new(), mouse_coord: None });
+static CURRENT: Mutex<Current> = Mutex::new(Current {
+    related: Vec::new(),
+    mouse_coord: None,
+    hovered_point: None,
+});
 
 #[derive(Debug, Clone, Copy)]
 enum Movement {
@@ -1039,4 +1053,5 @@ fn inlay_column(range: Range<usize>, buf: &Buffer, area: &Area, opts: PrintOpts)
 struct Current {
     related: Vec<GutterEntryId>,
     mouse_coord: Option<Coord>,
+    hovered_point: Option<(Handle, Point)>,
 }

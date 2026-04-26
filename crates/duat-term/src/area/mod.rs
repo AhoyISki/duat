@@ -449,9 +449,9 @@ impl RawArea for Area {
 
         let cap = coords.width();
 
-        if by == 0 {
+        let (false, Some(last_point)) = (by == 0, text.last_point()) else {
             return calculate_vpoint(text, point, cap, opts);
-        }
+        };
 
         let desired_col = match desired_col {
             Some(desired_col) => desired_col as u16,
@@ -460,7 +460,7 @@ impl RawArea for Area {
 
         let line_start = {
             let target = point.line().saturating_add_signed(by as isize);
-            text.point_at_coords(target.min(text.last_point().line()), 0)
+            text.point_at_coords(target.min(last_point.line()), 0)
         };
 
         let mut wraps = 0;
@@ -480,7 +480,7 @@ impl RawArea for Area {
                 vcol += len as u16;
                 None
             })
-            .unwrap_or((0, text.last_point()));
+            .unwrap_or((0, last_point));
 
         let ccol = (point.char() - line_start.char()) as u16;
 
@@ -1222,7 +1222,9 @@ fn continue_overlays<'t, Iter: Iterator<Item = (PrintedPlace, TextPlace<'t>)>>(
 }
 
 fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPoint {
-    let start = text.point_at_coords(point.line(), 0);
+    let start = text
+        .get_point_at_coords(point.line(), 0)
+        .unwrap_or_default();
 
     let mut vcol = 0;
 

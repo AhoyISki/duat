@@ -7,6 +7,8 @@
 //!
 //! [`Deref<Target = Strs>`]: std::ops::Deref
 //! [`Text`]: crate::text::Text
+#![allow(clippy::needless_range_loop)]
+
 use crate::text::{Strs, strs::memchr};
 
 /// A pattern for [`Strs`].
@@ -77,7 +79,8 @@ pub trait Pattern {
 }
 
 /// Result of calling [`Searcher::next()`] or
-/// [`StrsReverseSearcher::next_back()`].
+/// [`DoubleEndedSearcher::next_back()`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchStep {
     Match(usize, usize),
     Reject(usize, usize),
@@ -105,33 +108,39 @@ pub unsafe trait Searcher<'s> {
     /// Will always return the same [`&Strs`][Strs].
     fn haystack(&self) -> &'s Strs;
 
-    /// - Returns [`Match(a, b)`][SearchStep::Match] if `haystack[a..b]` matches
-    ///   the pattern.
-    /// - Returns [`Reject(a, b)`][SearchStep::Reject] if `haystack[a..b]` can
-    ///   not match the pattern, even partially.
-    /// - Returns [`Done`][SearchStep::Done] if every byte of the haystack has
-    ///   been visited.
+    /// - Returns [`Match(a, b)`][SearchStep::Match] if
+    ///   `haystack[a..b]` matches the pattern.
+    /// - Returns [`Reject(a, b)`][SearchStep::Reject] if
+    ///   `haystack[a..b]` can not match the pattern, even partially.
+    /// - Returns [`Done`][SearchStep::Done] if every byte of the
+    ///   haystack has been visited.
     ///
     /// The stream of [`Match`][SearchStep::Match] and
-    /// [`Reject`][SearchStep::Reject] values up to a [`Done`][SearchStep::Done]
-    /// will contain index ranges that are adjacent, non-overlapping,
-    /// covering the whole haystack, and laying on utf8 boundaries.
+    /// [`Reject`][SearchStep::Reject] values up to a
+    /// [`Done`][SearchStep::Done] will contain index ranges that
+    /// are adjacent, non-overlapping, covering the whole
+    /// haystack, and laying on utf8 boundaries.
     ///
-    /// A [`Match`][SearchStep::Match] result needs to contain the whole matched
-    /// pattern, however [`Reject`][SearchStep::Reject] results may be split up
-    /// into arbitrary many adjacent fragments. Both ranges may have zero length.
+    /// A [`Match`][SearchStep::Match] result needs to contain the
+    /// whole matched pattern, however
+    /// [`Reject`][SearchStep::Reject] results may be split up
+    /// into arbitrary many adjacent fragments. Both ranges may have
+    /// zero length.
     ///
-    /// As an example, the pattern `"aaa"` and the haystack `"cbaaaaab"`
-    /// might produce the stream
+    /// As an example, the pattern `"aaa"` and the haystack
+    /// `"cbaaaaab"` might produce the stream
     /// `[Reject(0, 1), Reject(1, 2), Match(2, 5), Reject(5, 8)]`
     fn next(&mut self) -> SearchStep;
 
-    /// Finds the next [`Match`][SearchStep::Match] result. See [`next()`][Searcher::next].
+    /// Finds the next [`Match`][SearchStep::Match] result. See
+    /// [`next()`][Searcher::next].
     ///
-    /// Unlike [`next()`][Searcher::next], there is no guarantee that the returned ranges
-    /// of this and [`next_reject`][Searcher::next_reject] will overlap. This will return
-    /// `(start_match, end_match)`, where start_match is the index of where
-    /// the match begins, and end_match is the index after the end of the match.
+    /// Unlike [`next()`][Searcher::next], there is no guarantee that
+    /// the returned ranges of this and
+    /// [`next_reject`][Searcher::next_reject] will overlap. This will
+    /// return `(start_match, end_match)`, where start_match is
+    /// the index of where the match begins, and end_match is the
+    /// index after the end of the match.
     #[inline]
     fn next_match(&mut self) -> Option<(usize, usize)> {
         loop {
@@ -143,11 +152,13 @@ pub unsafe trait Searcher<'s> {
         }
     }
 
-    /// Finds the next [`Reject`][SearchStep::Reject] result. See [`next()`][Searcher::next]
+    /// Finds the next [`Reject`][SearchStep::Reject] result. See
+    /// [`next()`][Searcher::next]
     /// and [`next_match()`][Searcher::next_match].
     ///
-    /// Unlike [`next()`][Searcher::next], there is no guarantee that the returned ranges
-    /// of this and [`next_match`][Searcher::next_match] will overlap.
+    /// Unlike [`next()`][Searcher::next], there is no guarantee that
+    /// the returned ranges of this and
+    /// [`next_match`][Searcher::next_match] will overlap.
     #[inline]
     fn next_reject(&mut self) -> Option<(usize, usize)> {
         loop {
@@ -500,9 +511,9 @@ unsafe impl<'a, C: MultiCharEq> Searcher<'a> for MultiCharEqSearcher<'a, C> {
     fn next(&mut self) -> SearchStep {
         if let Some((i, c)) = self.char_indices.next() {
             if self.char_eq.matches(c) {
-                return SearchStep::Match(i, i + c.len_utf8());
+                SearchStep::Match(i, i + c.len_utf8())
             } else {
-                return SearchStep::Reject(i, i + c.len_utf8());
+                SearchStep::Reject(i, i + c.len_utf8())
             }
         } else {
             SearchStep::Done
@@ -674,8 +685,8 @@ where
 // Impl for &&str
 /////////////////////////////////////////////////////////////////////////////
 
-impl<'b, 'c> Pattern for &'c &'b str {
-    pattern_methods!('a, StrSearcher<'a, 'b>, |&s| s, |s| s);
+impl<'b> Pattern for &'_ &'b str {
+    pattern_methods!('s, StrSearcher<'s, 'b>, |&s| s, |s| s);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1085,7 +1096,6 @@ impl TwoWaySearcher {
                 return S::rejecting(self.end, old_end);
             }
 
-            // Quickly skip by large portions unrelated to our substring
             if !self.byteset_contains(front_byte) {
                 self.end -= needle.len();
                 if !long_period {
@@ -1110,7 +1120,6 @@ impl TwoWaySearcher {
                 }
             }
 
-            // See if the right part of the needle matches
             let needle_end = if long_period {
                 needle.len()
             } else {
@@ -1126,10 +1135,7 @@ impl TwoWaySearcher {
                 }
             }
 
-            // We have found a match!
             let match_pos = self.end - needle.len();
-            // Note: sub self.period instead of needle.len() to have overlapping
-            // matches
             self.end -= needle.len();
             if !long_period {
                 self.memory_back = needle.len();
@@ -1139,38 +1145,20 @@ impl TwoWaySearcher {
         }
     }
 
-    // Compute the maximal suffix of `arr`.
-    //
-    // The maximal suffix is a possible critical factorization (u, v) of
-    // `arr`.
-    //
-    // Returns (`i`, `p`) where `i` is the starting index of v and `p` is
-    // the period of v.
-    //
-    // `order_greater` determines if lexical order is `<` or `>`. Both
-    // orders must be computed -- the ordering with the largest `i` gives
-    // a critical factorization.
-    //
-    // For long period cases, the resulting period is not exact (it is too
-    // short).
     #[inline]
     fn maximal_suffix(arr: &[u8], order_greater: bool) -> (usize, usize) {
-        let mut left = 0; // Corresponds to i in the paper
-        let mut right = 1; // Corresponds to j in the paper
-        let mut offset = 0; // Corresponds to k in the paper, but starting at 0
-        // to match 0-based indexing.
-        let mut period = 1; // Corresponds to p in the paper
+        let mut left = 0;
+        let mut right = 1;
+        let mut offset = 0;
+        let mut period = 1;
 
         while let Some(&a) = arr.get(right + offset) {
-            // `left` will be inbounds when `right` is.
             let b = arr[left + offset];
             if (a < b && !order_greater) || (a > b && order_greater) {
-                // Suffix is smaller, period is entire prefix so far.
                 right += offset + 1;
                 offset = 0;
                 period = right - left;
             } else if a == b {
-                // Advance through repetition of the current period.
                 if offset + 1 == period {
                     right += offset + 1;
                     offset = 0;
@@ -1178,7 +1166,6 @@ impl TwoWaySearcher {
                     offset += 1;
                 }
             } else {
-                // Suffix is larger, start over from current location.
                 left = right;
                 right += 1;
                 offset = 0;
@@ -1188,38 +1175,21 @@ impl TwoWaySearcher {
         (left, period)
     }
 
-    // Compute the maximal suffix of the reverse of `arr`.
-    //
-    // The maximal suffix is a possible critical factorization (u', v') of
-    // `arr`.
-    //
-    // Returns `i` where `i` is the starting index of v', from the back;
-    // returns immediately when a period of `known_period` is reached.
-    //
-    // `order_greater` determines if lexical order is `<` or `>`. Both
-    // orders must be computed -- the ordering with the largest `i` gives
-    // a critical factorization.
-    //
-    // For long period cases, the resulting period is not exact (it is too
-    // short).
     fn reverse_maximal_suffix(arr: &[u8], known_period: usize, order_greater: bool) -> usize {
-        let mut left = 0; // Corresponds to i in the paper
-        let mut right = 1; // Corresponds to j in the paper
-        let mut offset = 0; // Corresponds to k in the paper, but starting at 0
-        // to match 0-based indexing.
-        let mut period = 1; // Corresponds to p in the paper
+        let mut left = 0;
+        let mut right = 1;
+        let mut offset = 0;
+        let mut period = 1;
         let n = arr.len();
 
         while right + offset < n {
             let a = arr[n - (1 + right + offset)];
             let b = arr[n - (1 + left + offset)];
             if (a < b && !order_greater) || (a > b && order_greater) {
-                // Suffix is smaller, period is entire prefix so far.
                 right += offset + 1;
                 offset = 0;
                 period = right - left;
             } else if a == b {
-                // Advance through repetition of the current period.
                 if offset + 1 == period {
                     right += offset + 1;
                     offset = 0;
@@ -1227,7 +1197,6 @@ impl TwoWaySearcher {
                     offset += 1;
                 }
             } else {
-                // Suffix is larger, start over from current location.
                 left = right;
                 right += 1;
                 offset = 0;
@@ -1242,9 +1211,9 @@ impl TwoWaySearcher {
     }
 }
 
-// TwoWayStrategy allows the algorithm to either skip non-matches as
-// quickly as possible, or to work in a mode where it emits Rejects
-// relatively quickly.
+/// TwoWayStrategy allows the algorithm to either skip non-matches as
+/// quickly as possible, or to work in a mode where it emits Rejects
+/// relatively quickly.
 trait TwoWayStrategy {
     type Output;
     fn use_early_reject() -> bool;

@@ -95,19 +95,19 @@ use duat_core::{
     text::{Point, RegexHaystack},
 };
 use duat_filetype::FileType;
-use duat_treesitter::{TreeSitter, TsHandle};
+use duat_treesitter::{DuatTreeSitter, TsHandle};
 
 /// highlight the match of delimiters under [`Selection`]s
 ///
 /// [`Selection`]: duat_core::mode::Selection
 #[derive(Clone)]
-pub struct MatchPairs {
+pub struct DuatMatchPairs {
     ts_and_reg: Vec<[&'static [u8]; 2]>,
     ts_only: Vec<[&'static [u8]; 2]>,
     escaped: Vec<[&'static str; 2]>,
 }
 
-impl MatchPairs {
+impl DuatMatchPairs {
     /// Returns a new [`MatchPairs`]
     pub fn new() -> Self {
         Self {
@@ -170,14 +170,14 @@ impl MatchPairs {
     }
 }
 
-impl MatchPairs {
+impl DuatMatchPairs {
     /// Adds the `MatchPairs` plugin.
     ///
     /// *DON'T USE THIS DIRECTLY, USE `duat::plug` INSTEAD*.
     #[doc(hidden)]
     #[inline(never)]
     pub fn _plug(self, require: fn(TypeId, fn())) {
-        require(TypeId::of::<TreeSitter>(), || TreeSitter._plug());
+        require(TypeId::of::<DuatTreeSitter>(), || DuatTreeSitter._plug());
 
         hook::add::<BufferUpdated>(move |pa, handle| {
             let file = handle.write(pa);
@@ -203,7 +203,7 @@ impl MatchPairs {
     }
 }
 
-impl Default for MatchPairs {
+impl Default for DuatMatchPairs {
     fn default() -> Self {
         Self::new()
     }

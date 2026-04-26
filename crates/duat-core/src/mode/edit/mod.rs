@@ -112,10 +112,11 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     /// Replaces the entire selection with new text.
     ///
     /// If there is a selection, then it is treated as _inclusive_,
-    /// therefore, a selection where `cursor == anchor` will remove the
-    /// character where the cursor is. If there is no selection, then
-    /// this has the same effect as [`insert`]. If you wish to
-    /// append to the `cursor` instead, see [`append`].
+    /// therefore, a selection where `cursor == anchor` will remove
+    /// the character where the cursor is. If there is no
+    /// selection, then this has the same effect as [`insert`]. If
+    /// you wish to append to the `cursor` instead, see
+    /// [`append`].
     ///
     /// After replacing the sele tion, if the `cursor` is behind the
     /// `anchor` (or in the same spot), it will be placed on the start
@@ -151,8 +152,8 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
 
     /// Inserts new text directly behind the `cursor`.
     ///
-    /// If the `anchor` is ahead of the `cursor`, it will move forwards
-    /// by the number of chars in the new text.
+    /// If the `anchor` is ahead of the `cursor`, it will move
+    /// forwards by the number of chars in the new text.
     ///
     /// If you wish to replace the selected text, see [`replace`], if
     /// you want to append after the `cursor` instead, see [`append`]
@@ -179,8 +180,8 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
 
     /// Appends new text directly after the `cursor`.
     ///
-    /// If the `anchor` is ahead of the `cursor`, it will move forwards
-    /// by the number of chars in the new text.
+    /// If the `anchor` is ahead of the `cursor`, it will move
+    /// forwards by the number of chars in the new text.
     ///
     /// If you wish to replace the selected text, see [`replace`], if
     /// you want to insert before the `cursor` instead, see [`insert`]
@@ -478,9 +479,10 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     pub fn search<R: RegexPattern>(&self, pat: R) -> SelectionMutMatches<'_, R> {
         let text = self.widget.text();
         let cursor = self.cursor();
+        let fwd = self.char().map(|c| cursor.fwd(c)).unwrap_or(cursor);
         SelectionMutMatches {
             text_byte_len: text.len(),
-            cursor_range: cursor.byte()..cursor.fwd(self.char()).byte(),
+            cursor_range: cursor.byte()..fwd.byte(),
             matches: text.search(pat),
         }
     }
@@ -488,8 +490,8 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     ////////// Text queries
 
     /// Returns the [`char`] in the `cursor`.
-    pub fn char(&self) -> char {
-        self.text().char_at(sel!(self).cursor()).unwrap()
+    pub fn char(&self) -> Option<char> {
+        self.text().char_at(sel!(self).cursor())
     }
 
     /// Returns the [`char`] at a given [`Point`].
@@ -541,7 +543,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     }
 
     /// Returns the position of the last [`char`] if there is one.
-    pub fn last_point(&self) -> Point {
+    pub fn last_point(&self) -> Option<Point> {
         self.text().last_point()
     }
 
@@ -745,7 +747,9 @@ impl<'s, R: RegexPattern> SelectionMutMatches<'s, R> {
     #[allow(clippy::wrong_self_convention)]
     pub fn from_cursor_excl(self) -> Self {
         Self {
-            matches: self.matches.range(self.cursor_range.end..self.text_byte_len),
+            matches: self
+                .matches
+                .range(self.cursor_range.end..self.text_byte_len),
             ..self
         }
     }
@@ -892,8 +896,8 @@ impl ModSelection {
 /// move, not affecting the [anchor].
 ///
 /// Or it could be a [range], like `p1..p2` or `..=1000`, in which
-/// case the cursor will be placed at the end, while the anchor will be
-/// placed at the start.
+/// case the cursor will be placed at the end, while the anchor will
+/// be placed at the start.
 ///
 /// [cursor]: SelectionMut::cursor
 /// [anchor]: SelectionMut::anchor
@@ -973,7 +977,11 @@ impl<Idx: TextIndex> CaretOrRange for RangeFrom<Idx> {
 impl<Idx: TextIndex> CaretOrRange for RangeTo<Idx> {
     #[track_caller]
     fn move_to<W: Widget + ?Sized>(self, sel: &mut SelectionMut<'_, W>) {
-        let end = self.end.to_byte_index().min(sel.text().last_point().byte());
+        let Some(last_point) = sel.text().last_point() else {
+            return;
+        };
+
+        let end = self.end.to_byte_index().min(last_point.byte());
         sel.move_to_start();
         if 0 < end {
             sel.set_anchor();

@@ -808,18 +808,38 @@ impl Default for Opts {
 ///
 /// [`Completions`]: crate::widgets::Completions
 /// [`CompletionsBuilder`]: crate::widgets::CompletionsBuilder
-#[derive(Default)]
 pub struct CompletionsOpts {
+    /// Wether completion should be case insensitive.
+    ///
+    /// Case insensitivity is disabled when you're typing a word that
+    /// has any uppercase letters.
+    ///
+    /// The default is `true`.
+    pub case_insensitive: bool,
     /// How many characters should precede the cursor before showing
     /// the [`Completions`].
+    ///
+    /// The default is `0`.
     ///
     /// [`Completions`]: crate::widgets::Completions
     pub min_prefix: usize,
     /// On command callers or parameters, many characters should
     /// precede the cursor before showing the [`Completions`].
     ///
+    /// The default is `0`.
+    ///
     /// [`Completions`]: crate::widgets::Completions
     pub cmd_min_prefix: usize,
+}
+
+impl Default for CompletionsOpts {
+    fn default() -> Self {
+        Self {
+            case_insensitive: true,
+            min_prefix: Default::default(),
+            cmd_min_prefix: Default::default(),
+        }
+    }
 }
 
 /// Options for the [`WhichKey`] widget.
@@ -857,7 +877,10 @@ impl Default for WhichKeyOpts {
         Self {
             fmt_getter: None,
             disabled_modes: vec![TypeId::of::<duatmode::Insert>()],
-            always_shown_modes: vec![TypeId::of::<crate::mode::User>()],
+            always_shown_modes: vec![
+                TypeId::of::<crate::mode::User>(),
+                TypeId::of::<duat_lsp::Lsp>(),
+            ],
             orientation: Orientation::VerRightBelow,
         }
     }

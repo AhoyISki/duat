@@ -146,9 +146,12 @@ impl Text {
     }
 
     /// Returns a new empty [`Text`] with [`Selections`] enabled.
+    ///
+    /// This will also append a `\n` character to the end of the
+    /// [`String`], in order to show the cursor.
     pub fn with_default_main_selection() -> Self {
         Self::from_parts(
-            StrsBuf::new(String::new()),
+            StrsBuf::new("\n".to_string()),
             Selections::new(Selection::default()),
         )
     }
@@ -189,25 +192,7 @@ impl Text {
 
     ////////// Querying functions
 
-    /// Whether or not there are any characters in the [`Text`],
-    /// besides the final `b'\n'`.
-    ///
-    /// # Note
-    ///
-    /// This does not check for tags, so with a [`Inlay`],
-    /// there could actually be a "string" of characters on the
-    /// [`Text`], it just wouldn't be considered real "text". If you
-    /// want to check for the `InnerTags`'b possible emptyness as
-    /// well, see [`Text::is_empty_empty`].
-    pub fn is_empty(&self) -> bool {
-        let [s0, s1] = self.to_array();
-        (s0 == "\n" && s1.is_empty()) || (s0.is_empty() && s1 == "\n")
-    }
-
     /// Whether the [`Strs`] and `InnerTags` are empty.
-    ///
-    /// This ignores the last `'\n'` in the [`Text`], since it is
-    /// always there no matter what.
     ///
     /// If you only want to check for the [`Strs`], ignoring possible
     /// [`Inlay`]s, see [`is_empty`].
@@ -369,15 +354,14 @@ impl Text {
     /// method _won't_ shift ahead the [`Tag`]s located at this
     /// `Point`. For that, check out [`Text::insert_text`].
     pub fn append_text(&mut self, p: impl TextIndex, text: &Text) {
-        let b = p.to_byte_index().min(self.last_point().byte());
-        let cap = text.last_point().byte();
+        let b = p.to_byte_index();
 
-        let added_str = text.0.buf[..cap].to_string();
+        let added_str = text.to_string();
         let point = self.point_at_byte(b);
         let change = Change::str_insert(&added_str, point);
         self.apply_change(0, change, false);
 
-        self.0.tags.insert_tags(point, cap, &text.0.tags);
+        self.0.tags.insert_tags(point, &text.0.tags);
     }
 
     /// Inserts a `Text` into this `Text`, _before_ a specific
@@ -386,15 +370,14 @@ impl Text {
     /// Unlike [`Text::append_text`], this function will also shift
     /// ahead the [`Tag`]s located at this specific [`Point`].
     pub fn insert_text(&mut self, p: impl TextIndex, text: &Text) {
-        let b = p.to_byte_index().min(self.last_point().byte());
-        let cap = text.last_point().byte();
+        let b = p.to_byte_index();
 
-        let added_str = text.0.buf[..cap].to_string();
+        let added_str = text.to_string();
         let point = self.point_at_byte(b);
         let change = Change::str_insert(&added_str, point);
         self.apply_change(0, change, true);
 
-        self.0.tags.insert_tags(point, cap, &text.0.tags);
+        self.0.tags.insert_tags(point, &text.0.tags);
     }
 
     fn apply_and_process_changes<'a>(
@@ -407,7 +390,7 @@ impl Text {
         for (i, change) in changes.enumerate() {
             self.apply_change(0, change, false);
 
-            let start = change.start().min(self.last_point());
+            let start = change.start();
             let added_end = match change.added_str().chars().next_back() {
                 Some(last) => change.added_end().rev(last),
                 None => start,
@@ -532,7 +515,7 @@ impl Text {
     /// [chars and tags]: TextPart
     #[track_caller]
     pub fn iter_fwd(&self, at: TwoPoints) -> FwdIter<'_> {
-        FwdIter::new_at(self, at, false)
+        FwdIter::new_at(self, at)
     }
 
     /// A reverse iterator of the [chars and tags] of the [`Text`]
@@ -1103,15 +1086,19 @@ implPartialEq!(text: Text, other: Text,
     text.0.buf == other.0.buf && text.0.tags == other.0.tags
 );
 implPartialEq!(text: Text, other: &str, text.0.buf == *other);
+implPartialEq!(text: Text, other: str, text.0.buf == other);
 implPartialEq!(text: Text, other: String, text.0.buf == *other);
 implPartialEq!(str: &str, text: Text, text.0.buf == **str);
+implPartialEq!(str: str, text: Text, text.0.buf == *str);
 implPartialEq!(str: String, text: Text, text.0.buf == **str);
 
 impl Eq for TextMut<'_> {}
 implPartialEq!(text_mut: TextMut<'_>, other: TextMut<'_>, text_mut.text == other.text);
 implPartialEq!(text_mut: TextMut<'_>, other: Text, text_mut.text == other);
 implPartialEq!(text_mut: TextMut<'_>, other: &str, text_mut.text.0.buf == *other);
+implPartialEq!(text: TextMut<'_>, other: str, text.0.buf == other);
 implPartialEq!(text_mut: TextMut<'_>, other: String, text_mut.text.0.buf == *other);
 implPartialEq!(text: Text, other: TextMut<'_>, *text == other.text);
 implPartialEq!(str: &str, text_mut: TextMut<'_>, text_mut.text.0.buf == **str);
+implPartialEq!(str: str, text_mut: TextMut<'_>, text_mut.text.0.buf == *str);
 implPartialEq!(str: String, text_mut: TextMut<'_>, text_mut.text.0.buf == **str);

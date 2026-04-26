@@ -78,9 +78,8 @@ impl Builder {
 
     /// Finish construction and returns the [`Text`]
     ///
-    /// Will also finish the last [`Form`] and alignments pushed to
-    /// the [builder], as well as pushing a `'\n'` at the end, much
-    /// like with regular `Text` construction.
+    /// Will also finish the last [`Form`] and [`Mask`] pushed to
+    /// the [builder].
     ///
     /// [`Form`]: crate::form::Form
     /// [builder]: Builder
@@ -89,39 +88,18 @@ impl Builder {
     /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     pub fn build(mut self) -> Text {
         if let Some((b, id)) = self.last_form
-            && b < self.text.last_point().byte()
+            && b < self.text.end_point().byte()
         {
             self.text.insert_tag(Ns::basic(), b.., id);
         }
 
         if let Some((b, id)) = self.last_mask
-            && b < self.text.last_point().byte()
+            && b < self.text.end_point().byte()
         {
             self.text.insert_tag(Ns::basic(), b.., id);
         }
 
         self.text
-    }
-
-    /// Builds the [`Text`], removing any double `\n`s at the end
-    ///
-    /// When building multi-line `Text`, it is common to just insert
-    /// every piece of `Text` with a `\n` at the end. This ends up
-    /// resulting in a `Text` that has two `\n`s at the end, since
-    /// there is always at least one final `\n`.
-    ///
-    /// This function lets you construct the `Text` taking that effect
-    /// into account.
-    pub fn build_no_double_nl(self) -> Text {
-        let mut text = self.build();
-        if let Some(last_last_byte) = text.len().checked_sub(2)
-            && let Some(strs) = text.get(last_last_byte..)
-            && strs == "\n\n"
-        {
-            text.replace_range(last_last_byte..last_last_byte + 1, "");
-        }
-
-        text
     }
 
     /// Pushes a part of the text
@@ -141,7 +119,7 @@ impl Builder {
         fn push_simple(builder: &mut Builder, part: BuilderPart) {
             use BuilderPart as BP;
 
-            let end = builder.text.last_point().byte();
+            let end = builder.text.end_point().byte();
             let ns = Ns::basic();
 
             match part {
@@ -216,7 +194,7 @@ impl Builder {
             self.last_was_empty = true;
         } else {
             self.last_was_empty = false;
-            let end = self.text.last_point();
+            let end = self.text.end_point();
             self.text
                 .apply_change(0, Change::str_insert(&self.buffer, end), false);
         }
@@ -228,7 +206,7 @@ impl Builder {
     ///
     /// [`Form`]: crate::form::Form
     pub fn reset_form(&mut self) {
-        let end = self.text.last_point().byte();
+        let end = self.text.end_point().byte();
         if let Some((b, last_form)) = self.last_form.take() {
             self.text.insert_tag(Ns::basic(), b..end, last_form);
         }
@@ -237,21 +215,27 @@ impl Builder {
     /// Pushes [`Text`] directly
     fn push_text(&mut self, text: &Text) {
         self.last_was_empty = text.is_empty();
-        self.text.append_text(self.text.last_point(), text);
+        self.text.append_text(self.text.end_point(), text);
     }
 
     /// Pushes [`Text`] directly
     fn push_builder(&mut self, other: &Builder) {
         self.last_was_empty = other.text.is_empty();
 
-        let offset = self.text.last_point().byte();
+        let offset = self.text.end_point().byte();
         self.text.append_text(offset, &other.text);
-        let end = self.text.last_point().byte();
+        let end = self.text.end_point().byte();
 
         if let Some((b, id)) = other.last_form
-            && b < other.text.last_point().byte()
+            && b < other.text.end_point().byte()
         {
             self.text.insert_tag(Ns::basic(), offset + b..end, id);
+        }
+
+        if let Some((b, id)) = other.last_mask
+            && b < other.text.end_point().byte()
+        {
+            self.text.insert_tag(Ns::basic(), b.., id);
         }
     }
 }
@@ -287,19 +271,8 @@ impl From<Builder> for Text {
 #[derive(Clone)]
 pub enum BuilderPart<'a, D: Display = String, _T = ()> {
     /// Text to be pushed
-    ///
-    /// # Note
-    ///
-    /// Every [`Text`] struct has a `\n` attached at the end,
-    /// but when pushing it to a [`Builder`], said `\n` is
-    /// automatically removed. If you want to keep a `\n` at the
-    /// end, push an additional one.
     Text(&'a Text),
     /// A Text Builder
-    ///
-    /// Much like the [`Text`], normally, the [`Builder`] finishes
-    /// with a `\n`, but when pushed to another `Builder`, that `\n`
-    /// is removed as well.
     Builder(&'a Builder),
     /// An [`impl Display`](std::fmt::Display) type
     ToString(&'a D),

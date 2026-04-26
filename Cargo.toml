@@ -21,6 +21,7 @@ duat-base = { path = "crates/duat-base", version = "0.10.0" }
 duat-term = { path = "crates/duat-term", version = "0.10.0" }
 duat-filetype = { path = "crates/duat-filetype", version = "0.10.0" }
 duat-treesitter = { path = "crates/duat-treesitter", version = "0.10.0" }
+duat-lsp = { path = "crates/duat-lsp", version = "0.10.0" }
 duat-match-pairs = { path = "crates/duat-match-pairs", version = "0.10.0" }
 duat-jump-list = { path = "crates/duat-jump-list", version = "0.10.0" }
 duatmode = { path = "crates/duatmode", version = "0.10.0" }
@@ -38,6 +39,7 @@ duat-filetype.workspace = true
 duatmode.workspace = true
 duat-match-pairs.workspace = true
 duat-treesitter = { workspace = true, optional = true }
+duat-lsp = { workspace = true }
 # Possible Ui implementations (only terminal for now).
 duat-term = { workspace = true, optional = true }
 

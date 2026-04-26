@@ -27,8 +27,7 @@
 //!   - [`Completions`] is Duat's completion widget, it provides an
 //!     extensible completions list, which allows you to format the
 //!     entries and add new providers via the [`CompletionsProvider`]
-//!     trait. Right now, the only `CompletionsProvider` is the words
-//!     provider.
+//!     trait.
 //!   - [`Gutter`] Sits on the side of each `Buffer`, showing
 //!     diagnostic information about each line of the `Buffer`.
 //!   - [`WhichKey`] shows what each key will do. It shows up
@@ -187,6 +186,7 @@ impl DuatBase {
         // Setup for Completions
         form::set_weak("default.Completions", Form::new().on_dark_grey());
         form::set_weak("selected.Completions", Form::new().black().on_grey());
+        form::set_weak("completion.word.source", Form::mimic("buffer"));
 
 		// Setup for the Gutter
         form::set_weak("gutter.hint", Form::mimic("default.info"));

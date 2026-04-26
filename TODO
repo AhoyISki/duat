@@ -21,7 +21,7 @@ FOR NEXT UPDATE:
 [ ] Some QoL features:
   [x] Autocompletions only after n characters.
   [x] Remember if a buffer needed to be saved.
-  [ ] Case insensitive completions.
+  [x] Case insensitive completions.
 [ ] Include duat-lsp by default.
 
 KNOWN BUGS:

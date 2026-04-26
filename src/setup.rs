@@ -70,7 +70,8 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
     plug(&mut opts, duat_base::DuatBase::default());
     plug(&mut opts, duatmode::DuatMode);
     #[cfg(feature = "treesitter")]
-    plug(&mut opts, duat_match_pairs::MatchPairs::default());
+    plug(&mut opts, duat_match_pairs::DuatMatchPairs::default());
+    plug(&mut opts, duat_lsp::DuatLsp);
 
     crate::plugins::finish(&mut opts);
 
@@ -80,10 +81,17 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
     let min_prefix = opts.completions.min_prefix;
     let cmd_min_prefix = opts.completions.cmd_min_prefix;
 
-    Completions::set_default(move || {
-        let mut builder = Completions::builder()
+    Completions::set_default(move |pa| {
+        let builder = Completions::builder()
             .with_provider(WordCompletions::new(true))
             .with_provider(PathCompletions::new(true, false));
+
+        let mut builder = if let Some(lsp_completions) = duat_lsp::LspCompletions::new(pa, true) {
+            builder.with_provider(lsp_completions)
+        } else {
+            builder
+        };
+
         builder.min_prefix = min_prefix;
         builder.cmd_min_prefix = cmd_min_prefix;
         builder

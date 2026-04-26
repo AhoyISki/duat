@@ -36,7 +36,7 @@ pub fn logbook_setup() {
             if let Some(rec_text) = fmt(rec.clone()) {
                 lb.text.append_text(lb.text.len(), &rec_text);
                 lb.location_ranges
-                    .push((lb.text.last_point(), rec.location()));
+                    .push((lb.text.end_point(), rec.location()));
             }
         };
 
@@ -205,7 +205,7 @@ impl LogBookOpts {
             for rec in records.into_iter() {
                 if let Some(rec_text) = fmt(rec.clone()) {
                     text.append_text(text.len(), &rec_text);
-                    path_ranges.push((text.last_point(), rec.location()));
+                    path_ranges.push((text.end_point(), rec.location()));
                 }
             }
         };

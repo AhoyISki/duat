@@ -14,7 +14,7 @@
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
-    sync::{Arc, LazyLock, Mutex},
+    sync::{LazyLock, Mutex},
 };
 
 use duat_core::{
@@ -43,8 +43,7 @@ mod lists;
 mod paths;
 mod words;
 
-static BUFFER_COMPLETIONS: Mutex<Option<Box<dyn FnMut() -> CompletionsBuilder + Send>>> =
-    Mutex::new(None);
+static BUFFER_COMPLETIONS: Mutex<Option<BufferCompletionsFn>> = Mutex::new(None);
 static OPENED_PARAM_COMPLETION: Mutex<Option<Vec<TypeId>>> = Mutex::new(None);
 static NS: LazyLock<Ns> = Ns::new_lazy();
 static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (usize, ParamCompletions)>>> =
@@ -200,8 +199,9 @@ impl CompletionsBuilder {
             return;
         };
 
-        let Some((providers, start_byte, entries)) =
-            self.providers.map(|call| call(handle.text(pa), 20, self.min_prefix))
+        let Some((providers, start_byte, entries)) = self
+            .providers
+            .map(|call| call(handle.text(pa), 20, self.min_prefix))
         else {
             return;
         };
@@ -284,7 +284,7 @@ impl Completions {
     }
 
     /// Set the default completions for `Buffers`.
-    pub fn set_default(func: impl FnMut() -> CompletionsBuilder + Send + 'static) {
+    pub fn set_default(func: impl FnMut(&mut Pass) -> CompletionsBuilder + Send + 'static) {
         *BUFFER_COMPLETIONS.lock().unwrap() = Some(Box::new(func));
     }
 
@@ -303,7 +303,7 @@ impl Completions {
     /// Spawn the `Completions` list
     pub fn open_default(pa: &mut Pass) {
         if let Some(func) = BUFFER_COMPLETIONS.lock().unwrap().as_mut() {
-            func().open(pa);
+            func(pa).open(pa);
         } else {
             Self::builder()
                 .with_provider(WordCompletions::new(true))
@@ -378,6 +378,27 @@ impl Completions {
     /// Wether there is an open `Completions` [`Widget`]
     pub fn is_open(pa: &Pass) -> bool {
         context::handle_of::<Completions>(pa).is_some()
+    }
+
+    /// Update a [`CompletionsProvider`].
+    ///
+    /// This function may not be called if the provider is no longer
+    /// present.
+    pub fn update_provider<P: CompletionsProvider>(pa: &mut Pass, update: impl FnOnce(&mut P)) {
+        let Some(completions) = context::handle_of::<Completions>(pa) else {
+            return;
+        };
+
+        if let Some(inner) = completions
+            .write(pa)
+            .providers
+            .iter_mut()
+            .find_map(|provider| provider.as_any().downcast_mut::<InnerProvider<P>>())
+        {
+            update(&mut inner.provider)
+        } else {
+            context::warn!("meet and huh?");
+        }
     }
 
     #[track_caller]
@@ -489,7 +510,7 @@ impl Completions {
                             ..Default::default()
                         };
                         frame.set_text(Side::Above, move |_| {
-                            txt!("[terminal.frame.Info]┤{replacement}[terminal.frame.Info]├")
+                            txt!("[terminal.border.Info]┤[]{replacement}[terminal.border.Info]├")
                         });
                         area.set_frame(frame);
                     }
@@ -587,19 +608,11 @@ impl Drop for Completions {
 
 /// A provider for word completions
 pub trait CompletionsProvider: Send + Sized + 'static {
-    /// Additional information about a given entry in the completion
-    /// list
+    /// An entry in this `CompletionsProvider`.
     ///
-    /// This information is supposed to be displayed alongside the
-    /// entry itself, usually on the right side.
-    type Info: Send;
-
-    /// The default formatting for entries from this provider
-    ///
-    /// Each [`Text`] must only be one line long (Nothing bad happens
-    /// if they are multiple lines long, but don't expect the
-    /// [`Completions`] to show things correctly).
-    fn default_fmt(entry: &str, info: &Self::Info) -> Text;
+    /// This should typically be a reference to some type, like `&'e
+    /// str`.
+    type Entry<'e>: Send;
 
     /// Get all completions at a given [`Point`] in the [`Text`]
     ///
@@ -619,7 +632,7 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// or moves the cursor around.
     ///
     /// [cursor]: duat_core::mode::Selection::cursor
-    fn matches(&mut self, text: &Text, cursor: Point, prefix: &str) -> Vec<(Arc<str>, Self::Info)>;
+    fn matches<'e>(&'e mut self, text: &Text, cursor: Point, prefix: &str) -> Vec<Self::Entry<'e>>;
 
     /// Get the starting byte for this completions
     ///
@@ -651,10 +664,22 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// have longer matches.
     fn get_start(&self, text: &Text, cursor: Point) -> Option<usize>;
 
+    /// The default formatting for entries from this provider
+    ///
+    /// Each [`Text`] must only be one line long (Nothing bad happens
+    /// if they are multiple lines long, but don't expect the
+    /// [`Completions`] to show things correctly).
+    fn default_fmt(entry: &Self::Entry<'_>) -> Text;
+
+    /// Function to pick a word to match on.
+    ///
+    /// This word is what will be placed over the current word.
+    fn word<'e>(entry: &'e Self::Entry<'_>) -> &'e str;
+
     /// Additional information about an entry, which can be shown when
     /// it is selected.
     #[allow(unused_variables)]
-    fn default_info_on(&self, entry: &str, info: &Self::Info) -> Option<(Text, Orientation)> {
+    fn default_info_on(entry: &Self::Entry<'_>) -> Option<(Text, Orientation)> {
         None
     }
 }
@@ -676,23 +701,23 @@ trait ErasedInnerProvider: Any + Send {
 
     #[allow(clippy::type_complexity)]
     fn start_fn(&self) -> Box<dyn Fn(&Text, Point) -> usize + '_>;
+
+    fn as_any(&mut self) -> &mut dyn Any;
 }
 
 #[allow(clippy::type_complexity)]
 struct InnerProvider<P: CompletionsProvider> {
     provider: P,
-    fmt: Box<dyn FnMut(&str, &P::Info) -> Text + Send>,
+    fmt: Box<dyn FnMut(&P::Entry<'_>) -> Text + Send>,
 
     orig_prefix: String,
-    current: Option<(Arc<str>, usize)>,
-
-    matches: Vec<(Arc<str>, P::Info)>,
+    current: Option<(String, usize)>,
 }
 
 impl<P: CompletionsProvider> InnerProvider<P> {
     #[allow(clippy::type_complexity)]
     fn new(
-        mut provider: P,
+        provider: P,
         text: &Text,
         height: usize,
         min_prefix: usize,
@@ -706,13 +731,11 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             .unwrap_or(main_cursor.byte());
 
         let orig_prefix = text[start..main_cursor.byte()].to_string();
-        let matches = provider.matches(text, main_cursor, &orig_prefix);
 
         let mut inner = Self {
             provider,
             orig_prefix,
             current: None,
-            matches,
             fmt: Box::new(P::default_fmt),
         };
 
@@ -759,78 +782,81 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let target_changed = self.current.as_ref().is_some_and(|(s, _)| **s != prefix)
             || (self.current.is_none() && self.orig_prefix != prefix);
 
+        let matches = self.provider.matches(text, cursor, &prefix);
+
         if target_changed {
-            self.matches = self.provider.matches(text, cursor, &prefix);
             self.current = None;
             self.orig_prefix = prefix;
         }
 
-        if self.matches.is_empty() || cursor.char() < start.char() + min_prefix {
+        if matches.is_empty() || cursor.char() < start.char() + min_prefix {
             self.current = None;
             return (start.byte(), None);
         }
 
         let height = if let Some(area) = area {
-            area.set_height(self.matches.len().min(max_height) as f32)
+            area.set_height(matches.len().min(max_height) as f32)
                 .unwrap();
             area.height() as usize
         } else {
             max_height
         };
 
-        let mut ret_info = None;
+        let mut info = None;
         if scroll != 0 {
             // No try blocks on stable Rust 🤮.
-            self.current = (|| -> Option<(Arc<str>, usize)> {
-                if let Some((prev, dist)) = &self.current {
-                    let dist = dist.saturating_add_signed(scroll as isize).min(height - 1);
-                    let prev_i = self.matches.iter().position(|(w, _)| w == prev)?;
-                    let (word, info) = self
-                        .matches
-                        .get(prev_i.checked_add_signed(scroll as isize)?)?;
+            let ret = if let Some((prev, dist)) = &self.current
+                && let dist = dist.saturating_add_signed(scroll as isize).min(height - 1)
+                && let Some(prev_i) = matches.iter().position(|entry| P::word(entry) == prev)
+                && let Some(new_pos) = prev_i.checked_add_signed(scroll as isize)
+                && let Some(entry) = matches.get(new_pos)
+            {
+                Some((entry, dist))
+            } else if scroll > 0
+                && let scroll = scroll.unsigned_abs() as usize - 1
+                && let dist = (scroll).min(height - 1)
+                && let Some(entry) = matches.get(scroll)
+            {
+                Some((entry, dist))
+            } else if let scroll = scroll.unsigned_abs() as usize
+                && let dist = height.saturating_sub(scroll)
+                && let Some(new_pos) = matches.len().checked_sub(scroll)
+                && let Some(entry) = matches.get(new_pos)
+            {
+                Some((entry, dist))
+            } else {
+                None
+            };
+            let (entry, dist) = ret.unzip();
 
-                    ret_info = Some(info);
-                    Some((word.clone(), dist))
-                } else if scroll > 0 {
-                    let scroll = scroll.unsigned_abs() as usize - 1;
-                    let dist = (scroll).min(height - 1);
-                    let (word, info) = self.matches.get(scroll)?;
+            info = entry.as_ref().and_then(|entry| P::default_info_on(entry));
 
-                    ret_info = Some(info);
-                    Some((word.clone(), dist))
-                } else {
-                    let scroll = scroll.unsigned_abs() as usize;
-                    let dist = height.saturating_sub(scroll);
-                    let (word, info) = self.matches.get(self.matches.len().checked_sub(scroll)?)?;
-
-                    ret_info = Some(info);
-                    Some((word.clone(), dist))
-                }
-            })();
+            self.current = entry
+                .zip(dist)
+                .map(|(entry, dist)| (P::word(entry).to_string(), dist));
         }
 
         let mut entries_builder = Text::builder();
         let mut sidebar_builder = Text::builder();
 
         if let Some((word, dist)) = &mut self.current
-            && let Some(word_i) = self.matches.iter().position(|(w, _)| w == word)
+            && let Some(word_i) = matches.iter().position(|entry| P::word(entry) == word)
         {
             *dist = (*dist).min(height - 1);
 
             let top_i = word_i.saturating_sub(*dist);
-            for (i, (entry, info)) in self.matches.iter().enumerate().skip(top_i).take(height) {
+            for (i, entry) in matches.iter().enumerate().skip(top_i).take(height) {
                 if i == word_i {
-                    entries_builder
-                        .push(txt!("[selected.Completions]{}\n", (self.fmt)(entry, info)));
+                    entries_builder.push(txt!("[selected.Completions]{}\n", (self.fmt)(entry)));
                     sidebar_builder.push(txt!("[selected.Completions] \n"));
                 } else {
-                    entries_builder.push(txt!("{}\n", (self.fmt)(entry, info)));
+                    entries_builder.push(txt!("{}\n", (self.fmt)(entry)));
                     sidebar_builder.push(txt!("[default.Completions] \n"));
                 }
             }
         } else {
-            for (entry, info) in self.matches.iter().take(height) {
-                entries_builder.push(txt!("{}\n", (self.fmt)(entry, info)));
+            for entry in matches.iter().take(height) {
+                entries_builder.push(txt!("{}\n", (self.fmt)(entry)));
                 sidebar_builder.push(txt!("[default.Completions] \n"));
             }
         }
@@ -838,17 +864,16 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let replacement = if scroll != 0 {
             self.current
                 .clone()
-                .map(|(word, _)| {
-                    let text = self.provider.default_info_on(&word, ret_info.unwrap());
-                    (word.to_string(), text)
-                })
+                .map(|(word, _)| (word.to_string(), info))
                 .or_else(|| Some((self.orig_prefix.clone(), None)))
         } else {
             None
         };
 
-        let entries_text = entries_builder.build_no_double_nl();
-        let sidebar_text = sidebar_builder.build_no_double_nl();
+        drop(matches);
+
+        let entries_text = entries_builder.build();
+        let sidebar_text = sidebar_builder.build();
         (
             start.byte(),
             Some(((entries_text, sidebar_text), replacement)),
@@ -861,6 +886,10 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
                 .get_start(text, cursor)
                 .unwrap_or(cursor.byte())
         })
+    }
+
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
     }
 }
 
@@ -912,3 +941,4 @@ type ProvidersFn = Box<
 >;
 type ParamCompletions =
     Box<Mutex<dyn FnMut(&Pass, CompletionsBuilder) -> CompletionsBuilder + Send + Sync>>;
+type BufferCompletionsFn = Box<dyn FnMut(&mut Pass) -> CompletionsBuilder + Send>;

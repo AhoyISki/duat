@@ -404,7 +404,7 @@ impl Mode for Normal {
                 }
 
                 let v_cursor = s.v_cursor();
-                if s.char() == '\n'
+                if s.char() == Some('\n')
                     && v_cursor.char_col() > 0
                     && self.sel_type != SelType::ToEndOfLine
                 {
@@ -437,9 +437,13 @@ impl Mode for Normal {
                 };
             }),
             event!(char @ ('b' | 'v')) => handle.edit_all(pa, |mut s| {
+                let Some(cursor_char) = s.char() else {
+                    return;
+                };
+                
                 let alt = char == 'v';
                 let init = {
-                    let iter = [(s.cursor().byte(), s.char())]
+                    let iter = [(s.cursor().byte(), cursor_char)]
                         .into_iter()
                         .chain(s.text()[..s.cursor()].char_indices().rev());
                     no_nl_pair(iter)
@@ -496,7 +500,7 @@ impl Mode for Normal {
                 s.swap_ends();
 
                 let b1 = s.search("\n").from_cursor().next().map(|r| r.start);
-                s.move_to(b1.unwrap_or(s.last_point().byte()));
+                s.move_to(b1.unwrap_or(s.text().len()));
                 s.set_desired_vcol(usize::MAX);
             }),
             event!(char @ ('f' | 'F' | 't' | 'T')) | alt!(char @ ('f' | 'F' | 't' | 'T')) => {
@@ -547,9 +551,11 @@ impl Mode for Normal {
             alt!('{') => self.one_key = Some(OneKey::ToPrevious(param, true, false)),
             alt!('}') => self.one_key = Some(OneKey::ToNext(param, true, false)),
             event!('%') => handle.edit_main(pa, |mut s| {
-                s.move_to_start();
-                s.set_anchor();
-                s.move_to(s.last_point())
+                if let Some(last_point) = s.last_point() {
+                    s.move_to_start();
+                    s.set_anchor();
+                    s.move_to(last_point)
+                }
             }),
             event!(char @ ('m' | 'M')) => {
                 let mut failed = false;
