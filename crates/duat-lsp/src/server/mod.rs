@@ -120,7 +120,7 @@ impl Server {
         Some(&self.init_parts.get()?.capabilities)
     }
 
-	/// The name of the language server.
+    /// The name of the language server.
     pub fn name(&self) -> &str {
         self.bridge.name()
     }
@@ -129,6 +129,10 @@ impl Server {
     pub fn ns(&self) -> Ns {
         self.bridge.ns()
     }
+}
+
+pub fn on_servers_list(func: impl FnOnce(&[Server])) {
+    func(&*SERVERS.lock().unwrap());
 }
 
 pub fn get_servers_for(path: &Path) -> Option<Vec<Server>> {

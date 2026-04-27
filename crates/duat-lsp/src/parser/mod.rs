@@ -29,7 +29,7 @@ use crate::{
     Encoding,
     parser::semantic_tokens::BufferTokens,
     path_to_uri,
-    server::{self, Server},
+    server::{self, Server, on_servers_list},
 };
 
 mod completions;
@@ -207,18 +207,24 @@ pub fn setup_hooks() {
                 });
             }
 
-            let (parser, buf) = PARSERS.register(pa, buffer, Parser {
-                uri,
-                servers: servers.clone(),
-                tokens: BufferTokens::default(),
-            });
+            let (parser, buf) = PARSERS.register(
+                pa,
+                buffer,
+                Parser {
+                    uri,
+                    servers: servers.clone(),
+                    tokens: BufferTokens::default(),
+                },
+            );
 
             for server in &servers {
                 server.send_semantic_tokens_request(buffer, parser);
                 _ = buf.moment_for(server.ns());
             }
 
-            diagnostics::add_initial(pa, &servers, buffer);
+            on_servers_list(|servers| {
+                diagnostics::add_initial(pa, servers, buffer);
+            });
         }
     });
 

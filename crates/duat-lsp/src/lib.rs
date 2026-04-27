@@ -103,7 +103,7 @@ fn path_to_uri(path: &Path) -> Option<Uri> {
                 | b'#' => encoded.push(char::from_u32(s as _).unwrap()),
                 s => {
                     encoded.push('%');
-                    encoded.push_str(&format!("{:02x}", s));
+                    encoded.push_str(&format!("{:02X}", s));
                 }
             }
         }
