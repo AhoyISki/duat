@@ -122,6 +122,7 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
             };
 
             if state_changed && list.is_incomplete {
+                context::debug!("requested more");
                 send_update_request(text, server, *encoding, self.uri.clone());
             }
 
@@ -146,7 +147,6 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
     }
 
     fn word<'e>(entry: &'e Self::Entry<'_>) -> &'e str {
-        context::debug!("{entry.text_edit:#?}");
         entry.insert_text.as_deref().unwrap_or(&entry.label)
     }
 

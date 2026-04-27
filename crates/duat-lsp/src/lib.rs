@@ -131,7 +131,7 @@ fn uri_to_path(uri: Uri) -> PathBuf {
 }
 
 /// An encoding for text positions.
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 enum Encoding {
     Utf8,
     #[default]
@@ -155,7 +155,8 @@ impl Encoding {
         match self {
             Encoding::Utf8 => {
                 let byte = strs.get_point_at_coords(pos.line as usize, 0)?.byte();
-                Some(byte + pos.character as usize)
+                let line = strs.line(pos.line as usize);
+                (line.len() >= pos.character as usize).then_some(byte + pos.character as usize)
             }
             Encoding::Utf16 => {
                 if pos.line as usize > strs.end_point().line() {
