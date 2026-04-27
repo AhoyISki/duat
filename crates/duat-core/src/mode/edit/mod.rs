@@ -479,7 +479,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     pub fn search<R: RegexPattern>(&self, pat: R) -> SelectionMutMatches<'_, R> {
         let text = self.widget.text();
         let cursor = self.cursor();
-        let fwd = self.char().map(|c| cursor.fwd(c)).unwrap_or(cursor);
+        let fwd = cursor.fwd(self.char());
         SelectionMutMatches {
             text_byte_len: text.len(),
             cursor_range: cursor.byte()..fwd.byte(),
@@ -490,8 +490,8 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     ////////// Text queries
 
     /// Returns the [`char`] in the `cursor`.
-    pub fn char(&self) -> Option<char> {
-        self.text().char_at(sel!(self).cursor())
+    pub fn char(&self) -> char {
+        self.text().char_at(sel!(self).cursor()).unwrap()
     }
 
     /// Returns the [`char`] at a given [`Point`].

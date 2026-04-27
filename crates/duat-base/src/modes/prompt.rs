@@ -247,7 +247,7 @@ impl mode::Mode for Prompt {
             }
             event!(Delete) => {
                 promptline.edit_main(pa, |mut s| {
-                    if s.char() != Some('\n') {
+                    if s.char() != '\n' {
                         s.set_anchor_if_needed();
                         s.replace("");
                     }

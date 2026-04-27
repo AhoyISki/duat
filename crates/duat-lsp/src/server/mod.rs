@@ -132,7 +132,7 @@ impl Server {
 }
 
 pub fn on_servers_list(func: impl FnOnce(&[Server])) {
-    func(&*SERVERS.lock().unwrap());
+    func(&SERVERS.lock().unwrap());
 }
 
 pub fn get_servers_for(path: &Path) -> Option<Vec<Server>> {

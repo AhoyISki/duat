@@ -404,7 +404,7 @@ impl Mode for Normal {
                 }
 
                 let v_cursor = s.v_cursor();
-                if s.char() == Some('\n')
+                if s.char() == '\n'
                     && v_cursor.char_col() > 0
                     && self.sel_type != SelType::ToEndOfLine
                 {
@@ -437,13 +437,9 @@ impl Mode for Normal {
                 };
             }),
             event!(char @ ('b' | 'v')) => handle.edit_all(pa, |mut s| {
-                let Some(cursor_char) = s.char() else {
-                    return;
-                };
-                
                 let alt = char == 'v';
                 let init = {
-                    let iter = [(s.cursor().byte(), cursor_char)]
+                    let iter = [(s.cursor().byte(), s.char())]
                         .into_iter()
                         .chain(s.text()[..s.cursor()].char_indices().rev());
                     no_nl_pair(iter)

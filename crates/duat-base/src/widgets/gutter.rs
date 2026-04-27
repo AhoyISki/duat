@@ -600,10 +600,10 @@ fn insert_gutter_entries<'g>(
 }
 
 fn make_inlay(mut inlays: Vec<(usize, EntryKind, &Text)>) -> Inlay {
-    const LEN: usize = '─'.len_utf8();
+    const LINE_LEN: usize = '─'.len_utf8();
     const LINES: &str = {
-        const BYTES: [[u8; LEN]; 150] = {
-            let mut encoded = [0; LEN];
+        const BYTES: [[u8; LINE_LEN]; 150] = {
+            let mut encoded = [0; LINE_LEN];
             '─'.encode_utf8(&mut encoded);
             [encoded; 150]
         };
@@ -622,7 +622,7 @@ fn make_inlay(mut inlays: Vec<(usize, EntryKind, &Text)>) -> Inlay {
         let column = inlays.last().unwrap().0.max(2);
         txt!("[diagnostic.line:240]{}", &SPACES[..column + 1])
     };
-    let prefix_len = prefix.len() - 1;
+    let prefix_len = prefix.len();
     let conn = &*CONN;
 
     let mut text = Text::new();
@@ -635,7 +635,7 @@ fn make_inlay(mut inlays: Vec<(usize, EntryKind, &Text)>) -> Inlay {
         let mut line_prefix = prefix.clone();
         line_prefix.replace_range(
             column..prefix_len,
-            format!("{char}{}", &LINES[..(prefix_len - column - 1) * LEN]),
+            format!("{char}{}", &LINES[..(prefix_len - column - 1) * LINE_LEN]),
         );
 
         if columns_are_eq {

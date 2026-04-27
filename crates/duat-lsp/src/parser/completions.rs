@@ -122,7 +122,6 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
             };
 
             if state_changed && list.is_incomplete {
-                context::debug!("requested more");
                 send_update_request(text, server, *encoding, self.uri.clone());
             }
 
