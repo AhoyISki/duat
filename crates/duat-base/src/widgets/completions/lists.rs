@@ -80,7 +80,9 @@ pub struct ExhaustiveCompletionsList<S> {
 impl<S: AsRef<str> + Send + 'static> CompletionsProvider for ExhaustiveCompletionsList<S> {
     type Entry<'e> = &'e str;
 
-    fn matches<'e>(&'e mut self, text: &Text, cursor: Point, prefix: &str) -> Vec<Self::Entry<'e>> {
+    fn matches<'e>(&'e mut self, text: &Text, _: Point, prefix: &str) -> Vec<Self::Entry<'e>> {
+        let cursor = text.main_sel().cursor();
+
         let yet_to_be_typed: Vec<_> = self
             .list
             .iter()

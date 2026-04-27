@@ -371,6 +371,9 @@ pub(crate) fn add_default() {
                 ("prompt", Form::new().with(c.green)),
                 // The colon that separates the prompt from the input.
                 ("prompt.colon", Form::new().with(c.subtext0)),
+                // Used in the `mapped_txt` StatusLine part.
+                ("key", Form::new().with(c.peach)),
+                ("key.special", Form::new().with(c.teal)),
                 // Various default forms for specific Widgets.
                 (
                     "default.Buffer.current_line",
@@ -396,9 +399,6 @@ pub(crate) fn add_default() {
                     "selected.Completions",
                     Form::new().with(c.base).on(c.overlay0),
                 ),
-                // Used in the `mapped_txt` StatusLine part.
-                ("key", Form::new().with(c.peach)),
-                ("key.special", Form::new().with(c.teal)),
                 // Same as before, but on specific Modes.
                 ("cursor.main.Insert", Form::new().with(c.base).on(c.mauve)),
                 ("cursor.extra.Insert", Form::new().with(c.base).on(c.yellow)),
@@ -456,6 +456,8 @@ pub(crate) fn add_default() {
                 ("diff.delta.renamed", Form::new().with(c.yellow)),
                 ("diff.minus", Form::new().with(c.red)),
                 ("unresolved", Form::new().underlined().underline(c.red)),
+                ("completion.lsp.detail", Form::new().with(c.teal)),
+                ("completion.lsp.kind", Form::new().with(c.blue)),
             ]
         }
     );
@@ -570,6 +572,8 @@ pub(crate) fn add_default() {
                 ("notifs.colon", Form::new().with(c.dark3)),
                 ("prompt", Form::new().with(c.green)),
                 ("prompt.colon", Form::new().with(c.dark3)),
+                ("key", Form::new().with(c.orange)),
+                ("key.special", Form::new().with(c.teal)),
                 ("default.StatusLine", default.on(c.bg_dark)),
                 ("default.LogBook", default.on(c.bg_dark)),
                 ("default.VertRule", default.with(c.bg_dark)),
@@ -590,14 +594,12 @@ pub(crate) fn add_default() {
                 ("default.Completions", default.on(c.terminal_black)),
                 ("selected.Completions", Form::new().with(c.bg).on(c.dark5)),
                 ("default.WhichKey", default.with(c.text)),
-                ("key", Form::new().with(c.orange)),
-                ("key.special", Form::new().with(c.teal)),
                 // For duatmode
                 ("cursor.main.Insert", Form::new().with(c.bg).on(c.magenta)),
                 ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
                 ("param.flag", Form::new().with(c.cyan)),
-                // Tree sitter Forms
+                // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.text)),
                 ("variable.builtin", Form::new().with(c.orange)),
                 ("variable.member", Form::new().with(c.green1)),
@@ -647,6 +649,8 @@ pub(crate) fn add_default() {
                 ("diff.delta.renamed", Form::new().with(c.yellow)),
                 ("diff.minus", Form::new().with(c.red)),
                 ("unresolved", Form::new().underlined().underline(c.red)),
+                ("completion.lsp.detail", Form::new().with(c.teal)),
+                ("completion.lsp.kind", Form::new().with(c.blue)),
             ]
         }
     );
@@ -743,6 +747,8 @@ pub(crate) fn add_default() {
                 ("notifs.colon", Form::new().with(c.text_muted)),
                 ("prompt", Form::new().with(c.green)),
                 ("prompt.colon", Form::new().with(c.text_muted)),
+                ("key", Form::new().with(c.orange)),
+                ("key.special", Form::new().with(c.teal)),
                 ("default.StatusLine", default.on(c.bg_subtle)),
                 ("default.LogBook", default.on(c.bg_subtle)),
                 ("default.VertRule", default.with(c.bg_subtle)),
@@ -763,14 +769,12 @@ pub(crate) fn add_default() {
                 ("default.Completions", default.on(c.bg_overlay)),
                 ("selected.Completions", Form::new().with(c.bg).on(c.blue)),
                 ("default.WhichKey", default.with(c.text)),
-                ("key", Form::new().with(c.orange)),
-                ("key.special", Form::new().with(c.teal)),
                 // For duatmode
                 ("cursor.main.Insert", Form::new().with(c.bg).on(c.purple)),
                 ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
                 ("param.flag", Form::new().with(c.teal)),
-                // Tree sitter Forms
+                // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.text)),
                 ("variable.builtin", Form::new().with(c.orange)),
                 ("variable.member", Form::new().with(c.blue)),
@@ -823,6 +827,8 @@ pub(crate) fn add_default() {
                 ("diff.delta.renamed", Form::new().with(c.yellow)),
                 ("diff.minus", Form::new().with(c.red)),
                 ("unresolved", Form::new().underlined().underline(c.red)),
+                ("completion.lsp.detail", Form::new().with(c.teal)),
+                ("completion.lsp.kind", Form::new().with(c.blue)),
             ]
         }
     );
@@ -890,6 +896,7 @@ pub(crate) fn add_default() {
                 ),
                 ("toggle.hover", Form::new().on(c.surface_inactive)),
                 ("toggle.click", Form::new().on(c.surface_highlight)),
+                // duat-base forms
                 ("linenum.main", Form::new().with(c.yellow)),
                 ("linenum.wrapped", Form::new().with(c.teal)),
                 ("file", Form::new().with(c.yellow)),
@@ -902,6 +909,8 @@ pub(crate) fn add_default() {
                 ("notifs.colon", Form::new().with(c.text_muted)),
                 ("prompt", Form::new().with(c.green)),
                 ("prompt.colon", Form::new().with(c.text_muted)),
+                ("key", Form::new().with(c.orange)),
+                ("key.special", Form::new().with(c.teal)),
                 ("default.StatusLine", default.on(c.surface_panel)),
                 ("default.LogBook", default.on(c.surface_panel)),
                 ("default.VertRule", default.with(c.surface)),
@@ -925,12 +934,12 @@ pub(crate) fn add_default() {
                     Form::new().with(c.text).on(c.surface_highlight),
                 ),
                 ("default.WhichKey", default.with(c.text)),
-                ("key", Form::new().with(c.orange)),
-                ("key.special", Form::new().with(c.teal)),
+                // For duatmode
                 ("cursor.main.Insert", Form::new().with(c.bg).on(c.purple)),
                 ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
                 ("param.flag", Form::new().with(c.teal)),
+                // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.text)),
                 ("variable.builtin", Form::new().with(c.teal)),
                 ("variable.member", Form::new().with(c.aqua)),
@@ -983,6 +992,8 @@ pub(crate) fn add_default() {
                 ("diff.delta.renamed", Form::new().with(c.yellow)),
                 ("diff.minus", Form::new().with(c.red)),
                 ("unresolved", Form::new().underlined().underline(c.red)),
+                ("completion.lsp.detail", Form::new().with(c.teal)),
+                ("completion.lsp.kind", Form::new().with(c.blue)),
             ]
         }
     );
@@ -1078,6 +1089,8 @@ pub(crate) fn add_default() {
                 ("notifs.colon", Form::new().with(c.comment)),
                 ("prompt", Form::new().with(c.green)),
                 ("prompt.colon", Form::new().with(c.comment)),
+                ("key", Form::new().with(c.orange)),
+                ("key.special", Form::new().with(c.cyan)),
                 ("default.StatusLine", default.on(c.current_line)),
                 ("default.LogBook", default.on(c.current_line)),
                 ("default.VertRule", default.with(c.current_line)),
@@ -1098,14 +1111,12 @@ pub(crate) fn add_default() {
                 ("default.Completions", default.on(c.current_line)),
                 ("selected.Completions", Form::new().with(c.bg).on(c.purple)),
                 ("default.WhichKey", default.with(c.fg)),
-                ("key", Form::new().with(c.orange)),
-                ("key.special", Form::new().with(c.cyan)),
                 // For duatmode
                 ("cursor.main.Insert", Form::new().with(c.bg).on(c.pink)),
                 ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
                 ("param.flag", Form::new().with(c.pink)),
-                // Tree sitter Forms
+                // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.fg)),
                 ("variable.builtin", Form::new().with(c.orange)),
                 ("variable.member", Form::new().with(c.fg)),
@@ -1155,6 +1166,8 @@ pub(crate) fn add_default() {
                 ("diff.delta.renamed", Form::new().with(c.yellow)),
                 ("diff.minus", Form::new().with(c.red)),
                 ("unresolved", Form::new().underlined().underline(c.red)),
+                ("completion.lsp.detail", Form::new().with(c.cyan)),
+                ("completion.lsp.kind", Form::new().with(c.yellow)),
             ]
         }
     );
@@ -1232,6 +1245,8 @@ pub(crate) fn add_default() {
                 ("notifs.colon", Form::new().with(c.nord3)),
                 ("prompt", Form::new().with(c.nord14)),
                 ("prompt.colon", Form::new().with(c.nord3)),
+                ("key", Form::new().with(c.nord12)),
+                ("key.special", Form::new().with(c.nord7)),
                 ("default.StatusLine", default.on(c.nord1)),
                 ("default.LogBook", default.on(c.nord1)),
                 ("default.VertRule", default.with(c.nord1)),
@@ -1255,8 +1270,7 @@ pub(crate) fn add_default() {
                     Form::new().with(c.nord0).on(c.nord3),
                 ),
                 ("default.WhichKey", default.with(c.nord4)),
-                ("key", Form::new().with(c.nord12)),
-                ("key.special", Form::new().with(c.nord7)),
+                // For duatmode
                 ("cursor.main.Insert", Form::new().with(c.nord0).on(c.nord15)),
                 (
                     "cursor.extra.Insert",
@@ -1264,7 +1278,7 @@ pub(crate) fn add_default() {
                 ),
                 ("param", Form::new().with(c.nord15)),
                 ("param.flag", Form::new().with(c.nord8)),
-                // Tree sitter Forms
+                // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.nord4)),
                 ("variable.builtin", Form::new().with(c.nord12)),
                 ("variable.member", Form::new().with(c.nord4)),
@@ -1317,6 +1331,8 @@ pub(crate) fn add_default() {
                 ("diff.delta.renamed", Form::new().with(c.nord13)),
                 ("diff.minus", Form::new().with(c.nord11)),
                 ("unresolved", Form::new().underlined().underline(c.nord11)),
+                ("completion.lsp.detail", Form::new().with(c.nord9)),
+                ("completion.lsp.kind", Form::new().with(c.nord8)),
             ]
         }
     );
@@ -1417,6 +1433,8 @@ pub(crate) fn add_default() {
                 ("coord", Form::new().with(c.surimi_orange)),
                 ("separator", Form::mimic("punctuation.delimiter")),
                 ("mode", Form::new().with(c.spring_green)),
+                ("key", Form::new().with(c.sumi_ink1)),
+                ("key.special", Form::new().with(c.sumi_ink2)),
                 (
                     "terminal.border",
                     Form::new().with(c.sumi_ink3).on(c.sumi_ink3),
@@ -1447,8 +1465,6 @@ pub(crate) fn add_default() {
                     Form::new().with(c.sumi_ink3).on(c.wave_blue1),
                 ),
                 ("default.WhichKey", default.with(c.fuji_white)),
-                ("key", Form::new().with(c.sumi_ink1)),
-                ("key.special", Form::new().with(c.sumi_ink2)),
                 // For duatmode
                 (
                     "caret.main.Normal",
@@ -1468,7 +1484,7 @@ pub(crate) fn add_default() {
                 ),
                 ("param", Form::new().with(c.oni_violet2)),
                 ("param.flag", Form::new().with(c.oni_violet2)),
-                // Tree sitter Forms
+                // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.fuji_white)),
                 ("variable.builtin", Form::new().with(c.surimi_orange)),
                 ("variable.member", Form::new().with(c.fuji_white)),
@@ -1520,6 +1536,8 @@ pub(crate) fn add_default() {
                 ("diff.delta", Form::new().with(c.autumn_yellow)),
                 ("diff.delta.renamed", Form::new().with(c.autumn_yellow)),
                 ("diff.minus", Form::new().with(c.samurai_red)),
+                ("completion.lsp.detail", Form::new().with(c.boat_yellow2)),
+                ("completion.lsp.kind", Form::new().with(c.crystal_blue)),
             ]
         }
     );

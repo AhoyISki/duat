@@ -30,14 +30,17 @@ impl DuatLsp {
     #[doc(hidden)]
     #[inline(never)]
     pub fn _plug(self) {
-        form::set("lsp.info", Form::mimic("default.info"));
-        form::set("lsp.hint", Form::mimic("default.info"));
-        form::set("lsp.warn", Form::mimic("default.warn"));
-        form::set("lsp.error", Form::mimic("default.error"));
-        form::set("lsp.tt.info", Form::mimic("accent.info"));
-        form::set("lsp.tt.hint", Form::mimic("accent.info"));
-        form::set("lsp.tt.warn", Form::mimic("accent.warn"));
-        form::set("lsp.tt.error", Form::mimic("accent.error"));
+        form::set_weak("lsp.info", Form::mimic("default.info"));
+        form::set_weak("lsp.hint", Form::mimic("default.info"));
+        form::set_weak("lsp.warn", Form::mimic("default.warn"));
+        form::set_weak("lsp.error", Form::mimic("default.error"));
+        form::set_weak("lsp.tt.info", Form::mimic("accent.info"));
+        form::set_weak("lsp.tt.hint", Form::mimic("accent.info"));
+        form::set_weak("lsp.tt.warn", Form::mimic("accent.warn"));
+        form::set_weak("lsp.tt.error", Form::mimic("accent.error"));
+
+        form::set_weak("completion.lsp.detail", Form::of("comment"));
+        form::set_weak("completion.lsp.kind", Form::of("function"));
 
         parser::setup_hooks();
 

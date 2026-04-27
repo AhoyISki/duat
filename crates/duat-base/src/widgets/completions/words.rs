@@ -56,7 +56,8 @@ impl CompletionsProvider for WordCompletions {
         )
     }
 
-    fn matches<'e>(&'e mut self, text: &Text, cursor: Point, prefix: &str) -> Vec<Self::Entry<'e>> {
+    fn matches<'e>(&'e mut self, text: &Text, _: Point, prefix: &str) -> Vec<Self::Entry<'e>> {
+        let cursor = text.main_sel().cursor();
         let suffix = &text[text.search(r"\A\w*").range(cursor..).next().unwrap()];
 
         let (prefix, case_insensitive) =

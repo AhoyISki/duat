@@ -521,7 +521,6 @@ impl PromptMode for RunCommands {
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
             if let Some((ok_ranges, err_range)) = cmd::check_args(pa, &command) {
-                context::debug!("{ok_ranges:#?}, {err_range:?}");
                 let id = form::id_of!("caller.info");
                 text.insert_tag(*NS, 0..caller.len(), id.to_tag(0));
 

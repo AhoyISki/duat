@@ -25,9 +25,9 @@ use duat_core::{
     },
     context::{self, Handle},
     data::Pass,
-    hook::{self, KeySent, ModeSwitched, OnMouseEvent, WidgetOpened},
+    hook::{self, KeyTyped, ModeSwitched, OnMouseEvent, WidgetOpened},
     mode::MouseEventKind,
-    text::{Point, Spawn, Strs, Text, TextMut, txt},
+    text::{Point, Spawn, Text, TextMut, txt},
     ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
 };
 use duat_term::Frame;
@@ -110,7 +110,7 @@ pub fn completions_setup() {
         let completions = completions.clone();
         let ns = Ns::new();
 
-        hook::add::<KeySent>(move |pa, _| {
+        hook::add::<KeyTyped>(move |pa, _| {
             let completions_master = completions.master(pa).unwrap();
             if completions.is_closed()
                 || completions_master.is_closed()
@@ -395,9 +395,14 @@ impl Completions {
             .iter_mut()
             .find_map(|provider| provider.as_any().downcast_mut::<InnerProvider<P>>())
         {
-            update(&mut inner.provider)
-        } else {
-            context::warn!("meet and huh?");
+            update(&mut inner.provider);
+
+            Completions::update_text_and_position(pa, &completions, 0);
+            let completions_master = completions.master(pa).unwrap();
+            completions.write(pa).last_cursor = completions_master.selections(pa).main().cursor();
+            if !completions.is_closed() {
+                Completions::set_frame(pa, &completions);
+            }
         }
     }
 
@@ -483,7 +488,9 @@ impl Completions {
                 });
 
                 if let Some((info_text, orientation)) = info_text {
-                    let info_handle = if let Some(info) = completions.read(pa).info_handle.clone() {
+                    let info_handle = if let Some(info) = completions.read(pa).info_handle.clone()
+                        && !info.is_closed()
+                    {
                         Info::set_text(pa, &info, |text| *text = info_text);
                         Some(info)
                     } else {
@@ -614,25 +621,63 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// str`.
     type Entry<'e>: Send;
 
-    /// Get all completions at a given [`Point`] in the [`Text`]
+    /// Get all completion entries based on the [start] and [prefix].
     ///
-    /// This function should return a list of all possible matches,
-    /// given the prefix and surrounding context. It should be sorted
-    /// in an appropriate manner (e.g. by word proximity or
-    /// frequency).
+    /// The start here is the value returned by [`Self::get_start`],
+    /// which is used to determine from where the completions widget
+    /// should be spawned, and which part of the [`Text`] should be
+    /// swapped on completions.
     ///
-    /// The `cursor` is the position where the main selection's
-    /// [cursor] lies, And the `prefix` and `suffix` are .
+    /// The prefix is the initial, unmodified text that was between
+    /// the start and the main cursor.
     ///
-    /// If the returned [`Vec`] is empty, then the next provider will
-    /// be selected to return a list of matches.
+    /// For example, if [`Self::get_start`] points to the beginning of
+    /// a word, and you spawn a completions, like this:
     ///
-    /// This function is only called if the prefix changes, which
-    /// would happen if the user types something, deletes something,
-    /// or moves the cursor around.
+    /// ```text
+    ///           v- Cursor before this m
+    ///           |
+    /// This is some text that I'm writing down.
+    ///         |
+    ///         ^- Completions spawned before this s
+    /// ```
     ///
-    /// [cursor]: duat_core::mode::Selection::cursor
-    fn matches<'e>(&'e mut self, text: &Text, cursor: Point, prefix: &str) -> Vec<Self::Entry<'e>>;
+    /// The start will be `8`, and prefix will be `"so"`.
+    ///
+    /// If the completions replaces `so` with `two words`, like this:
+    ///
+    /// ```text
+    ///                  v- Cursor before this m
+    ///                  |
+    /// This is two wordsme text that I'm writing down.
+    ///         |
+    ///         ^- Completions spawned before this s
+    /// ```
+    ///
+    /// The start will still be `0`, and the prefix will still be
+    /// `"so"`. Note that `get_start` wasn't called again. This is
+    /// because duat assumes that, if the text has only been altered
+    /// by the completions, then the list doesn't need to be updated,
+    /// and the spawned location doesn't need to change.
+    ///
+    /// However, if the user _types_ something, say, adding a space
+    /// after `so`:
+    ///
+    /// ```text
+    ///            v- Cursor before this m
+    ///            |
+    /// This is so me text that I'm writing down.
+    ///            |
+    ///            ^- Completions spawned before this s
+    /// ```
+    ///
+    /// Now, the start will be `11`, and the prefix will change to
+    /// `""`. This is to reflect that typing should update the
+    /// completion options.
+    ///
+    /// [start]: Point
+    /// [prefix]: str
+    fn matches<'e>(&'e mut self, text: &Text, start: Point, prefix: &str) -> Vec<Self::Entry<'e>>;
 
     /// Get the starting byte for this completions
     ///
@@ -645,18 +690,18 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// `from`th byte:
     ///
     /// ```text
-    ///         v------ starting byte index.
-    /// This is bein|g typed.
-    ///             ^-- main cursor.
+    ///         v------ starting byte index before b.
+    /// This is being typed.
+    ///             ^-- main cursor before g.
     /// ```
     ///
     /// If you're typing arguments in a command, you'd return the byte
     /// index of the current argument:
     ///
     /// ```text
-    ///       v--------------------------- starting byte index.
-    /// :edit 'This is a quoted argum|ent
-    ///                              ^---< main cursor.
+    ///       v--------------------------- starting byte index before '.
+    /// :edit 'This is a quoted argument
+    ///                              ^---< main cursor before e.
     /// ```
     ///
     /// This function is used in order to determine which providers
@@ -710,8 +755,10 @@ struct InnerProvider<P: CompletionsProvider> {
     provider: P,
     fmt: Box<dyn FnMut(&P::Entry<'_>) -> Text + Send>,
 
-    orig_prefix: String,
+    start: usize,
+    prefix: String,
     current: Option<(String, usize)>,
+    previous: String,
 }
 
 impl<P: CompletionsProvider> InnerProvider<P> {
@@ -730,13 +777,15 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             .get_start(text, main_cursor)
             .unwrap_or(main_cursor.byte());
 
-        let orig_prefix = text[start..main_cursor.byte()].to_string();
+        let prefix = text[start..main_cursor.byte()].to_string();
 
         let mut inner = Self {
             provider,
-            orig_prefix,
-            current: None,
             fmt: Box::new(P::default_fmt),
+            start,
+            prefix: prefix.clone(),
+            current: None,
+            previous: prefix,
         };
 
         let (start, text) = inner.texts_and_match(text, 0, None, height, min_prefix);
@@ -764,34 +813,44 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             );
         };
 
-        let start = self
-            .provider
-            .get_start(text, cursor)
-            .map(|byte| text.point_at_byte(byte))
-            .unwrap_or(cursor);
-
-        let Some(prefix) = text.get(start.byte()..cursor.byte()).map(Strs::to_string) else {
-            panic!(
-                "Failed to get prefix from {:?}",
-                start.byte()..cursor.byte()
-            );
-        };
-
         // This should only be true if edits other than the one applied by
         // Completions take place.
-        let target_changed = self.current.as_ref().is_some_and(|(s, _)| **s != prefix)
-            || (self.current.is_none() && self.orig_prefix != prefix);
+        let target_changed = text.get(self.start..cursor.byte()).is_none_or(|strs| {
+            self.current.as_ref().is_some_and(|(s, _)| strs != *s)
+                || (self.current.is_none() && strs != self.prefix)
+        });
 
-        let matches = self.provider.matches(text, cursor, &prefix);
+        let start = if target_changed {
+            let start = self
+                .provider
+                .get_start(text, cursor)
+                .unwrap_or(cursor.byte());
 
-        if target_changed {
+            self.start = start;
+            self.prefix = text[start..cursor.byte()].to_string();
             self.current = None;
-            self.orig_prefix = prefix;
-        }
+            self.previous = self.prefix.clone();
 
-        if matches.is_empty() || cursor.char() < start.char() + min_prefix {
+            cursor.byte() - self.prefix.len()
+        } else {
+            let prefix: &str = self
+                .current
+                .as_ref()
+                .map(|(s, _)| s.as_ref())
+                .unwrap_or(&self.prefix);
+
+            self.previous = prefix.to_string();
+
+            cursor.byte() - prefix.len()
+        };
+
+        let matches = self
+            .provider
+            .matches(text, text.point_at_byte(start), &self.prefix);
+
+        if matches.is_empty() || self.prefix.chars().count() < min_prefix {
             self.current = None;
-            return (start.byte(), None);
+            return (start, None);
         }
 
         let height = if let Some(area) = area {
@@ -805,19 +864,25 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let mut info = None;
         if scroll != 0 {
             // No try blocks on stable Rust 🤮.
-            let ret = if let Some((prev, dist)) = &self.current
-                && let dist = dist.saturating_add_signed(scroll as isize).min(height - 1)
-                && let Some(prev_i) = matches.iter().position(|entry| P::word(entry) == prev)
-                && let Some(new_pos) = prev_i.checked_add_signed(scroll as isize)
-                && let Some(entry) = matches.get(new_pos)
-            {
-                Some((entry, dist))
-            } else if scroll > 0
-                && let scroll = scroll.unsigned_abs() as usize - 1
-                && let dist = (scroll).min(height - 1)
-                && let Some(entry) = matches.get(scroll)
-            {
-                Some((entry, dist))
+            let ret = if let Some((prev, dist)) = &self.current {
+                if let dist = dist.saturating_add_signed(scroll as isize).min(height - 1)
+                    && let Some(prev_i) = matches.iter().position(|entry| P::word(entry) == prev)
+                    && let Some(new_pos) = prev_i.checked_add_signed(scroll as isize)
+                    && let Some(entry) = matches.get(new_pos)
+                {
+                    Some((entry, dist))
+                } else {
+                    None
+                }
+            } else if scroll > 0 {
+                if let scroll = scroll.unsigned_abs() as usize - 1
+                    && let dist = (scroll).min(height - 1)
+                    && let Some(entry) = matches.get(scroll)
+                {
+                    Some((entry, dist))
+                } else {
+                    None
+                }
             } else if let scroll = scroll.unsigned_abs() as usize
                 && let dist = height.saturating_sub(scroll)
                 && let Some(new_pos) = matches.len().checked_sub(scroll)
@@ -865,7 +930,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             self.current
                 .clone()
                 .map(|(word, _)| (word.to_string(), info))
-                .or_else(|| Some((self.orig_prefix.clone(), None)))
+                .or_else(|| Some((self.prefix.clone(), None)))
         } else {
             None
         };
@@ -874,17 +939,20 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
 
         let entries_text = entries_builder.build();
         let sidebar_text = sidebar_builder.build();
-        (
-            start.byte(),
-            Some(((entries_text, sidebar_text), replacement)),
-        )
+        (start, Some(((entries_text, sidebar_text), replacement)))
     }
 
     fn start_fn(&self) -> Box<dyn Fn(&Text, Point) -> usize + '_> {
         Box::new(|text, cursor| {
-            self.provider
-                .get_start(text, cursor)
-                .unwrap_or(cursor.byte())
+            if let Some(strs) = text.get(self.start..cursor.byte())
+                && strs == self.previous
+            {
+                self.start
+            } else {
+                self.provider
+                    .get_start(text, cursor)
+                    .unwrap_or(cursor.byte())
+            }
         })
     }
 

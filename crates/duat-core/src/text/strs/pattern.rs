@@ -344,6 +344,8 @@ unsafe impl<'s> Searcher<'s> for CharSearcher<'s> {
                         }
                     }
                 }
+            } else if self.finger < s0.len() {
+                self.finger = s0.len();
             } else {
                 self.finger = self.finger_back;
                 return None;
@@ -408,6 +410,8 @@ unsafe impl<'a> DoubleEndedSearcher<'a> for CharSearcher<'a> {
                 }
 
                 self.finger_back = index;
+            } else if self.finger_back > s0.len() {
+                self.finger_back = s0.len();
             } else {
                 self.finger_back = self.finger;
                 return None;
@@ -693,6 +697,14 @@ where
 
 impl<'b> Pattern for &'_ &'b str {
     pattern_methods!('s, StrSearcher<'s, 'b>, |&s| s, |s| s);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Impl for &String
+/////////////////////////////////////////////////////////////////////////////
+
+impl<'b> Pattern for &'b String {
+    pattern_methods!('s, StrSearcher<'s, 'b>, |s: &'b String| s.as_str(), |s| s);
 }
 
 /////////////////////////////////////////////////////////////////////////////

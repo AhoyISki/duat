@@ -24,7 +24,7 @@ static DEFAULT_CONFIGS: LazyLock<Mutex<HashMap<&str, (LspList, bool)>>> = LazyLo
         }
     }
 
-    entry!(["s", "cpp", "objc"], {
+    entry!(["c", "cpp", "objc"], {
         [clangd]
         args = ["--log=error"]
         root_globs = ["compile_commands.json", ".clangd", ".git", ".hg"]
@@ -196,7 +196,7 @@ static DEFAULT_CONFIGS: LazyLock<Mutex<HashMap<&str, (LspList, bool)>>> = LazyLo
     //     root_globs = ["lakefile.lean", "lakefile.toml", ".git", ".hg"]
     //     command = "sh"
     //     args = [
-    //         "-s",
+    //         "-c",
     //         "kak_buffile=%val{buffile}
     //           %opt{lsp_find_root} lakefile.lean lakefile.toml .git .hg
     // >/dev/null           exec lake serve
@@ -350,7 +350,7 @@ static DEFAULT_CONFIGS: LazyLock<Mutex<HashMap<&str, (LspList, bool)>>> = LazyLo
             "%l:1:%f",
             "--synctex-editor-command", // Inverse search: use Control+Left-Mouse-Button to jump to source.
             r#"
-                sh -s '
+                sh -c '
                     echo "
                         evaluate-commands -client %%opt{texlab_client} %%{
                             evaluate-commands -try-client %%opt{jumpclient} %%{

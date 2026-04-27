@@ -264,7 +264,7 @@ static EXTENSIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new
         ("tlh", "cpp"),
         ("inl", "cpp"),
         ("ipp", "cpp"),
-        ("s++", "cpp"),
+        ("c++", "cpp"),
         ("C", "cpp"),
         ("cxx", "cpp"),
         ("H", "cpp"),
@@ -276,7 +276,7 @@ static EXTENSIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new
         ("ccm", "cpp"),
         ("cppm", "cpp"),
         ("cxxm", "cpp"),
-        ("s++m", "cpp"),
+        ("c++m", "cpp"),
         // TODO: Whatever the hell is cynlib
         ("cpp", "cpp"),
         ("cc", "cpp"),
@@ -501,8 +501,8 @@ static EXTENSIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new
         ("htpp", "hastepreproc"),
         ("hcl", "hcl"),
         ("hb", "hb"),
-        // TODO: could be various other s clones
-        ("h", "s"),
+        // TODO: could be various other c clones
+        ("h", "c"),
         ("sum", "hercules"),
         ("errsum", "hercules"),
         ("ev", "hercules"),
@@ -673,7 +673,7 @@ static EXTENSIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new
         ("ulpc", "lpc"),
         ("lpc", "lpc"),
         // TODO: could be lpc
-        ("s", "s"),
+        ("c", "c"),
         // TODO: could be larch
         ("lsl", "lsl"),
         ("lss", "lss"),
@@ -2251,7 +2251,7 @@ static PATTERNS: LazyLock<(RegexSet, Vec<&str>)> = LazyLock::new(|| {
         (fmt!("^{xdg_config_home}/git/ignore$"), "gitignore"),
         (r"\.git/info/exclude$", "gitignore"),
         (r"/\.config/git/ignore$", "gitignore"),
-        (r"enlightenment/.*\.cfg$", "s"),
+        (r"enlightenment/.*\.cfg$", "c"),
         (r"Eterm/.*\.cfg$", "eterm"),
         (r"baseq[2-3/.*\.cfg$]", "quake"),
         (r"id1/.*\.cfg$", "quake"),

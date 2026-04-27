@@ -311,6 +311,9 @@ impl RawArea for Area {
             }
         }
 
+        // The text may not end with a newline, even if it has characters.
+        let max_y = if text.is_empty() { 0 } else { max_y.max(1) };
+
         Ok(ui::Coord::new(max_x.max(width) as f32, max_y as f32))
     }
 
@@ -1094,7 +1097,10 @@ pub fn print_text(
         }
     }
 
-    endl(&mut lines, painter, last_x, &mut overlays, &mut spawns);
+	// If this isn't the case, the text is completely empty.
+    if y > lines.coords().tl.y {
+        endl(&mut lines, painter, last_x, &mut overlays, &mut spawns);
+    }
 
     for _ in 0..lines.coords().br.y - y {
         endl(&mut lines, painter, 0, &mut Vec::new(), &mut spawns);

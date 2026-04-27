@@ -22,7 +22,10 @@ FOR NEXT UPDATE:
   [x] Autocompletions only after n characters.
   [x] Remember if a buffer needed to be saved.
   [x] Case insensitive completions.
-[ ] Include duat-lsp by default.
+[x] Include duat-lsp by default.
+[x] Strs improvement.
+  [x] More fundamental functions.
+  [x] Better search functionality.
 
 KNOWN BUGS:
  HIGH PRIORITY:
@@ -38,9 +41,6 @@ KNOWN BUGS:
   [ ] Overlays can't remove previous Forms early.
 
 FUTURE UPDATES:
-[ ] Strs improvement.
-  [ ] More fundamental functions.
-  [ ] Better search functionality.
 [ ] Remove Widget argument from Modes.
 [ ] Add registers possibly.
 [ ] `z` and `q` keys for duatmode.

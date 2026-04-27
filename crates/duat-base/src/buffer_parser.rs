@@ -212,7 +212,7 @@ fn show_indents(
     for seq in sequences {
         let prev_unindented = {
             parts.strs[..seq[0].byte_range().start]
-                .lines()
+                .split_inclusive('\n')
                 .rev()
                 .find_map(|line| {
                     (!line.chars().next()?.is_ascii_whitespace()).then_some(line.byte_range())
@@ -222,7 +222,7 @@ fn show_indents(
 
         let next_unindented = {
             parts.strs[seq.last().unwrap().byte_range().end..]
-                .lines()
+                .split_inclusive('\n')
                 .find_map(|line| {
                     (!line.chars().next()?.is_ascii_whitespace()).then_some(line.byte_range())
                 })
@@ -232,8 +232,8 @@ fn show_indents(
         let mut state = IndentState::new(opts.indent_str, opts.tabstop);
         let mut empty_lines = Vec::new();
 
-        for line in parts.strs[prev_unindented.end..next_unindented.end].lines() {
-            if line.is_empty() {
+        for line in parts.strs[prev_unindented.end..next_unindented.end].split_inclusive('\n') {
+            if line == "\n" || line == "\r\n" || line.is_empty() {
                 empty_lines.push(line);
             } else {
                 let indent = line.indent(popts);
