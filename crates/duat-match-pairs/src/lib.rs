@@ -28,7 +28,7 @@
 //! use duat::prelude::*;
 //!
 //! fn setup() {
-//!     plug(duat_match_pairs::MatchPairs::new());
+//!     plug(duat_match_pairs::DuatMatchPairs::new());
 //! }
 //! ```
 //!
@@ -65,7 +65,7 @@
 //!
 //! fn setup() {
 //!     plug(
-//!         duat_match_pairs::MatchPairs::new()
+//!         duat_match_pairs::DuatMatchPairs::new()
 //!             .match_pairs([["\\(", "\\)"], ["\\{", "\\}"], ["\\[", "\\]"]])
 //!             .match_ts_pairs([["<", ">"], ["|", "|"]]),
 //!     );

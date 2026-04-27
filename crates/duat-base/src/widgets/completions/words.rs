@@ -73,7 +73,7 @@ impl CompletionsProvider for WordCompletions {
             .filter_map(|(word, entry)| {
                 let cmp = if case_insensitive { &entry.upper } else { word };
                 if let Some(difference) = string_cmp(&prefix, cmp) {
-                    (!(difference == 0 && entry.count == 1 && &cmp[prefix.len()..] == suffix))
+                    (!(difference == 0 && entry.count == 1 && cmp[prefix.len()..] == suffix))
                         .then_some(entry.clone())
                 } else {
                     None

@@ -42,29 +42,35 @@ use crate::text::{Strs, strs::memchr};
 /// # Examples
 ///
 /// ```
+/// # duat_core::doc_duat!(duat);
+/// use duat::text::Text;
+///
 /// let text = Text::from("abaaa");
 ///
 /// // &str
-/// assert_eq!(text.find("ba"), Some(1));
+/// assert_eq!(text.find("ba"), Some(1..3));
 /// assert_eq!(text.find("bac"), None);
 ///
 /// // char
-/// assert_eq!(text.find('a'), Some(0));
-/// assert_eq!(text.find('b'), Some(1));
+/// assert_eq!(text.find('a'), Some(0..1));
+/// assert_eq!(text.find('b'), Some(1..2));
 /// assert_eq!(text.find('c'), None);
 ///
 /// // &[char; N]
-/// assert_eq!(text.find(&['b', 'a']), Some(0));
-/// assert_eq!(text.find(&['a', 'z']), Some(0));
+/// assert_eq!(text.find(&['b', 'a']), Some(0..1));
+/// assert_eq!(text.find(&['a', 'z']), Some(0..1));
 /// assert_eq!(text.find(&['c', 'd']), None);
 ///
 /// // &[char]
-/// assert_eq!(text.find(&['b', 'a'][..]), Some(0));
-/// assert_eq!(text.find(&['a', 'z'][..]), Some(0));
+/// assert_eq!(text.find(&['b', 'a'][..]), Some(0..1));
+/// assert_eq!(text.find(&['a', 'z'][..]), Some(0..1));
 /// assert_eq!(text.find(&['c', 'd'][..]), None);
 ///
 /// // FnMut(char) -> bool
-/// assert_eq!(Text::from("abcdef_z").find(|c| c > 'd' && c < 'y'), Some(4));
+/// assert_eq!(
+///     Text::from("abcdef_z").find(|c| c > 'd' && c < 'y'),
+///     Some(4..5)
+/// );
 /// assert_eq!(Text::from("abcddd_z").find(|c| c > 'd' && c < 'y'), None);
 /// ```
 ///
@@ -291,7 +297,7 @@ unsafe impl<'s> Searcher<'s> for CharSearcher<'s> {
     #[inline]
     fn next(&mut self) -> SearchStep {
         let old_finger = self.finger;
-        let slice = &self.haystack[old_finger..self.finger_back];
+        let slice = &self.haystack[self.finger..self.finger_back];
         if let Some(ch) = slice.chars().next() {
             self.finger += ch.len_utf8();
             if ch == self.needle {
@@ -350,7 +356,7 @@ unsafe impl<'a> DoubleEndedSearcher<'a> for CharSearcher<'a> {
     #[inline]
     fn next_back(&mut self) -> SearchStep {
         let old_finger = self.finger_back;
-        let slice = &self.haystack[old_finger..self.finger_back];
+        let slice = &self.haystack[self.finger..self.finger_back];
         if let Some(ch) = slice.chars().next_back() {
             self.finger_back -= ch.len_utf8();
             if ch == self.needle {
@@ -368,7 +374,7 @@ unsafe impl<'a> DoubleEndedSearcher<'a> for CharSearcher<'a> {
         let [s0, s1] = self.haystack.to_array();
 
         loop {
-            let (pre_len, bytes) = if self.finger_back >= s0.len() {
+            let (pre_len, bytes) = if self.finger_back > s0.len() {
                 let bytes = s1
                     .as_bytes()
                     .get(self.finger.saturating_sub(s0.len())..self.finger_back - s0.len())?;

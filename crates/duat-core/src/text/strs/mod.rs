@@ -23,11 +23,20 @@ use crate::{
     opts::PrintOpts,
     text::{
         Point, TextIndex, TextRange,
-        strs::{buf::assert_utf8_boundary, pattern::SearchStep},
+        strs::{
+            buf::assert_utf8_boundary,
+            iter::{
+                CharIndices, MatchRanges, MatchRangesInternal, Matches, MatchesInternal,
+                RMatchRanges, RMatches, RSplit, RSplitN, RSplitTerminator, Split, SplitInclusive,
+                SplitInternal, SplitN, SplitNInternal, SplitTerminator,
+            },
+            pattern::SearchStep,
+        },
     },
 };
 
 mod buf;
+mod iter;
 mod line_ranges;
 mod memchr;
 mod pattern;
@@ -413,44 +422,25 @@ impl Strs {
         }]
     }
 
-    /// Returns an iterator over the lines in a given range
-    ///
-    /// The lines are inclusive, that is, it will iterate over the
-    /// whole line, not just the parts within the range.
-    ///
-    /// [range]: TextRange
-    pub fn lines(&self) -> Lines<'_> {
-        let formed = FormedStrs::new(self);
-        Lines::new(
-            formed.buf,
-            formed.start as usize,
-            (formed.start + formed.len) as usize,
-        )
-    }
-
     /// Returns and [`Iterator`] over the [bytes] of this `Strs`
     ///
     /// [bytes]: u8
     #[inline]
-    pub fn bytes(&self) -> impl DoubleEndedIterator<Item = u8> {
+    pub fn bytes(&self) -> impl DoubleEndedIterator<Item = u8> + Clone {
         self.slices(..)
             .into_iter()
             .flat_map(|slice| slice.iter().copied())
     }
 
     /// Returns and [`Iterator`] over the [`char`]s of this `Strs`
-    pub fn chars(&self) -> impl DoubleEndedIterator<Item = char> {
+    pub fn chars(&self) -> impl DoubleEndedIterator<Item = char> + Clone {
         self.to_array().into_iter().flat_map(str::chars)
     }
 
     /// Returns an [`Iterator`] over the [`char`]s and their indices.
     pub fn char_indices(&self) -> CharIndices<'_> {
         let [s0, s1] = self.to_array();
-        CharIndices {
-            s0_len: s0.len(),
-            s0_iter: s0.char_indices(),
-            s1_iter: s1.char_indices(),
-        }
+        CharIndices::new(s0.len(), s0.char_indices(), s1.char_indices())
     }
 
     /// Checks that `index`-th byte is the first byte in a UTF-8 code
@@ -522,23 +512,6 @@ impl Strs {
         self.len() == 0
     }
 
-    /// Wether this is an empty line or not
-    ///
-    /// An empty line is either `\n` or `\r\n`. If you want to check
-    /// wether a line is just whitespace, you can do this:
-    ///
-    /// ```
-    /// # duat_core::doc_duat!(duat);
-    /// use duat::prelude::*;
-    ///
-    /// fn is_whitespace(line: &Strs) -> bool {
-    ///     line.chars().all(|char| char.is_whitespace())
-    /// }
-    /// ```
-    pub fn is_empty_line(&self) -> bool {
-        self.is_empty() || self == "\n" || self == "\r\n"
-    }
-
     /// Get the current version of the `StrsBuf`
     ///
     /// This version is irrespective of undos/redos, that is, an undo
@@ -557,49 +530,47 @@ impl Strs {
     /// whitespace.
     ///
     /// 'Whitespace' is defined according to the terms of the Unicode
-    /// Derived Core Property `White_Space`. If you only want to
-    /// split on ASCII whitespace instead, use
-    /// [`split_ascii_whitespace`].
+    /// Derived Core Property `White_Space`.
     ///
     /// # Examples
     ///
     /// Basic usage:
     ///
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::Text;
     ///
     /// let text = Text::from("A few words");
     /// let mut iter = text.split_whitespace();
     ///
-    /// assert_eq!(Some("A"), iter.next());
-    /// assert_eq!(Some("few"), iter.next());
-    /// assert_eq!(Some("words"), iter.next());
+    /// assert!(iter.next().is_some_and(|s| s == "A"));
+    /// assert!(iter.next().is_some_and(|s| s == "few"));
+    /// assert!(iter.next().is_some_and(|s| s == "words"));
     ///
-    /// assert_eq!(None, iter.next());
+    /// assert_eq!(iter.next(), None);
     /// ```
     ///
     /// All kinds of whitespace are considered:
     ///
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::Text;
     ///
     /// let text = Text::from(" Mary   had\ta\u{2009}little  \n\t lamb");
     /// let mut iter = text.split_whitespace();
-    /// assert_eq!(Some("Mary"), iter.next());
-    /// assert_eq!(Some("had"), iter.next());
-    /// assert_eq!(Some("a"), iter.next());
-    /// assert_eq!(Some("little"), iter.next());
-    /// assert_eq!(Some("lamb"), iter.next());
+    /// assert!(iter.next().is_some_and(|s| s == "Mary"));
+    /// assert!(iter.next().is_some_and(|s| s == "had"));
+    /// assert!(iter.next().is_some_and(|s| s == "a"));
+    /// assert!(iter.next().is_some_and(|s| s == "little"));
+    /// assert!(iter.next().is_some_and(|s| s == "lamb"));
     ///
     /// assert_eq!(None, iter.next());
     /// ```
     ///
     /// If the string is empty or all whitespace, the iterator yields
-    /// no string slices:
+    /// no `&Strs`s:
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::Text;
     ///
     /// assert_eq!(Text::from("").split_whitespace().next(), None);
@@ -607,85 +578,15 @@ impl Strs {
     /// ```
     ///
     /// [`split_ascii_whitespace`]: Strs::split_ascii_whitespace
-    // #[must_use = "this returns the split string as an iterator, without modifying the original"]
-    // #[inline]
-    // pub fn split_whitespace(&self) -> SplitWhitespace<'_> {
-    //     SplitWhitespace {
-    //         inner: self.split(IsWhitespace).filter(IsNotEmpty),
-    //     }
-    // }
+    #[must_use = "this returns the split string as an iterator, without modifying the original"]
+    #[inline]
+    pub fn split_whitespace(&self) -> impl DoubleEndedIterator<Item = &Strs> + Clone {
+        self.split(|char: char| char.is_whitespace())
+            .filter(|strs| !strs.is_empty())
+    }
 
-    /// Splits a `&Strs` by ASCII whitespace.
-    ///
-    /// The iterator returned will return `&Strs` that are sub-slices
-    /// of the original `&Strs`, separated by any amount of ASCII
-    /// whitespace.
-    ///
-    /// This uses the same definition as
-    /// [`char::is_ascii_whitespace`]. To split by Unicode
-    /// `Whitespace` instead, use [`split_whitespace`].
-    ///
-    /// [`split_whitespace`]: Strs::split_whitespace
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # duat_core::setup_duat!(duat);
-    /// use duat::text::Text;
-    ///
-    /// let text = Text::from("A few words");
-    /// let mut iter = text.split_ascii_whitespace();
-    ///
-    /// assert_eq!(Some("A"), iter.next());
-    /// assert_eq!(Some("few"), iter.next());
-    /// assert_eq!(Some("words"), iter.next());
-    ///
-    /// assert_eq!(None, iter.next());
-    /// ```
-    ///
-    /// Various kinds of ASCII whitespace are considered
-    /// (see [`char::is_ascii_whitespace`]):
-    ///
-    /// ```
-    /// # duat_core::setup_duat!(duat);
-    /// use duat::text::Text;
-    ///
-    /// let text = Text::from(" Mary   had\ta little  \n\t lamb");
-    /// let mut iter = text.split_ascii_whitespace();
-    ///
-    /// assert_eq!(Some("Mary"), iter.next());
-    /// assert_eq!(Some("had"), iter.next());
-    /// assert_eq!(Some("a"), iter.next());
-    /// assert_eq!(Some("little"), iter.next());
-    /// assert_eq!(Some("lamb"), iter.next());
-    ///
-    /// assert_eq!(None, iter.next());
-    /// ```
-    ///
-    /// If the string is empty or all ASCII whitespace, the iterator
-    /// yields no string slices:
-    ///
-    /// ```
-    /// # duat_core::setup_duat!(duat);
-    /// use duat::text::Text;
-    ///
-    /// assert_eq!(Text::from("").split_ascii_whitespace().next(), None);
-    /// assert_eq!(Text::from("   ").split_ascii_whitespace().next(), None);
-    /// ```
-    // #[inline]
-    // pub fn split_ascii_whitespace(&self) -> SplitAsciiWhitespace<'_> {
-    //     let inner = self
-    //         .as_bytes()
-    //         .split(IsAsciiWhitespace)
-    //         .filter(BytesIsNotEmpty)
-    //         .map(UnsafeBytesToStr);
-    //     SplitAsciiWhitespace { inner }
-    // }
-
-    /// Returns an iterator over the lines of a string, as string
-    /// slices.
+    /// Returns an iterator over the lines of a `&Strs`, as other
+    /// `&Strs`.
     ///
     /// Lines are split at line endings that are either newlines
     /// (`\n`) or sequences of a carriage return followed by a
@@ -710,44 +611,53 @@ impl Strs {
     /// Basic usage:
     ///
     /// ```
-    /// let text = "foo\r\nbar\n\nbaz\r";
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
+    /// let text = Text::from("foo\r\nbar\n\nbaz\r");
     /// let mut lines = text.lines();
     ///
-    /// assert_eq!(Some("foo"), lines.next());
-    /// assert_eq!(Some("bar"), lines.next());
-    /// assert_eq!(Some(""), lines.next());
+    /// assert!(lines.next().is_some_and(|s| s == "foo"));
+    /// assert!(lines.next().is_some_and(|s| s == "bar"));
+    /// assert!(lines.next().is_some_and(|s| s == ""));
     /// // Trailing carriage return is included in the last line
-    /// assert_eq!(Some("baz\r"), lines.next());
+    /// assert!(lines.next().is_some_and(|s| s == "baz\r"));
     ///
-    /// assert_eq!(None, lines.next());
+    /// assert_eq!(lines.next(), None);
     /// ```
     ///
     /// The final line does not require any ending:
     ///
     /// ```
-    /// let text = "foo\nbar\n\r\nbaz";
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
+    /// let text = Text::from("foo\nbar\n\r\nbaz");
     /// let mut lines = text.lines();
     ///
-    /// assert_eq!(Some("foo"), lines.next());
-    /// assert_eq!(Some("bar"), lines.next());
-    /// assert_eq!(Some(""), lines.next());
-    /// assert_eq!(Some("baz"), lines.next());
+    /// assert!(lines.next().is_some_and(|s| s == "foo"));
+    /// assert!(lines.next().is_some_and(|s| s == "bar"));
+    /// assert!(lines.next().is_some_and(|s| s == ""));
+    /// assert!(lines.next().is_some_and(|s| s == "baz"));
     ///
-    /// assert_eq!(None, lines.next());
+    /// assert_eq!(lines.next(), None);
     /// ```
     ///
     /// An empty string returns an empty iterator:
     ///
     /// ```
-    /// let text = "";
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
+    /// let text = Text::from("");
     /// let mut lines = text.lines();
     ///
     /// assert_eq!(lines.next(), None);
     /// ```
-    // #[inline]
-    // pub fn lines(&self) -> Lines<'_> {
-    //     Lines(self.split_inclusive('\n').map(LinesMap))
-    // }
+    #[inline]
+    pub fn lines(&self) -> Lines<'_> {
+        Lines(self.split_inclusive('\n'))
+    }
 
     /// Returns `true` if the given pattern matches a sub-slice of
     /// this `&Strs`.
@@ -758,13 +668,10 @@ impl Strs {
     /// or a function or closure that determines if a character
     /// matches.
     ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
-    ///
     /// # Examples
     ///
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::Text;
     ///
     /// let bananas = Text::from("bananas");
@@ -772,18 +679,10 @@ impl Strs {
     /// assert!(bananas.contains("nana"));
     /// assert!(!bananas.contains("apples"));
     /// ```
-    // #[inline]
-    // pub fn contains<P: StrsPattern>(&self, pat: P) -> bool {
-    //     while let step = pat.into_searcher(self).next()
-    //         && step != SearchStep::Done
-    //     {
-    //         if matches!(step, SearchStep::Match(..)) {
-    //             return true;
-    //         }
-    //     }
-
-    //     false
-    // }
+    #[inline]
+    pub fn contains<P: StrsPattern>(&self, pat: P) -> bool {
+        pat.into_searcher(self).next_match().is_some()
+    }
 
     /// Returns `true` if the given pattern matches a prefix of this
     /// `&Strs`.
@@ -796,13 +695,13 @@ impl Strs {
     /// The [pattern] can also be a [`char`], a slice of [`char`]s, or
     /// a function or closure that determines if a character
     /// matches. These will only be checked against the first
-    /// character of this string slice. Look at the second example
+    /// character of this `&Strs`. Look at the second example
     /// below regarding behavior for slices of [`char`]s.
     ///
     /// # Examples
     ///
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::Text;
     ///
     /// let bananas = Text::from("bananas");
@@ -812,7 +711,7 @@ impl Strs {
     /// ```
     ///
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::Text;
     ///
     /// let bananas = Text::from("bananas");
@@ -821,9 +720,9 @@ impl Strs {
     /// assert!(bananas.starts_with(&['b', 'a', 'n', 'a']));
     /// assert!(bananas.starts_with(&['a', 'b', 'c', 'd']));
     /// ```
-    // pub fn starts_with<P: StrsPattern>(&self, pat: P) -> bool {
-    //     matches!(pat.into_searcher(self).next(), SearchStep::Match(..))
-    // }
+    pub fn starts_with<P: StrsPattern>(&self, pat: P) -> bool {
+        matches!(pat.into_searcher(self).next(), SearchStep::Match(..))
+    }
 
     /// Returns `true` if the given pattern matches a suffix of this
     /// `&Strs`.
@@ -837,7 +736,7 @@ impl Strs {
     /// # Examples
     ///
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::Text;
     ///
     /// let bananas = Text::from("bananas");
@@ -845,12 +744,12 @@ impl Strs {
     /// assert!(bananas.ends_with("anas"));
     /// assert!(!bananas.ends_with("nana"));
     /// ```
-    // pub fn ends_with<P: StrsPattern>(&self, pat: P) -> bool
-    // where
-    //     for<'a> P::Searcher<'a>: StrsDoubleEndedSearcher<'a>,
-    // {
-    //     matches!(pat.into_searcher(self).next_back(), SearchStep::Match(..))
-    // }
+    pub fn ends_with<P: StrsPattern>(&self, pat: P) -> bool
+    where
+        for<'a> P::Searcher<'a>: StrsDoubleEndedSearcher<'a>,
+    {
+        matches!(pat.into_searcher(self).next_back(), SearchStep::Match(..))
+    }
 
     /// Returns the byte index of the first character of this string
     /// slice that matches the pattern.
@@ -861,45 +760,42 @@ impl Strs {
     /// or a function or closure that determines if a character
     /// matches.
     ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
-    ///
     /// # Examples
     ///
     /// Simple patterns:
     ///
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::Text;
     ///
     /// let s = Text::from("Löwe 老虎 Léopard Gepardi");
     ///
-    /// assert_eq!(s.find('L'), Some(0));
-    /// assert_eq!(s.find('é'), Some(14));
-    /// assert_eq!(s.find("pard"), Some(17));
+    /// assert_eq!(s.find('L'), Some(0..1));
+    /// assert_eq!(s.find('é'), Some(14..16));
+    /// assert_eq!(s.find("pard"), Some(17..21));
     /// ```
     ///
     /// More complex patterns using point-free style and closures:
     ///
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::Text;
     ///
     /// let s = Text::from("Löwe 老虎 Léopard");
     ///
-    /// assert_eq!(s.find(char::is_whitespace), Some(5));
-    /// assert_eq!(s.find(char::is_lowercase), Some(1));
+    /// assert_eq!(s.find(char::is_whitespace), Some(5..6));
+    /// assert_eq!(s.find(char::is_lowercase), Some(1..3));
     /// assert_eq!(
     ///     s.find(|c: char| c.is_whitespace() || c.is_lowercase()),
-    ///     Some(1)
+    ///     Some(1..3)
     /// );
-    /// assert_eq!(s.find(|c: char| (c < 'o') && (c > 'a')), Some(4));
+    /// assert_eq!(s.find(|c: char| (c < 'o') && (c > 'a')), Some(4..5));
     /// ```
     ///
     /// Not finding the pattern:
     ///
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::Text;
     ///
     /// let s = Text::from("Löwe 老虎 Léopard");
@@ -908,13 +804,13 @@ impl Strs {
     ///
     /// assert_eq!(s.find(x), None);
     /// ```
-    // #[inline]
-    // pub fn find<P: StrsPattern>(&self, pat: P) -> Option<Range<usize>> {
-    //     pat.into_searcher(self).next_match().map(|(s, e)| s..e)
-    // }
+    #[inline]
+    pub fn find<P: StrsPattern>(&self, pat: P) -> Option<Range<usize>> {
+        pat.into_searcher(self).next_match().map(|(s, e)| s..e)
+    }
 
     /// Returns the byte index for the first character of the last
-    /// match of the pattern in this string slice.
+    /// match of the pattern in this `&Strs`.
     ///
     /// Returns [`None`] if the pattern doesn't match.
     ///
@@ -927,32 +823,32 @@ impl Strs {
     /// Simple patterns:
     ///
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::Text;
     ///
     /// let s = Text::from("Löwe 老虎 Léopard Gepardi");
     ///
-    /// assert_eq!(s.rfind('L'), Some(13));
-    /// assert_eq!(s.rfind('é'), Some(14));
-    /// assert_eq!(s.rfind("pard"), Some(24));
+    /// assert_eq!(s.rfind('L'), Some(13..14));
+    /// assert_eq!(s.rfind('é'), Some(14..16));
+    /// assert_eq!(s.rfind("pard"), Some(24..28));
     /// ```
     ///
     /// More complex patterns with closures:
     ///
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::Text;
     ///
     /// let s = Text::from("Löwe 老虎 Léopard");
     ///
-    /// assert_eq!(s.rfind(char::is_whitespace), Some(12));
-    /// assert_eq!(s.rfind(char::is_lowercase), Some(20));
+    /// assert_eq!(s.rfind(char::is_whitespace), Some(12..13));
+    /// assert_eq!(s.rfind(char::is_lowercase), Some(20..21));
     /// ```
     ///
     /// Not finding the pattern:
     ///
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::Text;
     ///
     /// let s = Text::from("Löwe 老虎 Léopard");
@@ -961,22 +857,22 @@ impl Strs {
     ///
     /// assert_eq!(s.rfind(x), None);
     /// ```
-    // #[inline]
-    // pub fn rfind<P: StrsPattern>(&self, pat: P) -> Option<Range<usize>>
-    // where
-    //     for<'a> P::Searcher<'a>: StrsDoubleEndedSearcher<'a>,
-    // {
-    //     pat.into_searcher(self).next_match_back().map(|(s, e)| s..e)
-    // }
+    #[inline]
+    pub fn rfind<P: StrsPattern>(&self, pat: P) -> Option<Range<usize>>
+    where
+        for<'a> P::Searcher<'a>: StrsDoubleEndedSearcher<'a>,
+    {
+        pat.into_searcher(self).next_match_back().map(|(s, e)| s..e)
+    }
 
-    /// Returns an iterator over substrings of this string slice,
+    /// Returns an iterator over sub`&Strs` of this `&Strs`,
     /// separated by characters matched by a pattern.
     ///
     /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s,
     /// or a function or closure that determines if a character
     /// matches.
     ///
-    /// If there are no matches the full string slice is returned as
+    /// If there are no matches the full `&Strs` is returned as
     /// the only item in the iterator.
     ///
     /// # Iterator behavior
@@ -995,7 +891,7 @@ impl Strs {
     /// Simple patterns:
     ///
     /// ```
-    /// # duat_core::setup_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::text::{Strs, Text};
     ///
     /// let s = Text::from("Mary had a little lamb");
@@ -1010,8 +906,8 @@ impl Strs {
     /// let v: Vec<&Strs> = s.split('X').collect();
     /// assert_eq!(v, ["lion", "", "tiger", "leopard"]);
     ///
-    /// let s = Text::from("lionXXtigerXleopard");
-    /// let v: Vec<&Strs> = "lion::tiger::leopard".split("::").collect();
+    /// let s = Text::from("lion::tiger::leopard");
+    /// let v: Vec<&Strs> = s.split("::").collect();
     /// assert_eq!(v, ["lion", "tiger", "leopard"]);
     ///
     /// let s = Text::from("AABBCC");
@@ -1023,7 +919,7 @@ impl Strs {
     /// assert_eq!(v, ["abc", "def", "ghi"]);
     ///
     /// let s = Text::from("lionXtigerXleopard");
-    /// let v: Vec<&Strs> = s.split(char::is_numeric).collect();
+    /// let v: Vec<&Strs> = s.split(char::is_uppercase).collect();
     /// assert_eq!(v, ["lion", "tiger", "leopard"]);
     /// ```
     ///
@@ -1031,15 +927,21 @@ impl Strs {
     /// of any of the characters:
     ///
     /// ```
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::text::{Strs, Text};
     /// let s = Text::from("2020-11-03 23:59");
-    /// let v: Vec<&str> = s.split(&['-', ' ', ':', '@'][..]).collect();
+    /// let v: Vec<&Strs> = s.split(&['-', ' ', ':', '@'][..]).collect();
     /// assert_eq!(v, ["2020", "11", "03", "23", "59"]);
     /// ```
     ///
     /// A more complex pattern, using a closure:
     ///
     /// ```
-    /// let v: Vec<&str> = "abc1defXghi".split(|c| c == '1' || c == 'X').collect();
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::text::{Strs, Text};
+    ///
+    /// let x = Text::from("abc1defXghi");
+    /// let v: Vec<&Strs> = x.split(|c| c == '1' || c == 'X').collect();
     /// assert_eq!(v, ["abc", "def", "ghi"]);
     /// ```
     ///
@@ -1047,7 +949,9 @@ impl Strs {
     /// end up with empty strings in the output:
     ///
     /// ```
-    /// let x = "||||a||b|c".to_string();
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::text::Text;
+    /// let x = Text::from("||||a||b|c");
     /// let d: Vec<_> = x.split('|').collect();
     ///
     /// assert_eq!(d, &["", "", "", "", "a", "", "b", "c"]);
@@ -1056,7 +960,9 @@ impl Strs {
     /// Contiguous separators are separated by the empty string.
     ///
     /// ```
-    /// let x = "(///)".to_string();
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::text::Text;
+    /// let x = Text::from("(///)");
     /// let d: Vec<_> = x.split('/').collect();
     ///
     /// assert_eq!(d, &["(", "", "", ")"]);
@@ -1066,7 +972,10 @@ impl Strs {
     /// by empty strings.
     ///
     /// ```
-    /// let d: Vec<_> = "010".split("0").collect();
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::text::Text;
+    /// let x = Text::from("010");
+    /// let d: Vec<_> = x.split("0").collect();
     /// assert_eq!(d, &["", "1", ""]);
     /// ```
     ///
@@ -1075,7 +984,10 @@ impl Strs {
     /// and end of the string.
     ///
     /// ```
-    /// let f: Vec<_> = "rust".split("").collect();
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::text::Text;
+    /// let x = Text::from("rust");
+    /// let f: Vec<_> = x.split("").collect();
     /// assert_eq!(f, &["", "r", "u", "s", "t", ""]);
     /// ```
     ///
@@ -1084,7 +996,9 @@ impl Strs {
     /// correct:
     ///
     /// ```
-    /// let x = "    a  b c".to_string();
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::text::Text;
+    /// let x = Text::from("    a  b c");
     /// let d: Vec<_> = x.split(' ').collect();
     ///
     /// assert_eq!(d, &["", "", "", "", "a", "", "b", "c"]);
@@ -1092,7 +1006,11 @@ impl Strs {
     ///
     /// It does _not_ give you:
     ///
-    /// ```,ignore
+    /// ```should_panic
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::text::Text;
+    /// # let x = Text::from("    a  b c");
+    /// # let d: Vec<_> = x.split(' ').collect();
     /// assert_eq!(d, &["a", "b", "c"]);
     /// ```
     ///
@@ -1100,18 +1018,18 @@ impl Strs {
     ///
     /// [`rsplit`]: Strs::rsplit
     /// [`split_whitespace`]: Strs::split_whitespace
-    // #[inline]
-    // pub fn split<P: StrsPattern>(&self, pat: P) -> Split<'_, P> {
-    //     Split(SplitInternal {
-    //         start: 0,
-    //         end: self.len(),
-    //         matcher: pat.into_searcher(self),
-    //         allow_trailing_empty: true,
-    //         finished: false,
-    //     })
-    // }
+    #[inline]
+    pub fn split<P: StrsPattern>(&self, pat: P) -> Split<'_, P> {
+        Split(SplitInternal {
+            start: 0,
+            end: self.len(),
+            matcher: pat.into_searcher(self),
+            allow_trailing_empty: true,
+            finished: false,
+        })
+    }
 
-    /// Returns an iterator over substrings of this string slice,
+    /// Returns an iterator over sub`&Strs` of this `&Strs`,
     /// separated by characters matched by a pattern.
     ///
     /// Differs from the iterator produced by `split` in that
@@ -1122,15 +1040,14 @@ impl Strs {
     /// or a function or closure that determines if a character
     /// matches.
     ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
-    ///
     /// # Examples
     ///
     /// ```
-    /// let v: Vec<&str> = "Mary had a little lamb\nlittle lamb\nlittle lamb."
-    ///     .split_inclusive('\n')
-    ///     .collect();
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// let text = Text::from("Mary had a little lamb\nlittle lamb\nlittle lamb.");
+    /// let v: Vec<&Strs> = text.split_inclusive('\n').collect();
     /// assert_eq!(v, [
     ///     "Mary had a little lamb\n",
     ///     "little lamb\n",
@@ -1144,36 +1061,35 @@ impl Strs {
     /// returned by the iterator.
     ///
     /// ```
-    /// let v: Vec<&str> = "Mary had a little lamb\nlittle lamb\nlittle lamb.\n"
-    ///     .split_inclusive('\n')
-    ///     .collect();
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// let text = Text::from("Mary had a little lamb\nlittle lamb\nlittle lamb.\n");
+    /// let v: Vec<&Strs> = text.split_inclusive('\n').collect();
     /// assert_eq!(v, [
     ///     "Mary had a little lamb\n",
     ///     "little lamb\n",
     ///     "little lamb.\n"
     /// ]);
     /// ```
-    // #[inline]
-    // pub fn split_inclusive<P: StrsPattern>(&self, pat: P) -> SplitInclusive<'_, P> {
-    //     SplitInclusive(SplitInternal {
-    //         start: 0,
-    //         end: self.len(),
-    //         matcher: pat.into_searcher(self),
-    //         allow_trailing_empty: false,
-    //         finished: false,
-    //     })
-    // }
+    #[inline]
+    pub fn split_inclusive<P: StrsPattern>(&self, pat: P) -> SplitInclusive<'_, P> {
+        SplitInclusive(SplitInternal {
+            start: 0,
+            end: self.len(),
+            matcher: pat.into_searcher(self),
+            allow_trailing_empty: false,
+            finished: false,
+        })
+    }
 
-    /// Returns an iterator over substrings of the given string slice,
+    /// Returns an iterator over sub`&Strs` of the given `&Strs`,
     /// separated by characters matched by a pattern and yielded
     /// in reverse order.
     ///
     /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s,
     /// or a function or closure that determines if a character
     /// matches.
-    ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
     ///
     /// # Iterator behavior
     ///
@@ -1184,41 +1100,52 @@ impl Strs {
     /// For iterating from the front, the [`split`] method can be
     /// used.
     ///
-    /// [`split`]: str::split
-    ///
     /// # Examples
     ///
     /// Simple patterns:
     ///
     /// ```
-    /// let v: Vec<&str> = "Mary had a little lamb".rsplit(' ').collect();
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// let x = Text::from("Mary had a little lamb");
+    /// let v: Vec<&Strs> = x.rsplit(' ').collect();
     /// assert_eq!(v, ["lamb", "little", "a", "had", "Mary"]);
     ///
-    /// let v: Vec<&str> = "".rsplit('X').collect();
+    /// let x = Text::from("");
+    /// let v: Vec<&Strs> = x.rsplit('X').collect();
     /// assert_eq!(v, [""]);
     ///
-    /// let v: Vec<&str> = "lionXXtigerXleopard".rsplit('X').collect();
+    /// let x = Text::from("lionXXtigerXleopard");
+    /// let v: Vec<&Strs> = x.rsplit('X').collect();
     /// assert_eq!(v, ["leopard", "tiger", "", "lion"]);
     ///
-    /// let v: Vec<&str> = "lion::tiger::leopard".rsplit("::").collect();
+    /// let x = Text::from("lion::tiger::leopard");
+    /// let v: Vec<&Strs> = x.rsplit("::").collect();
     /// assert_eq!(v, ["leopard", "tiger", "lion"]);
     /// ```
     ///
     /// A more complex pattern, using a closure:
     ///
     /// ```
-    /// let v: Vec<&str> = "abc1defXghi".rsplit(|c| c == '1' || c == 'X').collect();
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// let x = Text::from("abc1defXghi");
+    /// let v: Vec<&Strs> = x.rsplit(|c| c == '1' || c == 'X').collect();
     /// assert_eq!(v, ["ghi", "def", "abc"]);
     /// ```
-    // #[inline]
-    // pub fn rsplit<P: StrsPattern>(&self, pat: P) -> RSplit<'_, P>
-    // where
-    //     for<'a> P::Searcher<'a>: StrsDoubleEndedSearcher<'a>,
-    // {
-    //     RSplit(self.split(pat).0)
-    // }
+    ///
+    /// [`split`]: Strs::split
+    #[inline]
+    pub fn rsplit<P: StrsPattern>(&self, pat: P) -> RSplit<'_, P>
+    where
+        for<'a> P::Searcher<'a>: StrsDoubleEndedSearcher<'a>,
+    {
+        RSplit(self.split(pat).0)
+    }
 
-    /// Returns an iterator over substrings of the given string slice,
+    /// Returns an iterator over sub`&Strs` of the given `&Strs`,
     /// separated by characters matched by a pattern.
     ///
     /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s,
@@ -1242,31 +1169,36 @@ impl Strs {
     /// differ from a forward search, the [`rsplit_terminator`]
     /// method can be used.
     ///
-    /// [`rsplit_terminator`]: str::rsplit_terminator
-    ///
     /// # Examples
     ///
     /// ```
-    /// let v: Vec<&str> = "A.B.".split_terminator('.').collect();
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// let x = Text::from("A.B.");
+    /// let v: Vec<&Strs> = x.split_terminator('.').collect();
     /// assert_eq!(v, ["A", "B"]);
     ///
-    /// let v: Vec<&str> = "A..B..".split_terminator(".").collect();
+    /// let x = Text::from("A..B..");
+    /// let v: Vec<&Strs> = x.split_terminator(".").collect();
     /// assert_eq!(v, ["A", "", "B", ""]);
     ///
-    /// let v: Vec<&str> = "A.B:C.D".split_terminator(&['.', ':'][..]).collect();
+    /// let x = Text::from("A.B:C.D");
+    /// let v: Vec<&Strs> = x.split_terminator(&['.', ':'][..]).collect();
     /// assert_eq!(v, ["A", "B", "C", "D"]);
     /// ```
     ///
     /// [`split`]: Strs::split
-    // #[inline]
-    // pub fn split_terminator<P: Pattern>(&self, pat: P) -> SplitTerminator<'_, P> {
-    //     SplitTerminator(SplitInternal {
-    //         allow_trailing_empty: false,
-    //         ..self.split(pat).0
-    //     })
-    // }
+    /// [`rsplit_terminator`]: Strs::rsplit_terminator
+    #[inline]
+    pub fn split_terminator<P: StrsPattern>(&self, pat: P) -> SplitTerminator<'_, P> {
+        SplitTerminator(SplitInternal {
+            allow_trailing_empty: false,
+            ..self.split(pat).0
+        })
+    }
 
-    /// Returns an iterator over substrings of `self`, separated by
+    /// Returns an iterator over sub`&Strs` of `self`, separated by
     /// characters matched by a pattern and yielded in reverse
     /// order.
     ///
@@ -1274,13 +1206,8 @@ impl Strs {
     /// or a function or closure that determines if a character
     /// matches.
     ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
-    ///
     /// Equivalent to [`split`], except that the trailing substring is
     /// skipped if empty.
-    ///
-    /// [`split`]: str::split
     ///
     /// This method can be used for string data that is _terminated_,
     /// rather than _separated_ by a pattern.
@@ -1294,41 +1221,44 @@ impl Strs {
     /// For iterating from the front, the [`split_terminator`] method
     /// can be used.
     ///
-    /// [`split_terminator`]: str::split_terminator
-    ///
     /// # Examples
     ///
     /// ```
-    /// let v: Vec<&str> = "A.B.".rsplit_terminator('.').collect();
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// let x = Text::from("A.B.");
+    /// let v: Vec<&Strs> = x.rsplit_terminator('.').collect();
     /// assert_eq!(v, ["B", "A"]);
     ///
-    /// let v: Vec<&str> = "A..B..".rsplit_terminator(".").collect();
+    /// let x = Text::from("A..B..");
+    /// let v: Vec<&Strs> = x.rsplit_terminator(".").collect();
     /// assert_eq!(v, ["", "B", "", "A"]);
     ///
-    /// let v: Vec<&str> = "A.B:C.D".rsplit_terminator(&['.', ':'][..]).collect();
+    /// let x = Text::from("A.B:C.D");
+    /// let v: Vec<&Strs> = x.rsplit_terminator(&['.', ':'][..]).collect();
     /// assert_eq!(v, ["D", "C", "B", "A"]);
     /// ```
-    // #[inline]
-    // pub fn rsplit_terminator<P: Pattern>(&self, pat: P) -> RSplitTerminator<'_, P>
-    // where
-    //     for<'a> P::Searcher<'a>: ReverseSearcher<'a>,
-    // {
-    //     RSplitTerminator(self.split_terminator(pat).0)
-    // }
+    /// [`split`]: Strs::split
+    /// [`split_terminator`]: Strs::split_terminator
+    #[inline]
+    pub fn rsplit_terminator<P: StrsPattern>(&self, pat: P) -> RSplitTerminator<'_, P>
+    where
+        for<'a> P::Searcher<'a>: StrsDoubleEndedSearcher<'a>,
+    {
+        RSplitTerminator(self.split_terminator(pat).0)
+    }
 
-    /// Returns an iterator over substrings of the given string slice,
+    /// Returns an iterator over sub`&Strs` of the given `&Strs`,
     /// separated by a pattern, restricted to returning at most
     /// `n` items.
     ///
-    /// If `n` substrings are returned, the last substring (the `n`th
+    /// If `n` sub`&Strs` are returned, the last substring (the `n`th
     /// substring) will contain the remainder of the string.
     ///
     /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s,
     /// or a function or closure that determines if a character
     /// matches.
-    ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
     ///
     /// # Iterator behavior
     ///
@@ -1338,50 +1268,58 @@ impl Strs {
     /// If the pattern allows a reverse search, the [`rsplitn`] method
     /// can be used.
     ///
-    /// [`rsplitn`]: str::rsplitn
-    ///
     /// # Examples
     ///
     /// Simple patterns:
     ///
     /// ```
-    /// let v: Vec<&str> = "Mary had a little lambda".splitn(3, ' ').collect();
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// let x = Text::from("Mary had a little lambda");
+    /// let v: Vec<&Strs> = x.splitn(3, ' ').collect();
     /// assert_eq!(v, ["Mary", "had", "a little lambda"]);
     ///
-    /// let v: Vec<&str> = "lionXXtigerXleopard".splitn(3, "X").collect();
+    /// let x = Text::from("lionXXtigerXleopard");
+    /// let v: Vec<&Strs> = x.splitn(3, "X").collect();
     /// assert_eq!(v, ["lion", "", "tigerXleopard"]);
     ///
-    /// let v: Vec<&str> = "abcXdef".splitn(1, 'X').collect();
+    /// let x = Text::from("abcXdef");
+    /// let v: Vec<&Strs> = x.splitn(1, 'X').collect();
     /// assert_eq!(v, ["abcXdef"]);
     ///
-    /// let v: Vec<&str> = "".splitn(1, 'X').collect();
+    /// let x = Text::from("");
+    /// let v: Vec<&Strs> = x.splitn(1, 'X').collect();
     /// assert_eq!(v, [""]);
     /// ```
     ///
     /// A more complex pattern, using a closure:
     ///
     /// ```
-    /// let v: Vec<&str> = "abc1defXghi".splitn(2, |c| c == '1' || c == 'X').collect();
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// let x = Text::from("abc1defXghi");
+    /// let v: Vec<&Strs> = x.splitn(2, |c| c == '1' || c == 'X').collect();
     /// assert_eq!(v, ["abc", "defXghi"]);
     /// ```
-    // #[inline]
-    // pub fn splitn<P: Pattern>(&self, n: usize, pat: P) -> SplitN<'_, P> {
-    //     SplitN(SplitNInternal { iter: self.split(pat).0, count: n })
-    // }
+    ///
+    /// [`rsplitn`]: Strs::rsplitn
+    #[inline]
+    pub fn splitn<P: StrsPattern>(&self, n: usize, pat: P) -> SplitN<'_, P> {
+        SplitN(SplitNInternal { iter: self.split(pat).0, count: n })
+    }
 
-    /// Returns an iterator over substrings of this string slice,
+    /// Returns an iterator over sub`&Strs` of this `&Strs`,
     /// separated by a pattern, starting from the end of the
     /// string, restricted to returning at most `n` items.
     ///
-    /// If `n` substrings are returned, the last substring (the `n`th
+    /// If `n` sub`&Strs` are returned, the last substring (the `n`th
     /// substring) will contain the remainder of the string.
     ///
     /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s,
     /// or a function or closure that determines if a character
     /// matches.
-    ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
     ///
     /// # Iterator behavior
     ///
@@ -1391,36 +1329,46 @@ impl Strs {
     /// For splitting from the front, the [`splitn`] method can be
     /// used.
     ///
-    /// [`splitn`]: str::splitn
-    ///
     /// # Examples
     ///
     /// Simple patterns:
     ///
     /// ```
-    /// let v: Vec<&str> = "Mary had a little lamb".rsplitn(3, ' ').collect();
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// let x = Text::from("Mary had a little lamb");
+    /// let v: Vec<&Strs> = x.rsplitn(3, ' ').collect();
     /// assert_eq!(v, ["lamb", "little", "Mary had a"]);
     ///
-    /// let v: Vec<&str> = "lionXXtigerXleopard".rsplitn(3, 'X').collect();
+    /// let x = Text::from("lionXXtigerXleopard");
+    /// let v: Vec<&Strs> = x.rsplitn(3, 'X').collect();
     /// assert_eq!(v, ["leopard", "tiger", "lionX"]);
     ///
-    /// let v: Vec<&str> = "lion::tiger::leopard".rsplitn(2, "::").collect();
+    /// let x = Text::from("lion::tiger::leopard");
+    /// let v: Vec<&Strs> = x.rsplitn(2, "::").collect();
     /// assert_eq!(v, ["leopard", "lion::tiger"]);
     /// ```
     ///
     /// A more complex pattern, using a closure:
     ///
     /// ```
-    /// let v: Vec<&str> = "abc1defXghi".rsplitn(2, |c| c == '1' || c == 'X').collect();
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// let x = Text::from("abc1defXghi");
+    /// let v: Vec<&Strs> = x.rsplitn(2, |c| c == '1' || c == 'X').collect();
     /// assert_eq!(v, ["ghi", "abc1def"]);
     /// ```
-    // #[inline]
-    // pub fn rsplitn<P: Pattern>(&self, n: usize, pat: P) -> RSplitN<'_, P>
-    // where
-    //     for<'a> P::Searcher<'a>: ReverseSearcher<'a>,
-    // {
-    //     RSplitN(self.splitn(n, pat).0)
-    // }
+    ///
+    /// [`splitn`]: Strs::splitn
+    #[inline]
+    pub fn rsplitn<P: StrsPattern>(&self, n: usize, pat: P) -> RSplitN<'_, P>
+    where
+        for<'a> P::Searcher<'a>: StrsDoubleEndedSearcher<'a>,
+    {
+        RSplitN(self.splitn(n, pat).0)
+    }
 
     /// Splits the string on the first occurrence of the specified
     /// delimiter and returns prefix before delimiter and suffix
@@ -1429,17 +1377,31 @@ impl Strs {
     /// # Examples
     ///
     /// ```
-    /// assert_eq!("cfg".split_once('='), None);
-    /// assert_eq!("cfg=".split_once('='), Some(("cfg", "")));
-    /// assert_eq!("cfg=foo".split_once('='), Some(("cfg", "foo")));
-    /// assert_eq!("cfg=foo=bar".split_once('='), Some(("cfg", "foo=bar")));
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// assert_eq!(Text::from("cfg").split_once('='), None);
+    /// assert!(
+    ///     Text::from("cfg=")
+    ///         .split_once('=')
+    ///         .is_some_and(|(l, r)| l == "cfg" && r == "")
+    /// );
+    /// assert!(
+    ///     Text::from("cfg=foo")
+    ///         .split_once('=')
+    ///         .is_some_and(|(l, r)| l == "cfg" && r == "foo")
+    /// );
+    /// assert!(
+    ///     Text::from("cfg=foo=bar")
+    ///         .split_once('=')
+    ///         .is_some_and(|(l, r)| l == "cfg" && r == "foo=bar")
+    /// );
     /// ```
-    // #[inline]
-    // pub fn split_once<P: Pattern>(&self, delimiter: P) -> Option<(&'_ str, &'_ str)> {
-    //     let (start, end) = delimiter.into_searcher(self).next_match()?;
-    //     // SAFETY: `Searcher` is known to return valid indices.
-    //     unsafe { Some((self.get_unchecked(..start), self.get_unchecked(end..))) }
-    // }
+    #[inline]
+    pub fn split_once<P: StrsPattern>(&self, delimiter: P) -> Option<(&'_ Strs, &'_ Strs)> {
+        let (start, end) = delimiter.into_searcher(self).next_match()?;
+        Some((&self[..start], &self[end..]))
+    }
 
     /// Splits the string on the last occurrence of the specified
     /// delimiter and returns prefix before delimiter and suffix
@@ -1448,30 +1410,41 @@ impl Strs {
     /// # Examples
     ///
     /// ```
-    /// assert_eq!("cfg".rsplit_once('='), None);
-    /// assert_eq!("cfg=".rsplit_once('='), Some(("cfg", "")));
-    /// assert_eq!("cfg=foo".rsplit_once('='), Some(("cfg", "foo")));
-    /// assert_eq!("cfg=foo=bar".rsplit_once('='), Some(("cfg=foo", "bar")));
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// assert_eq!(Text::from("cfg").rsplit_once('='), None);
+    /// assert!(
+    ///     Text::from("cfg=")
+    ///         .rsplit_once('=')
+    ///         .is_some_and(|(l, r)| l == "cfg" && r == "")
+    /// );
+    /// assert!(
+    ///     Text::from("cfg=foo")
+    ///         .rsplit_once('=')
+    ///         .is_some_and(|(l, r)| l == "cfg" && r == "foo")
+    /// );
+    /// assert!(
+    ///     Text::from("cfg=foo=bar")
+    ///         .rsplit_once('=')
+    ///         .is_some_and(|(l, r)| l == "cfg=foo" && r == "bar")
+    /// );
     /// ```
-    // #[inline]
-    // pub fn rsplit_once<P: Pattern>(&self, delimiter: P) -> Option<(&'_ str, &'_ str)>
-    // where
-    //     for<'a> P::Searcher<'a>: ReverseSearcher<'a>,
-    // {
-    //     let (start, end) = delimiter.into_searcher(self).next_match_back()?;
-    //     // SAFETY: `Searcher` is known to return valid indices.
-    //     unsafe { Some((self.get_unchecked(..start), self.get_unchecked(end..))) }
-    // }
+    #[inline]
+    pub fn rsplit_once<P: StrsPattern>(&self, delimiter: P) -> Option<(&'_ Strs, &'_ Strs)>
+    where
+        for<'a> P::Searcher<'a>: StrsDoubleEndedSearcher<'a>,
+    {
+        let (start, end) = delimiter.into_searcher(self).next_match_back()?;
+        Some((&self[..start], &self[end..]))
+    }
 
     /// Returns an iterator over the disjoint matches of a pattern
-    /// within the given string slice.
+    /// within the given `&Strs`.
     ///
     /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s,
     /// or a function or closure that determines if a character
     /// matches.
-    ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
     ///
     /// # Iterator behavior
     ///
@@ -1484,31 +1457,33 @@ impl Strs {
     /// differ from a forward search, the [`rmatches`] method can
     /// be used.
     ///
-    /// [`rmatches`]: str::rmatches
-    ///
     /// # Examples
     ///
     /// ```
-    /// let v: Vec<&str> = "abcXXXabcYYYabc".matches("abc").collect();
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// let x = Text::from("abcXXXabcYYYabc");
+    /// let v: Vec<&Strs> = x.matches("abc").collect();
     /// assert_eq!(v, ["abc", "abc", "abc"]);
     ///
-    /// let v: Vec<&str> = "1abc2abc3".matches(char::is_numeric).collect();
+    /// let x = Text::from("1abc2abc3");
+    /// let v: Vec<&Strs> = x.matches(char::is_numeric).collect();
     /// assert_eq!(v, ["1", "2", "3"]);
     /// ```
-    // #[inline]
-    // pub fn matches<P: StrsPattern>(&self, pat: P) -> Matches<'_, P> {
-    //     Matches(MatchesInternal(pat.into_searcher(self)))
-    // }
+    ///
+    /// [`rmatches`]: Strs::rmatches
+    #[inline]
+    pub fn matches<P: StrsPattern>(&self, pat: P) -> Matches<'_, P> {
+        Matches(MatchesInternal(pat.into_searcher(self)))
+    }
 
     /// Returns an iterator over the disjoint matches of a pattern
-    /// within this string slice, yielded in reverse order.
+    /// within this `&Strs`, yielded in reverse order.
     ///
     /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s,
     /// or a function or closure that determines if a character
     /// matches.
-    ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
     ///
     /// # Iterator behavior
     ///
@@ -1519,28 +1494,32 @@ impl Strs {
     /// For iterating from the front, the [`matches`] method can be
     /// used.
     ///
-    /// [`matches`]: str::matches
-    ///
     /// # Examples
     ///
     /// ```
-    /// let v: Vec<&str> = "abcXXXabcYYYabc".rmatches("abc").collect();
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::{Strs, Text};
+    ///
+    /// let x = Text::from("abcXXXabcYYYabc");
+    /// let v: Vec<&Strs> = x.rmatches("abc").collect();
     /// assert_eq!(v, ["abc", "abc", "abc"]);
     ///
-    /// let v: Vec<&str> = "1abc2abc3".rmatches(char::is_numeric).collect();
+    /// let x = Text::from("1abc2abc3");
+    /// let v: Vec<&Strs> = x.rmatches(char::is_numeric).collect();
     /// assert_eq!(v, ["3", "2", "1"]);
     /// ```
-    // #[inline]
-    // pub fn rmatches<P: Pattern>(&self, pat: P) -> RMatches<'_, P>
-    // where
-    //     for<'a> P::Searcher<'a>: ReverseSearcher<'a>,
-    // {
-    //     RMatches(self.matches(pat).0)
-    // }
+    ///
+    /// [`matches`]: Strs::matches
+    #[inline]
+    pub fn rmatches<P: StrsPattern>(&self, pat: P) -> RMatches<'_, P>
+    where
+        for<'a> P::Searcher<'a>: StrsDoubleEndedSearcher<'a>,
+    {
+        RMatches(self.matches(pat).0)
+    }
 
     /// Returns an iterator over the disjoint matches of a pattern
-    /// within this string slice as well as the index that the
-    /// match starts at.
+    /// within this `&Strs` as well as the [range] of the match.
     ///
     /// For matches of `pat` within `self` that overlap, only the
     /// indices corresponding to the first match are returned.
@@ -1548,9 +1527,6 @@ impl Strs {
     /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s,
     /// or a function or closure that determines if a character
     /// matches.
-    ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
     ///
     /// # Iterator behavior
     ///
@@ -1560,31 +1536,47 @@ impl Strs {
     /// [`char`], but not for `&str`.
     ///
     /// If the pattern allows a reverse search but its results might
-    /// differ from a forward search, the [`rmatch_indices`]
+    /// differ from a forward search, the [`rmatch_ranges`]
     /// method can be used.
-    ///
-    /// [`rmatch_indices`]: str::rmatch_indices
     ///
     /// # Examples
     ///
     /// ```
-    /// let v: Vec<_> = "abcXXXabcYYYabc".match_indices("abc").collect();
-    /// assert_eq!(v, [(0, "abc"), (6, "abc"), (12, "abc")]);
+    /// duat_core::doc_duat!(duat);
+    /// use std::ops::Range;
     ///
-    /// let v: Vec<_> = "1abcabc2".match_indices("abc").collect();
-    /// assert_eq!(v, [(1, "abc"), (4, "abc")]);
+    /// use duat::text::{Strs, Text};
     ///
-    /// let v: Vec<_> = "ababa".match_indices("aba").collect();
-    /// assert_eq!(v, [(0, "aba")]); // only the first `aba`
+    /// fn assert_eq<const N: usize>(l: Vec<(Range<usize>, &Strs)>, r: [(Range<usize>, &str); N]) {
+    ///     assert!(
+    ///         l.iter().zip(&r).all(|(l, r)| l.0 == r.0 && l.1 == r.1),
+    ///         "{l:?}, {r:?}"
+    ///     );
+    /// }
+    ///
+    /// let x = Text::from("abcXXXabcYYYabc");
+    /// let v: Vec<_> = x.match_ranges("abc").collect();
+    /// assert_eq(v, [(0..3, "abc"), (6..9, "abc"), (12..15, "abc")]);
+    ///
+    /// let x = Text::from("1abcabc2");
+    /// let v: Vec<_> = x.match_ranges(char::is_numeric).collect();
+    /// assert_eq(v, [(0..1, "1"), (7..8, "2")]);
+    ///
+    /// let x = Text::from("ababa");
+    /// let v: Vec<_> = x.match_ranges("aba").collect();
+    /// assert_eq(v, [(0..3, "aba")]); // only the first `aba`
     /// ```
-    // #[inline]
-    // pub fn match_indices<P: StrsPattern>(&self, pat: P) -> MatchIndices<'_, P> {
-    //     MatchIndices(MatchIndicesInternal(pat.into_searcher(self)))
-    // }
+    ///
+    /// [`rmatch_ranges`]: Strs::rmatch_ranges
+    /// [range]: Range
+    #[inline]
+    pub fn match_ranges<P: StrsPattern>(&self, pat: P) -> MatchRanges<'_, P> {
+        MatchRanges(MatchRangesInternal(pat.into_searcher(self)))
+    }
 
     /// Returns an iterator over the disjoint matches of a pattern
     /// within `self`, yielded in reverse order along with the
-    /// index of the match.
+    /// [range] of the match.
     ///
     /// For matches of `pat` within `self` that overlap, only the
     /// indices corresponding to the last match are returned.
@@ -1593,41 +1585,54 @@ impl Strs {
     /// or a function or closure that determines if a character
     /// matches.
     ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
-    ///
     /// # Iterator behavior
     ///
     /// The returned iterator requires that the pattern supports a
     /// reverse search, and it will be a [`DoubleEndedIterator`]
     /// if a forward/reverse search yields the same elements.
     ///
-    /// For iterating from the front, the [`match_indices`] method can
+    /// For iterating from the front, the [`match_ranges`] method can
     /// be used.
-    ///
-    /// [`match_indices`]: str::match_indices
     ///
     /// # Examples
     ///
     /// ```
-    /// let v: Vec<_> = "abcXXXabcYYYabc".rmatch_indices("abc").collect();
-    /// assert_eq!(v, [(12, "abc"), (6, "abc"), (0, "abc")]);
+    /// # duat_core::doc_duat!(duat);
+    /// use std::ops::Range;
     ///
-    /// let v: Vec<_> = "1abcabc2".rmatch_indices("abc").collect();
-    /// assert_eq!(v, [(4, "abc"), (1, "abc")]);
+    /// use duat::text::{Strs, Text};
     ///
-    /// let v: Vec<_> = "ababa".rmatch_indices("aba").collect();
-    /// assert_eq!(v, [(2, "aba")]); // only the last `aba`
+    /// fn assert_eq<const N: usize>(l: Vec<(Range<usize>, &Strs)>, r: [(Range<usize>, &str); N]) {
+    ///     assert!(
+    ///         l.iter().zip(&r).all(|(l, r)| l.0 == r.0 && l.1 == r.1),
+    ///         "{l:?}, {r:?}"
+    ///     );
+    /// }
+    ///
+    /// let x = Text::from("abcXXXabcYYYabc");
+    /// let v: Vec<_> = x.rmatch_ranges("abc").collect();
+    /// assert_eq(v, [(12..15, "abc"), (6..9, "abc"), (0..3, "abc")]);
+    ///
+    /// let x = Text::from("1abc2abc3");
+    /// let v: Vec<_> = x.rmatch_ranges(char::is_numeric).collect();
+    /// assert_eq(v, [(8..9, "3"), (4..5, "2"), (0..1, "1")]);
+    ///
+    /// let x = Text::from("ababa");
+    /// let v: Vec<_> = x.rmatch_ranges("aba").collect();
+    /// assert_eq(v, [(2..5, "aba")]); // only the last `aba`
     /// ```
-    // #[inline]
-    // pub fn rmatch_indices<P: StrsPattern>(&self, pat: P) -> RMatchIndices<'_, P>
-    // where
-    //     for<'a> P::Searcher<'a>: StrsDoubleEndedSearcher<'a>,
-    // {
-    //     RMatchIndices(self.match_indices(pat).0)
-    // }
+    ///
+    /// [`match_ranges`]: Strs::match_ranges
+    /// [range]: Range
+    #[inline]
+    pub fn rmatch_ranges<P: StrsPattern>(&self, pat: P) -> RMatchRanges<'_, P>
+    where
+        for<'a> P::Searcher<'a>: StrsDoubleEndedSearcher<'a>,
+    {
+        RMatchRanges(self.match_ranges(pat).0)
+    }
 
-    /// Returns a string slice with leading and trailing whitespace
+    /// Returns a `&Strs` with leading and trailing whitespace
     /// removed.
     ///
     /// 'Whitespace' is defined according to the terms of the Unicode
@@ -1637,7 +1642,10 @@ impl Strs {
     /// # Examples
     ///
     /// ```
-    /// let s = "\n Hello\tworld\t\n";
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
+    /// let s = Text::from("\n Hello\tworld\t\n");
     ///
     /// assert_eq!("Hello\tworld", s.trim());
     /// ```
@@ -1647,7 +1655,7 @@ impl Strs {
         self.trim_matches(char::is_whitespace)
     }
 
-    /// Returns a string slice with leading whitespace removed.
+    /// Returns a `&Strs` with leading whitespace removed.
     ///
     /// 'Whitespace' is defined according to the terms of the Unicode
     /// Derived Core Property `White_Space`, which includes
@@ -1666,17 +1674,23 @@ impl Strs {
     /// Basic usage:
     ///
     /// ```
-    /// let s = "\n Hello\tworld\t\n";
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
+    /// let s = Text::from("\n Hello\tworld\t\n");
     /// assert_eq!("Hello\tworld\t\n", s.trim_start());
     /// ```
     ///
     /// Directionality:
     ///
     /// ```
-    /// let s = "  English  ";
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
+    /// let s = Text::from("  English  ");
     /// assert!(Some('E') == s.trim_start().chars().next());
     ///
-    /// let s = "  עברית  ";
+    /// let s = Text::from("  עברית  ");
     /// assert!(Some('ע') == s.trim_start().chars().next());
     /// ```
     #[inline]
@@ -1685,7 +1699,7 @@ impl Strs {
         self.trim_start_matches(char::is_whitespace)
     }
 
-    /// Returns a string slice with trailing whitespace removed.
+    /// Returns a `&Strs` with trailing whitespace removed.
     ///
     /// 'Whitespace' is defined according to the terms of the Unicode
     /// Derived Core Property `White_Space`, which includes
@@ -1704,17 +1718,23 @@ impl Strs {
     /// Basic usage:
     ///
     /// ```
-    /// let s = "\n Hello\tworld\t\n";
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
+    /// let s = Text::from("\n Hello\tworld\t\n");
     /// assert_eq!("\n Hello\tworld", s.trim_end());
     /// ```
     ///
     /// Directionality:
     ///
     /// ```
-    /// let s = "  English  ";
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
+    /// let s = Text::from("  English  ");
     /// assert!(Some('h') == s.trim_end().chars().rev().next());
     ///
-    /// let s = "  עברית  ";
+    /// let s = Text::from("  עברית  ");
     /// assert!(Some('ת') == s.trim_end().chars().rev().next());
     /// ```
     #[inline]
@@ -1723,33 +1743,39 @@ impl Strs {
         self.trim_end_matches(char::is_whitespace)
     }
 
-    /// Returns a string slice with all prefixes and suffixes that
+    /// Returns a `&Strs` with all prefixes and suffixes that
     /// match a pattern repeatedly removed.
     ///
     /// The [pattern] can be a [`char`], a slice of [`char`]s, or a
     /// function or closure that determines if a character
     /// matches.
     ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
-    ///
     /// # Examples
     ///
     /// Simple patterns:
     ///
     /// ```
-    /// assert_eq!("11foo1bar11".trim_matches('1'), "foo1bar");
-    /// assert_eq!("123foo1bar123".trim_matches(char::is_numeric), "foo1bar");
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
+    /// assert_eq!(Text::from("11foo1bar11").trim_matches('1'), "foo1bar");
+    /// assert_eq!(
+    ///     Text::from("123foo1bar123").trim_matches(char::is_numeric),
+    ///     "foo1bar"
+    /// );
     ///
     /// let x: &[_] = &['1', '2'];
-    /// assert_eq!("12foo1bar12".trim_matches(x), "foo1bar");
+    /// assert_eq!(Text::from("12foo1bar12").trim_matches(x), "foo1bar");
     /// ```
     ///
     /// A more complex pattern, using a closure:
     ///
     /// ```
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
     /// assert_eq!(
-    ///     "1foo1barXX".trim_matches(|c| c == '1' || c == 'X'),
+    ///     Text::from("1foo1barXX").trim_matches(|c| c == '1' || c == 'X'),
     ///     "foo1bar"
     /// );
     /// ```
@@ -1772,15 +1798,12 @@ impl Strs {
         &self[i..j]
     }
 
-    /// Returns a string slice with all prefixes that match a pattern
+    /// Returns a `&Strs` with all prefixes that match a pattern
     /// repeatedly removed.
     ///
     /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s,
     /// or a function or closure that determines if a character
     /// matches.
-    ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
     ///
     /// # Text directionality
     ///
@@ -1793,14 +1816,20 @@ impl Strs {
     /// # Examples
     ///
     /// ```
-    /// assert_eq!("11foo1bar11".trim_start_matches('1'), "foo1bar11");
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
     /// assert_eq!(
-    ///     "123foo1bar123".trim_start_matches(char::is_numeric),
+    ///     Text::from("11foo1bar11").trim_start_matches('1'),
+    ///     "foo1bar11"
+    /// );
+    /// assert_eq!(
+    ///     Text::from("123foo1bar123").trim_start_matches(char::is_numeric),
     ///     "foo1bar123"
     /// );
     ///
     /// let x: &[_] = &['1', '2'];
-    /// assert_eq!("12foo1bar12".trim_start_matches(x), "foo1bar12");
+    /// assert_eq!(Text::from("12foo1bar12").trim_start_matches(x), "foo1bar12");
     /// ```
     #[must_use = "this returns the trimmed string as a new slice, without modifying the original"]
     pub fn trim_start_matches<P: StrsPattern>(&self, pat: P) -> &Strs {
@@ -1812,15 +1841,12 @@ impl Strs {
         &self[i..self.len()]
     }
 
-    /// Returns a string slice with all suffixes that match a pattern
+    /// Returns a `&Strs` with all suffixes that match a pattern
     /// repeatedly removed.
     ///
     /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s,
     /// or a function or closure that determines if a character
     /// matches.
-    ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
     ///
     /// # Text directionality
     ///
@@ -1835,20 +1861,29 @@ impl Strs {
     /// Simple patterns:
     ///
     /// ```
-    /// assert_eq!("11foo1bar11".trim_end_matches('1'), "11foo1bar");
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
+    /// assert_eq!(Text::from("11foo1bar11").trim_end_matches('1'), "11foo1bar");
     /// assert_eq!(
-    ///     "123foo1bar123".trim_end_matches(char::is_numeric),
+    ///     Text::from("123foo1bar123").trim_end_matches(char::is_numeric),
     ///     "123foo1bar"
     /// );
     ///
     /// let x: &[_] = &['1', '2'];
-    /// assert_eq!("12foo1bar12".trim_end_matches(x), "12foo1bar");
+    /// assert_eq!(Text::from("12foo1bar12").trim_end_matches(x), "12foo1bar");
     /// ```
     ///
     /// A more complex pattern, using a closure:
     ///
     /// ```
-    /// assert_eq!("1fooX".trim_end_matches(|c| c == '1' || c == 'X'), "1foo");
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
+    /// assert_eq!(
+    ///     Text::from("1fooX").trim_end_matches(|c| c == '1' || c == 'X'),
+    ///     "1foo"
+    /// );
     /// ```
     #[must_use = "this returns the trimmed string as a new slice, without modifying the original"]
     pub fn trim_end_matches<P: StrsPattern>(&self, pat: P) -> &Strs
@@ -1863,7 +1898,7 @@ impl Strs {
         &self[0..j]
     }
 
-    /// Returns a string slice with the prefix removed.
+    /// Returns a `&Strs` with the prefix removed.
     ///
     /// If the string starts with the pattern `prefix`, returns the
     /// substring after the prefix, wrapped in `Some`. Unlike
@@ -1876,17 +1911,26 @@ impl Strs {
     /// or a function or closure that determines if a character
     /// matches.
     ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
-    /// [`trim_start_matches`]: Self::trim_start_matches
-    ///
     /// # Examples
     ///
     /// ```
-    /// assert_eq!("foo:bar".strip_prefix("foo:"), Some("bar"));
-    /// assert_eq!("foo:bar".strip_prefix("bar"), None);
-    /// assert_eq!("foofoo".strip_prefix("foo"), Some("foo"));
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
+    /// assert!(
+    ///     Text::from("foo:bar")
+    ///         .strip_prefix("foo:")
+    ///         .is_some_and(|s| s == "bar")
+    /// );
+    /// assert_eq!(Text::from("foo:bar").strip_prefix("bar"), None);
+    /// assert!(
+    ///     Text::from("foofoo")
+    ///         .strip_prefix("foo")
+    ///         .is_some_and(|s| s == "foo")
+    /// );
     /// ```
+    ///
+    /// [`trim_start_matches`]: Self::trim_start_matches
     #[must_use = "this returns the remaining substring as a new slice, without modifying the \
                   original"]
     pub fn strip_prefix<P: StrsPattern>(&self, prefix: P) -> Option<&Strs> {
@@ -1897,7 +1941,7 @@ impl Strs {
         }
     }
 
-    /// Returns a string slice with the suffix removed.
+    /// Returns a `&Strs` with the suffix removed.
     ///
     /// If the string ends with the pattern `suffix`, returns the
     /// substring before the suffix, wrapped in `Some`.  Unlike
@@ -1910,17 +1954,26 @@ impl Strs {
     /// or a function or closure that determines if a character
     /// matches.
     ///
-    /// [`char`]: prim@char
-    /// [pattern]: self::pattern
-    /// [`trim_end_matches`]: Self::trim_end_matches
-    ///
     /// # Examples
     ///
     /// ```
-    /// assert_eq!("bar:foo".strip_suffix(":foo"), Some("bar"));
-    /// assert_eq!("bar:foo".strip_suffix("bar"), None);
-    /// assert_eq!("foofoo".strip_suffix("foo"), Some("foo"));
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::text::Text;
+    ///
+    /// assert!(
+    ///     Text::from("bar:foo")
+    ///         .strip_suffix(":foo")
+    ///         .is_some_and(|s| s == "bar")
+    /// );
+    /// assert_eq!(Text::from("bar:foo").strip_suffix("bar"), None);
+    /// assert!(
+    ///     Text::from("foofoo")
+    ///         .strip_suffix("foo")
+    ///         .is_some_and(|s| s == "foo")
+    /// );
     /// ```
+    ///
+    /// [`trim_end_matches`]: Self::trim_end_matches
     #[must_use = "this returns the remaining substring as a new slice, without modifying the \
                   original"]
     pub fn strip_suffix<P: StrsPattern>(&self, suffix: P) -> Option<&Strs>
@@ -1998,60 +2051,23 @@ pub const fn utf8_char_width(b: u8) -> usize {
 }
 
 /// An [`Iterator`] over the lines on an [`Strs`]
-pub struct Lines<'b> {
-    buf: &'b StrsBuf,
-    start: usize,
-    end: usize,
-    finger_back: usize,
-}
-
-impl<'b> Lines<'b> {
-    fn new(bytes: &'b StrsBuf, start: usize, end: usize) -> Self {
-        Self { buf: bytes, start, end, finger_back: end }
-    }
-
-    fn next_match_back(&mut self) -> Option<usize> {
-        let range = self.start..self.finger_back;
-        let (s0, s1) = self.buf.gapbuf.range(range).as_slices();
-
-        let pos = s0.iter().chain(s1.iter()).rev().position(|b| *b == b'\n');
-        match pos {
-            Some(pos) => {
-                self.finger_back -= pos + 1;
-                Some(self.finger_back)
-            }
-            None => {
-                self.finger_back = self.start;
-                None
-            }
-        }
-    }
-}
+pub struct Lines<'s>(SplitInclusive<'s, char>);
 
 impl<'b> Iterator for Lines<'b> {
     type Item = &'b Strs;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.start == self.end {
-            return None;
+        let line = self.0.next()?;
+
+        let Some(line) = line.strip_suffix('\n') else {
+            return Some(line);
+        };
+
+        if let Some(line) = line.strip_suffix('\r') {
+            Some(line)
+        } else {
+            Some(line)
         }
-
-        let range = self.start..self.finger_back;
-        let (s0, s1) = self.buf.gapbuf.range(range.clone()).as_slices();
-
-        Some(match s0.iter().chain(s1.iter()).position(|b| *b == b'\n') {
-            Some(pos) => {
-                let line = Strs::new(self.buf, self.start as u32, pos as u32 + 1);
-                self.start += pos + 1;
-                line
-            }
-            None => {
-                let len = self.end - self.start;
-                let line = Strs::new(self.buf, self.start as u32, len as u32);
-                self.start = self.end;
-                line
-            }
-        })
     }
 
     fn last(mut self) -> Option<Self::Item> {
@@ -2061,34 +2077,17 @@ impl<'b> Iterator for Lines<'b> {
 
 impl DoubleEndedIterator for Lines<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        if self.start == self.end {
-            return None;
-        }
+        let line = self.0.next_back()?;
 
-        Some(match self.next_match_back() {
-            Some(start) => {
-                if start + 1 == self.end {
-                    let start = match self.next_match_back() {
-                        Some(start) => start + 1,
-                        None => self.start,
-                    };
-                    let len = self.end - start;
-                    let line = Strs::new(self.buf, start as u32, len as u32);
-                    self.end = start;
-                    line
-                } else {
-                    let len = self.end - (start + 1);
-                    let line = Strs::new(self.buf, start as u32 + 1, len as u32);
-                    self.end = start + 1;
-                    line
-                }
-            }
-            None => {
-                let len = self.end - self.start;
-                self.end = self.start;
-                Strs::new(self.buf, self.start as u32, len as u32)
-            }
-        })
+        let Some(line) = line.strip_suffix('\n') else {
+            return Some(line);
+        };
+
+        if let Some(line) = line.strip_suffix('\r') {
+            Some(line)
+        } else {
+            Some(line)
+        }
     }
 }
 
@@ -2120,40 +2119,3 @@ impl<'b> FormedStrs<'b> {
 
 #[repr(transparent)]
 struct StrsDST([StrsBuf]);
-
-/// An iterator over the [`char`]s of an [`Strs`], and their
-/// positions.
-///
-/// This struct is created by the [`char_indices`] method on `Strs`.
-/// See its documentation for more.
-///
-/// [`char_indices`]: Strs::char_indices
-#[derive(Debug, Clone)]
-pub struct CharIndices<'s> {
-    s0_len: usize,
-    s0_iter: std::str::CharIndices<'s>,
-    s1_iter: std::str::CharIndices<'s>,
-}
-
-impl<'s> Iterator for CharIndices<'s> {
-    type Item = (usize, char);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.s0_iter.next().or_else(|| {
-            self.s1_iter
-                .next()
-                .map(|(idx, char)| (idx + self.s0_len, char))
-        })
-    }
-}
-
-impl<'s> DoubleEndedIterator for CharIndices<'s> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.s1_iter
-            .next_back()
-            .map(|(idx, char)| (idx + self.s0_len, char))
-            .or_else(|| self.s0_iter.next_back())
-    }
-}
-
-impl<'s> std::iter::FusedIterator for CharIndices<'s> {}

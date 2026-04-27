@@ -15,7 +15,7 @@ use duat_core::{
     Ns,
     buffer::{Buffer, BufferOpts, Moment, PerBuffer},
     form::{self, FormId},
-    hook::{self, BufferOpened, BufferClosed, BufferUpdated},
+    hook::{self, BufferClosed, BufferOpened, BufferUpdated},
     text::{Mask, Overlay, RegexHaystack, Strs, Tags, txt},
     utils::Memoized,
 };
@@ -215,8 +215,7 @@ fn show_indents(
                 .lines()
                 .rev()
                 .find_map(|line| {
-                    (!line.chars().next().unwrap().is_ascii_whitespace())
-                        .then_some(line.byte_range())
+                    (!line.chars().next()?.is_ascii_whitespace()).then_some(line.byte_range())
                 })
                 .unwrap_or(0..0)
         };
@@ -225,8 +224,7 @@ fn show_indents(
             parts.strs[seq.last().unwrap().byte_range().end..]
                 .lines()
                 .find_map(|line| {
-                    (!line.chars().next().unwrap().is_ascii_whitespace())
-                        .then_some(line.byte_range())
+                    (!line.chars().next()?.is_ascii_whitespace()).then_some(line.byte_range())
                 })
                 .unwrap_or(parts.strs.len()..parts.strs.len())
         };
@@ -235,7 +233,7 @@ fn show_indents(
         let mut empty_lines = Vec::new();
 
         for line in parts.strs[prev_unindented.end..next_unindented.end].lines() {
-            if line.is_empty_line() {
+            if line.is_empty() {
                 empty_lines.push(line);
             } else {
                 let indent = line.indent(popts);

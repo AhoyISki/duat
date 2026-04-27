@@ -674,7 +674,7 @@ fn make_overlay(mut overlays: Vec<(EntryKind, &Text)>) -> Overlay {
             .fold(Text::builder(), |builder, (i, (_, msg))| {
                 if msg.end_point().line() > 1 {
                     let mut msg = msg.clone();
-                    msg.replace_range(msg.lines().next().unwrap().byte_range().end - 1.., "");
+                    msg.replace_range(msg.lines().next().unwrap().byte_range().end.., "");
                     fmt(i, builder, &msg)
                 } else {
                     fmt(i, builder, msg)
