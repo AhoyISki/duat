@@ -16,7 +16,7 @@ use std::{
 
 use duat_core::{
     Ns,
-    buffer::{Buffer, Moment},
+    buffer::Buffer,
     context::{self, Handle},
     data::Pass,
     form::{self, FormId},
@@ -77,7 +77,7 @@ fn update(pa: &mut Pass, buffer: &Handle) {
         return;
     }
 
-    gtr.apply_changes(buf.moment_for(*MOMENT_NS));
+    gtr.apply_changes(buf);
 
     let (gtr, buf, area) = pa.write_many((&gutter, buffer, buffer.area()));
     let popts = buf.print_opts();
@@ -241,7 +241,12 @@ impl Gutter {
         builder.build()
     }
 
-    fn apply_changes(&mut self, moment: Moment) {
+    fn apply_changes(&mut self, buf: &mut Buffer) {
+        let moment = buf.moment_for(*MOMENT_NS);
+        if moment.is_empty() {
+            return;
+        }
+
         let sh = |value: &mut usize, shift: i32| {
             *value = value.saturating_add_signed(shift as isize);
         };
@@ -251,10 +256,13 @@ impl Gutter {
         let mut to_remove = Vec::new();
 
         for change in moment.iter() {
-            let mut is_contained = |i: usize, range: Range<usize>| {
+            let mut is_contained = |i: usize, range: &mut Range<usize>| {
                 let change_range = change.taken_range();
                 let change_range = change_range.start.byte()..change_range.end.byte();
+
                 if change_range.contains(&range.start) || change_range.contains(&range.end) {
+                    // For removal of tags.
+                    sh(&mut range.end, change.shift()[0]);
                     to_remove.push(i);
                     true
                 } else {
@@ -266,7 +274,7 @@ impl Gutter {
                 sh(&mut entry.range.start, shift);
                 sh(&mut entry.range.end, shift);
 
-                (!is_contained(i, entry.range.clone()) && entry.range.end > change.start().byte())
+                (!is_contained(i, &mut entry.range) && entry.range.end > change.start().byte())
                     .then_some((i, entry))
             }) {
                 let start_shift =
@@ -283,8 +291,17 @@ impl Gutter {
             sh(&mut entry.range.end, shift);
         }
 
+        let mut parts = buf.text_parts();
+
         for idx in to_remove.into_iter().rev() {
-            self.entries.remove(idx);
+            let entry = self.entries.remove(idx);
+
+            let lnum = parts.strs.point_at_byte(entry.range.end).line();
+            let line_range = parts.strs.line(lnum).byte_range();
+
+            parts
+                .tags
+                .remove(self.ns, line_range.end - 1..=line_range.end);
         }
     }
 }
@@ -791,11 +808,7 @@ impl GutterBuffer for Handle {
 
         let (gtr, buf) = pa.write_many((&gutter, self));
         buf.text_mut().remove_tags(ns, ..);
-
-        let moment = buf.moment_for(*MOMENT_NS);
-        if !moment.is_empty() {
-            gtr.apply_changes(moment);
-        }
+        gtr.apply_changes(buf);
 
         let removed_line_ranges = Vec::from_iter(
             gtr.entries
@@ -853,10 +866,7 @@ impl GutterBuffer for Handle {
             ns,
         };
 
-        let moment = buf.moment_for(*MOMENT_NS);
-        if !moment.is_empty() {
-            gtr.apply_changes(moment);
-        }
+        gtr.apply_changes(buf);
 
         let (Ok(idx) | Err(idx)) = gtr
             .entries
@@ -900,10 +910,7 @@ impl GutterBuffer for Handle {
             ns,
         };
 
-        let moment = buf.moment_for(*MOMENT_NS);
-        if !moment.is_empty() {
-            gtr.apply_changes(moment);
-        }
+        gtr.apply_changes(buf);
 
         let (Ok(idx) | Err(idx)) = gtr
             .entries
@@ -942,10 +949,7 @@ impl GutterBuffer for Handle {
         };
 
         let (gtr, buf) = pa.write_many((&gutter, self));
-        let moment = buf.moment_for(*MOMENT_NS);
-        if !moment.is_empty() {
-            gtr.apply_changes(moment);
-        }
+        gtr.apply_changes(buf);
 
         let (Ok(idx) | Err(idx)) = gtr
             .entries
@@ -1015,9 +1019,9 @@ impl GutterEntryId {
 }
 
 const SPACES: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
+static MOMENT_NS: LazyLock<Ns> = Ns::new_lazy();
 static ID_RELATIONS: Mutex<Vec<Vec<GutterEntryId>>> = Mutex::new(Vec::new());
 static EXTANT_IDS: Mutex<Vec<GutterEntryId>> = Mutex::new(Vec::new());
-static MOMENT_NS: LazyLock<Ns> = Ns::new_lazy();
 static CURRENT: Mutex<Current> = Mutex::new(Current {
     related: Vec::new(),
     mouse_coord: None,
