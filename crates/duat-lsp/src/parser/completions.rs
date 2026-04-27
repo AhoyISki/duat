@@ -17,9 +17,9 @@ use crate::{Encoding, parser::PARSERS, path_to_uri, server::Server};
 
 pub struct LspCompletions {
     uri: Uri,
-    version: u64,
     lists: Vec<(Server, Encoding, Option<CompletionList>)>,
     case_insensitive: bool,
+    state: (Point, String),
 }
 
 impl LspCompletions {
@@ -42,12 +42,15 @@ impl LspCompletions {
             send_update_request(buf.text(), server, *encoding, uri.clone());
         }
 
-        Some(Self {
-            uri,
-            version: buf.text().version().strs,
-            lists,
-            case_insensitive,
-        })
+        let state = {
+            let cursor = buf.selections().main().cursor();
+            let start = get_start(buf.text(), cursor)
+                .map(|b| buf.text().point_at_byte(b))
+                .unwrap_or(cursor);
+            (start, buf.text()[start..cursor].to_string())
+        };
+
+        Some(Self { uri, lists, case_insensitive, state })
     }
 }
 
@@ -55,15 +58,10 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
     type Entry<'e> = &'e CompletionItem;
 
     fn default_fmt(entry: &Self::Entry<'_>) -> Text {
-        let details = if let Some(details) = &entry.label_details {
-            match (&details.detail, &details.description) {
-                (None, None) => Text::new(),
-                (None, Some(desc)) => txt!("[completion.lsp.description]{desc}"),
-                (Some(detail), None) => txt!("[completion.lsp.detail]{detail}"),
-                (Some(detail), Some(desc)) => {
-                    txt!("[completion.lsp.detail]{detail}[completion.lsp.description]{desc}")
-                }
-            }
+        let details = if let Some(details) = &entry.label_details
+            && let Some(detail) = &details.detail
+        {
+            txt!("[completion.lsp.detail]{detail}")
         } else {
             Text::new()
         };
@@ -106,9 +104,9 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
         txt!("[completion.lsp.label]{entry.label}[]{details}{Spacer}{kind}")
     }
 
-    fn matches(&mut self, text: &Text, _: Point, prefix: &str) -> Vec<Self::Entry<'_>> {
-        let has_changed = text.version().strs != self.version;
-        self.version = text.version().strs;
+    fn matches(&mut self, text: &Text, start: Point, prefix: &str) -> Vec<Self::Entry<'_>> {
+        let state_changed = self.state.0 != start || self.state.1 != prefix;
+        self.state = (start, prefix.to_string());
 
         let (prefix, case_insensitive) =
             if self.case_insensitive && prefix.chars().all(|char| !char.is_uppercase()) {
@@ -123,7 +121,7 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
                 return None;
             };
 
-            if false && (has_changed || list.is_incomplete) {
+            if state_changed && list.is_incomplete {
                 send_update_request(text, server, *encoding, self.uri.clone());
             }
 
@@ -144,14 +142,12 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
     }
 
     fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
-        text.search(r"\w*\z")
-            .range(..cursor)
-            .next_back()
-            .map(|r| r.start)
+        get_start(text, cursor)
     }
 
     fn word<'e>(entry: &'e Self::Entry<'_>) -> &'e str {
-        entry.filter_text.as_deref().unwrap_or(&entry.label)
+        context::debug!("{entry.text_edit:#?}");
+        entry.insert_text.as_deref().unwrap_or(&entry.label)
     }
 
     fn default_info_on(entry: &Self::Entry<'_>) -> Option<(Text, Orientation)> {
@@ -225,4 +221,11 @@ fn string_cmp(target: &str, entry: &str) -> Option<usize> {
     }
 
     Some(diff)
+}
+
+fn get_start(text: &Text, cursor: Point) -> Option<usize> {
+    text.search(r"\w*\z")
+        .range(..cursor)
+        .next_back()
+        .map(|r| r.start)
 }
