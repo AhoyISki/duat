@@ -2,8 +2,8 @@
 //!
 //! This module just defines the underlying [`Selections`] struct, as
 //! well as all of its components. This struct is used by [`Handle`]s
-//! in order to modify [`Text`]s by manipulating [`SelectionMut`]s, which
-//! are ultimately backed by the [`Selection`] struct.
+//! in order to modify [`Text`]s by manipulating [`SelectionMut`]s,
+//! which are ultimately backed by the [`Selection`] struct.
 //!
 //! This module also defines [`VPoint`], which is essentially a
 //! [`Point`] with more information inbued into it, most notably
@@ -27,8 +27,9 @@ use crate::{
 ///
 /// This list can contain any number of [`Selection`]s, and they
 /// should be usable in whatever order the end user may want, without
-/// breaking from, for example, modifications that should move selections
-/// backwards or ahead. If that is not the case, report it as a bug.
+/// breaking from, for example, modifications that should move
+/// selections backwards or ahead. If that is not the case, report it
+/// as a bug.
 ///
 /// they are primarily meant to be interacted with from the
 /// [`Handle`], with its [`edit_`] methods meant to efficiently
@@ -79,18 +80,18 @@ impl Selections {
     }
 
     /// Removes all [`Selection`]s.
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.buf = GapBuffer::new();
         *self.shift.get_mut().unwrap() = Shift::default();
     }
 
-    /// Removes all [`Selection`]s and adds a [default `Selection`] as
-    /// main.
-    ///
-    /// [default `Selection`]: Selection::default
+    /// If there were selections, removes all but the main one, moving
+    /// it to [`Point::default`]. Otherwise, do nothing.
     pub fn reset(&mut self) {
-        self.remove_extras();
-        self.buf[self.main_i] = Selection::default();
+        if !self.is_empty() {
+            self.remove_extras();
+            self.buf[self.main_i] = Selection::default();
+        }
     }
 
     /// Removes all but the main [`Selection`].
@@ -305,7 +306,10 @@ impl Selections {
         // If there are no more Selections after this, don't set the
         // shift_state.
         let selections_taken = m_range.clone().count();
-        let new_shift_from = shift_from.saturating_sub(selections_taken).max(m_range.start) + 1;
+        let new_shift_from = shift_from
+            .saturating_sub(selections_taken)
+            .max(m_range.start)
+            + 1;
         if new_shift_from < self.buf.len() {
             shift.from = new_shift_from;
         } else {
@@ -359,7 +363,10 @@ impl Selections {
             }
         };
 
-        let from = shift_from.saturating_sub(selections_taken).max(c_range.start) + selections_added;
+        let from = shift_from
+            .saturating_sub(selections_taken)
+            .max(c_range.start)
+            + selections_added;
         if from < self.buf.len() {
             *shift = Shift {
                 from,
@@ -434,8 +441,8 @@ mod selection {
         ui::Area,
     };
 
-    /// A selection in the text buffer. This is an editing selection, -(not
-    /// a printing selection.
+    /// A selection in the text buffer. This is an editing selection,
+    /// -(not a printing selection.
     #[derive(Default, Encode, Decode)]
     pub struct Selection {
         cursor: Mutex<LazyVPoint>,
@@ -680,7 +687,7 @@ mod selection {
                 .fwd(text.char_at(self.end_point_excl()).unwrap())
         }
 
-		/// The exclusive end [`Point`] of this `Selection`.
+        /// The exclusive end [`Point`] of this `Selection`.
         pub(super) fn end_point_excl(&self) -> Point {
             if let Some(anchor) = *self.anchor.lock().unwrap() {
                 anchor.point().max(self.cursor.lock().unwrap().point())

@@ -232,15 +232,8 @@ impl mode::Mode for Prompt {
 
             event!(Backspace) => {
                 if promptline.read(pa).text() == "\n" {
-                    promptline.write(pa).text_mut().selections_mut().clear();
-
                     update(pa);
-
-                    if let Some(ret_handle) = self.mode.return_handle() {
-                        mode::reset_to(pa, &ret_handle);
-                    } else {
-                        (self.reset_fn)(pa);
-                    }
+                    reset(pa, self);
                 } else {
                     promptline.edit_main(pa, |mut s| {
                         if s.move_hor(-1) == -1 {
@@ -334,14 +327,11 @@ impl mode::Mode for Prompt {
                     s.move_to(..);
                     s.replace("");
                 });
-                promptline.write(pa).text_mut().selections_mut().clear();
 
                 update(pa);
                 reset(pa, self);
             }
             event!(Enter) => {
-                promptline.write(pa).text_mut().selections_mut().clear();
-
                 if promptline.text(pa).is_empty() {
                     let history = HISTORY.lock().unwrap();
                     if let Some((_, ty_history)) = history.iter().find(ty_eq) {

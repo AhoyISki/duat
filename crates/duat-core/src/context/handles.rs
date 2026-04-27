@@ -8,6 +8,7 @@ use std::sync::{
 };
 
 use crate::{
+    buffer::Change,
     context,
     data::{Pass, RwData, WriteableTuple},
     mode::{ModSelection, Selection, SelectionMut, Selections},
@@ -493,20 +494,25 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// [`edit_main`]: Self::edit_main
     /// [`edit_all`]: Self::edit_all
     /// [`Point::default`]: crate::text::Point::default
+    #[track_caller]
     pub fn edit_nth<Ret>(
         &self,
         pa: &mut Pass,
         n: usize,
         edit: impl FnOnce(SelectionMut<W>) -> Ret,
     ) -> Ret {
+        #[track_caller]
         fn get_parts<'a, W: Widget + ?Sized>(
             pa: &'a mut Pass,
             handle: &'a Handle<W>,
             n: usize,
         ) -> (Selection, bool, &'a mut W, &'a Area) {
             let (widget, area) = handle.write_with_area(pa);
-            let selections = widget.text_mut().selections_mut();
-            selections.populate();
+
+            // Since Buffers always have selections, this should never happen on
+            // them. Which means their history wouldn't be affected.
+            let selections = populate(widget.text_mut());
+
             let Some((selection, was_main)) = selections.remove(n) else {
                 panic!("Selection index {n} out of bounds");
             };
@@ -583,7 +589,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// equivalent long form call.
     pub fn edit_all(&self, pa: &mut Pass, edit: impl FnMut(SelectionMut<W>)) {
         let (widget, area) = self.write_with_area(pa);
-        widget.text_mut().selections_mut().populate();
+        populate(widget.text_mut());
         crate::mode::on_each_sel(widget, area, edit);
     }
 
@@ -638,6 +644,20 @@ impl<W: Widget + ?Sized> Handle<W> {
     pub fn close(&self, pa: &mut Pass) -> Result<(), Text> {
         context::windows().close(pa, self)
     }
+}
+
+#[track_caller]
+fn populate<'t>(mut text: TextMut<'t>) -> &'t mut Selections {
+    if !text.ends_with('\n') {
+        text.apply_change(
+            None,
+            Change::str_insert("\n", text.end_point()).to_string_change(),
+        );
+    }
+
+    let selections = text.selections_mut();
+    selections.populate();
+    selections
 }
 
 impl<W: Widget> Handle<W> {

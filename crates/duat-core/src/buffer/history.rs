@@ -386,8 +386,28 @@ pub struct Change<'h, S = &'h str> {
 
 impl Change<'static, String> {
     /// Returns a new [Change].
-    pub fn new(edit: impl ToString, range: Range<Point>, text: &Text) -> Self {
-        let added = edit.to_string();
+    ///
+    /// If `has_selections`, then the change must not remove the final
+    /// `\n` at the [`Text`].
+    pub fn new(
+        edit: impl ToString,
+        range: Range<Point>,
+        text: &Text,
+        has_selections: bool,
+    ) -> Self {
+        let added = {
+            let edit = edit.to_string();
+
+            if has_selections
+                && (range.start == text.end_point() || range.end == text.end_point())
+                && !edit.ends_with('\n')
+            {
+                edit + "\n"
+            } else {
+                edit
+            }
+        };
+
         let taken = text[range.clone()].to_string();
         let added_end = add(
             range.start.as_signed(),

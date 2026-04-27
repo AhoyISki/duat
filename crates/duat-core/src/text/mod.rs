@@ -157,7 +157,7 @@ impl Text {
     }
 
     /// Creates a `Text` from a [`String`].
-    pub(crate) fn from_parts(buf: StrsBuf, mut selections: Selections) -> Self {
+    pub(crate) fn from_parts(mut buf: StrsBuf, mut selections: Selections) -> Self {
         let tags = InnerTags::new(buf.len());
 
         let selections = if selections.iter().any(|(sel, _)| {
@@ -171,6 +171,10 @@ impl Text {
             selections.correct_all(&buf);
             selections
         };
+
+        if !selections.is_empty() && !buf.ends_with('\n') {
+            buf.apply_change(Change::str_insert("\n", buf.end_point()));
+        }
 
         Self(Box::new(InnerText { buf, tags, selections }))
     }
@@ -328,7 +332,7 @@ impl Text {
             self.point_at_byte(range.start),
             self.point_at_byte(range.end),
         );
-        let change = Change::new(edit, start..end, self);
+        let change = Change::new(edit, start..end, self, !self.selections().is_empty());
 
         self.0.buf.increment_version();
         self.apply_change(0, change.as_ref(), false);
@@ -721,7 +725,7 @@ impl<'t> TextMut<'t> {
             self.point_at_byte(range.start),
             self.point_at_byte(range.end),
         );
-        let change = Change::new(edit, start..end, self);
+        let change = Change::new(edit, start..end, self, !self.selections().is_empty());
 
         self.text.0.buf.increment_version();
         self.text.apply_change(0, change.as_ref(), false);

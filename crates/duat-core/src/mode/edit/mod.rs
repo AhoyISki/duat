@@ -131,7 +131,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
             let range = sel!(self).point_range(self.widget.text());
             let (p0, p1) = (range.start, range.end);
             let p1 = if self.anchor().is_some() { p1 } else { p0 };
-            Change::new(edit, p0..p1, self.widget.text())
+            Change::new(edit, p0..p1, self.widget.text(), true)
         };
 
         // Disconsider null changes.
@@ -163,7 +163,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     pub fn insert(&mut self, edit: impl ToString) {
         let cursor_point = sel!(self).cursor();
         let range = cursor_point..cursor_point;
-        let change = Change::new(edit.to_string(), range, self.widget.text());
+        let change = Change::new(edit.to_string(), range, self.widget.text(), true);
         let (added, taken) = (change.added_end(), change.taken_end());
 
         self.edit(change);
@@ -191,7 +191,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     pub fn append(&mut self, edit: impl ToString) {
         let cursor = sel!(self).cursor();
         let after = cursor.fwd(self.widget.text().char_at(cursor).unwrap());
-        let change = Change::new(edit.to_string(), after..after, self.widget.text());
+        let change = Change::new(edit.to_string(), after..after, self.widget.text(), true);
         let (added, taken) = (change.added_end(), change.taken_end());
 
         self.edit(change);
