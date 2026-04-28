@@ -757,7 +757,7 @@ struct InnerProvider<P: CompletionsProvider> {
 
     start: usize,
     prefix: String,
-    current: Option<(String, usize)>,
+    current: Option<(String, (usize, usize))>,
     previous: String,
 }
 
@@ -864,13 +864,14 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let mut info = None;
         if scroll != 0 {
             // No try blocks on stable Rust 🤮.
-            let ret = if let Some((prev, dist)) = &self.current {
+            let new_current = if let Some((prev_word, (dist, idx))) = &self.current {
                 if let dist = dist.saturating_add_signed(scroll as isize).min(height - 1)
-                    && let Some(prev_i) = matches.iter().position(|entry| P::word(entry) == prev)
-                    && let Some(new_pos) = prev_i.checked_add_signed(scroll as isize)
+                    && let Some(prev_entry) = matches.get(*idx)
+                    && P::word(prev_entry) == prev_word
+                    && let Some(new_pos) = idx.checked_add_signed(scroll as isize)
                     && let Some(entry) = matches.get(new_pos)
                 {
-                    Some((entry, dist))
+                    Some((entry, (dist, new_pos)))
                 } else {
                     None
                 }
@@ -879,7 +880,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
                     && let dist = (scroll).min(height - 1)
                     && let Some(entry) = matches.get(scroll)
                 {
-                    Some((entry, dist))
+                    Some((entry, (dist, scroll)))
                 } else {
                     None
                 }
@@ -888,11 +889,11 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
                 && let Some(new_pos) = matches.len().checked_sub(scroll)
                 && let Some(entry) = matches.get(new_pos)
             {
-                Some((entry, dist))
+                Some((entry, (dist, new_pos)))
             } else {
                 None
             };
-            let (entry, dist) = ret.unzip();
+            let (entry, dist) = new_current.unzip();
 
             info = entry.as_ref().and_then(|entry| P::default_info_on(entry));
 
@@ -904,14 +905,15 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let mut entries_builder = Text::builder();
         let mut sidebar_builder = Text::builder();
 
-        if let Some((word, dist)) = &mut self.current
-            && let Some(word_i) = matches.iter().position(|entry| P::word(entry) == word)
+        if let Some((word, (dist, idx))) = &mut self.current
+            && let Some(entry) = matches.get(*idx)
+            && P::word(entry) == word
         {
             *dist = (*dist).min(height - 1);
 
-            let top_i = word_i.saturating_sub(*dist);
+            let top_i = idx.saturating_sub(*dist);
             for (i, entry) in matches.iter().enumerate().skip(top_i).take(height) {
-                if i == word_i {
+                if i == *idx {
                     entries_builder.push(txt!("[selected.Completions]{}\n", (self.fmt)(entry)));
                     sidebar_builder.push(txt!("[selected.Completions] \n"));
                 } else {
@@ -920,6 +922,8 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
                 }
             }
         } else {
+            self.current = None;
+
             for entry in matches.iter().take(height) {
                 entries_builder.push(txt!("{}\n", (self.fmt)(entry)));
                 sidebar_builder.push(txt!("[default.Completions] \n"));
