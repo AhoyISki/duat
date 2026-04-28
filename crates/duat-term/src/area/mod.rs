@@ -415,25 +415,27 @@ impl RawArea for Area {
             y += place.wrap as u32;
 
             if place.wrap {
+                let is_ghost = ghost_chars_printed && !real_chars_printed;
                 if let Some(last) = printed_lines.last_mut() {
-                    last.is_ghost = ghost_chars_printed && !real_chars_printed;
+                    last.is_ghost = is_ghost;
                 }
                 ghost_chars_printed = false;
                 real_chars_printed = false;
 
                 let number = item.line();
                 let is_wrapped = prev_point.is_some_and(|ll| ll == number);
-                prev_point = Some(number);
+                
+                prev_point = (!is_ghost).then_some(number);
                 printed_lines.push(PrintedLine { number, is_wrapped, is_ghost: true });
             }
 
-			if let TextPart::Char(_) = item.part {
-    			if item.ghost.is_some() {
-        			ghost_chars_printed = true;
-    			} else {
-        			real_chars_printed = true;
-    			}
-			}
+            if let TextPart::Char(_) = item.part {
+                if item.ghost.is_some() {
+                    ghost_chars_printed = true;
+                } else {
+                    real_chars_printed = true;
+                }
+            }
         }
 
         if let Some(last) = printed_lines.last_mut() {
@@ -1103,7 +1105,7 @@ pub fn print_text(
         }
     }
 
-	// If this isn't the case, the text is completely empty.
+    // If this isn't the case, the text is completely empty.
     if y > lines.coords().tl.y {
         endl(&mut lines, painter, last_x, &mut overlays, &mut spawns);
     }

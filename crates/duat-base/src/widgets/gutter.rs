@@ -117,7 +117,7 @@ fn update(pa: &mut Pass, buffer: &Handle) {
         .and_then(|coord| {
             Some(
                 area.points_at_coord(buf.text(), coord, popts)?
-                    .as_within()?
+                    .points()
                     .real,
             )
         })
@@ -207,7 +207,7 @@ impl Gutter {
 
             let (Ok(idx) | Err(idx)) = self
                 .entries
-                .binary_search_by(|entry| entry.range.end.cmp(&range.end));
+                .binary_search_by(|entry| entry.range.end.cmp(&range.start));
 
             let mut iter = self.entries[idx..].iter();
             while let Some(entry) = iter.next()
