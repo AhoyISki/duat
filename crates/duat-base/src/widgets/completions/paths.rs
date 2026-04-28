@@ -41,9 +41,9 @@ impl PathCompletions {
 }
 
 impl CompletionsProvider for PathCompletions {
-    type Entry<'e> = String;
+    type Entry = String;
 
-    fn matches<'e>(&'e mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry<'e>> {
+    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
         let prefix = match prefix.strip_prefix("'") {
             Some(prefix) => prefix,
             None => prefix,
@@ -137,11 +137,11 @@ impl CompletionsProvider for PathCompletions {
         }
     }
 
-    fn default_fmt(entry: &Self::Entry<'_>) -> Text {
+    fn default_fmt(entry: &Self::Entry) -> Text {
         txt!("[completion.path]{entry}[]{Spacer}")
     }
 
-    fn word<'e>(entry: &'e Self::Entry<'e>) -> &'e str {
+    fn word(entry: &Self::Entry) -> &str {
         entry
     }
 }

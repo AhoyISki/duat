@@ -47,16 +47,16 @@ impl WordCompletions {
 }
 
 impl CompletionsProvider for WordCompletions {
-    type Entry<'e> = WordInfo;
+    type Entry = WordInfo;
 
-    fn default_fmt(entry: &Self::Entry<'_>) -> Text {
+    fn default_fmt(entry: &Self::Entry) -> Text {
         txt!(
             "[completion.word]{entry.word}[]{Spacer}[completion.word.source]{}",
             &entry.source
         )
     }
 
-    fn matches<'e>(&'e mut self, text: &Text, _: Point, prefix: &str) -> Vec<Self::Entry<'e>> {
+    fn matches(&mut self, text: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
         let cursor = text.main_sel().cursor();
         let suffix = &text[text.search(r"\A\w*").range(cursor..).next().unwrap()];
 
@@ -101,7 +101,7 @@ impl CompletionsProvider for WordCompletions {
             .map(|r| r.start)
     }
 
-    fn word<'e>(entry: &'e Self::Entry<'e>) -> &'e str {
+    fn word(entry: &Self::Entry) -> &str {
         &entry.word
     }
 }

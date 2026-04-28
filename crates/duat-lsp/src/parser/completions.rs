@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use duat_base::widgets::Completions;
 use duat_core::{
     context,
@@ -7,19 +9,18 @@ use duat_core::{
     ui::Orientation,
 };
 use lsp_types::{
-    CompletionContext, CompletionItem, CompletionItemKind, CompletionList, CompletionParams,
-    CompletionResponse, CompletionTriggerKind, Documentation, PartialResultParams,
-    TextDocumentIdentifier, TextDocumentPositionParams, Uri, WorkDoneProgressParams,
-    request::Completion,
+    CompletionContext, CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse,
+    CompletionTriggerKind, Documentation, PartialResultParams, TextDocumentIdentifier,
+    TextDocumentPositionParams, Uri, WorkDoneProgressParams, request::Completion,
 };
 
 use crate::{Encoding, parser::PARSERS, path_to_uri, server::Server};
 
 pub struct LspCompletions {
     uri: Uri,
-    lists: Vec<(Server, Encoding, Option<CompletionList>)>,
+    lists: Vec<(Server, Encoding, Option<List>)>,
     case_insensitive: bool,
-    state: (Point, String),
+    comp_state: (Point, String),
 }
 
 impl LspCompletions {
@@ -42,22 +43,23 @@ impl LspCompletions {
             send_update_request(buf.text(), server, *encoding, uri.clone());
         }
 
-        let state = {
+        let comp_state = {
             let cursor = buf.selections().main().cursor();
             let start = get_start(buf.text(), cursor)
                 .map(|b| buf.text().point_at_byte(b))
                 .unwrap_or(cursor);
+
             (start, buf.text()[start..cursor].to_string())
         };
 
-        Some(Self { uri, lists, case_insensitive, state })
+        Some(Self { uri, lists, case_insensitive, comp_state })
     }
 }
 
 impl duat_base::widgets::CompletionsProvider for LspCompletions {
-    type Entry<'e> = &'e CompletionItem;
+    type Entry = Entry;
 
-    fn default_fmt(entry: &Self::Entry<'_>) -> Text {
+    fn default_fmt(entry: &Self::Entry) -> Text {
         let details = if let Some(details) = &entry.label_details
             && let Some(detail) = &details.detail
         {
@@ -104,9 +106,9 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
         txt!("[completion.lsp.label]{entry.label}[]{details}{Spacer}{kind}")
     }
 
-    fn matches(&mut self, text: &Text, start: Point, prefix: &str) -> Vec<Self::Entry<'_>> {
-        let state_changed = self.state.0 != start || self.state.1 != prefix;
-        self.state = (start, prefix.to_string());
+    fn matches(&mut self, text: &Text, start: Point, prefix: &str) -> Vec<Self::Entry> {
+        let state_changed = self.comp_state.0 != start || self.comp_state.1 != prefix;
+        self.comp_state = (start, prefix.to_string());
 
         let (prefix, case_insensitive) =
             if self.case_insensitive && prefix.chars().all(|char| !char.is_uppercase()) {
@@ -125,13 +127,13 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
                 send_update_request(text, server, *encoding, self.uri.clone());
             }
 
-            let list = Vec::from_iter(list.items.iter().filter_map(|item| {
+            let list = Vec::from_iter(list.entries.iter().filter_map(|item| {
                 let label = item.filter_text.as_deref().unwrap_or(&item.label);
 
                 if case_insensitive {
-                    string_cmp(&prefix, &label.to_uppercase()).and(Some(item))
+                    string_cmp(&prefix, &label.to_uppercase()).map(|_| Entry(item.clone()))
                 } else {
-                    string_cmp(&prefix, label).and(Some(item))
+                    string_cmp(&prefix, label).map(|_| Entry(item.clone()))
                 }
             }));
 
@@ -145,11 +147,25 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
         get_start(text, cursor)
     }
 
-    fn word<'e>(entry: &'e Self::Entry<'_>) -> &'e str {
-        entry.insert_text.as_deref().unwrap_or(&entry.label)
+    fn word(entry: &Self::Entry) -> &str {
+        let common_prefix = |text: &str| {
+            let common_prefix = text
+                .chars()
+                .zip(entry.label.chars())
+                .take_while(|(l, r)| l == r)
+                .fold(0, |len, (char, _)| len + char.len_utf8());
+            &entry.label[..common_prefix]
+        };
+
+        if let Some(filter) = &entry.filter_text {
+            let label = common_prefix(filter);
+            if label.is_empty() { filter } else { label }
+        } else {
+            &entry.label
+        }
     }
 
-    fn default_info_on(entry: &Self::Entry<'_>) -> Option<(Text, Orientation)> {
+    fn default_info_on(entry: &Self::Entry) -> Option<(Text, Orientation)> {
         let text = if let Some(doc) = &entry.documentation {
             match doc {
                 Documentation::String(string) => Some(Text::from(string.clone())),
@@ -189,10 +205,14 @@ fn send_update_request(text: &Text, server: &Server, encoding: Encoding, uri: Ur
                 };
 
                 let list = match result {
-                    CompletionResponse::Array(items) => {
-                        CompletionList { is_incomplete: false, items }
-                    }
-                    CompletionResponse::List(list) => list,
+                    CompletionResponse::Array(items) => List {
+                        is_incomplete: false,
+                        entries: items.into_iter().map(Arc::new).collect(),
+                    },
+                    CompletionResponse::List(list) => List {
+                        is_incomplete: list.is_incomplete,
+                        entries: list.items.into_iter().map(Arc::new).collect(),
+                    },
                 };
 
                 Completions::update_provider(pa, move |completions: &mut LspCompletions| {
@@ -227,4 +247,21 @@ fn get_start(text: &Text, cursor: Point) -> Option<usize> {
         .range(..cursor)
         .next_back()
         .map(|r| r.start)
+}
+
+struct List {
+    is_incomplete: bool,
+    entries: Vec<Arc<CompletionItem>>,
+}
+
+/// A completion item entry.
+#[derive(Debug, Clone)]
+pub struct Entry(Arc<CompletionItem>);
+
+impl std::ops::Deref for Entry {
+    type Target = CompletionItem;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }

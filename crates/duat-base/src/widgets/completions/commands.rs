@@ -22,14 +22,14 @@ impl CommandsCompletions {
 }
 
 impl CompletionsProvider for CommandsCompletions {
-    type Entry<'e> = &'e CmdDoc;
+    type Entry = CmdDoc;
 
-    fn matches<'e>(&'e mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry<'e>> {
+    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
         let mut matches = Vec::from_iter(self.0.iter().filter_map(|desc| {
             if let Description::Command(desc) = desc
                 && string_cmp(prefix, &desc.caller).is_some()
             {
-                Some(desc)
+                Some(desc.clone())
             } else {
                 None
             }
@@ -47,7 +47,7 @@ impl CompletionsProvider for CommandsCompletions {
         Some(text.search(r"[^\s]*").range(..cursor).next_back()?.start)
     }
 
-    fn default_info_on(doc: &Self::Entry<'_>) -> Option<(Text, Orientation)> {
+    fn default_info_on(doc: &Self::Entry) -> Option<(Text, Orientation)> {
         let mut builder = Text::builder();
 
         let short = doc.short.as_ref()?;
@@ -73,11 +73,11 @@ impl CompletionsProvider for CommandsCompletions {
         Some((builder.build(), Orientation::HorTopRight))
     }
 
-    fn default_fmt(entry: &Self::Entry<'_>) -> Text {
+    fn default_fmt(entry: &Self::Entry) -> Text {
         txt!("[cmd.Completions]{entry.caller}{Spacer}")
     }
 
-    fn word<'e>(entry: &'e Self::Entry<'e>) -> &'e str {
+    fn word(entry: &Self::Entry) -> &str {
         &entry.caller
     }
 }

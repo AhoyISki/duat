@@ -405,7 +405,8 @@ impl RawArea for Area {
 
         let mut printed_lines = Vec::<PrintedLine>::new();
         let mut y = coords.tl.y;
-        let mut is_ghost = true;
+        let mut real_chars_printed = false;
+        let mut ghost_chars_printed = false;
 
         for (place, item) in print_iter(text, points, coords.width(), opts) {
             if y == coords.br.y || item.line() == text.end_point().line() {
@@ -415,9 +416,10 @@ impl RawArea for Area {
 
             if place.wrap {
                 if let Some(last) = printed_lines.last_mut() {
-                    last.is_ghost = is_ghost;
+                    last.is_ghost = ghost_chars_printed && !real_chars_printed;
                 }
-                is_ghost = true;
+                ghost_chars_printed = false;
+                real_chars_printed = false;
 
                 let number = item.line();
                 let is_wrapped = prev_point.is_some_and(|ll| ll == number);
@@ -425,13 +427,17 @@ impl RawArea for Area {
                 printed_lines.push(PrintedLine { number, is_wrapped, is_ghost: true });
             }
 
-            if item.as_real_char().is_some() {
-                is_ghost = false;
-            }
+			if let TextPart::Char(_) = item.part {
+    			if item.ghost.is_some() {
+        			ghost_chars_printed = true;
+    			} else {
+        			real_chars_printed = true;
+    			}
+			}
         }
 
         if let Some(last) = printed_lines.last_mut() {
-            last.is_ghost = is_ghost;
+            last.is_ghost = ghost_chars_printed && !real_chars_printed;
         }
 
         Some(printed_lines)

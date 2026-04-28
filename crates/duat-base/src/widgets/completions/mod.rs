@@ -396,6 +396,7 @@ impl Completions {
             .find_map(|provider| provider.as_any().downcast_mut::<InnerProvider<P>>())
         {
             update(&mut inner.provider);
+            inner.matches = None;
 
             Completions::update_text_and_position(pa, &completions, 0);
             let completions_master = completions.master(pa).unwrap();
@@ -619,7 +620,7 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     ///
     /// This should typically be a reference to some type, like `&'e
     /// str`.
-    type Entry<'e>: Send;
+    type Entry: Send;
 
     /// Get all completion entries based on the [start] and [prefix].
     ///
@@ -630,6 +631,10 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     ///
     /// The prefix is the initial, unmodified text that was between
     /// the start and the main cursor.
+    ///
+    /// This function will only ever be called if the user modifies
+    /// the text by a means other than completion swapping, or if
+    /// [`Completions::update_provider`] is called for `Self`.
     ///
     /// For example, if [`Self::get_start`] points to the beginning of
     /// a word, and you spawn a completions, like this:
@@ -644,24 +649,7 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     ///
     /// The start will be `8`, and prefix will be `"so"`.
     ///
-    /// If the completions replaces `so` with `two words`, like this:
-    ///
-    /// ```text
-    ///                  v- Cursor before this m
-    ///                  |
-    /// This is two wordsme text that I'm writing down.
-    ///         |
-    ///         ^- Completions spawned before this s
-    /// ```
-    ///
-    /// The start will still be `0`, and the prefix will still be
-    /// `"so"`. Note that `get_start` wasn't called again. This is
-    /// because duat assumes that, if the text has only been altered
-    /// by the completions, then the list doesn't need to be updated,
-    /// and the spawned location doesn't need to change.
-    ///
-    /// However, if the user _types_ something, say, adding a space
-    /// after `so`:
+    /// If the user _types_ something, say, adding a space after `so`:
     ///
     /// ```text
     ///            v- Cursor before this m
@@ -677,7 +665,7 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     ///
     /// [start]: Point
     /// [prefix]: str
-    fn matches<'e>(&'e mut self, text: &Text, start: Point, prefix: &str) -> Vec<Self::Entry<'e>>;
+    fn matches(&mut self, text: &Text, start: Point, prefix: &str) -> Vec<Self::Entry>;
 
     /// Get the starting byte for this completions
     ///
@@ -714,17 +702,17 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// Each [`Text`] must only be one line long (Nothing bad happens
     /// if they are multiple lines long, but don't expect the
     /// [`Completions`] to show things correctly).
-    fn default_fmt(entry: &Self::Entry<'_>) -> Text;
+    fn default_fmt(entry: &Self::Entry) -> Text;
 
     /// Function to pick a word to match on.
     ///
     /// This word is what will be placed over the current word.
-    fn word<'e>(entry: &'e Self::Entry<'_>) -> &'e str;
+    fn word(entry: &Self::Entry) -> &str;
 
     /// Additional information about an entry, which can be shown when
     /// it is selected.
     #[allow(unused_variables)]
-    fn default_info_on(entry: &Self::Entry<'_>) -> Option<(Text, Orientation)> {
+    fn default_info_on(entry: &Self::Entry) -> Option<(Text, Orientation)> {
         None
     }
 }
@@ -753,18 +741,19 @@ trait ErasedInnerProvider: Any + Send {
 #[allow(clippy::type_complexity)]
 struct InnerProvider<P: CompletionsProvider> {
     provider: P,
-    fmt: Box<dyn FnMut(&P::Entry<'_>) -> Text + Send>,
+    fmt: Box<dyn FnMut(&P::Entry) -> Text + Send>,
 
     start: usize,
     prefix: String,
     current: Option<(String, (usize, usize))>,
     previous: String,
+    matches: Option<Vec<P::Entry>>,
 }
 
 impl<P: CompletionsProvider> InnerProvider<P> {
     #[allow(clippy::type_complexity)]
     fn new(
-        provider: P,
+        mut provider: P,
         text: &Text,
         height: usize,
         min_prefix: usize,
@@ -778,6 +767,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             .unwrap_or(main_cursor.byte());
 
         let prefix = text[start..main_cursor.byte()].to_string();
+        let matches = Some(provider.matches(text, text.point_at_byte(start), &prefix));
 
         let mut inner = Self {
             provider,
@@ -786,6 +776,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             prefix: prefix.clone(),
             current: None,
             previous: prefix,
+            matches,
         };
 
         let (start, text) = inner.texts_and_match(text, 0, None, height, min_prefix);
@@ -820,7 +811,19 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
                 || (self.current.is_none() && strs != self.prefix)
         });
 
-        let start = if target_changed {
+        let (start, matches) = if let Some(matches) = &self.matches
+            && !target_changed
+        {
+            let prefix: &str = self
+                .current
+                .as_ref()
+                .map(|(s, _)| s.as_ref())
+                .unwrap_or(&self.prefix);
+
+            self.previous = prefix.to_string();
+
+            (cursor.byte() - prefix.len(), matches)
+        } else {
             let start = self
                 .provider
                 .get_start(text, cursor)
@@ -831,22 +834,14 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             self.current = None;
             self.previous = self.prefix.clone();
 
-            cursor.byte() - self.prefix.len()
-        } else {
-            let prefix: &str = self
-                .current
-                .as_ref()
-                .map(|(s, _)| s.as_ref())
-                .unwrap_or(&self.prefix);
+            let matches = self.matches.insert(self.provider.matches(
+                text,
+                text.point_at_byte(start),
+                &self.prefix,
+            ));
 
-            self.previous = prefix.to_string();
-
-            cursor.byte() - prefix.len()
+            (cursor.byte() - self.prefix.len(), &*matches)
         };
-
-        let matches = self
-            .provider
-            .matches(text, text.point_at_byte(start), &self.prefix);
 
         if matches.is_empty() || self.prefix.chars().count() < min_prefix {
             self.current = None;
@@ -938,8 +933,6 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         } else {
             None
         };
-
-        drop(matches);
 
         let entries_text = entries_builder.build();
         let sidebar_text = sidebar_builder.build();
