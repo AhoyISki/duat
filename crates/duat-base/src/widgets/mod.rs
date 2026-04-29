@@ -25,7 +25,7 @@ pub(crate) use self::{
 pub use self::{
     completions::{
         CommandsCompletions, Completions, CompletionsBuilder, CompletionsProvider, PathCompletions,
-        WordCompletions,
+        WordCompletions, CompletionEntry
     },
     gutter::{Gutter, GutterBuffer, GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts},
     info::Info,

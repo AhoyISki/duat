@@ -57,12 +57,14 @@
 //!     with the [`IncSearcher`] trait.
 //!
 //! - For [`IncSearch`], there are 4 `IncSearcher`s:
-//!   - [`SearchFwd`] will move each [`SelectionMut`] to the next match.
-//!   - [`SearchRev`] will move each `SelectionMut` to the previous match.
-//!   - [`ExtendFwd`] will extend each `SelectionMut`'s selections to the
-//!     next match.
-//!   - [`ExtendRev`] will extend each `SelectionMut`'s selections to the
-//!     previous match.
+//!   - [`SearchFwd`] will move each [`SelectionMut`] to the next
+//!     match.
+//!   - [`SearchRev`] will move each `SelectionMut` to the previous
+//!     match.
+//!   - [`ExtendFwd`] will extend each `SelectionMut`'s selections to
+//!     the next match.
+//!   - [`ExtendRev`] will extend each `SelectionMut`'s selections to
+//!     the previous match.
 //!
 //! Note that the [`IncSearcher`] trait can be used for many more
 //! interesting things, like in [`duat-kak`] for example, where its
@@ -188,7 +190,7 @@ impl DuatBase {
         form::set_weak("selected.Completions", Form::new().black().on_grey());
         form::set_weak("completion.word.source", Form::mimic("buffer"));
 
-		// Setup for the Gutter
+        // Setup for the Gutter
         form::set_weak("gutter.hint", Form::mimic("default.info"));
         form::set_weak("gutter.warn", Form::mimic("default.warn"));
         form::set_weak("gutter.error", Form::mimic("default.error"));
@@ -240,7 +242,9 @@ pub mod hooks {
     //! [`IncSearch`]: crate::modes::IncSearch
     use duat_core::{data::Pass, hook::Hookable};
 
-    /// [`Hookable`]: Triggers when a [search] is updated
+    use crate::widgets::CompletionEntry;
+
+    /// [`Hookable`]: Triggers when a [search] is updated.
     ///
     /// Will not be triggered if the previous and current patterns are
     /// the same.
@@ -261,7 +265,7 @@ pub mod hooks {
         }
     }
 
-    /// [`Hookable`]: Triggers when a [search] is performed
+    /// [`Hookable`]: Triggers when a [search] is performed.
     ///
     /// Will not be triggered on empty searches.
     ///
@@ -274,6 +278,54 @@ pub mod hooks {
 
     impl Hookable for SearchPerformed {
         type Input<'h> = &'h str;
+
+        fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+            &self.0
+        }
+    }
+
+    /// [`Hookable`]: Triggers when a completion entry is selected.
+    ///
+    /// This happens while you're pressing a key like tab to scroll
+    /// through the completion options. For when you actually pick the
+    /// completion item, or if the completions close without you
+    /// selecting anything, check out [`CompletionFinished`].
+    ///
+    /// # Arguments
+    ///
+    /// - A [`CompletionEntry`], which can be queried for the specific
+    ///   [`P::Entry`] of any [`CompletionsProvider`].
+    ///
+    /// [`P::Entry`]: crate::widgets::CompletionsProvider::Entry
+    /// [`CompletionsProvider`]: crate::widgets::CompletionsProvider
+    pub struct CompletionSelected(pub(crate) CompletionEntry);
+
+    impl Hookable for CompletionSelected {
+        type Input<'h> = &'h CompletionEntry;
+
+        fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+            &self.0
+        }
+    }
+
+    /// [`Hookable`]: Triggers right after finishing the completions.
+    ///
+    /// This happens when you type a character and a completion entry
+    /// is selected. If you want to do something while pressing a key
+    /// like tab in order to scroll through the completions, check out
+    /// [`CompletionSelected`].
+    ///
+    /// # Arguments
+    ///
+    /// - A [`CompletionEntry`], which can be queried for the specific
+    ///   [`P::Entry`] of any [`CompletionsProvider`].
+    ///
+    /// [`P::Entry`]: crate::widgets::CompletionsProvider::Entry
+    /// [`CompletionsProvider`]: crate::widgets::CompletionsProvider
+    pub struct CompletionFinished(pub(crate) CompletionEntry);
+
+    impl Hookable for CompletionFinished {
+        type Input<'h> = &'h CompletionEntry;
 
         fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
             &self.0

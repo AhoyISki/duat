@@ -301,6 +301,9 @@
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 #[doc(inline)]
 pub use duat_core::{Ns, buffer, clipboard, cmd, context, data, notify, process, text, ui, utils};
+pub use duat_lsp as lsp;
+#[cfg(feature = "term-ui")]
+pub use duat_term::{self as term};
 
 pub use crate::{
     opts::Opts,
@@ -699,8 +702,6 @@ pub mod prelude {
     use std::process::Output;
 
     pub use duat_filetype::*;
-    #[cfg(feature = "term-ui")]
-    pub use duat_term::{self as term};
 
     pub use crate::{
         Ns,
@@ -712,13 +713,13 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hook::{
             self, BufferClosed, BufferOpened, BufferSaved, BufferSwitched, BufferUpdated,
-            ColorschemeSet, ConfigLoaded, ConfigUnloaded, FocusedOnDuat, FormSet, Hookable,
-            KeySent, KeyTyped, ModeSwitched, OnMouseEvent, SearchPerformed, SearchUpdated,
-            UnfocusedFromDuat, WidgetOpened, WindowOpened,
+            ColorschemeSet, CompletionFinished, CompletionSelected, ConfigLoaded, ConfigUnloaded,
+            FocusedOnDuat, FormSet, Hookable, KeySent, KeyTyped, ModeSwitched, OnMouseEvent,
+            SearchPerformed, SearchUpdated, UnfocusedFromDuat, WidgetOpened, WindowOpened,
         },
         mode::{
             self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,
-            User, alias, alt, ctrl, event, map, shift, 
+            User, alias, alt, ctrl, event, map, shift,
         },
         opts::{Opts, ScrollOff, TabMode},
         plug, setup_duat,

@@ -25,17 +25,20 @@ use duat_core::{
     },
     context::{self, Handle},
     data::Pass,
-    hook::{self, KeyTyped, ModeSwitched, OnMouseEvent, WidgetOpened},
-    mode::MouseEventKind,
+    hook::{self, KeySent, ModeSwitched, OnMouseEvent, WidgetOpened},
+    mode::{KeyCode, MouseEventKind, event},
     text::{Point, Spawn, Text, TextMut, txt},
     ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
 };
 use duat_term::Frame;
 
-use crate::widgets::Info;
 pub use crate::widgets::completions::{
     commands::CommandsCompletions, lists::ExhaustiveCompletionsList, paths::PathCompletions,
     words::WordCompletions,
+};
+use crate::{
+    hooks::{CompletionFinished, CompletionSelected},
+    widgets::Info,
 };
 
 mod commands;
@@ -110,8 +113,16 @@ pub fn completions_setup() {
         let completions = completions.clone();
         let ns = Ns::new();
 
-        hook::add::<KeyTyped>(move |pa, _| {
+        hook::add::<KeySent>(move |pa, key_event| {
             let completions_master = completions.master(pa).unwrap();
+
+            if let event!(KeyCode::Char(..)) = key_event
+                && let Some((idx, current)) = completions.write(pa).current_completion.take()
+            {
+                let result = hook::trigger(pa, CompletionFinished(CompletionEntry(current)));
+                completions.write(pa).current_completion = Some((idx, result.0.0));
+            }
+
             if completions.is_closed()
                 || completions_master.is_closed()
                 || completions_master.selections(pa).is_empty()
@@ -141,6 +152,25 @@ pub fn completions_setup() {
         MouseEventKind::ScrollUp => _ = Completions::scroll(pa, -1),
         _ => {}
     });
+}
+
+/// A completion entry.
+///
+/// This came from some [`CompletionsProvider`], and is used on the
+/// [`CompletionSelected`] and [`CompletionFinished`] hooks.
+pub struct CompletionEntry(Box<dyn Any + Send>);
+
+impl CompletionEntry {
+    /// Returns `Some` if the completion entry came from the given
+    /// [provider].
+    ///
+    /// You should use this function in order to confirm the origin of
+    /// a provider before running any post completion hooks.
+    ///
+    /// [provider]: CompletionsProvider
+    pub fn get_for<P: CompletionsProvider>(&self) -> Option<&P::Entry> {
+        self.0.as_ref().downcast_ref()
+    }
 }
 
 /// A builder for [`Completions`], a [`Widget`] to show word
@@ -199,29 +229,30 @@ impl CompletionsBuilder {
             return;
         };
 
-        let Some((providers, start_byte, entries)) = self
+        let Some((providers, provided)) = self
             .providers
             .map(|call| call(handle.text(pa), 20, self.min_prefix))
         else {
             return;
         };
 
-        let (text, sidebar) = entries.unwrap_or_default();
+        let list = provided.list.unwrap_or_default();
 
         let completions = Completions {
             providers,
-            text,
-            sidebar,
+            text: list.entries_text,
+            sidebar: list.sidebar_text,
             max_height: 20,
-            start_byte,
+            start_byte: provided.start,
             cur_min_prefix: self.min_prefix,
             min_prefix: self.min_prefix,
             last_cursor: main.cursor(),
             info_handle: None,
+            current_completion: None,
         };
 
         let mut text = handle.text_mut(pa);
-        text.insert_tag(*NS, start_byte, Spawn::new(completions, SPAWN_SPECS));
+        text.insert_tag(*NS, provided.start, Spawn::new(completions, SPAWN_SPECS));
     }
 
     /// Adds a new [`CompletionsProvider`] to be prioritized over
@@ -230,23 +261,20 @@ impl CompletionsBuilder {
         let prev = self.providers.take();
 
         self.providers = Some(Box::new(move |text, height, min_prefix| {
-            let (inner, start_byte, entries) =
-                InnerProvider::new(provider, text, height, min_prefix);
+            let (inner, reserve) = InnerProvider::new(provider, text, height, min_prefix);
 
-            let Some((mut providers, reserve_start_byte, reserve_entries)) =
-                prev.map(|call| call(text, height, min_prefix))
+            let Some((mut providers, provided)) = prev.map(|call| call(text, height, min_prefix))
             else {
-                return (vec![Box::new(inner)], start_byte, entries);
+                return (vec![Box::new(inner)], reserve);
             };
 
             providers.insert(0, Box::new(inner));
 
-            let start_byte = entries
-                .as_ref()
-                .and(Some(start_byte))
-                .unwrap_or(reserve_start_byte);
-
-            (providers, start_byte, entries.or(reserve_entries))
+            if provided.list.is_some() {
+                (providers, provided)
+            } else {
+                (providers, reserve)
+            }
         }));
 
         self
@@ -264,6 +292,7 @@ pub struct Completions {
     min_prefix: usize,
     last_cursor: Point,
     info_handle: Option<Handle<Info>>,
+    current_completion: Option<(usize, Box<dyn Any + Send>)>,
 }
 
 impl Completions {
@@ -408,9 +437,9 @@ impl Completions {
     }
 
     #[track_caller]
-    fn update_text_and_position(
-        pa: &mut Pass,
-        completions: &Handle<Self>,
+    fn update_text_and_position<'a>(
+        pa: &'a mut Pass,
+        completions: &'a Handle<Self>,
         scroll: i32,
     ) -> Option<(String, String)> {
         let master_handle = completions.master(pa).unwrap();
@@ -420,39 +449,63 @@ impl Completions {
             completions.widget(),
         ));
 
-        let mat = {
-            let mut lists: Vec<_> = comp
-                .providers
-                .iter_mut()
-                .map(|inner| {
-                    let texts_and_match = inner.texts_and_match(
-                        master.text(),
-                        scroll,
-                        Some(area),
-                        comp.max_height,
-                        comp.cur_min_prefix,
-                    );
-                    (texts_and_match, inner.start_fn())
-                })
-                .collect();
-            lists.sort_by_key(|((start, _), _)| *start);
-            lists
-                .into_iter()
-                .find_map(|((start, list), start_fn)| list.map(|list| ((start, list), start_fn)))
+        let found_list = {
+            let indices = if let Some((main_idx, _)) = &comp.current_completion {
+                [
+                    *main_idx..*main_idx + 1,
+                    0..*main_idx,
+                    *main_idx + 1..comp.providers.len(),
+                ]
+            } else {
+                [0..comp.providers.len(), 0..0, 0..0]
+            };
+
+            let mut lists = Vec::from_iter(
+                comp.providers
+                    .get_disjoint_mut(indices.clone())
+                    .unwrap()
+                    .into_iter()
+                    .zip(indices)
+                    .flat_map(|(providers, indices)| indices.into_iter().zip(providers))
+                    .map(|(idx, provider)| {
+                        let provided = provider.process(
+                            master.text(),
+                            scroll,
+                            Some(area),
+                            comp.max_height,
+                            comp.cur_min_prefix,
+                        );
+                        (idx, (provided, provider.start_fn()))
+                    }),
+            );
+
+            lists.sort_by_key(|(_, (provided, _))| provided.start);
+            lists.into_iter().find_map(|(idx, (provided, start_fn))| {
+                provided
+                    .list
+                    .map(|list| ((idx, provided.start, list), start_fn))
+            })
         };
 
         // Believe it or not, this is necessary to prevent Drop semantincs
         // from invalidating the following code.
-        let (other, start_fn) = mat.unzip();
+        let (value, start_fn) = found_list.unzip();
 
-        let main_replacement = if let Some((start_byte, ((text, sides), replacement))) = other {
-            comp.text = text;
-            comp.sidebar = sides;
-
+        let main_replacement = if let Some((idx, start_byte, list)) = value {
+            comp.text = list.entries_text;
+            comp.sidebar = list.sidebar_text;
             let mut main_replacement = None;
 
             let mut new_start_byte = start_byte;
-            if let Some((replacement, info_text)) = replacement {
+            if let Some(repl) = list.replacement {
+                let (word, info) = match repl {
+                    Replacement::FromList { word, entry, info } => {
+                        comp.current_completion = Some((idx, entry));
+                        (word, info)
+                    }
+                    Replacement::Prefix(word) => (word, None),
+                };
+
                 // Also necessary, believe it or not.
                 let start_fn = start_fn.unwrap();
 
@@ -469,17 +522,17 @@ impl Completions {
 
                 master_handle.edit_all(pa, |mut s| {
                     let start = (starts.next().unwrap() as i32 + shift) as usize;
-                    shift += replacement.len() as i32 - (s.cursor().byte() as i32 - start as i32);
+                    shift += word.len() as i32 - (s.cursor().byte() as i32 - start as i32);
 
                     s.move_to(start..s.cursor().byte());
 
                     if s.is_main() {
-                        main_replacement = Some((s.selection().to_string(), replacement.clone()));
+                        main_replacement = Some((s.selection().to_string(), word.clone()));
                     }
 
-                    s.replace(&replacement);
+                    s.replace(&word);
                     s.unset_anchor();
-                    if !replacement.is_empty() {
+                    if !word.is_empty() {
                         s.move_hor(1);
                     }
 
@@ -488,7 +541,7 @@ impl Completions {
                     }
                 });
 
-                if let Some((info_text, orientation)) = info_text {
+                if let Some((info_text, orientation)) = info {
                     let info_handle = if let Some(info) = completions.read(pa).info_handle.clone()
                         && !info.is_closed()
                     {
@@ -518,7 +571,7 @@ impl Completions {
                             ..Default::default()
                         };
                         frame.set_text(Side::Above, move |_| {
-                            txt!("[terminal.border.Info]┤[]{replacement}[terminal.border.Info]├")
+                            txt!("[terminal.border.Info]┤[]{word}[terminal.border.Info]├")
                         });
                         area.set_frame(frame);
                     }
@@ -527,6 +580,13 @@ impl Completions {
                 }
             } else {
                 drop(start_fn);
+            }
+
+            if scroll != 0
+                && let Some((idx, current)) = completions.write(pa).current_completion.take()
+            {
+                let result = hook::trigger(pa, CompletionSelected(CompletionEntry(current)));
+                completions.write(pa).current_completion = Some((idx, result.0.0));
             }
 
             let comp = completions.write(pa);
@@ -543,6 +603,7 @@ impl Completions {
                     min_prefix: comp.min_prefix,
                     last_cursor: comp.last_cursor,
                     info_handle: comp.info_handle.take(),
+                    current_completion: comp.current_completion.take(),
                 };
 
                 let mut text = master_handle.text_mut(pa);
@@ -558,6 +619,7 @@ impl Completions {
             drop(start_fn);
             comp.text = Text::default();
             comp.sidebar = Text::default();
+            comp.current_completion = None;
             None
         };
 
@@ -618,9 +680,12 @@ impl Drop for Completions {
 pub trait CompletionsProvider: Send + Sized + 'static {
     /// An entry in this `CompletionsProvider`.
     ///
-    /// This should typically be a reference to some type, like `&'e
-    /// str`.
-    type Entry: Send;
+    /// This should typically be either some [`Copy`] type, or a
+    /// cheaply cloneable reference, like [`Arc<T>`], or a struct made
+    /// of cheaply cloneable references.
+    ///
+    /// [`Arc<T>`]: std::sync::Arc
+    type Entry: Send + Clone;
 
     /// Get all completion entries based on the [start] and [prefix].
     ///
@@ -720,17 +785,14 @@ pub trait CompletionsProvider: Send + Sized + 'static {
 trait ErasedInnerProvider: Any + Send {
     #[allow(clippy::type_complexity)]
     #[track_caller]
-    fn texts_and_match(
+    fn process(
         &mut self,
         text: &Text,
         scroll: i32,
         area: Option<&mut Area>,
         max_height: usize,
         min_prefix: usize,
-    ) -> (
-        usize,
-        Option<((Text, Text), Option<(String, Option<(Text, Orientation)>)>)>,
-    );
+    ) -> Provided;
 
     #[allow(clippy::type_complexity)]
     fn start_fn(&self) -> Box<dyn Fn(&Text, Point) -> usize + '_>;
@@ -752,12 +814,7 @@ struct InnerProvider<P: CompletionsProvider> {
 
 impl<P: CompletionsProvider> InnerProvider<P> {
     #[allow(clippy::type_complexity)]
-    fn new(
-        mut provider: P,
-        text: &Text,
-        height: usize,
-        min_prefix: usize,
-    ) -> (Self, usize, Option<(Text, Text)>) {
+    fn new(mut provider: P, text: &Text, height: usize, min_prefix: usize) -> (Self, Provided) {
         let Some(main_cursor) = text.get_main_sel().map(|sel| sel.cursor()) else {
             panic!("Tried to spawn completions on a Text with no main selection");
         };
@@ -779,24 +836,21 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             matches,
         };
 
-        let (start, text) = inner.texts_and_match(text, 0, None, height, min_prefix);
-        (inner, start, text.unzip().0)
+        let provided = inner.process(text, 0, None, height, min_prefix);
+        (inner, provided)
     }
 }
 
 impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
     #[track_caller]
-    fn texts_and_match(
+    fn process(
         &mut self,
         text: &Text,
         scroll: i32,
         area: Option<&mut Area>,
         max_height: usize,
         min_prefix: usize,
-    ) -> (
-        usize,
-        Option<((Text, Text), Option<(String, Option<(Text, Orientation)>)>)>,
-    ) {
+    ) -> Provided {
         let Some(cursor) = text.get_main_sel().map(|sel| sel.cursor()) else {
             panic!(
                 "Tried to update completions on a Text with no main selection {}",
@@ -845,7 +899,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
 
         if matches.is_empty() || self.prefix.chars().count() < min_prefix {
             self.current = None;
-            return (start, None);
+            return Provided { start, list: None };
         }
 
         let height = if let Some(area) = area {
@@ -928,15 +982,22 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let replacement = if scroll != 0 {
             self.current
                 .clone()
-                .map(|(word, _)| (word.to_string(), info))
-                .or_else(|| Some((self.prefix.clone(), None)))
+                .map(|(word, (_, idx))| Replacement::FromList {
+                    word,
+                    entry: Box::new(matches[idx].clone()),
+                    info,
+                })
+                .or_else(|| Some(Replacement::Prefix(self.prefix.clone())))
         } else {
             None
         };
 
         let entries_text = entries_builder.build();
         let sidebar_text = sidebar_builder.build();
-        (start, Some(((entries_text, sidebar_text), replacement)))
+        Provided {
+            start,
+            list: Some(List { entries_text, sidebar_text, replacement }),
+        }
     }
 
     fn start_fn(&self) -> Box<dyn Fn(&Text, Point) -> usize + '_> {
@@ -993,17 +1054,29 @@ const SPAWN_SPECS: DynSpawnSpecs = DynSpawnSpecs {
     inside: false,
 };
 
-type ProvidersFn = Box<
-    dyn FnOnce(
-            &Text,
-            usize,
-            usize,
-        ) -> (
-            Vec<Box<dyn ErasedInnerProvider>>,
-            usize,
-            Option<(Text, Text)>,
-        ) + Send,
->;
+type ProvidersFn =
+    Box<dyn FnOnce(&Text, usize, usize) -> (Vec<Box<dyn ErasedInnerProvider>>, Provided) + Send>;
 type ParamCompletions =
     Box<Mutex<dyn FnMut(&Pass, CompletionsBuilder) -> CompletionsBuilder + Send + Sync>>;
 type BufferCompletionsFn = Box<dyn FnMut(&mut Pass) -> CompletionsBuilder + Send>;
+
+struct Provided {
+    start: usize,
+    list: Option<List>,
+}
+
+#[derive(Default)]
+struct List {
+    entries_text: Text,
+    sidebar_text: Text,
+    replacement: Option<Replacement>,
+}
+
+enum Replacement {
+    FromList {
+        word: String,
+        entry: Box<dyn Any + Send>,
+        info: Option<(Text, Orientation)>,
+    },
+    Prefix(String),
+}
