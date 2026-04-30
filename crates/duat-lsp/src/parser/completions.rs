@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
-use duat_base::widgets::Completions;
+use duat_base::{hooks::CompletionSelected, widgets::Completions};
 use duat_core::{
-    context,
+    Ns, context,
     data::Pass,
+    hook,
     text::{Point, RegexHaystack, Spacer, Text},
     txt,
     ui::Orientation,
@@ -11,10 +12,69 @@ use duat_core::{
 use lsp_types::{
     CompletionContext, CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse,
     CompletionTriggerKind, Documentation, PartialResultParams, TextDocumentIdentifier,
-    TextDocumentPositionParams, Uri, WorkDoneProgressParams, request::Completion,
+    TextDocumentPositionParams, Uri, WorkDoneProgressParams,
+    request::{Completion, ResolveCompletionItem},
 };
 
 use crate::{Encoding, parser::PARSERS, path_to_uri, server::Server};
+
+pub fn setup_hooks() {
+    hook::add::<CompletionSelected>(|_, entry| {
+        let Some(lsp_entry) = entry.get_for::<LspCompletions>() else {
+            return;
+        };
+
+        if lsp_entry.documentation.is_some() {
+            return;
+        }
+
+        let server_ns = lsp_entry.server_ns;
+        let idx = entry.index;
+        let list_idx = lsp_entry.list_idx;
+
+        let old_item = lsp_entry.item.clone();
+
+        crate::server::on_ns(lsp_entry.server_ns, |server| {
+            server.send_request::<ResolveCompletionItem>(
+                old_item.as_ref().clone(),
+                move |pa, new_item| {
+                    Completions::update_provider(pa, move |comp: &mut LspCompletions, list| {
+                        let Some((.., Some(comp))) =
+                            comp.lists.iter_mut().find(|(s, ..)| s.ns() == server_ns)
+                        else {
+                            return;
+                        };
+
+                        let idx = list
+                            .get(idx)
+                            .filter(|entry| entry.item == old_item)
+                            .and(Some(idx))
+                            .or_else(|| list.iter().position(|entry| entry.item == old_item));
+
+                        if let Some(idx) = idx {
+                            list[idx] = Entry {
+                                list_idx,
+                                server_ns,
+                                item: Arc::new(new_item.clone()),
+                            };
+                        }
+
+                        let list_idx = comp
+                            .entries
+                            .get(list_idx)
+                            .filter(|item| **item == old_item)
+                            .and(Some(list_idx))
+                            .or_else(|| comp.entries.iter().position(|item| *item == old_item));
+
+                        if let Some(list_idx) = list_idx {
+                            comp.entries[list_idx] = Arc::new(new_item.clone());
+                        }
+                    });
+                },
+            );
+        });
+    });
+}
 
 pub struct LspCompletions {
     uri: Uri,
@@ -127,13 +187,21 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
                 send_update_request(text, server, *encoding, self.uri.clone());
             }
 
-            let list = Vec::from_iter(list.entries.iter().filter_map(|item| {
+            let list = Vec::from_iter(list.entries.iter().enumerate().filter_map(|(idx, item)| {
                 let label = item.filter_text.as_deref().unwrap_or(&item.label);
 
                 if case_insensitive {
-                    string_cmp(&prefix, &label.to_uppercase()).map(|_| Entry(item.clone()))
+                    string_cmp(&prefix, &label.to_uppercase()).map(|_| Entry {
+                        list_idx: idx,
+                        server_ns: server.ns(),
+                        item: item.clone(),
+                    })
                 } else {
-                    string_cmp(&prefix, label).map(|_| Entry(item.clone()))
+                    string_cmp(&prefix, label).map(|_| Entry {
+                        list_idx: idx,
+                        server_ns: server.ns(),
+                        item: item.clone(),
+                    })
                 }
             }));
 
@@ -204,7 +272,7 @@ fn send_update_request(text: &Text, server: &Server, encoding: Encoding, uri: Ur
                     return;
                 };
 
-                let list = match result {
+                let new_list = match result {
                     CompletionResponse::Array(items) => List {
                         is_incomplete: false,
                         entries: items.into_iter().map(Arc::new).collect(),
@@ -215,13 +283,13 @@ fn send_update_request(text: &Text, server: &Server, encoding: Encoding, uri: Ur
                     },
                 };
 
-                Completions::update_provider(pa, move |completions: &mut LspCompletions| {
+                Completions::update_provider(pa, move |completions: &mut LspCompletions, _| {
                     let (.., old) = completions
                         .lists
                         .iter_mut()
                         .find(|(server, ..)| ns == server.ns())
                         .unwrap();
-                    *old = Some(list);
+                    *old = Some(new_list);
                 });
             }
         },
@@ -256,12 +324,16 @@ struct List {
 
 /// A completion item entry.
 #[derive(Debug, Clone)]
-pub struct Entry(Arc<CompletionItem>);
+pub struct Entry {
+    list_idx: usize,
+    server_ns: Ns,
+    item: Arc<CompletionItem>,
+}
 
 impl std::ops::Deref for Entry {
     type Target = CompletionItem;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.item
     }
 }

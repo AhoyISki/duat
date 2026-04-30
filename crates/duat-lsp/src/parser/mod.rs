@@ -172,6 +172,8 @@ pub fn setup_hooks() {
     static OPENED_BUFFERS: LazyLock<Mutex<HashSet<PathBuf>>> =
         LazyLock::new(|| Mutex::new(storage::get_if(|_| true).unwrap_or_default()));
 
+    completions::setup_hooks();
+
     hook::add::<ConfigUnloaded>(|pa, is_quitting| {
         if !is_quitting {
             _ = storage::store(pa, std::mem::take(&mut *OPENED_BUFFERS.lock().unwrap()))
@@ -207,15 +209,11 @@ pub fn setup_hooks() {
                 });
             }
 
-            let (parser, buf) = PARSERS.register(
-                pa,
-                buffer,
-                Parser {
-                    uri,
-                    servers: servers.clone(),
-                    tokens: BufferTokens::default(),
-                },
-            );
+            let (parser, buf) = PARSERS.register(pa, buffer, Parser {
+                uri,
+                servers: servers.clone(),
+                tokens: BufferTokens::default(),
+            });
 
             for server in &servers {
                 server.send_semantic_tokens_request(buffer, parser);

@@ -117,10 +117,13 @@ pub fn completions_setup() {
             let completions_master = completions.master(pa).unwrap();
 
             if let event!(KeyCode::Char(..)) = key_event
-                && let Some((idx, current)) = completions.write(pa).current_completion.take()
+                && let Some((idx, entry)) = completions.write(pa).current_completion.take()
             {
-                let result = hook::trigger(pa, CompletionFinished(CompletionEntry(current)));
-                completions.write(pa).current_completion = Some((idx, result.0.0));
+                let result = hook::trigger(
+                    pa,
+                    CompletionFinished(CompletionEntry { index: idx, entry }),
+                );
+                completions.write(pa).current_completion = Some((idx, result.0.entry));
             }
 
             if completions.is_closed()
@@ -158,7 +161,11 @@ pub fn completions_setup() {
 ///
 /// This came from some [`CompletionsProvider`], and is used on the
 /// [`CompletionSelected`] and [`CompletionFinished`] hooks.
-pub struct CompletionEntry(Box<dyn Any + Send>);
+pub struct CompletionEntry {
+    /// The index on the list where this item came from.
+    pub index: usize,
+    entry: Box<dyn Any + Send>,
+}
 
 impl CompletionEntry {
     /// Returns `Some` if the completion entry came from the given
@@ -169,7 +176,7 @@ impl CompletionEntry {
     ///
     /// [provider]: CompletionsProvider
     pub fn get_for<P: CompletionsProvider>(&self) -> Option<&P::Entry> {
-        self.0.as_ref().downcast_ref()
+        self.entry.as_ref().downcast_ref()
     }
 }
 
@@ -409,11 +416,15 @@ impl Completions {
         context::handle_of::<Completions>(pa).is_some()
     }
 
-    /// Update a [`CompletionsProvider`].
+    /// Update a [`CompletionsProvider`], alongside the last provided
+    /// list of entries.
     ///
     /// This function may not be called if the provider is no longer
     /// present.
-    pub fn update_provider<P: CompletionsProvider>(pa: &mut Pass, update: impl FnOnce(&mut P)) {
+    pub fn update_provider<P: CompletionsProvider>(
+        pa: &mut Pass,
+        update: impl FnOnce(&mut P, &mut Vec<P::Entry>),
+    ) {
         let Some(completions) = context::handle_of::<Completions>(pa) else {
             return;
         };
@@ -424,8 +435,8 @@ impl Completions {
             .iter_mut()
             .find_map(|provider| provider.as_any().downcast_mut::<InnerProvider<P>>())
         {
-            update(&mut inner.provider);
-            inner.matches = None;
+            update(&mut inner.provider, &mut inner.matches);
+            inner.has_changed = true;
 
             Completions::update_text_and_position(pa, &completions, 0);
             let completions_master = completions.master(pa).unwrap();
@@ -583,10 +594,13 @@ impl Completions {
             }
 
             if scroll != 0
-                && let Some((idx, current)) = completions.write(pa).current_completion.take()
+                && let Some((idx, entry)) = completions.write(pa).current_completion.take()
             {
-                let result = hook::trigger(pa, CompletionSelected(CompletionEntry(current)));
-                completions.write(pa).current_completion = Some((idx, result.0.0));
+                let result = hook::trigger(
+                    pa,
+                    CompletionSelected(CompletionEntry { index: idx, entry }),
+                );
+                completions.write(pa).current_completion = Some((idx, result.0.entry));
             }
 
             let comp = completions.write(pa);
@@ -809,7 +823,8 @@ struct InnerProvider<P: CompletionsProvider> {
     prefix: String,
     current: Option<(String, (usize, usize))>,
     previous: String,
-    matches: Option<Vec<P::Entry>>,
+    matches: Vec<P::Entry>,
+    has_changed: bool,
 }
 
 impl<P: CompletionsProvider> InnerProvider<P> {
@@ -824,7 +839,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             .unwrap_or(main_cursor.byte());
 
         let prefix = text[start..main_cursor.byte()].to_string();
-        let matches = Some(provider.matches(text, text.point_at_byte(start), &prefix));
+        let matches = provider.matches(text, text.point_at_byte(start), &prefix);
 
         let mut inner = Self {
             provider,
@@ -834,6 +849,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             current: None,
             previous: prefix,
             matches,
+            has_changed: false,
         };
 
         let provided = inner.process(text, 0, None, height, min_prefix);
@@ -865,9 +881,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
                 || (self.current.is_none() && strs != self.prefix)
         });
 
-        let (start, matches) = if let Some(matches) = &self.matches
-            && !target_changed
-        {
+        let (start, matches) = if !self.matches.is_empty() && !target_changed {
             let prefix: &str = self
                 .current
                 .as_ref()
@@ -876,7 +890,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
 
             self.previous = prefix.to_string();
 
-            (cursor.byte() - prefix.len(), matches)
+            (cursor.byte() - prefix.len(), &self.matches)
         } else {
             let start = self
                 .provider
@@ -888,13 +902,11 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             self.current = None;
             self.previous = self.prefix.clone();
 
-            let matches = self.matches.insert(self.provider.matches(
-                text,
-                text.point_at_byte(start),
-                &self.prefix,
-            ));
+            self.matches = self
+                .provider
+                .matches(text, text.point_at_byte(start), &self.prefix);
 
-            (cursor.byte() - self.prefix.len(), &*matches)
+            (cursor.byte() - self.prefix.len(), &self.matches)
         };
 
         if matches.is_empty() || self.prefix.chars().count() < min_prefix {
@@ -911,7 +923,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         };
 
         let mut info = None;
-        if scroll != 0 {
+        if scroll != 0 || self.has_changed {
             // No try blocks on stable Rust 🤮.
             let new_current = if let Some((prev_word, (dist, idx))) = &self.current {
                 if let dist = dist.saturating_add_signed(scroll as isize).min(height - 1)
@@ -979,7 +991,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             }
         }
 
-        let replacement = if scroll != 0 {
+        let replacement = if scroll != 0 || self.has_changed {
             self.current
                 .clone()
                 .map(|(word, (_, idx))| Replacement::FromList {
@@ -991,6 +1003,8 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         } else {
             None
         };
+        
+        self.has_changed = false;
 
         let entries_text = entries_builder.build();
         let sidebar_text = sidebar_builder.build();

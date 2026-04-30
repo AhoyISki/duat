@@ -212,11 +212,20 @@ pub fn get_servers_for(path: &Path) -> Option<Vec<Server>> {
     Some(servers.collect())
 }
 
-/// Call a function on each [`Server`]
+/// Call a function on each [`Server`].
 pub fn on_all_servers(mut func: impl FnMut(&Server)) {
     let servers = SERVERS.lock().unwrap();
     for server in servers.iter() {
         func(server)
+    }
+}
+
+/// Call a function on a [`Server`] with the given [`Ns`].
+#[track_caller]
+pub fn on_ns(ns: Ns, func: impl FnOnce(&Server)) {
+    let servers = SERVERS.lock().unwrap();
+    if let Some(server) = servers.iter().find(|server| server.ns() == ns) {
+        func(server);
     }
 }
 
