@@ -294,9 +294,11 @@ impl RawArea for Area {
         let mut max_y = 0;
         let mut width = 0;
         let mut is_first = true;
+        let mut has_unwrapped_chars = false;
 
         for (place, item) in iter {
             if place.wrap && !is_first {
+                has_unwrapped_chars = false;
                 if max_y == max.y {
                     break;
                 }
@@ -306,13 +308,15 @@ impl RawArea for Area {
             } else {
                 is_first = false;
             }
+
             if item.part.is_char() {
                 width += place.len;
+                has_unwrapped_chars |= place.wrap && !is_first;
             }
         }
 
         // The text may not end with a newline, even if it has characters.
-        let max_y = if text.is_empty() { 0 } else { max_y.max(1) };
+        max_y += has_unwrapped_chars as u32;
 
         Ok(ui::Coord::new(max_x.max(width) as f32, max_y as f32))
     }
@@ -424,7 +428,7 @@ impl RawArea for Area {
 
                 let number = item.line();
                 let is_wrapped = prev_point.is_some_and(|ll| ll == number);
-                
+
                 prev_point = (!is_ghost).then_some(number);
                 printed_lines.push(PrintedLine { number, is_wrapped, is_ghost: true });
             }
