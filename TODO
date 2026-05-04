@@ -3,7 +3,8 @@ FOR NEXT UPDATE:
 [ ] More duat-lsp features:
   [x] Diagnostics.
   [ ] Goto locations.
-  [ ] Autocompletions.
+  [x] Autocompletions.
+  [ ] Snippets.
   [x] Formatting.
   [x] Caching.
 [ ] Snippet support.
@@ -18,7 +19,7 @@ FOR NEXT UPDATE:
 [ ] Stop eagerly merging Selections.
 [x] Additional wrap continuation characters.
 [ ] Add a donation splash screen.
-[ ] Some QoL features:
+[x] Some QoL features:
   [x] Autocompletions only after n characters.
   [x] Remember if a buffer needed to be saved.
   [x] Case insensitive completions.

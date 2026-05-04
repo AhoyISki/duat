@@ -16,7 +16,7 @@ use crate::{
     buffer::Buffer,
     context::{self, Handle},
     data::{Pass, RwData},
-    hook::{self, KeySent, ModeSwitched},
+    hook::{self, ModeSwitched},
     ui::{Node, Widget},
     utils::{catch_panic, duat_name},
 };

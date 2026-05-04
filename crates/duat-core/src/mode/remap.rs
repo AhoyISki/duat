@@ -21,7 +21,7 @@ use crate::{
     Ns, context,
     data::{BulkDataWriter, Pass, RwData},
     hook::{self, KeySent},
-    mode::{self, Binding, Bindings},
+    mode::{Binding, Bindings},
     text::{Inlay, Text, txt},
     ui::Widget,
 };
