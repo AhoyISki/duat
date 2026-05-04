@@ -1991,12 +1991,13 @@ impl Strs {
 impl<Idx: TextRange> std::ops::Index<Idx> for Strs {
     type Output = Self;
 
+	#[track_caller]
     fn index(&self, index: Idx) -> &Self::Output {
         let formed = FormedStrs::new(self);
         let range = index.to_range(formed.len as usize);
 
-        assert_utf8_boundary(formed.buf, range.start);
-        assert_utf8_boundary(formed.buf, range.end);
+        assert_utf8_boundary(formed.buf, formed.start as usize + range.start);
+        assert_utf8_boundary(formed.buf, formed.start as usize + range.end);
 
         Self::new(
             formed.buf,
