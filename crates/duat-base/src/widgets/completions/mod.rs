@@ -116,16 +116,6 @@ pub fn completions_setup() {
         hook::add::<KeySent>(move |pa, key_event| {
             let completions_master = completions.master(pa).unwrap();
 
-            if let event!(KeyCode::Char(..)) = key_event
-                && let Some((idx, entry)) = completions.write(pa).current_completion.take()
-            {
-                let result = hook::trigger(
-                    pa,
-                    CompletionFinished(CompletionEntry { index: idx, entry }),
-                );
-                completions.write(pa).current_completion = Some((idx, result.0.entry));
-            }
-
             if completions.is_closed()
                 || completions_master.is_closed()
                 || completions_master.selections(pa).is_empty()
@@ -138,6 +128,17 @@ pub fn completions_setup() {
             completions.write(pa).last_cursor = completions_master.selections(pa).main().cursor();
             if !completions.is_closed() {
                 Completions::set_frame(pa, &completions);
+            }
+
+            if let event!(KeyCode::Char(..)) = key_event
+                && let Some((index, replacement, entry)) =
+                    completions.write(pa).current_completion.take()
+            {
+                
+                hook::trigger(
+                    pa,
+                    CompletionFinished(CompletionEntry { index, replacement, entry }),
+                );
             }
         })
         .grouped(ns);
@@ -164,6 +165,8 @@ pub fn completions_setup() {
 pub struct CompletionEntry {
     /// The index on the list where this item came from.
     pub index: usize,
+    /// What the text was replaced with.
+    pub replacement: String,
     entry: Box<dyn Any + Send>,
 }
 
@@ -299,7 +302,7 @@ pub struct Completions {
     min_prefix: usize,
     last_cursor: Point,
     info_handle: Option<Handle<Info>>,
-    current_completion: Option<(usize, Box<dyn Any + Send>)>,
+    current_completion: Option<(usize, String, Box<dyn Any + Send>)>,
 }
 
 impl Completions {
@@ -461,7 +464,7 @@ impl Completions {
         ));
 
         let found_list = {
-            let indices = if let Some((main_idx, _)) = &comp.current_completion {
+            let indices = if let Some((main_idx, ..)) = &comp.current_completion {
                 [
                     *main_idx..*main_idx + 1,
                     0..*main_idx,
@@ -511,7 +514,7 @@ impl Completions {
             if let Some(repl) = list.replacement {
                 let (word, info) = match repl {
                     Replacement::FromList { word, entry, info } => {
-                        comp.current_completion = Some((idx, entry));
+                        comp.current_completion = Some((idx, word.clone(), entry));
                         (word, info)
                     }
                     Replacement::Prefix(word) => (word, None),
@@ -594,13 +597,15 @@ impl Completions {
             }
 
             if scroll != 0
-                && let Some((idx, entry)) = completions.write(pa).current_completion.take()
+                && let Some((index, replacement, entry)) =
+                    completions.write(pa).current_completion.take()
             {
                 let result = hook::trigger(
                     pa,
-                    CompletionSelected(CompletionEntry { index: idx, entry }),
+                    CompletionSelected(CompletionEntry { index, replacement, entry }),
                 );
-                completions.write(pa).current_completion = Some((idx, result.0.entry));
+                completions.write(pa).current_completion =
+                    Some((index, result.0.replacement, result.0.entry));
             }
 
             let comp = completions.write(pa);
@@ -1003,7 +1008,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         } else {
             None
         };
-        
+
         self.has_changed = false;
 
         let entries_text = entries_builder.build();

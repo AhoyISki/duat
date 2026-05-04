@@ -136,16 +136,25 @@ impl ServerBridge {
         params: R::Params,
         callback: impl FnOnce(&mut Pass, R::Result) + Send + 'static,
     ) {
-        let message = Box::new(move || {
-            let params = serde_json::to_value(params).map_err(|err| {
-                std::io::Error::other(format!("Failed to parse parameters: {err}"))
-            })?;
+        self.send_request_with_id::<R>(method_id(R::METHOD).unwrap(), params, callback);
+    }
 
-            Ok(JsonRpc::request_with_params(
-                method_id(R::METHOD).unwrap(),
-                R::METHOD,
-                params,
-            ))
+    /// Sends a request alognside its parameters and a custom id.
+    pub fn send_request_with_id<R: Request + 'static>(
+        &self,
+        id: Id,
+        params: R::Params,
+        callback: impl FnOnce(&mut Pass, R::Result) + Send + 'static,
+    ) {
+        let message = Box::new({
+            let id = id.clone();
+            move || {
+                let params = serde_json::to_value(params).map_err(|err| {
+                    std::io::Error::other(format!("Failed to parse parameters: {err}"))
+                })?;
+
+                Ok(JsonRpc::request_with_params(id, R::METHOD, params))
+            }
         });
 
         if TypeId::of::<R>() != TypeId::of::<Initialize>()
@@ -162,10 +171,7 @@ impl ServerBridge {
             callback(pa, serde_json::from_value(result).unwrap())
         };
 
-        if callbacks
-            .insert(method_id(R::METHOD).unwrap(), Box::new(callback))
-            .is_some()
-        {
+        if callbacks.insert(id, Box::new(callback)).is_some() {
             self.cancel::<R>()
         }
     }

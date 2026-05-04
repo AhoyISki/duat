@@ -14,6 +14,7 @@ use duat_core::{
     },
 };
 use duat_filetype::FileType;
+use jsonrpc_lite::Id;
 use lsp_types::{
     ServerCapabilities, ServerInfo,
     notification::{Exit, Notification},
@@ -79,6 +80,16 @@ impl Server {
         callback: impl FnOnce(&mut Pass, R::Result) + Send + 'static,
     ) {
         self.bridge.send_request::<R>(params, callback)
+    }
+
+    /// Sends a request alognside its parameters and a custom id.
+    pub fn send_request_with_id<R: Request + 'static>(
+        &self,
+        id: Id,
+        params: R::Params,
+        callback: impl FnOnce(&mut Pass, R::Result) + Send + 'static,
+    ) {
+        self.bridge.send_request_with_id::<R>(id, params, callback)
     }
 
     /// Send a request to refresh the semantic tokens of a given
@@ -222,10 +233,12 @@ pub fn on_all_servers(mut func: impl FnMut(&Server)) {
 
 /// Call a function on a [`Server`] with the given [`Ns`].
 #[track_caller]
-pub fn on_ns(ns: Ns, func: impl FnOnce(&Server)) {
+pub fn on_ns<Ret>(ns: Ns, func: impl FnOnce(&Server) -> Ret) -> Option<Ret> {
     let servers = SERVERS.lock().unwrap();
     if let Some(server) = servers.iter().find(|server| server.ns() == ns) {
-        func(server);
+        Some(func(server))
+    } else {
+        None
     }
 }
 

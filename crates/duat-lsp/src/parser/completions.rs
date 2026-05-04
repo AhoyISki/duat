@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use duat_base::{hooks::CompletionSelected, widgets::Completions};
+use duat_base::{
+    hooks::{CompletionFinished, CompletionSelected},
+    widgets::Completions,
+};
 use duat_core::{
     Ns, context,
     data::Pass,
@@ -9,10 +12,11 @@ use duat_core::{
     txt,
     ui::Orientation,
 };
+use jsonrpc_lite::Id;
 use lsp_types::{
     CompletionContext, CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse,
-    CompletionTriggerKind, Documentation, PartialResultParams, TextDocumentIdentifier,
-    TextDocumentPositionParams, Uri, WorkDoneProgressParams,
+    CompletionTextEdit, CompletionTriggerKind, Documentation, PartialResultParams,
+    TextDocumentIdentifier, TextDocumentPositionParams, Uri, WorkDoneProgressParams,
     request::{Completion, ResolveCompletionItem},
 };
 
@@ -35,7 +39,8 @@ pub fn setup_hooks() {
         let old_item = lsp_entry.item.clone();
 
         crate::server::on_ns(lsp_entry.server_ns, |server| {
-            server.send_request::<ResolveCompletionItem>(
+            server.send_request_with_id::<ResolveCompletionItem>(
+                Id::Str(format!("{}{}", lsp_entry.label, entry.index)),
                 old_item.as_ref().clone(),
                 move |pa, new_item| {
                     Completions::update_provider(pa, move |comp: &mut LspCompletions, list| {
@@ -74,6 +79,41 @@ pub fn setup_hooks() {
             );
         });
     });
+
+    hook::add::<CompletionFinished>(|pa, entry| {
+        let buf = context::current_buffer(pa);
+
+        let Some(lsp_entry) = entry.get_for::<LspCompletions>() else {
+            return;
+        };
+
+        let encoding = crate::server::on_ns(lsp_entry.server_ns, |server| {
+            server.capabilities().map(Encoding::new)
+        })
+        .flatten()
+        .unwrap();
+
+        let mut text = buf.text_mut(pa);
+
+        if let Some(edit) = &lsp_entry.text_edit {
+            let (range, new_text) = match edit {
+                CompletionTextEdit::Edit(edit) => (edit.range, &edit.new_text),
+                CompletionTextEdit::InsertAndReplace(edit) => (edit.replace, &edit.new_text),
+            };
+
+            let start = encoding.byte_from_pos(&text, range.start);
+            let end = encoding.byte_from_pos(&text, range.end);
+
+            if let (Some(start), Some(end)) = (start, end) {
+                text.replace_range(start..end, new_text);
+            }
+        } else if let Some(insert) = &lsp_entry.insert_text {
+            let cursor = text.main_sel().cursor().byte();
+
+            text.replace_range(cursor - insert.len()..cursor, insert);
+        }
+    })
+    .lateness(0);
 }
 
 pub struct LspCompletions {
