@@ -14,6 +14,7 @@
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
+    ops::Range,
     sync::{LazyLock, Mutex},
 };
 
@@ -25,7 +26,7 @@ use duat_core::{
     },
     context::{self, Handle},
     data::Pass,
-    hook::{self, KeySent, ModeSwitched, OnMouseEvent, WidgetOpened},
+    hook::{self, BufferUpdated, KeySent, ModeSwitched, OnMouseEvent, WidgetOpened},
     mode::{KeyCode, MouseEventKind, event},
     text::{Point, Spawn, Text, TextMut, txt},
     ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
@@ -113,7 +114,29 @@ pub fn completions_setup() {
         let completions = completions.clone();
         let ns = Ns::new();
 
-        hook::add::<KeySent>(move |pa, key_event| {
+        hook::add::<KeySent>({
+            let completions = completions.clone();
+            move |pa, key_event| {
+                let completions_master = completions.master(pa).unwrap();
+
+                if completions.is_closed()
+                    || completions_master.is_closed()
+                    || completions_master.selections(pa).is_empty()
+                {
+                    hook::remove(ns);
+                    return;
+                }
+
+                if let event!(KeyCode::Char(..)) = key_event
+                    && let Some((_, entry)) = completions.write(pa).current_entry.take()
+                {
+                    hook::trigger(pa, CompletionFinished(entry));
+                }
+            }
+        })
+        .lateness(0);
+
+        hook::add::<BufferUpdated>(move |pa, _| {
             let completions_master = completions.master(pa).unwrap();
 
             if completions.is_closed()
@@ -128,17 +151,6 @@ pub fn completions_setup() {
             completions.write(pa).last_cursor = completions_master.selections(pa).main().cursor();
             if !completions.is_closed() {
                 Completions::set_frame(pa, &completions);
-            }
-
-            if let event!(KeyCode::Char(..)) = key_event
-                && let Some((index, replacement, entry)) =
-                    completions.write(pa).current_completion.take()
-            {
-                
-                hook::trigger(
-                    pa,
-                    CompletionFinished(CompletionEntry { index, replacement, entry }),
-                );
             }
         })
         .grouped(ns);
@@ -165,6 +177,10 @@ pub fn completions_setup() {
 pub struct CompletionEntry {
     /// The index on the list where this item came from.
     pub index: usize,
+    /// The original byte range of the text being replaced.
+    pub orig_range: Range<usize>,
+    /// What was typed by the user.
+    pub orig_typed: String,
     /// What the text was replaced with.
     pub replacement: String,
     entry: Box<dyn Any + Send>,
@@ -258,7 +274,7 @@ impl CompletionsBuilder {
             min_prefix: self.min_prefix,
             last_cursor: main.cursor(),
             info_handle: None,
-            current_completion: None,
+            current_entry: None,
         };
 
         let mut text = handle.text_mut(pa);
@@ -302,7 +318,7 @@ pub struct Completions {
     min_prefix: usize,
     last_cursor: Point,
     info_handle: Option<Handle<Info>>,
-    current_completion: Option<(usize, String, Box<dyn Any + Send>)>,
+    current_entry: Option<(usize, CompletionEntry)>,
 }
 
 impl Completions {
@@ -464,7 +480,7 @@ impl Completions {
         ));
 
         let found_list = {
-            let indices = if let Some((main_idx, ..)) = &comp.current_completion {
+            let indices = if let Some((main_idx, _)) = &comp.current_entry {
                 [
                     *main_idx..*main_idx + 1,
                     0..*main_idx,
@@ -513,11 +529,15 @@ impl Completions {
             let mut new_start_byte = start_byte;
             if let Some(repl) = list.replacement {
                 let (word, info) = match repl {
-                    Replacement::FromList { word, entry, info } => {
-                        comp.current_completion = Some((idx, word.clone(), entry));
+                    Replacement::FromList(entry, info) => {
+                        let word = entry.replacement.clone();
+                        comp.current_entry = Some((idx, entry));
                         (word, info)
                     }
-                    Replacement::Prefix(word) => (word, None),
+                    Replacement::WithOrig(word) => {
+                        comp.current_entry = None;
+                        (word, None)
+                    }
                 };
 
                 // Also necessary, believe it or not.
@@ -597,15 +617,10 @@ impl Completions {
             }
 
             if scroll != 0
-                && let Some((index, replacement, entry)) =
-                    completions.write(pa).current_completion.take()
+                && let Some((main_idx, entry)) = completions.write(pa).current_entry.take()
             {
-                let result = hook::trigger(
-                    pa,
-                    CompletionSelected(CompletionEntry { index, replacement, entry }),
-                );
-                completions.write(pa).current_completion =
-                    Some((index, result.0.replacement, result.0.entry));
+                let result = hook::trigger(pa, CompletionSelected(entry));
+                completions.write(pa).current_entry = Some((main_idx, result.0));
             }
 
             let comp = completions.write(pa);
@@ -622,7 +637,7 @@ impl Completions {
                     min_prefix: comp.min_prefix,
                     last_cursor: comp.last_cursor,
                     info_handle: comp.info_handle.take(),
-                    current_completion: comp.current_completion.take(),
+                    current_entry: comp.current_entry.take(),
                 };
 
                 let mut text = master_handle.text_mut(pa);
@@ -638,7 +653,7 @@ impl Completions {
             drop(start_fn);
             comp.text = Text::default();
             comp.sidebar = Text::default();
-            comp.current_completion = None;
+            comp.current_entry = None;
             None
         };
 
@@ -825,7 +840,7 @@ struct InnerProvider<P: CompletionsProvider> {
     fmt: Box<dyn FnMut(&P::Entry) -> Text + Send>,
 
     start: usize,
-    prefix: String,
+    typed: String,
     current: Option<(String, (usize, usize))>,
     previous: String,
     matches: Vec<P::Entry>,
@@ -850,7 +865,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             provider,
             fmt: Box::new(P::default_fmt),
             start,
-            prefix: prefix.clone(),
+            typed: prefix.clone(),
             current: None,
             previous: prefix,
             matches,
@@ -883,7 +898,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         // Completions take place.
         let target_changed = text.get(self.start..cursor.byte()).is_none_or(|strs| {
             self.current.as_ref().is_some_and(|(s, _)| strs != *s)
-                || (self.current.is_none() && strs != self.prefix)
+                || (self.current.is_none() && strs != self.typed)
         });
 
         let (start, matches) = if !self.matches.is_empty() && !target_changed {
@@ -891,7 +906,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
                 .current
                 .as_ref()
                 .map(|(s, _)| s.as_ref())
-                .unwrap_or(&self.prefix);
+                .unwrap_or(&self.typed);
 
             self.previous = prefix.to_string();
 
@@ -903,18 +918,18 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
                 .unwrap_or(cursor.byte());
 
             self.start = start;
-            self.prefix = text[start..cursor.byte()].to_string();
+            self.typed = text[start..cursor.byte()].to_string();
             self.current = None;
-            self.previous = self.prefix.clone();
+            self.previous = self.typed.clone();
 
             self.matches = self
                 .provider
-                .matches(text, text.point_at_byte(start), &self.prefix);
+                .matches(text, text.point_at_byte(start), &self.typed);
 
-            (cursor.byte() - self.prefix.len(), &self.matches)
+            (cursor.byte() - self.typed.len(), &self.matches)
         };
 
-        if matches.is_empty() || self.prefix.chars().count() < min_prefix {
+        if matches.is_empty() || self.typed.chars().count() < min_prefix {
             self.current = None;
             return Provided { start, list: None };
         }
@@ -999,12 +1014,19 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let replacement = if scroll != 0 || self.has_changed {
             self.current
                 .clone()
-                .map(|(word, (_, idx))| Replacement::FromList {
-                    word,
-                    entry: Box::new(matches[idx].clone()),
-                    info,
+                .map(|(word, (_, index))| {
+                    Replacement::FromList(
+                        CompletionEntry {
+                            index,
+                            orig_range: self.start..self.start + self.typed.len(),
+                            orig_typed: self.typed.clone(),
+                            replacement: word,
+                            entry: Box::new(matches[index].clone()),
+                        },
+                        info,
+                    )
                 })
-                .or_else(|| Some(Replacement::Prefix(self.prefix.clone())))
+                .or_else(|| Some(Replacement::WithOrig(self.typed.clone())))
         } else {
             None
         };
@@ -1092,10 +1114,6 @@ struct List {
 }
 
 enum Replacement {
-    FromList {
-        word: String,
-        entry: Box<dyn Any + Send>,
-        info: Option<(Text, Orientation)>,
-    },
-    Prefix(String),
+    FromList(CompletionEntry, Option<(Text, Orientation)>),
+    WithOrig(String),
 }

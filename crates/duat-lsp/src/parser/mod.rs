@@ -230,6 +230,7 @@ pub fn setup_hooks() {
         let Some((parser, buf)) = PARSERS.write(pa, buffer) else {
             return;
         };
+
         for server in &parser.servers {
             let Some(encoding) = server.capabilities().map(Encoding::new) else {
                 continue;
@@ -239,6 +240,8 @@ pub fn setup_hooks() {
             if moment.is_empty() {
                 continue;
             }
+
+            context::debug!("buffer update sent");
 
             let notification = DidChangeTextDocumentParams {
                 text_document: VersionedTextDocumentIdentifier {
@@ -264,7 +267,8 @@ pub fn setup_hooks() {
 
             server.send_semantic_tokens_request(buffer, parser);
         }
-    });
+    })
+    .lateness(99);
 
     hook::add::<BufferSaved>(|pa, (buffer, _)| {
         if let Some((parser, buf)) = PARSERS.write(pa, buffer) {

@@ -102,7 +102,9 @@ pub fn setup_hooks() {
             };
 
             let start = encoding.byte_from_pos(&text, range.start);
-            let end = encoding.byte_from_pos(&text, range.end);
+            // It would otherwise replace just what was typed by the user, not the
+            // auto-replaced text.
+            let end = start.map(|s| s + entry.replacement.len());
 
             if let (Some(start), Some(end)) = (start, end) {
                 text.replace_range(start..end, new_text);
@@ -120,7 +122,6 @@ pub struct LspCompletions {
     uri: Uri,
     lists: Vec<(Server, Encoding, Option<List>)>,
     case_insensitive: bool,
-    comp_state: (Point, String),
 }
 
 impl LspCompletions {
@@ -143,16 +144,7 @@ impl LspCompletions {
             send_update_request(buf.text(), server, *encoding, uri.clone());
         }
 
-        let comp_state = {
-            let cursor = buf.selections().main().cursor();
-            let start = get_start(buf.text(), cursor)
-                .map(|b| buf.text().point_at_byte(b))
-                .unwrap_or(cursor);
-
-            (start, buf.text()[start..cursor].to_string())
-        };
-
-        Some(Self { uri, lists, case_insensitive, comp_state })
+        Some(Self { uri, lists, case_insensitive })
     }
 }
 
@@ -206,10 +198,7 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
         txt!("[completion.lsp.label]{entry.label}[]{details}{Spacer}{kind}")
     }
 
-    fn matches(&mut self, text: &Text, start: Point, prefix: &str) -> Vec<Self::Entry> {
-        let state_changed = self.comp_state.0 != start || self.comp_state.1 != prefix;
-        self.comp_state = (start, prefix.to_string());
-
+    fn matches(&mut self, text: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
         let (prefix, case_insensitive) =
             if self.case_insensitive && prefix.chars().all(|char| !char.is_uppercase()) {
                 (prefix.to_uppercase(), true)
@@ -223,7 +212,7 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
                 return None;
             };
 
-            if state_changed && list.is_incomplete {
+            if list.is_incomplete {
                 send_update_request(text, server, *encoding, self.uri.clone());
             }
 
@@ -291,6 +280,8 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
 
 fn send_update_request(text: &Text, server: &Server, encoding: Encoding, uri: Uri) {
     let cursor = text.selections().main().cursor();
+
+    context::debug!("update requested");
 
     server.send_request::<Completion>(
         CompletionParams {

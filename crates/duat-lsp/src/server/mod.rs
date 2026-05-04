@@ -235,11 +235,7 @@ pub fn on_all_servers(mut func: impl FnMut(&Server)) {
 #[track_caller]
 pub fn on_ns<Ret>(ns: Ns, func: impl FnOnce(&Server) -> Ret) -> Option<Ret> {
     let servers = SERVERS.lock().unwrap();
-    if let Some(server) = servers.iter().find(|server| server.ns() == ns) {
-        Some(func(server))
-    } else {
-        None
-    }
+    servers.iter().find(|server| server.ns() == ns).map(func)
 }
 
 struct ServerParts {
