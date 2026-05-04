@@ -884,6 +884,12 @@ impl ModeParts<'_> {
 /// trigger once for `j` and once for `k`, while [`KeySent`] will
 /// trigger once for `<Esc>`.
 ///
+/// An important thing to consider is that the sending of `KeyEvent`s
+/// to [`Mode`]s has a [lateness] of `50`. This means that, if you add
+/// a hook to `KeySent` with a lateness lesser than 50, then it will
+/// be triggered _before_ it is sent to the `Mode`. Otherwise, it will
+/// be triggered afterwards.
+///
 /// # Arguments
 ///
 /// - The sent [key].
@@ -891,6 +897,8 @@ impl ModeParts<'_> {
 /// [key]: KeyEvent
 /// [unmapped]: crate::mode::map
 /// [`mode::type_keys`]: crate::mode::type_keys
+/// [`Mode`]: crate::mode::Mode
+/// [lateness]: HookBuilder::lateness
 pub struct KeySent(pub(crate) KeyEvent);
 
 impl Hookable for KeySent {
@@ -910,6 +918,12 @@ impl Hookable for KeySent {
 /// [`KeyTyped`] will trigger once for `j` and once for `k`, while
 /// [`KeySent`] will trigger once for `<Esc>`.
 ///
+/// An important thing to consider is that the sending of `KeyEvent`s
+/// to [`Mode`]s has a [lateness] of `50`. This means that, if you add
+/// a hook to `KeyTyped` with a lateness lesser than 50, then it will
+/// be triggered _before_ it is sent to the `Mode`. Otherwise, it will
+/// be triggered afterwards.
+///
 /// # Arguments
 ///
 /// - The typed [key].
@@ -917,6 +931,8 @@ impl Hookable for KeySent {
 /// [key]: KeyEvent
 /// [unmapped]: crate::mode::map
 /// [`mode::type_keys`]: crate::mode::type_keys
+/// [`Mode`]: crate::mode::Mode
+/// [lateness]: HookBuilder::lateness
 pub struct KeyTyped(pub(crate) KeyEvent);
 
 impl Hookable for KeyTyped {

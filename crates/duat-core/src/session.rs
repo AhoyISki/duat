@@ -152,6 +152,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
 
     hook::trigger(pa, ConfigLoaded(is_first_time));
     mode::reset::<Buffer>(pa);
+    mode::add_hooks();
 
     let mut reload_requested = false;
     let mut reprint_screen = false;

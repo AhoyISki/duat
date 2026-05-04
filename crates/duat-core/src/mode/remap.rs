@@ -20,6 +20,7 @@ use super::Mode;
 use crate::{
     Ns, context,
     data::{BulkDataWriter, Pass, RwData},
+    hook::{self, KeySent},
     mode::{self, Binding, Bindings},
     text::{Inlay, Text, txt},
     ui::Widget,
@@ -39,6 +40,7 @@ mod global {
     use super::{MapsTo, Remapper};
     use crate::{
         data::{BulkDataWriter, DataMap, Pass, RwData},
+        hook::{self, KeySent, KeyTyped},
         mode::{Description, MappedBindings, Mode},
         text::{Text, txt},
     };
@@ -571,8 +573,6 @@ mod global {
             key.modifiers.remove(KeyMod::SHIFT);
         }
 
-        SEND_KEY.read(pa)(pa, key);
-
         crate::hook::trigger(pa, crate::hook::KeyTyped(key));
     }
 
@@ -585,6 +585,12 @@ mod global {
             .or_insert_with(MappedBindings::for_mode::<M>);
         *SEND_KEY.write(pa) = |pa, key| super::send_key::<M>(&REMAPPER, pa, key);
         *MODE_TYPE_ID.lock().unwrap() = TypeId::of::<M>();
+    }
+
+    /// Add the key event sending hook.
+    pub(crate) fn add_hooks() {
+        hook::add::<KeyTyped>(|pa, key_event| SEND_KEY.read(pa)(pa, key_event)).lateness(50);
+        hook::add::<KeySent>(crate::mode::send_final_key).lateness(50);
     }
 }
 
@@ -719,7 +725,9 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
             mapped_seq
         };
 
-        mode::send_keys_to(pa, keys_to_send);
+        for key_event in keys_to_send {
+            hook::trigger(pa, KeySent(key_event));
+        }
     }
 
     send_key_inner(bdw, key, pa, TypeId::of::<M>());

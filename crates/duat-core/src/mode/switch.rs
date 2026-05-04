@@ -176,13 +176,8 @@ pub fn reset_to(pa: &mut Pass, handle: &Handle<impl Widget + ?Sized>) {
 }
 
 /// Sends the [`KeyEvent`] to the active [`Mode`]
-pub(super) fn send_keys_to(pa: &mut Pass, keys: Vec<KeyEvent>) {
-    let _ = catch_panic(|| {
-        for key in keys {
-            let send_keys = SEND_KEY.read(pa).unwrap();
-            send_keys(pa, key);
-        }
-    });
+pub(super) fn send_final_key(pa: &mut Pass, key: KeyEvent) {
+    SEND_KEY.read(pa).unwrap()(pa, key);
 }
 
 /// Static dispatch function that sends keys to a [`Mode`]
@@ -198,8 +193,6 @@ fn send_key_fn<M: Mode>(pa: &mut Pass, key_event: KeyEvent) {
     };
 
     catch_panic(|| mode.send_key(pa, key_event, handle.clone()));
-
-    hook::trigger(pa, KeySent(key_event));
 
     let mode_opt = MODE.write(pa).take();
     // A new mode may have been set in the send_key function.

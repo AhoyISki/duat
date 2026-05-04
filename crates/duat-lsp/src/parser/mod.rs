@@ -241,8 +241,6 @@ pub fn setup_hooks() {
                 continue;
             }
 
-            context::debug!("buffer update sent");
-
             let notification = DidChangeTextDocumentParams {
                 text_document: VersionedTextDocumentIdentifier {
                     uri: parser.uri.clone(),

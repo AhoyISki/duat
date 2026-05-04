@@ -114,6 +114,15 @@ pub fn setup_hooks() {
 
             text.replace_range(cursor - insert.len()..cursor, insert);
         }
+
+        for edit in lsp_entry.additional_text_edits.iter().flatten() {
+            let start = encoding.byte_from_pos(&text, edit.range.start);
+            let end = encoding.byte_from_pos(&text, edit.range.end);
+
+            if let (Some(start), Some(end)) = (start, end) {
+                text.replace_range(start..end, &edit.new_text);
+            }
+        }
     })
     .lateness(0);
 }
@@ -280,8 +289,6 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
 
 fn send_update_request(text: &Text, server: &Server, encoding: Encoding, uri: Uri) {
     let cursor = text.selections().main().cursor();
-
-    context::debug!("update requested");
 
     server.send_request::<Completion>(
         CompletionParams {
