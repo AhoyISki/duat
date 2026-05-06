@@ -209,6 +209,8 @@ pub fn setup_hooks() {
                 });
             }
 
+			let version = text.version().strs;
+			
             let (parser, buf) = PARSERS.register(pa, buffer, Parser {
                 uri,
                 servers: servers.clone(),
@@ -216,7 +218,7 @@ pub fn setup_hooks() {
             });
 
             for server in &servers {
-                server.send_semantic_tokens_request(buffer, parser);
+                server.send_semantic_tokens_request(buffer, version, parser);
                 _ = buf.moment_for(server.ns());
             }
 
@@ -230,6 +232,7 @@ pub fn setup_hooks() {
         let Some((parser, buf)) = PARSERS.write(pa, buffer) else {
             return;
         };
+        let version = buf.text().version().strs;
 
         for server in &parser.servers {
             let Some(encoding) = server.capabilities().map(Encoding::new) else {
@@ -263,7 +266,7 @@ pub fn setup_hooks() {
             };
             server.send_notification::<DidChangeTextDocument>(notification);
 
-            server.send_semantic_tokens_request(buffer, parser);
+            server.send_semantic_tokens_request(buffer, version, parser);
         }
     })
     .lateness(99);

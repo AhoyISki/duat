@@ -94,8 +94,9 @@ impl Server {
 
     /// Send a request to refresh the semantic tokens of a given
     /// [`Handle`].
-    pub fn send_semantic_tokens_request(&self, handle: &Handle, parser: &Parser) {
-        self.bridge.send_semantic_tokens_request(handle, parser);
+    pub fn send_semantic_tokens_request(&self, handle: &Handle, version: u64, parser: &Parser) {
+        self.bridge
+            .send_semantic_tokens_request(handle, version, parser);
     }
 
     /// Sends the initialization requests for a given [`Path`].

@@ -157,7 +157,7 @@ pub fn handle_notification(bridge: &ServerBridge, notification: jsonrpc_lite::No
 /// Send a request for the semantic tokens to a given server.
 impl ServerBridge {
     /// Sends a semantic token request.
-    pub fn send_semantic_tokens_request(&self, buffer: &Handle, parser: &Parser) {
+    pub fn send_semantic_tokens_request(&self, buffer: &Handle, version: u64, parser: &Parser) {
         use lsp_types::SemanticTokensServerCapabilities::*;
 
         let server_ns = self.ns();
@@ -194,6 +194,7 @@ impl ServerBridge {
                         .find(|server| server.ns() == server_ns)
                         && let Some(cap) = server.capabilities()
                         && let Some(options) = &cap.semantic_tokens_provider
+                        && buffer.text().version().strs == version
                     {
                         use lsp_types::SemanticTokensFullDeltaResult::*;
 
@@ -242,6 +243,7 @@ impl ServerBridge {
                         .find(|server| server.ns() == server_ns)
                         && let Some(cap) = server.capabilities()
                         && let Some(options) = &cap.semantic_tokens_provider
+                        && buffer.text().version().strs == version
                     {
                         let options = match options {
                             SemanticTokensOptions(options) => options,
