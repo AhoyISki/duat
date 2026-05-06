@@ -798,178 +798,187 @@ pub trait GutterBuffer: Sealed {
     fn hover_gutter_entries_on(&self, pa: &Pass, point: Point);
 }
 
-impl Sealed for Handle {}
-impl GutterBuffer for Handle {
-    #[track_caller]
-    fn remove_gutter_entries(&self, pa: &mut Pass, ns: Ns) {
-        let Some((gutter, _)) = self.get_related::<Gutter>(pa).first().cloned() else {
-            panic!("Tried to remove Gutter entries on Buffer with no Gutter");
-        };
+/////////// Buffer functions related to Gutters.
 
-        let (gtr, buf) = pa.write_many((&gutter, self));
-        buf.text_mut().remove_tags(ns, ..);
-        gtr.apply_changes(buf);
+#[track_caller]
+fn remove_gutter_entries(handle: &Handle, pa: &mut Pass, ns: Ns) {
+    let Some((gutter, _)) = handle.get_related::<Gutter>(pa).first().cloned() else {
+        panic!("Tried to remove Gutter entries on Buffer with no Gutter");
+    };
 
-        let removed_line_ranges = Vec::from_iter(
-            gtr.entries
-                .extract_if(.., |entry| entry.ns == ns)
-                .map(|entry| {
-                    let lnum = buf.text().point_at_byte(entry.range.end).line();
-                    let line_range = buf.text().line(lnum).byte_range();
-                    buf.text_mut()
-                        .remove_tags(gtr.ns, line_range.end - 1..=line_range.end);
-                    line_range
-                }),
-        );
+    let (gtr, buf) = pa.write_many((&gutter, handle));
+    buf.text_mut().remove_tags(ns, ..);
+    gtr.apply_changes(buf);
 
-        for entry in &mut gtr.entries {
-            if removed_line_ranges
-                .iter()
-                .any(|range| range.contains(&entry.range.end))
-            {
-                entry.place = None;
-            }
-        }
+    let removed_line_ranges = Vec::from_iter(
+        gtr.entries
+            .extract_if(.., |entry| entry.ns == ns)
+            .map(|entry| {
+                let lnum = buf.text().point_at_byte(entry.range.end).line();
+                let line_range = buf.text().line(lnum).byte_range();
+                buf.text_mut()
+                    .remove_tags(gtr.ns, line_range.end - 1..=line_range.end);
+                line_range
+            }),
+    );
 
-        ID_RELATIONS.lock().unwrap().retain_mut(|ids| {
-            ids.retain(|id| id.1 != ns);
-            !ids.is_empty()
-        });
-    }
-
-    fn add_hint(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId {
-        let Some((gutter, _)) = self.get_related::<Gutter>(pa).first().cloned() else {
-            panic!("Tried to add a Gutter entry on Buffer with no Gutter");
-        };
-
-        let (gtr, buf) = pa.write_many((&gutter, self));
-        let range = range.to_range(buf.text().len());
-
-        if let Some(entry) = gtr
-            .entries
+    for entry in &mut gtr.entries {
+        if removed_line_ranges
             .iter()
-            .find(|entry| entry.range == range && entry.msg == msg && entry.kind == EntryKind::Hint)
+            .any(|range| range.contains(&entry.range.end))
         {
-            return entry.id;
+            entry.place = None;
         }
-
-        let form_tag = form::id_of!("buffer.hint").to_tag(190);
-        buf.text_mut().insert_tag(ns, range.clone(), form_tag);
-
-        let id = GutterEntryId::new(ns);
-        let entry = GutterEntry {
-            range,
-            msg,
-            kind: EntryKind::Hint,
-            id,
-            place: None,
-            ns,
-        };
-
-        gtr.apply_changes(buf);
-
-        let (Ok(idx) | Err(idx)) = gtr
-            .entries
-            .binary_search_by(|e| e.range.end.cmp(&entry.range.end));
-        gtr.entries.insert(idx, entry);
-
-        id
     }
 
-    #[track_caller]
-    fn add_warning(
-        &self,
-        pa: &mut Pass,
-        ns: Ns,
-        range: impl TextRange,
-        msg: Text,
-    ) -> GutterEntryId {
-        let Some((gutter, _)) = self.get_related::<Gutter>(pa).first().cloned() else {
-            panic!("Tried to add a Gutter entry on Buffer with no Gutter");
-        };
+    ID_RELATIONS.lock().unwrap().retain_mut(|ids| {
+        ids.retain(|id| id.1 != ns);
+        !ids.is_empty()
+    });
+}
 
-        let (gtr, buf) = pa.write_many((&gutter, self));
-        let range = range.to_range(buf.text().len());
+fn add_hint(handle: &Handle, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId {
+    let Some((gutter, _)) = handle.get_related::<Gutter>(pa).first().cloned() else {
+        panic!("Tried to add a Gutter entry on Buffer with no Gutter");
+    };
 
-        if let Some(entry) = gtr.entries.iter().find(|entry| {
-            entry.range == range && entry.msg == msg && entry.kind == EntryKind::Warning
-        }) {
-            return entry.id;
-        }
+    let (gtr, buf) = pa.write_many((&gutter, handle));
+    let range = range.to_range(buf.text().len());
 
-        let form_tag = form::id_of!("buffer.warn").to_tag(191);
-        buf.text_mut().insert_tag(ns, range.clone(), form_tag);
-
-        let id = GutterEntryId::new(ns);
-        let entry = GutterEntry {
-            range,
-            msg,
-            kind: EntryKind::Warning,
-            id,
-            place: None,
-            ns,
-        };
-
-        gtr.apply_changes(buf);
-
-        let (Ok(idx) | Err(idx)) = gtr
-            .entries
-            .binary_search_by(|e| e.range.end.cmp(&entry.range.end));
-        gtr.entries.insert(idx, entry);
-
-        id
+    if let Some(entry) = gtr
+        .entries
+        .iter()
+        .find(|entry| entry.range == range && entry.msg == msg && entry.kind == EntryKind::Hint)
+    {
+        return entry.id;
     }
 
-    #[track_caller]
-    fn add_error(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId {
-        let Some((gutter, _)) = self.get_related::<Gutter>(pa).first().cloned() else {
-            panic!("Tried to add a Gutter entry on Buffer with no Gutter");
-        };
+    let form_tag = form::id_of!("buffer.hint").to_tag(190);
+    buf.text_mut().insert_tag(ns, range.clone(), form_tag);
 
-        let (gtr, buf) = pa.write_many((&gutter, self));
-        let range = range.to_range(buf.text().len());
+    let id = GutterEntryId::new(ns);
+    let entry = GutterEntry {
+        range,
+        msg,
+        kind: EntryKind::Hint,
+        id,
+        place: None,
+        ns,
+    };
 
-        if let Some(entry) = gtr.entries.iter().find(|entry| {
-            entry.range == range && entry.msg == msg && entry.kind == EntryKind::Error
-        }) {
-            return entry.id;
-        }
+    gtr.apply_changes(buf);
 
-        let form_tag = form::id_of!("buffer.error").to_tag(192);
-        buf.text_mut().insert_tag(ns, range.clone(), form_tag);
+    let (Ok(idx) | Err(idx)) = gtr
+        .entries
+        .binary_search_by(|e| e.range.end.cmp(&entry.range.end));
+    gtr.entries.insert(idx, entry);
 
-        let id = GutterEntryId::new(ns);
-        let entry = GutterEntry {
-            range,
-            msg,
-            kind: EntryKind::Error,
-            id,
-            place: None,
-            ns,
-        };
+    id
+}
 
-        let (gtr, buf) = pa.write_many((&gutter, self));
-        gtr.apply_changes(buf);
+#[track_caller]
+pub(crate) fn add_warning(
+    handle: &Handle,
+    pa: &mut Pass,
+    ns: Ns,
+    range: impl TextRange,
+    msg: Text,
+) -> GutterEntryId {
+    let Some((gutter, _)) = handle.get_related::<Gutter>(pa).first().cloned() else {
+        panic!("Tried to add a Gutter entry on Buffer with no Gutter");
+    };
 
-        let (Ok(idx) | Err(idx)) = gtr
-            .entries
-            .binary_search_by(|e| e.range.end.cmp(&entry.range.end));
-        gtr.entries.insert(idx, entry);
+    let (gtr, buf) = pa.write_many((&gutter, handle));
+    let range = range.to_range(buf.text().len());
 
-        id
+    if let Some(entry) = gtr
+        .entries
+        .iter()
+        .find(|entry| entry.range == range && entry.msg == msg && entry.kind == EntryKind::Warning)
+    {
+        return entry.id;
     }
 
-    fn has_gutter(&self, pa: &Pass) -> bool {
-        !self.get_related::<Gutter>(pa).is_empty()
+    let form_tag = form::id_of!("buffer.warn").to_tag(191);
+    buf.text_mut().insert_tag(ns, range.clone(), form_tag);
+
+    let id = GutterEntryId::new(ns);
+    let entry = GutterEntry {
+        range,
+        msg,
+        kind: EntryKind::Warning,
+        id,
+        place: None,
+        ns,
+    };
+
+    gtr.apply_changes(buf);
+
+    let (Ok(idx) | Err(idx)) = gtr
+        .entries
+        .binary_search_by(|e| e.range.end.cmp(&entry.range.end));
+    gtr.entries.insert(idx, entry);
+
+    id
+}
+
+#[track_caller]
+pub(crate) fn add_error(
+    handle: &Handle,
+    pa: &mut Pass,
+    ns: Ns,
+    range: impl TextRange,
+    msg: Text,
+) -> GutterEntryId {
+    let Some((gutter, _)) = handle.get_related::<Gutter>(pa).first().cloned() else {
+        panic!("Tried to add a Gutter entry on Buffer with no Gutter");
+    };
+
+    let (gtr, buf) = pa.write_many((&gutter, handle));
+    let range = range.to_range(buf.text().len());
+
+    if let Some(entry) = gtr
+        .entries
+        .iter()
+        .find(|entry| entry.range == range && entry.msg == msg && entry.kind == EntryKind::Error)
+    {
+        return entry.id;
     }
 
-    fn hover_gutter_entries_on(&self, pa: &Pass, point: Point) {
-        assert!(
-            point <= self.text(pa).end_point(),
-            "{point:?} out of bounds"
-        );
-        CURRENT.lock().unwrap().hovered_point = Some((self.clone(), point));
-    }
+    let form_tag = form::id_of!("buffer.error").to_tag(192);
+    buf.text_mut().insert_tag(ns, range.clone(), form_tag);
+
+    let id = GutterEntryId::new(ns);
+    let entry = GutterEntry {
+        range,
+        msg,
+        kind: EntryKind::Error,
+        id,
+        place: None,
+        ns,
+    };
+
+    let (gtr, buf) = pa.write_many((&gutter, handle));
+    gtr.apply_changes(buf);
+
+    let (Ok(idx) | Err(idx)) = gtr
+        .entries
+        .binary_search_by(|e| e.range.end.cmp(&entry.range.end));
+    gtr.entries.insert(idx, entry);
+
+    id
+}
+
+pub(crate) fn has_gutter(handle: &Handle, pa: &Pass) -> bool {
+    !handle.get_related::<Gutter>(pa).is_empty()
+}
+
+fn hover_gutter_entries_on(handle: &Handle, pa: &Pass, point: Point) {
+    assert!(
+        point <= handle.text(pa).end_point(),
+        "{point:?} out of bounds"
+    );
+    CURRENT.lock().unwrap().hovered_point = Some((handle.clone(), point));
 }
 
 /// An id for a [`Gutter`] entry.

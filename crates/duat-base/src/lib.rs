@@ -121,14 +121,12 @@
 //! [`Info`]: widgets::Info
 //! [`Gutter`]: widgets::Gutter
 use duat_core::{
-    Ns, cmd,
-    form::{self, Form},
-    mode,
-    text::{Text, txt},
+    Ns, buffer::Buffer, cmd, data::Pass, for mode,
+    text::{Point, Text, txt},
 };
 use regex_syntax::ast::Ast;
 
-use crate::{modes::Pager, widgets::LogBook};
+use crate::{modes::Pager, widgets::{GutterEntryId, LogBook}};
 
 mod buffer_parser;
 pub mod modes;
@@ -227,6 +225,79 @@ impl DuatBase {
             None,
         );
     }
+}
+
+#[allow(private_bounds)]
+trait Sealed {}
+/// Trait with various methods that are useful for [`Buffer`]s.
+#[allow(private_bounds)]
+pub trait BaseBuffer: Sealed {
+    /// Remove all [`Gutter`] entries from a given [`Ns`].
+    ///
+    /// [`Gutter`]: widgets::Gutter
+    #[track_caller]
+    fn remove_gutter_entries(&self, pa: &mut Pass, ns: Ns);
+
+    /// Add a hint to the [`Gutter`] and the [`Buffer`].
+    ///
+    /// This could just be useful information, like the fact that
+    /// something won't be included in compilation because of a `cfg`
+    /// attribute.
+    ///
+    /// Note: This function won't add duplicated entries, instead
+    /// returning the [`GutterEntryId`] of the entry that was already
+    /// in there.
+    ///
+    /// [`Gutter`]: widgets::Gutter
+    #[track_caller]
+    fn add_hint(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId;
+
+    /// Add a warning to the [`Gutter`] and the [`Buffer`].
+    ///
+    /// This could be improvements that you could do to your code, or
+    /// ways in which it is innadequate that don't necessarily hinder
+    /// it from working properly.
+    ///
+    /// Note: This function won't add duplicated entries, instead
+    /// returning the [`GutterEntryId`] of the entry that was already
+    /// in there.
+    ///
+    /// [`Gutter`]: widgets::Gutter
+    #[track_caller]
+    fn add_warning(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text)
+    -> GutterEntryId;
+
+    /// Add an error to the [`Gutter`] and the [`Buffer`].
+    ///
+    /// These are fundamental issues in your code, and either prevent
+    /// compilation, or prevent it from working properly.
+    ///
+    /// Note: This function won't add duplicated entries, instead
+    /// returning the [`GutterEntryId`] of the entry that was already
+    /// in there.
+    ///
+    /// [`Gutter`]: widgets::Gutter
+    fn add_error(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId;
+
+    /// Wether  this [`Buffer`] has a [`Gutter`] or not.
+    ///
+    /// This should return `true` everytime, unless you disable this
+    /// functionality.
+    ///
+    /// [`Gutter`]: widgets::Gutter
+    fn has_gutter(&self, pa: &Pass) -> bool;
+
+    /// Hovers over the gutter entries in a [`Point`], as if the mouse
+    /// had gone over them.
+    #[track_caller]
+    fn hover_gutter_entries_on(&self, pa: &Pass, point: Point);
+}
+
+impl BaseBuffer for Buffer {
+    #[track_caller]
+    fn remove_gutter_entries(&self, pa: &mut Pass, ns: Ns) {
+        
+    } 
 }
 
 pub mod hooks {

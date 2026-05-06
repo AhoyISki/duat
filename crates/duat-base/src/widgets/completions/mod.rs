@@ -534,6 +534,8 @@ impl Completions {
                 })
         };
 
+        master_handle.declare_written();
+
         // Believe it or not, this is necessary to prevent Drop semantincs
         // from invalidating the following code.
         let (value, start_fn) = found_list.unzip();
@@ -961,9 +963,10 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             (cursor.byte() - self.typed.len(), &self.matches)
         };
 
-        if
-        //(!P::ALLOW_WITH_MULTIPLE_SELECTIONS && text.selections().len() > 1)
-        matches.is_empty() || self.typed.chars().count() < min_prefix {
+        if (!P::ALLOW_WITH_MULTIPLE_SELECTIONS && text.selections().len() > 1)
+            || matches.is_empty()
+            || self.typed.chars().count() < min_prefix
+        {
             self.current = None;
             return Provided { start, list: None };
         }
