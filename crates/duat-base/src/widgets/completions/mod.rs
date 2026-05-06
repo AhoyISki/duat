@@ -26,7 +26,7 @@ use duat_core::{
     },
     context::{self, Handle},
     data::Pass,
-    hook::{self, BufferUpdated, KeySent, ModeSwitched, OnMouseEvent, WidgetOpened},
+    hook::{self, KeySent, ModeSwitched, OnMouseEvent, WidgetOpened},
     mode::{KeyCode, MouseEventKind, event},
     text::{Point, Spawn, Text, TextMut, txt},
     ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
@@ -136,7 +136,7 @@ pub fn completions_setup() {
         })
         .lateness(0);
 
-        hook::add::<BufferUpdated>(move |pa, _| {
+        hook::add::<KeySent>(move |pa, _| {
             let completions_master = completions.master(pa).unwrap();
 
             if completions.is_closed()
@@ -153,6 +153,7 @@ pub fn completions_setup() {
                 Completions::set_frame(pa, &completions);
             }
         })
+        .lateness(100_000_000)
         .grouped(ns);
     });
 
@@ -184,6 +185,17 @@ pub struct CompletionEntry {
     /// What the text was replaced with.
     pub replacement: String,
     entry: Box<dyn Any + Send>,
+}
+
+impl std::fmt::Debug for CompletionEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompletionEntry")
+            .field("index", &self.index)
+            .field("orig_range", &self.orig_range)
+            .field("orig_typed", &self.orig_typed)
+            .field("replacement", &self.replacement)
+            .finish()
+    }
 }
 
 impl CompletionEntry {
@@ -287,14 +299,14 @@ impl CompletionsBuilder {
         let prev = self.providers.take();
 
         self.providers = Some(Box::new(move |text, height, min_prefix| {
-            let (inner, reserve) = InnerProvider::new(provider, text, height, min_prefix);
+            let (inner, provided) = InnerProvider::new(provider, text, height, min_prefix);
 
-            let Some((mut providers, provided)) = prev.map(|call| call(text, height, min_prefix))
+            let Some((mut providers, reserve)) = prev.map(|call| call(text, height, min_prefix))
             else {
-                return (vec![Box::new(inner)], reserve);
+                return (vec![Box::new(inner)], provided);
             };
 
-            providers.insert(0, Box::new(inner));
+            providers.push(Box::new(inner));
 
             if provided.list.is_some() {
                 (providers, provided)
@@ -483,9 +495,9 @@ impl Completions {
         let found_list = {
             let indices = if let Some((main_idx, _)) = &comp.current_entry {
                 [
-                    *main_idx..*main_idx + 1,
                     0..*main_idx,
                     *main_idx + 1..comp.providers.len(),
+                    *main_idx..*main_idx + 1,
                 ]
             } else {
                 [0..comp.providers.len(), 0..0, 0..0]
@@ -511,11 +523,15 @@ impl Completions {
             );
 
             lists.sort_by_key(|(_, (provided, _))| provided.start);
-            lists.into_iter().find_map(|(idx, (provided, start_fn))| {
-                provided
-                    .list
-                    .map(|list| ((idx, provided.start, list), start_fn))
-            })
+
+            lists
+                .into_iter()
+                .rev()
+                .find_map(|(idx, (provided, start_fn))| {
+                    provided
+                        .list
+                        .map(|list| ((idx, provided.start, list), start_fn))
+                })
         };
 
         // Believe it or not, this is necessary to prevent Drop semantincs
@@ -945,10 +961,9 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             (cursor.byte() - self.typed.len(), &self.matches)
         };
 
-        if //(!P::ALLOW_WITH_MULTIPLE_SELECTIONS && text.selections().len() > 1)
-            matches.is_empty()
-            || self.typed.chars().count() < min_prefix
-        {
+        if
+        //(!P::ALLOW_WITH_MULTIPLE_SELECTIONS && text.selections().len() > 1)
+        matches.is_empty() || self.typed.chars().count() < min_prefix {
             self.current = None;
             return Provided { start, list: None };
         }
@@ -1120,18 +1135,20 @@ type ParamCompletions =
     Box<Mutex<dyn FnMut(&Pass, CompletionsBuilder) -> CompletionsBuilder + Send + Sync>>;
 type BufferCompletionsFn = Box<dyn FnMut(&mut Pass) -> CompletionsBuilder + Send>;
 
+#[derive(Debug)]
 struct Provided {
     start: usize,
     list: Option<List>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct List {
     entries_text: Text,
     sidebar_text: Text,
     replacement: Option<Replacement>,
 }
 
+#[derive(Debug)]
 enum Replacement {
     FromList(CompletionEntry, Option<(Text, Orientation)>),
     WithOrig(String),
