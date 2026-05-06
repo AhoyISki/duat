@@ -534,8 +534,6 @@ impl Completions {
                 })
         };
 
-        master_handle.declare_written();
-
         // Believe it or not, this is necessary to prevent Drop semantincs
         // from invalidating the following code.
         let (value, start_fn) = found_list.unzip();
