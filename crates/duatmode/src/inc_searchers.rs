@@ -51,8 +51,6 @@ impl IncSearcher for Split {
                 .flat_map(|r| [r.start, r.end])
                 .collect();
 
-            duat_core::debug!("{ranges:#?}");
-
             let mut iter = [range.start.byte()]
                 .into_iter()
                 .chain(ranges)
@@ -61,7 +59,6 @@ impl IncSearcher for Split {
             while let Some(p0) = iter.next()
                 && let Some(p1) = iter.next()
             {
-                duat_core::debug!("inserting on {p0:?}, {p1:?}");
                 s.move_to(p0..p1);
                 s.copy();
             }

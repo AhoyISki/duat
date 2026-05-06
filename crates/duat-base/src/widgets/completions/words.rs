@@ -49,6 +49,8 @@ impl WordCompletions {
 impl CompletionsProvider for WordCompletions {
     type Entry = WordInfo;
 
+    const ALLOW_WITH_MULTIPLE_SELECTIONS: bool = true;
+
     fn default_fmt(entry: &Self::Entry) -> Text {
         txt!(
             "[completion.word]{entry.word}[]{Spacer}[completion.word.source]{}",

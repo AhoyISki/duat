@@ -1,4 +1,4 @@
-//! Duat's way of sharing and updating state
+//! Duat's way of sharing and updating state.
 //!
 //! This module consists primarily of the [`RwData`] struct, which
 //! holds state that can be [read] or [written to]. When it is
@@ -50,13 +50,16 @@ use std::{
     marker::PhantomData,
     sync::{
         Arc, LazyLock, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering::Relaxed},
     },
 };
 
-use crate::ui::Widget;
+use crate::{
+    text::TextMut,
+    ui::{Area, RwArea, Widget},
+};
 
-/// A container for shared read/write state
+/// A container for shared read/write state.
 ///
 /// This is the struct used internally (and externally) to allow for
 /// massively shareable state in duat's API. Its main purpose is to
@@ -115,7 +118,7 @@ pub struct RwData<T: ?Sized> {
 }
 
 impl<T: 'static> RwData<T> {
-    /// Returns a new [`RwData<T>`]
+    /// Returns a new [`RwData<T>`].
     ///
     /// Note that this is only for sized types. For unsized types, the
     /// process is a little more convoluted, and you need to use
@@ -130,103 +133,10 @@ impl<T: 'static> RwData<T> {
     }
 }
 
-impl<T: ?Sized> RwData<T> {
-    /// Returns an unsized [`RwData`], such as [`RwData<dyn Trait>`]
-    ///
-    /// # Safety
-    ///
-    /// There is a type argument `SizedT` which _must_ be the exact
-    /// type you are passing to this constructor, i.e., if you are
-    /// creating an [`RwData<dyn Display>`] from a [`String`], you'd
-    /// do this:
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// use std::{cell::UnsafeCell, fmt::Display, sync::Arc};
-    ///
-    /// use duat::{data::RwData, prelude::*};
-    /// let rw_data: RwData<dyn Display> =
-    ///     unsafe { RwData::new_unsized::<String>(Arc::new(UnsafeCell::new("test".to_string()))) };
-    /// ```
-    ///
-    /// This ensures that methods such as [`read_as`] and [`write_as`]
-    /// will correctly identify such [`RwData<dyn Display>`] as a
-    /// [`String`].
-    ///
-    /// [`read_as`]: Self::read_as
-    /// [`write_as`]: Self::write_as
-    #[doc(hidden)]
-    pub unsafe fn new_unsized<SizedT: 'static>(value: Arc<UnsafeCell<T>>) -> Self {
-        Self {
-            value,
-            ty: TypeId::of::<SizedT>(),
-            cur_state: Arc::new(AtomicUsize::new(1)),
-            read_state: Arc::new(AtomicUsize::new(0)),
-        }
-    }
-
-    ////////// Reading functions
-
-    /// Reads the value within using a [`Pass`]
-    ///
-    /// The consistent use of a [`Pass`] for the purposes of
-    /// reading/writing to the values of [`RwData`]s ensures that no
-    /// panic or invalid borrow happens at runtime, even while working
-    /// with untrusted code. More importantly, Duat uses these
-    /// guarantees in order to give the end user a ridiculous amount
-    /// of freedom in where they can do things, whilst keeping Rust's
-    /// number one rule and ensuring thread safety, even with a
-    /// relatively large amount of shareable state.
-    pub fn read<'p>(&'p self, _: &'p Pass) -> &'p T {
-        self.read_state
-            .store(self.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
-        // SAFETY: If one were to try and write to this value, this reference
-        // would instantly become invalid, and trying to read from it again
-        // would cause a compile error due to a Pass borrowing conflict.
-        unsafe { &*self.value.get() }
-    }
-
-    /// Reads the value within as `U` using a [`Pass`]
-    ///
-    /// The consistent use of a [`Pass`] for the purposes of
-    /// reading/writing to the values of [`RwData`]s ensures that no
-    /// panic or invalid borrow happens at runtime, even while working
-    /// with untrusted code. More importantly, Duat uses these
-    /// guarantees in order to give the end user a ridiculous amount
-    /// of freedom in where they can do things, whilst keeping Rust's
-    /// number one rule and ensuring thread safety, even with a
-    /// relatively large amount of shareable state.
-    pub fn read_as<'p, U: 'static>(&'p self, _: &'p Pass) -> Option<&'p U> {
-        if TypeId::of::<U>() != self.ty {
-            return None;
-        }
-
-        self.read_state
-            .store(self.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
-
-        let ptr = Arc::as_ptr(&self.value) as *const UnsafeCell<U>;
-
-        // SAFETY: Same as above, but also, the TypeId in the Handle
-        // "guarantees" that this is the correct type.
-        Some(unsafe { &*(&*ptr).get() })
-    }
-
-    /// Simulates a [`read`] without actually reading
-    ///
-    /// This is useful if you want to tell Duat that you don't want
-    /// [`has_changed`] to return `true`, but you don't have a
-    /// [`Pass`] available to [`read`] the value.
-    ///
-    /// [`read`]: Self::read
-    /// [`has_changed`]: Self::has_changed
-    pub fn declare_as_read(&self) {
-        self.read_state
-            .store(self.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
-    }
-
+impl<T> RwData<T> {
     ////////// Writing functions
 
-    /// Writes to the value within using a [`Pass`]
+    /// Writes to the value within using a [`Pass`].
     ///
     /// The consistent use of a [`Pass`] for the purposes of
     /// reading/writing to the values of [`RwData`]s ensures that no
@@ -237,8 +147,8 @@ impl<T: ?Sized> RwData<T> {
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
     pub fn write<'p>(&'p self, _: &'p mut Pass) -> &'p mut T {
-        let prev = self.cur_state.fetch_add(1, Ordering::Relaxed);
-        self.read_state.store(prev + 1, Ordering::Relaxed);
+        let prev = self.cur_state.fetch_add(1, Relaxed);
+        self.read_state.store(prev + 1, Relaxed);
         // SAFETY: Again, the mutable reference to the Pass ensures that this
         // is the only _valid_ mutable reference, if another reference,
         // created prior to this one, were to be reused, that would be a
@@ -246,7 +156,7 @@ impl<T: ?Sized> RwData<T> {
         unsafe { &mut *self.value.get() }
     }
 
-    /// Writes to the value within as `U` using a [`Pass`]
+    /// Writes to the value within as `U` using a [`Pass`].
     ///
     /// The consistent use of a [`Pass`] for the purposes of
     /// reading/writing to the values of [`RwData`]s ensures that no
@@ -261,8 +171,8 @@ impl<T: ?Sized> RwData<T> {
             return None;
         }
 
-        let prev = self.cur_state.fetch_add(1, Ordering::Relaxed);
-        self.read_state.store(prev + 1, Ordering::Relaxed);
+        let prev = self.cur_state.fetch_add(1, Relaxed);
+        self.read_state.store(prev + 1, Relaxed);
 
         let ptr = Arc::as_ptr(&self.value) as *const UnsafeCell<U>;
 
@@ -271,7 +181,7 @@ impl<T: ?Sized> RwData<T> {
         Some(unsafe { &mut *(&*ptr).get() })
     }
 
-    /// Writes to the value _and_ internal [`RwData`]-like structs
+    /// Writes to the value _and_ internal [`RwData`]-like structs.
     ///
     /// This method takes a function that borrows a [`WriteableTuple`]
     /// from `self`, letting you write to `self` and the data in the
@@ -372,20 +282,7 @@ impl<T: ?Sized> RwData<T> {
         (value, tup_ret)
     }
 
-    /// Simulates a [`write`] without actually writing
-    ///
-    /// This is useful if you want to tell Duat that you want
-    /// [`has_changed`] to return `true`, but you don't have a
-    /// [`Pass`] available to [`write`] the value with.
-    ///
-    /// [`write`]: Self::write
-    /// [`has_changed`]: Self::has_changed
-    pub fn declare_written(&self) {
-        let prev = self.cur_state.fetch_add(1, Ordering::Relaxed);
-        self.read_state.store(prev + 1, Ordering::Relaxed);
-    }
-
-    /// Takes the value within, replacing it with the default
+    /// Takes the value within, replacing it with the default.
     pub fn take(&self, pa: &mut Pass) -> T
     where
         T: Default,
@@ -393,26 +290,7 @@ impl<T: ?Sized> RwData<T> {
         std::mem::take(self.write(pa))
     }
 
-    ////////// Mapping of the inner value
-
-    /// Maps the value to another value with a function
-    ///
-    /// This function will return a struct that acts like a "read
-    /// only" version of [`RwData`], which also maps the value to
-    /// a return type.
-    pub fn map<Ret: 'static>(&self, map: impl FnMut(&T) -> Ret + 'static) -> DataMap<T, Ret> {
-        let RwData { value, cur_state, .. } = self.clone();
-        let data = RwData {
-            value,
-            cur_state,
-            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed))),
-            ty: TypeId::of::<T>(),
-        };
-
-        DataMap { data, map: Arc::new(RefCell::new(map)) }
-    }
-
-    /// Maps the value to another value with a mutating function
+    /// Maps the value to another value with a mutating function.
     ///
     /// This is useful if you want to repeat a function over and over
     /// again in order to get a new different result, whilst mutating
@@ -425,14 +303,156 @@ impl<T: ?Sized> RwData<T> {
         let data = RwData {
             value,
             cur_state,
-            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed))),
+            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Relaxed))),
             ty: TypeId::of::<T>(),
         };
 
         MutDataMap { data, map: Arc::new(RefCell::new(map)) }
     }
+}
 
-    /// Attempts to downcast an [`RwData`] to a concrete type
+impl<T: ?Sized> RwData<T> {
+    /// Returns an unsized [`RwData`], such as [`RwData<dyn Trait>`].
+    ///
+    /// # Safety
+    ///
+    /// There is a type argument `SizedT` which _must_ be the exact
+    /// type you are passing to this constructor, i.e., if you are
+    /// creating an [`RwData<dyn Display>`] from a [`String`], you'd
+    /// do this:
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use std::{cell::UnsafeCell, fmt::Display, sync::Arc};
+    ///
+    /// use duat::{data::RwData, prelude::*};
+    /// let rw_data: RwData<dyn Display> =
+    ///     unsafe { RwData::new_unsized::<String>(Arc::new(UnsafeCell::new("test".to_string()))) };
+    /// ```
+    ///
+    /// This ensures that methods such as [`read_as`] and [`write_as`]
+    /// will correctly identify such [`RwData<dyn Display>`] as a
+    /// [`String`].
+    ///
+    /// [`read_as`]: Self::read_as
+    /// [`write_as`]: Self::write_as
+    #[doc(hidden)]
+    pub unsafe fn new_unsized<SizedT: 'static>(value: Arc<UnsafeCell<T>>) -> Self {
+        Self {
+            value,
+            ty: TypeId::of::<SizedT>(),
+            cur_state: Arc::new(AtomicUsize::new(1)),
+            read_state: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    ////////// Reading functions
+
+    /// Reads the value within using a [`Pass`].
+    ///
+    /// The consistent use of a [`Pass`] for the purposes of
+    /// reading/writing to the values of [`RwData`]s ensures that no
+    /// panic or invalid borrow happens at runtime, even while working
+    /// with untrusted code. More importantly, Duat uses these
+    /// guarantees in order to give the end user a ridiculous amount
+    /// of freedom in where they can do things, whilst keeping Rust's
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
+    pub fn read<'p>(&'p self, _: &'p Pass) -> &'p T {
+        self.read_state.store(self.cur_state.load(Relaxed), Relaxed);
+        // SAFETY: If one were to try and write to this value, this reference
+        // would instantly become invalid, and trying to read from it again
+        // would cause a compile error due to a Pass borrowing conflict.
+        unsafe { &*self.value.get() }
+    }
+
+    /// Reads the value within as `U` using a [`Pass`].
+    ///
+    /// The consistent use of a [`Pass`] for the purposes of
+    /// reading/writing to the values of [`RwData`]s ensures that no
+    /// panic or invalid borrow happens at runtime, even while working
+    /// with untrusted code. More importantly, Duat uses these
+    /// guarantees in order to give the end user a ridiculous amount
+    /// of freedom in where they can do things, whilst keeping Rust's
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
+    pub fn read_as<'p, U: 'static>(&'p self, _: &'p Pass) -> Option<&'p U> {
+        if TypeId::of::<U>() != self.ty {
+            return None;
+        }
+
+        self.read_state.store(self.cur_state.load(Relaxed), Relaxed);
+
+        let ptr = Arc::as_ptr(&self.value) as *const UnsafeCell<U>;
+
+        // SAFETY: Same as above, but also, the TypeId in the Handle
+        // "guarantees" that this is the correct type.
+        Some(unsafe { &*(&*ptr).get() })
+    }
+
+    /// Simulates a [`read`] without actually reading.
+    ///
+    /// This is useful if you want to tell Duat that you don't want
+    /// [`has_changed`] to return `true`, but you don't have a
+    /// [`Pass`] available to [`read`] the value.
+    ///
+    /// [`read`]: Self::read
+    /// [`has_changed`]: Self::has_changed
+    pub fn declare_as_read(&self) {
+        self.read_state.store(self.cur_state.load(Relaxed), Relaxed);
+    }
+
+    /// Simulates a [`write`] without actually writing.
+    ///
+    /// This is useful if you want to tell Duat that you want
+    /// [`has_changed`] to return `true`, but you don't have a
+    /// [`Pass`] available to [`write`] the value with.
+    ///
+    /// [`write`]: Self::write
+    /// [`has_changed`]: Self::has_changed
+    pub fn declare_written(&self) {
+        let prev = self.cur_state.fetch_add(1, Relaxed);
+        self.read_state.store(prev + 1, Relaxed);
+    }
+
+    /// Pretends that this `RwData` was not actually written.
+    ///
+    /// You can use this after a call that writes to `self`, (like
+    /// [`Pass::write_many`]) in order to tell Duat that this `Buffer`
+    /// wasn't actually written to.
+    ///
+    /// The main use for this is for update supression. Since an
+    /// [`RwData<Buffer>`] being written can trigger a
+    /// [`BufferUpdated`] hook call, it can be useful to call this
+    /// function in order to prevent that.
+    ///
+    /// [`BufferUpdated`]: crate::hook::BufferUpdated
+    pub fn declare_unwritten(&self) {
+        _ = self
+            .cur_state
+            .try_update(Relaxed, Relaxed, |old| old.checked_sub(1));
+    }
+
+    ////////// Mapping of the inner value
+
+    /// Maps the value to another value with a function.
+    ///
+    /// This function will return a struct that acts like a "read
+    /// only" version of [`RwData`], which also maps the value to
+    /// a return type.
+    pub fn map<Ret: 'static>(&self, map: impl FnMut(&T) -> Ret + 'static) -> DataMap<T, Ret> {
+        let RwData { value, cur_state, .. } = self.clone();
+        let data = RwData {
+            value,
+            cur_state,
+            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Relaxed))),
+            ty: TypeId::of::<T>(),
+        };
+
+        DataMap { data, map: Arc::new(RefCell::new(map)) }
+    }
+
+    /// Attempts to downcast an [`RwData`] to a concrete type.
     ///
     /// Returns [`Some(RwData<U>)`] if the value within is of type
     /// `U`. For unsized types, `U` is the type parameter
@@ -450,24 +470,24 @@ impl<T: ?Sized> RwData<T> {
         Some(RwData {
             value,
             cur_state: self.cur_state.clone(),
-            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1)),
+            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Relaxed) - 1)),
             ty: TypeId::of::<U>(),
         })
     }
 
     ////////// Querying functions
 
-    /// Wether this [`RwData`] and another point to the same value
+    /// Wether this [`RwData`] and another point to the same value.
     pub fn ptr_eq<U: ?Sized>(&self, other: &RwData<U>) -> bool {
         Arc::ptr_eq(&self.cur_state, &other.cur_state)
     }
 
-    /// The [`TypeId`] of the concrete type within
+    /// The [`TypeId`] of the concrete type within.
     pub fn type_id(&self) -> TypeId {
         self.ty
     }
 
-    /// Wether the concrete [`TypeId`] matches that of `U`
+    /// Wether the concrete [`TypeId`] matches that of `U`.
     pub fn is<U: 'static>(&self) -> bool {
         self.ty == TypeId::of::<U>()
     }
@@ -484,7 +504,7 @@ impl<T: ?Sized> RwData<T> {
     /// [`read`]: Self::read
     /// [`has_changed`]: Self::has_changed
     pub fn has_changed(&self) -> bool {
-        self.read_state.load(Ordering::Relaxed) < self.cur_state.load(Ordering::Relaxed)
+        self.read_state.load(Relaxed) < self.cur_state.load(Relaxed)
     }
 
     /// A function that checks if the data has been updated
@@ -497,7 +517,7 @@ impl<T: ?Sized> RwData<T> {
     /// [`read`]: Self::read
     pub fn checker(&self) -> impl Fn() -> bool + Send + Sync + 'static {
         let (read, cur) = (self.read_state.clone(), self.cur_state.clone());
-        move || read.load(Ordering::Relaxed) < cur.load(Ordering::Relaxed)
+        move || read.load(Relaxed) < cur.load(Relaxed)
     }
 }
 
@@ -510,9 +530,25 @@ impl<W: Widget> RwData<W> {
         RwData {
             value,
             cur_state: self.cur_state.clone(),
-            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1)),
+            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Relaxed) - 1)),
             ty: self.ty,
         }
+    }
+}
+
+impl<W: Widget + ?Sized> RwData<W> {
+    /// Get the [`TextMut`] out of the wrapped [`Widget`].
+    ///
+    /// Note that, unlike other writing methods on the `RwData`, this
+    /// one doesn't require that `T: Sized`.
+    pub fn text_mut<'p>(&self, _: &'p mut Pass) -> TextMut<'p> {
+        let prev = self.cur_state.fetch_add(1, Relaxed);
+        self.read_state.store(prev + 1, Relaxed);
+        // SAFETY: Again, the mutable reference to the Pass ensures that this
+        // is the only _valid_ mutable reference, if another reference,
+        // created prior to this one, were to be reused, that would be a
+        // compile error.
+        unsafe { &mut *self.value.get() }.text_mut()
     }
 }
 
@@ -528,7 +564,7 @@ impl<T: ?Sized> Clone for RwData<T> {
             value: self.value.clone(),
             ty: self.ty,
             cur_state: self.cur_state.clone(),
-            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1)),
+            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Relaxed) - 1)),
         }
     }
 }
@@ -614,7 +650,7 @@ pub struct MutDataMap<I: ?Sized + 'static, O: 'static> {
     map: Arc<RefCell<dyn FnMut(&mut I) -> O>>,
 }
 
-impl<I: ?Sized, O> MutDataMap<I, O> {
+impl<I, O> MutDataMap<I, O> {
     /// Call this `DataMap`'s mapping function, returning the output
     pub fn call(&self, pa: &mut Pass) -> O {
         self.map.borrow_mut()(self.data.write(pa))
@@ -839,7 +875,6 @@ impl Pass {
     /// instead.
     ///
     /// [`Handle`]: crate::context::Handle
-    /// [`RwArea`]: crate::ui::RwArea
     /// [`Area`]: crate::ui::Area
     #[track_caller]
     pub fn write_many<'p, Tup: WriteableTuple<'p, impl std::any::Any>>(
@@ -877,6 +912,30 @@ impl Pass {
         tup: Tup,
     ) -> Option<Tup::Return> {
         tup.write_all(self)
+    }
+
+    /// Tries to read to many [`RwData`]-like structs at once, as well
+    /// as reading from one [`RwData<T>`].
+    ///
+    /// You may want to do this if `T: ?Sized` and don't need to
+    /// mutate the value within.
+    pub fn read_and_write_many<'p, T: ?Sized, Tup: WriteableTuple<'p, impl std::any::Any>>(
+        &'p mut self,
+        data: &'p RwData<T>,
+        tup: Tup,
+    ) -> Option<(&'p T, Tup::Return)> {
+        for state_ptr in tup.state_ptrs() {
+            if data.cur_state_ptr() == state_ptr {
+                return None;
+            }
+        }
+
+        tup.write_all(self).map(|ret| {
+            // SAFETY: At this point, the earlier check confirms that none of
+            // these point to the same data.
+            static PASS: &Pass = unsafe { &Pass::new() };
+            (data.read(PASS), ret)
+        })
     }
 }
 
@@ -1015,23 +1074,15 @@ where
 
 /// A trait for writing to multiple [`RwData`]-like structs at once
 #[doc(hidden)]
-pub trait WriteableData<'p, T: ?Sized + 'p>: InnerWriteableData {
+pub trait WriteableData<'p, T: ?Sized + 'p>: Sealed<T> {
     /// Just like [`RwData::write`]
     #[doc(hidden)]
     fn write_one_of_many(&'p self, pa: &'p mut Pass) -> &'p mut T;
-
-    /// A pointer for [`Pass::try_write_many`]
-    #[doc(hidden)]
-    fn cur_state_ptr(&self) -> CurStatePtr<'_>;
 }
 
-impl<'p, T: ?Sized + 'p> WriteableData<'p, T> for RwData<T> {
+impl<'p, T: 'p> WriteableData<'p, T> for RwData<T> {
     fn write_one_of_many(&'p self, pa: &'p mut Pass) -> &'p mut T {
         self.write(pa)
-    }
-
-    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
-        CurStatePtr(&self.cur_state)
     }
 }
 
@@ -1039,38 +1090,65 @@ impl<'p, T: Default> WriteableData<'p, T> for BulkDataWriter<T> {
     fn write_one_of_many(&'p self, pa: &'p mut Pass) -> &'p mut T {
         self.write(pa)
     }
-
-    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
-        CurStatePtr(&self.data.cur_state)
-    }
 }
 
 impl<'p, W: Widget> WriteableData<'p, W> for crate::context::Handle<W> {
     fn write_one_of_many(&'p self, pa: &'p mut Pass) -> &'p mut W {
         self.write(pa)
     }
-
-    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
-        CurStatePtr(&self.widget().cur_state)
-    }
 }
 
-impl<'p> WriteableData<'p, crate::ui::Area> for crate::ui::RwArea {
+impl<'p> WriteableData<'p, crate::ui::Area> for RwArea {
     fn write_one_of_many(&'p self, pa: &'p mut Pass) -> &'p mut crate::ui::Area {
         self.write(pa)
     }
+}
 
-    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
-        CurStatePtr(&self.0.cur_state)
+impl<'p, T, F, R> WriteableData<'p, R> for (&'p RwData<T>, F)
+where
+    T: ?Sized,
+    F: Fn(&'p RwData<T>, &'p mut Pass) -> &'p mut R,
+    R: 'p,
+{
+    fn write_one_of_many(&'p self, pa: &'p mut Pass) -> &'p mut R {
+        (self.1)(self.0, pa)
     }
 }
 
 /// To prevent outside implementations
-trait InnerWriteableData {}
-impl<T: ?Sized> InnerWriteableData for RwData<T> {}
-impl<T: Default> InnerWriteableData for BulkDataWriter<T> {}
-impl<W: Widget> InnerWriteableData for crate::context::Handle<W> {}
-impl InnerWriteableData for crate::ui::RwArea {}
+trait Sealed<T: ?Sized> {
+    fn cur_state_ptr(&self) -> CurStatePtr<'_>;
+}
+impl<T: ?Sized> Sealed<T> for RwData<T> {
+    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
+        CurStatePtr(&self.cur_state)
+    }
+}
+impl<T: Default> Sealed<T> for BulkDataWriter<T> {
+    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
+        CurStatePtr(&self.data.cur_state)
+    }
+}
+impl<W: Widget> Sealed<W> for crate::context::Handle<W> {
+    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
+        CurStatePtr(&self.widget().cur_state)
+    }
+}
+impl Sealed<crate::ui::Area> for RwArea {
+    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
+        CurStatePtr(&self.0.cur_state)
+    }
+}
+impl<'p, T, F, R> Sealed<R> for (&'p RwData<T>, F)
+where
+    T: ?Sized,
+    F: Fn(&'p RwData<T>, &'p mut Pass) -> &'p mut R,
+    R: 'p,
+{
+    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
+        CurStatePtr(&self.0.cur_state)
+    }
+}
 
 /// A struct for comparison when calling [`Pass::write_many`]
 #[doc(hidden)]
@@ -1081,4 +1159,25 @@ impl std::cmp::PartialEq for CurStatePtr<'_> {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(self.0, other.0)
     }
+}
+
+/// Writes to an [`RwData`] where `T: ?Sized` and an [`RwArea`].
+///
+/// This can only be safely used within duat-core, since I can promise
+/// myself that I won't swap two different [`RwData<T>`]s that don't
+/// have the same concrete type.
+///
+/// # SAFETY
+///
+/// You must ensure that the unsized value is never swapped with
+/// another, otherwise type guarantees break down.
+pub(crate) unsafe fn write_dyn_and_area<'p, W: ?Sized>(
+    not_sized: &'p RwData<W>,
+    area: &'p RwArea,
+    pa: &'p mut Pass,
+) -> (&'p mut W, &'p mut Area) {
+    let prev = not_sized.cur_state.fetch_add(1, Relaxed);
+    not_sized.read_state.store(prev + 1, Relaxed);
+    let not_sized = unsafe { &mut *not_sized.value.get() };
+    (not_sized, area.write(pa))
 }

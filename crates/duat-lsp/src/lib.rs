@@ -13,7 +13,10 @@ use duat_core::{
     text::{Point, Strs},
     txt,
 };
-use lsp_types::{Position, ServerCapabilities, Uri};
+use lsp_types::{
+    HoverParams, Position, ServerCapabilities, TextDocumentIdentifier, TextDocumentPositionParams,
+    Uri, WorkDoneProgressParams, request::HoverRequest,
+};
 
 pub use crate::parser::{LspBuffer, LspCompletions};
 
@@ -64,7 +67,34 @@ impl Mode for Lsp {
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, buffer: Handle<Self::Widget>) {
         match key_event {
             event!('f') => buffer.lsp_format(pa, None),
-            event!('h') => {
+            event!('h') if let Some(servers) = server::get_servers_for(&buffer.read(pa).path()) => {
+                for server in servers {
+                    let Some(capabilities) = server.capabilities() else {
+                        continue;
+                    };
+                    let encoding = Encoding::new(capabilities);
+                    if capabilities.hover_provider.is_none() {
+                        continue;
+                    }
+
+                    let buf = buffer.read(pa);
+                    let uri = path_to_uri(&buf.path()).unwrap();
+
+                    server.send_request::<HoverRequest>(
+                        HoverParams {
+                            text_document_position_params: TextDocumentPositionParams {
+                                text_document: TextDocumentIdentifier { uri },
+                                position: encoding
+                                    .pos_from_point(buf.text(), buf.text().main_sel().cursor()),
+                            },
+                            work_done_progress_params: WorkDoneProgressParams::default(),
+                        },
+                        |pa, result| {
+                            duat_core::debug!("{result:#?}");
+                        },
+                    );
+                }
+
                 buffer.hover_gutter_entries_on(pa, buffer.selections(pa).main().cursor())
             }
             _ => {}

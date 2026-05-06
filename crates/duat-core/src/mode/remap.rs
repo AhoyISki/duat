@@ -22,8 +22,7 @@ use crate::{
     data::{BulkDataWriter, Pass, RwData},
     hook::{self, KeySent},
     mode::{Binding, Bindings},
-    text::{Inlay, Text, txt},
-    ui::Widget,
+    text::{Inlay, Text, TextMut, txt},
 };
 
 static CUR_SEQ: LazyLock<RwData<(Vec<KeyEvent>, bool)>> = LazyLock::new(RwData::default);
@@ -705,8 +704,8 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
                 if remap.is_alias {
                     CUR_SEQ.write(pa).1 = true;
 
-                    remove_alias_and(pa, |widget, main| {
-                        widget.text_mut().insert_tag(
+                    remove_alias_and(pa, |mut text, main| {
+                        text.insert_tag(
                             Ns::for_alias(),
                             main,
                             Inlay::new(txt!("[alias]{}", keys_to_string(&mapped_seq))),
@@ -1020,17 +1019,17 @@ enum DescriptionType<'a> {
     Remap(Option<&'a Remap>),
 }
 
-fn remove_alias_and(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget, usize)) {
+fn remove_alias_and(pa: &mut Pass, f: impl FnOnce(TextMut, usize)) {
     let widget = context::current_widget_node(pa);
     // SAFETY: Given that the Pass is immediately mutably borrowed, it
     // can't be used to act on CurWidget.current.
     widget.mutate_data(pa, |handle| {
         let pa = unsafe { &mut Pass::new() };
-        let widget = handle.write(pa);
-        if let Some(main) = widget.text().get_main_sel() {
+        let mut text = handle.text_mut(pa);
+        if let Some(main) = text.get_main_sel() {
             let byte = main.cursor().byte();
-            widget.text_mut().remove_tags(Ns::for_alias(), ..);
-            f(&mut *widget, byte)
+            text.remove_tags(Ns::for_alias(), ..);
+            f(text, byte)
         }
     })
 }

@@ -160,6 +160,8 @@ impl LspCompletions {
 impl duat_base::widgets::CompletionsProvider for LspCompletions {
     type Entry = Entry;
 
+    const ALLOW_WITH_MULTIPLE_SELECTIONS: bool = false;
+
     fn default_fmt(entry: &Self::Entry) -> Text {
         let details = if let Some(details) = &entry.label_details
             && let Some(detail) = &details.detail

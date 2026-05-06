@@ -85,7 +85,7 @@ pub trait Widget: Send + 'static {
 #[derive(Clone)]
 pub(crate) struct Node {
     handle: Handle<dyn Widget>,
-    print: Arc<dyn Fn(&mut Pass, &Handle<dyn Widget>) + Send + Sync>,
+    print: Arc<dyn Fn(&mut Pass) + Send + Sync>,
     on_mouse_event: Arc<dyn Fn(&mut Pass, UiMouseEvent) + Send + Sync>,
 }
 
@@ -108,7 +108,7 @@ impl Node {
             print: if let Some(buffer) = handle.get_as::<Buffer>() {
                 let handle = handle.clone();
 
-                Arc::new(move |pa, orig_handle| {
+                Arc::new(move |pa| {
                     Buffer::update(pa, &buffer);
 
                     handle.area.print(
@@ -117,13 +117,10 @@ impl Node {
                         handle.opts(pa),
                         form::painter_with_widget::<W>(),
                     );
-
-                    orig_handle.declare_as_read();
-                    orig_handle.area().0.declare_as_read();
                 })
             } else {
                 let handle = handle.clone();
-                Arc::new(move |pa, _| {
+                Arc::new(move |pa| {
                     handle.area.print(
                         pa,
                         handle.text(pa),
@@ -234,7 +231,10 @@ impl Node {
         }
 
         let print_info = self.handle.area().get_print_info(pa);
-        let (widget, _) = self.handle.write_with_area(pa);
+        // SAFETY: The unsized type is confined to the rest of this block.
+        let (widget, _) = unsafe {
+            crate::data::write_dyn_and_area(self.handle.widget(), self.handle.area(), pa)
+        };
 
         if print_info != PrintInfo::default() {
             widget.text_mut().update_bounds();
@@ -245,7 +245,10 @@ impl Node {
             spawn(pa, win, self.handle.clone());
         }
 
-        (self.print)(pa, &self.handle);
+        (self.print)(pa);
+
+        self.handle.declare_as_read();
+        self.handle.area().0.declare_as_read();
     }
 
     pub(crate) fn on_mouse_event(&self, pa: &mut Pass, mouse_event: UiMouseEvent) {

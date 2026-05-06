@@ -582,6 +582,17 @@ impl RwArea {
     pub fn is_eq(&self, pa: &Pass, other: &RwArea) -> bool {
         self.0.read(pa).area_is_eq(other.0.read(pa))
     }
+
+    /// Pretends that this `RwArea` was not actually written.
+    ///
+    /// You can use this after a call that writes to `self`, (like
+    /// [`Pass::write_many`]) in order to tell Duat that this `Buffer`
+    /// wasn't actually written to.
+    ///
+    /// [`BufferUpdated`]: crate::hook::BufferUpdated
+    pub fn declare_unwritten(&self) {
+        self.0.declare_unwritten();
+    }
 }
 
 /// A type erased [`RawUi::Area`]

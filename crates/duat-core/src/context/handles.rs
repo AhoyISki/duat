@@ -10,7 +10,7 @@ use std::sync::{
 use crate::{
     buffer::Change,
     context,
-    data::{Pass, RwData, WriteableTuple},
+    data::{self, Pass, RwData, WriteableTuple},
     mode::{ModSelection, Selection, SelectionMut, Selections},
     opts::PrintOpts,
     text::{Text, TextMut, TextParts, TwoPoints},
@@ -184,40 +184,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     }
 }
 
-impl<W: 'static + ?Sized> Handle<W> {
-    ////////// Read and write access functions
-
-    /// Reads from the [`Widget`], making use of a [`Pass`].
-    ///
-    /// The consistent use of a [`Pass`] for the purposes of
-    /// reading/writing to the values of [`RwData`]s ensures that no
-    /// panic or invalid borrow happens at runtime, even while working
-    /// with untrusted code. More importantly, Duat uses these
-    /// guarantees in order to give the end user a ridiculous amount
-    /// of freedom in where they can do things, whilst keeping Rust's
-    /// number one rule and ensuring thread safety, even with a
-    /// relatively large amount of shareable state.
-    ///
-    /// [`Area`]: crate::ui::Area
-    pub fn read<'a>(&'a self, pa: &'a Pass) -> &'a W {
-        self.widget.read(pa)
-    }
-
-    /// Tries to read as a concrete [`Widget`] implementor.
-    pub fn read_as<'a, W2: Widget>(&'a self, pa: &'a Pass) -> Option<&'a W2> {
-        self.widget.read_as(pa)
-    }
-
-    /// Declares the [`Widget`] within as read.
-    ///
-    /// Same as calling `handle.widget().declare_as_read()`. You
-    /// should use this function if you want to signal to others that
-    /// the widget was read, even if you don't have access to a
-    /// [`Pass`].
-    pub fn declare_as_read(&self) {
-        self.widget.declare_as_read();
-    }
-
+impl<W: 'static> Handle<W> {
     /// Writes to the [`Widget`], making use of a [`Pass`].
     ///
     /// The consistent use of a [`Pass`] for the purposes of
@@ -261,6 +228,41 @@ impl<W: 'static + ?Sized> Handle<W> {
         tup_fn: impl FnOnce(&'p W) -> Tup,
     ) -> (&'p mut W, Tup::Return) {
         self.widget.write_then(pa, tup_fn)
+    }
+}
+
+impl<W: 'static + ?Sized> Handle<W> {
+    ////////// Read and write access functions
+
+    /// Reads from the [`Widget`], making use of a [`Pass`].
+    ///
+    /// The consistent use of a [`Pass`] for the purposes of
+    /// reading/writing to the values of [`RwData`]s ensures that no
+    /// panic or invalid borrow happens at runtime, even while working
+    /// with untrusted code. More importantly, Duat uses these
+    /// guarantees in order to give the end user a ridiculous amount
+    /// of freedom in where they can do things, whilst keeping Rust's
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
+    ///
+    /// [`Area`]: crate::ui::Area
+    pub fn read<'a>(&'a self, pa: &'a Pass) -> &'a W {
+        self.widget.read(pa)
+    }
+
+    /// Tries to read as a concrete [`Widget`] implementor.
+    pub fn read_as<'a, W2: Widget>(&'a self, pa: &'a Pass) -> Option<&'a W2> {
+        self.widget.read_as(pa)
+    }
+
+    /// Declares the [`Widget`] within as read.
+    ///
+    /// Same as calling `handle.widget().declare_as_read()`. You
+    /// should use this function if you want to signal to others that
+    /// the widget was read, even if you don't have access to a
+    /// [`Pass`].
+    pub fn declare_as_read(&self) {
+        self.widget.declare_as_read();
     }
 
     /// Declares the [`Widget`] within as written.
@@ -438,7 +440,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     ///
     /// This is the same as calling `handle.write(pa).text_mut()`.
     pub fn text_mut<'p>(&'p self, pa: &'p mut Pass) -> TextMut<'p> {
-        self.write(pa).text_mut()
+        self.widget.text_mut(pa)
     }
 
     /// The [`TextParts`] of the [`Widget`].
@@ -455,7 +457,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// [`Tags`]: crate::text::Tags
     /// [`Tag`]: crate::text::Tag
     pub fn text_parts<'p>(&'p self, pa: &'p mut Pass) -> TextParts<'p> {
-        self.write(pa).text_mut().parts()
+        self.widget.text_mut(pa).parts()
     }
 
     /// A shared reference to the [`Selections`] of the [`Widget`]'s
@@ -472,7 +474,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// This is the same as calling
     /// `handle.write(pa).selections_mut()`.
     pub fn selections_mut<'p>(&'p self, pa: &'p mut Pass) -> &'p mut Selections {
-        self.write(pa).text_mut().selections_mut()
+        self.text_mut(pa).selections_mut()
     }
 
     ////////// Selection Editing functions
@@ -507,7 +509,9 @@ impl<W: Widget + ?Sized> Handle<W> {
             handle: &'a Handle<W>,
             n: usize,
         ) -> (Selection, bool, &'a mut W, &'a Area) {
-            let (widget, area) = handle.write_with_area(pa);
+            // SAFETY: ModSelection doesn't expose the `dyn W` mutably.
+            let (widget, area) =
+                unsafe { data::write_dyn_and_area(&handle.widget, &handle.area, pa) };
 
             // Since Buffers always have selections, this should never happen on
             // them. Which means their history wouldn't be affected.
@@ -588,7 +592,8 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// indentation that will inevitably come from using the
     /// equivalent long form call.
     pub fn edit_all(&self, pa: &mut Pass, edit: impl FnMut(SelectionMut<W>)) {
-        let (widget, area) = self.write_with_area(pa);
+        // SAFETY: ModSelection doesn't expose the `dyn W` mutably.
+        let (widget, area) = unsafe { data::write_dyn_and_area(&self.widget, &self.area, pa) };
         populate(widget.text_mut());
         crate::mode::on_each_sel(widget, area, edit);
     }
@@ -603,7 +608,8 @@ impl<W: Widget + ?Sized> Handle<W> {
     ///
     /// [`PrintOpts.allow_overscroll`]: crate::opts::PrintOpts::allow_overscroll
     pub fn scroll_ver(&self, pa: &mut Pass, dist: i32) {
-        let (widget, area) = self.write_with_area(pa);
+        // SAFETY: The unsized value exists only in this scope.
+        let (widget, area) = unsafe { data::write_dyn_and_area(&self.widget, &self.area, pa) };
         area.scroll_ver(widget.text(), dist, widget.print_opts());
         self.widget.declare_written();
     }
@@ -614,7 +620,8 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
     pub fn scroll_to_points(&self, pa: &mut Pass, points: TwoPoints) {
-        let (widget, area) = self.write_with_area(pa);
+        // SAFETY: The unsized value exists only in this scope.
+        let (widget, area) = unsafe { data::write_dyn_and_area(&self.widget, &self.area, pa) };
         area.scroll_to_points(widget.text(), points, widget.print_opts());
         self.widget.declare_written();
     }

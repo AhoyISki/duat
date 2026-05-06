@@ -46,6 +46,7 @@ mod notifications;
 mod promptline;
 mod statusline;
 mod whichkey;
+mod places;
 
 /// A group of [`Widget`]s consisting of a [`StatusLine`],
 /// [`PromptLine`] and [`Notifications`] combo

@@ -24,6 +24,8 @@ impl CommandsCompletions {
 impl CompletionsProvider for CommandsCompletions {
     type Entry = CmdDoc;
 
+    const ALLOW_WITH_MULTIPLE_SELECTIONS: bool = false;
+
     fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
         let mut matches = Vec::from_iter(self.0.iter().filter_map(|desc| {
             if let Description::Command(desc) = desc

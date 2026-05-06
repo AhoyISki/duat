@@ -43,6 +43,8 @@ impl PathCompletions {
 impl CompletionsProvider for PathCompletions {
     type Entry = String;
 
+    const ALLOW_WITH_MULTIPLE_SELECTIONS: bool = true;
+
     fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
         let prefix = match prefix.strip_prefix("'") {
             Some(prefix) => prefix,

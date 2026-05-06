@@ -132,6 +132,7 @@ use crate::{modes::Pager, widgets::LogBook};
 
 mod buffer_parser;
 pub mod modes;
+mod snippets;
 pub mod state;
 pub mod widgets;
 

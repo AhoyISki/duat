@@ -5,6 +5,8 @@ use crate::widgets::{CompletionsProvider, completions::string_cmp};
 impl<S: AsRef<str> + Send + 'static> CompletionsProvider for Vec<S> {
     type Entry = String;
 
+    const ALLOW_WITH_MULTIPLE_SELECTIONS: bool = true;
+
     fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
         let mut entries = Vec::from_iter(self.iter().filter_map(|entry| {
             string_cmp(prefix, entry.as_ref()).map(|_| entry.as_ref().to_string())
@@ -34,6 +36,8 @@ impl<S: AsRef<str> + Send + 'static> CompletionsProvider for Vec<S> {
 
 impl<const N: usize, S: AsRef<str> + Send + 'static> CompletionsProvider for [S; N] {
     type Entry = String;
+
+    const ALLOW_WITH_MULTIPLE_SELECTIONS: bool = true;
 
     fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
         let mut entries = Vec::from_iter(self.iter().filter_map(|entry| {
@@ -77,6 +81,8 @@ pub struct ExhaustiveCompletionsList<S> {
 
 impl<S: AsRef<str> + Send + 'static> CompletionsProvider for ExhaustiveCompletionsList<S> {
     type Entry = String;
+
+    const ALLOW_WITH_MULTIPLE_SELECTIONS: bool = true;
 
     fn matches(&mut self, text: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
         let cursor = text.main_sel().cursor();

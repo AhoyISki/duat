@@ -473,11 +473,12 @@ impl Completions {
         scroll: i32,
     ) -> Option<(String, String)> {
         let master_handle = completions.master(pa).unwrap();
-        let (master, area, comp) = pa.write_many((
-            master_handle.widget(),
-            completions.area(),
-            completions.widget(),
-        ));
+        let (master, (area, comp)) = pa
+            .read_and_write_many(
+                master_handle.widget(),
+                (completions.area(), completions.widget()),
+            )
+            .unwrap();
 
         let found_list = {
             let indices = if let Some((main_idx, _)) = &comp.current_entry {
@@ -553,9 +554,15 @@ impl Completions {
 
                 drop(start_fn);
                 let mut shift = 0;
+                let mut master_has_changed = false;
 
                 master_handle.edit_all(pa, |mut s| {
                     let start = (starts.next().unwrap() as i32 + shift) as usize;
+                    if &s.text()[start..s.cursor().byte()] == word {
+                        return;
+                    }
+
+                    master_has_changed = true;
                     shift += word.len() as i32 - (s.cursor().byte() as i32 - start as i32);
 
                     s.move_to(start..s.cursor().byte());
@@ -574,6 +581,11 @@ impl Completions {
                         new_start_byte = start;
                     }
                 });
+
+                if !master_has_changed {
+                    master_handle.widget().declare_unwritten();
+                    master_handle.area().declare_unwritten();
+                }
 
                 if let Some((info_text, orientation)) = info {
                     let info_handle = if let Some(info) = completions.read(pa).info_handle.clone()
@@ -720,6 +732,10 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     ///
     /// [`Arc<T>`]: std::sync::Arc
     type Entry: Send + Clone;
+
+    /// Wether this provider should be enabled when there is more
+    /// than one selection.
+    const ALLOW_WITH_MULTIPLE_SELECTIONS: bool;
 
     /// Get all completion entries based on the [start] and [prefix].
     ///
@@ -929,7 +945,10 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             (cursor.byte() - self.typed.len(), &self.matches)
         };
 
-        if matches.is_empty() || self.typed.chars().count() < min_prefix {
+        if //(!P::ALLOW_WITH_MULTIPLE_SELECTIONS && text.selections().len() > 1)
+            matches.is_empty()
+            || self.typed.chars().count() < min_prefix
+        {
             self.current = None;
             return Provided { start, list: None };
         }
