@@ -395,6 +395,7 @@ dependencies = [
  "regex-cursor",
  "regex-syntax",
  "shellexpand",
+ "txt-macro",
 ]
 
 [[package]]
@@ -1438,6 +1439,13 @@ dependencies = [
  "memchr",
  "nom",
  "petgraph",
+]
+
+[[package]]
+name = "txt-macro"
+version = "0.1.0"
+dependencies = [
+ "litrs",
 ]
 
 [[package]]

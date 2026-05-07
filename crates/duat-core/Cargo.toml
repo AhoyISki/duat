@@ -31,6 +31,7 @@ gap-buf = { version = "0.6.1", features = ["bincode"] }
 interrupt-read = "0.6.0"
 interprocess = "2.4.0"
 notify = "8.2.0"
+txt-macro = { path = "../../../txt-macro/" }
 
 [dependencies.regex-cursor]
 version = "0.1.5"

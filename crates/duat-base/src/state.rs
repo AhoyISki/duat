@@ -5,8 +5,9 @@
 //! no other meddling.
 //!
 //! Examples of functions in here are [`main_txt`], which will show a
-//! formatted version of the main [`SelectionMut`], and [`mode_txt`] which
-//! will show a formatted version of the current [`Mode`] of Duat.
+//! formatted version of the main [`SelectionMut`], and [`mode_txt`]
+//! which will show a formatted version of the current [`Mode`] of
+//! Duat.
 //!
 //! [`StatusLine`]: crate::widgets::StatusLine
 //! [`status!`]: crate::widgets::status
@@ -211,12 +212,15 @@ pub fn main_col(buffer: &Buffer, area: &Area) -> usize {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_txt(buffer: &Buffer, area: &Area) -> Text {
-    txt!(
-        "[coord]{}[separator]:[coord]{}[separator]/[coord]{}",
-        main_col(buffer, area),
-        main_line(buffer),
-        buffer.len_lines()
-    )
+    {
+        use duat_core as duat;
+        duat_core::private_exports::txt!(
+            "[coord]{}[separator]:[coord]{}[separator]/[coord]{}",
+            main_col(buffer, area),
+            main_line(buffer),
+            buffer.len_lines()
+        )
+    }
 }
 
 /// [`StatusLine`] part: The number of selections

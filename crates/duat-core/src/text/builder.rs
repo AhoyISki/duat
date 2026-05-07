@@ -102,7 +102,7 @@ impl Builder {
         self.text
     }
 
-    /// Pushes a part of the text
+    /// Pushes a part of the text.
     ///
     /// This can be an [`impl Display`] type, an [`impl Tag`], a
     /// [`FormId`], or even a [`Path`].
@@ -111,6 +111,18 @@ impl Builder {
     /// [`impl Tag`]: super::Tag
     /// [`Path`]: std::path::Path
     pub fn push<D: Display, _T>(&mut self, part: impl AsBuilderPart<D, _T>) {
+        self.push_builder_part(part.as_builder_part());
+    }
+
+    /// Pushes a part of the text, but takes it by reference instead.
+    ///
+    /// This can be an [`impl Display`] type, an [`impl Tag`], a
+    /// [`FormId`], or even a [`Path`].
+    ///
+    /// [`impl Display`]: std::fmt::Display
+    /// [`impl Tag`]: super::Tag
+    /// [`Path`]: std::path::Path
+    pub fn push_ref<D: Display, _T>(&mut self, part: &impl AsBuilderPart<D, _T>) {
         self.push_builder_part(part.as_builder_part());
     }
 
@@ -346,29 +358,35 @@ impl<D: Display> AsBuilderPart<D, D> for D {
     }
 }
 
-/// The standard [`Text`] construction macro
+/// Builds and modifies a [`Text`], based on `Text` compatible args.
 ///
-/// TODO: Docs
+/// The syntax of this struct is very similar to that of [`format!`].
+/// The difference between them is that:
 ///
-/// [`Text`]: super::Text
+/// 1. This macro will accept not only [`Display`] types, but also any
+///    [`Tag`], [`Form`]s and even [`Path`]s as interpolated
+///    arguments.
+/// 2. You can also interpolate arguments within `[]`s. These will be
+///    interpreted as `Form` names, and they will be transformed into
+///    the forms directly.
+///
+/// Here's the syntax:
+///
+/// - `[]`: Will push the `"default"` `Form`, which is actually just
+///   removing prior `Form`s.
+/// - `[a]`: Will push the `"accent"` `Form`.
+/// - `[{form}]`: Will push the `"{form}"`, where `{form}` can be any
+///   sequence of valid identifiers, separated by `"."`s.
+///
+/// [`impl Display`]: std::fmt::Display
+/// [`Form`]: crate::form::Form
+/// [`Tag`]: crate::text::Tag
 #[macro_export]
 macro_rules! txt {
-    ($($parts:tt)+) => {{
-        #[allow(unused_imports)]
-        use $crate::{
-            __parse_arg__, __parse_form__, __parse_str__, private_exports::format_like
-        };
-
-        let mut builder = $crate::text::Builder::new();
-        let _ = format_like!(
-            __parse_str__,
-            [('{', __parse_arg__, false), ('[', __parse_form__, true)],
-            &mut builder,
-            $($parts)*
-        );
-
-        builder.build()
-    }};
+    ($($tokens:tt)*) => {{
+        use $crate as duat;
+        $crate::private_exports::txt!($($tokens)*)
+    }}
 }
 
 #[macro_export]
@@ -384,59 +402,4 @@ macro_rules! __log__ {
             $location
         ));
     }}
-}
-
-#[macro_export]
-#[doc(hidden)]
-macro_rules! __parse_str__ {
-    ($builder:expr, $str:literal) => {{
-        let builder = $builder;
-        builder.push_str($str);
-        builder
-    }};
-}
-
-#[macro_export]
-#[doc(hidden)]
-macro_rules! __parse_arg__ {
-    ($builder:expr,"", $arg:expr) => {{
-        use $crate::text::AsBuilderPart;
-        let builder = $builder;
-        builder.push_builder_part($arg.as_builder_part());
-        builder
-    }};
-    ($builder:expr, $modif:literal, $arg:expr) => {{
-        let builder = $builder;
-        builder.push_str(format!(concat!("{:", $modif, "}"), &$arg));
-        builder
-    }};
-}
-
-#[macro_export]
-#[doc(hidden)]
-macro_rules! __parse_form__ {
-    ($builder:expr, $priority:literal,) => {{
-        use $crate::text::AsBuilderPart;
-        const PRIORITY: u8 = $crate::priority($priority);
-        let builder = $builder;
-        let id = $crate::form::DEFAULT_ID;
-        builder.push_builder_part(id.to_tag(PRIORITY).as_builder_part());
-        builder
-    }};
-    ($builder:expr, $priority:literal, a) => {{
-        use $crate::text::AsBuilderPart;
-        const PRIORITY: u8 = $crate::priority($priority);
-        let builder = $builder;
-        let id = $crate::form::ACCENT_ID;
-        builder.push_builder_part(id.to_tag(PRIORITY).as_builder_part());
-        builder
-    }};
-    ($builder:expr, $priority:literal, $($form:tt)*) => {{
-        use $crate::text::AsBuilderPart;
-        const PRIORITY: u8 = $crate::priority($priority);
-        let builder = $builder;
-        let id = $crate::form::id_of!(concat!($(stringify!($form)),*));
-        builder.push_builder_part(id.to_tag(PRIORITY).as_builder_part());
-        builder
-    }};
 }

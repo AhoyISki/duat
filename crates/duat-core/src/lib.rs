@@ -1219,7 +1219,7 @@ pub mod storage {
 ////////// Text Builder macros (for pub/private bending)
 #[doc(hidden)]
 pub mod private_exports {
-    pub use format_like::format_like;
+    pub use txt_macro::txt;
 }
 
 /// Converts a string to a valid priority

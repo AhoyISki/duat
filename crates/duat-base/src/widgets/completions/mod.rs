@@ -536,7 +536,9 @@ impl Completions {
                     }),
             );
 
-            lists.sort_by_key(|(_, (provided, _))| provided.start);
+            lists.sort_by(|(_, (p_rhs, _)), (_, (p_lhs, _))| {
+                p_rhs.start.cmp(&p_lhs.start).reverse()
+            });
 
             lists
                 .into_iter()
