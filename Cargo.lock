@@ -386,7 +386,7 @@ dependencies = [
  "bincode",
  "crossterm",
  "dirs-next",
- "format-like",
+ "duat-txt-macro",
  "gap-buf 0.6.1",
  "interprocess",
  "interrupt-read",
@@ -395,7 +395,6 @@ dependencies = [
  "regex-cursor",
  "regex-syntax",
  "shellexpand",
- "txt-macro",
 ]
 
 [[package]]
@@ -464,6 +463,13 @@ dependencies = [
  "streaming-iterator",
  "tree-sitter",
  "tree-sitter-language",
+]
+
+[[package]]
+name = "duat-txt-macro"
+version = "0.1.0"
+dependencies = [
+ "litrs",
 ]
 
 [[package]]
@@ -1439,13 +1445,6 @@ dependencies = [
  "memchr",
  "nom",
  "petgraph",
-]
-
-[[package]]
-name = "txt-macro"
-version = "0.1.0"
-dependencies = [
- "litrs",
 ]
 
 [[package]]

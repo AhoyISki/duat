@@ -6,7 +6,6 @@ authors = ["AhoyISki"]
 description = "A macro to create a Text struct from duat"
 repository = "https://github.com/AhoyISki/txt-macro"
 license = "AGPL-3.0-or-later"
-readme = "README.md"
 keywords = ["macro", "text"]
 categories = ["rust-patterns", "value-formatting"]
 
