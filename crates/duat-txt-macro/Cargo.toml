@@ -1,5 +1,5 @@
 [package]
-name = "txt-macro"
+name = "duat-txt-macro"
 version = "0.1.0"
 edition = "2024"
 authors = ["AhoyISki"]
