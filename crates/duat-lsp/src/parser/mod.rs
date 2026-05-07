@@ -269,7 +269,7 @@ pub fn setup_hooks() {
             server.send_semantic_tokens_request(buffer, version, parser);
         }
     })
-    .lateness(99);
+    .lateness(99_999_999);
 
     hook::add::<BufferSaved>(|pa, (buffer, _)| {
         if let Some((parser, buf)) = PARSERS.write(pa, buffer) {

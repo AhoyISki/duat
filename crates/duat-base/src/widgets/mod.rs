@@ -18,16 +18,24 @@ use duat_core::{
 };
 
 pub(crate) use self::{
-    completions::completions_setup, gutter::gutter_setup, info::info_setup,
-    linenumbers::linenumbers_setup, logbook::logbook_setup, notifications::notifications_setup,
-    promptline::promptline_setup, whichkey::whichkey_setup,
+    completions::completions_setup,
+    gutter::{
+        add_error, add_hint, add_warning, gutter_setup, has_gutter, hover_gutter_entries_on,
+        remove_gutter_entries,
+    },
+    info::info_setup,
+    linenumbers::linenumbers_setup,
+    logbook::logbook_setup,
+    notifications::notifications_setup,
+    promptline::promptline_setup,
+    whichkey::whichkey_setup,
 };
 pub use self::{
     completions::{
-        CommandsCompletions, Completions, CompletionsBuilder, CompletionsProvider, PathCompletions,
-        WordCompletions, CompletionEntry
+        CommandsCompletions, CompletionEntry, Completions, CompletionsBuilder, CompletionsProvider,
+        PathCompletions, WordCompletions,
     },
-    gutter::{Gutter, GutterBuffer, GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts},
+    gutter::{Gutter,GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts},
     info::Info,
     linenumbers::{LineNumbers, LineNumbersOpts},
     logbook::{LogBook, LogBookOpts},
@@ -43,10 +51,10 @@ mod info;
 mod linenumbers;
 mod logbook;
 mod notifications;
+mod places;
 mod promptline;
 mod statusline;
 mod whichkey;
-mod places;
 
 /// A group of [`Widget`]s consisting of a [`StatusLine`],
 /// [`PromptLine`] and [`Notifications`] combo

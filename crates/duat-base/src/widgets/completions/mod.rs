@@ -26,7 +26,7 @@ use duat_core::{
     },
     context::{self, Handle},
     data::Pass,
-    hook::{self, KeySent, ModeSwitched, OnMouseEvent, WidgetOpened},
+    hook::{self, BufferUpdated, KeySent, ModeSwitched, OnMouseEvent, WidgetOpened},
     mode::{KeyCode, MouseEventKind, event},
     text::{Point, Spawn, Text, TextMut, txt},
     ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
@@ -136,25 +136,39 @@ pub fn completions_setup() {
         })
         .lateness(0);
 
-        hook::add::<KeySent>(move |pa, _| {
-            let completions_master = completions.master(pa).unwrap();
+        let update_completions = {
+            let completions = completions.clone();
+            move |pa: &mut Pass| {
+                let completions_master = completions.master(pa).unwrap();
 
-            if completions.is_closed()
-                || completions_master.is_closed()
-                || completions_master.selections(pa).is_empty()
-            {
-                hook::remove(ns);
-                return;
-            }
+                if completions.is_closed()
+                    || completions_master.is_closed()
+                    || completions_master.selections(pa).is_empty()
+                {
+                    hook::remove(ns);
+                    return;
+                }
 
-            Completions::update_text_and_position(pa, &completions, 0);
-            completions.write(pa).last_cursor = completions_master.selections(pa).main().cursor();
-            if !completions.is_closed() {
-                Completions::set_frame(pa, &completions);
+                Completions::update_text_and_position(pa, &completions, 0);
+                completions.write(pa).last_cursor =
+                    completions_master.selections(pa).main().cursor();
+                if !completions.is_closed() {
+                    Completions::set_frame(pa, &completions);
+                }
             }
-        })
-        .lateness(100_000_000)
-        .grouped(ns);
+        };
+
+        if completions.master_buffer(pa).is_some() {
+            // NECESSARY, DON'T GET RID OF THIS!!!
+            // This is to update the completions only after updating the Buffer.
+            hook::add::<BufferUpdated>(move |pa, _| update_completions(pa))
+                .lateness(usize::MAX)
+                .grouped(ns);
+        } else {
+            hook::add::<KeySent>(move |pa, _| update_completions(pa))
+                .lateness(usize::MAX)
+                .grouped(ns);
+        }
     });
 
     hook::add::<ModeSwitched>(move |pa, switch| {

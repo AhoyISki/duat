@@ -4,7 +4,7 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use duat_base::widgets::{GutterBuffer, GutterEntryId};
+use duat_base::{BaseBuffer, widgets::GutterEntryId};
 use duat_core::{
     Ns,
     buffer::Moment,
@@ -125,7 +125,7 @@ pub fn add(
     encoding: Encoding,
     version: Option<i32>,
 ) {
-    // context::debug!("{list:#?}");
+    context::debug!("{list:#?}");
 
     list.sort_unstable_by(|lhs, rhs| {
         lhs.severity

@@ -121,12 +121,21 @@
 //! [`Info`]: widgets::Info
 //! [`Gutter`]: widgets::Gutter
 use duat_core::{
-    Ns, buffer::Buffer, cmd, data::Pass, for mode,
-    text::{Point, Text, txt},
+    Ns,
+    buffer::Buffer,
+    cmd,
+    context::Handle,
+    data::Pass,
+    form::{self, Form},
+    mode,
+    text::{Point, Text, TextRange, txt},
 };
 use regex_syntax::ast::Ast;
 
-use crate::{modes::Pager, widgets::{GutterEntryId, LogBook}};
+use crate::{
+    modes::Pager,
+    widgets::{GutterEntryId, LogBook},
+};
 
 mod buffer_parser;
 pub mod modes;
@@ -232,6 +241,8 @@ trait Sealed {}
 /// Trait with various methods that are useful for [`Buffer`]s.
 #[allow(private_bounds)]
 pub trait BaseBuffer: Sealed {
+    ////////// Gutter methods
+
     /// Remove all [`Gutter`] entries from a given [`Ns`].
     ///
     /// [`Gutter`]: widgets::Gutter
@@ -293,11 +304,41 @@ pub trait BaseBuffer: Sealed {
     fn hover_gutter_entries_on(&self, pa: &Pass, point: Point);
 }
 
-impl BaseBuffer for Buffer {
+impl Sealed for Handle<Buffer> {}
+impl BaseBuffer for Handle<Buffer> {
     #[track_caller]
     fn remove_gutter_entries(&self, pa: &mut Pass, ns: Ns) {
-        
-    } 
+        widgets::remove_gutter_entries(self, pa, ns);
+    }
+
+    #[track_caller]
+    fn add_hint(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId {
+        widgets::add_hint(self, pa, ns, range, msg)
+    }
+
+    #[track_caller]
+    fn add_warning(
+        &self,
+        pa: &mut Pass,
+        ns: Ns,
+        range: impl TextRange,
+        msg: Text,
+    ) -> GutterEntryId {
+        widgets::add_warning(self, pa, ns, range, msg)
+    }
+
+    #[track_caller]
+    fn add_error(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId {
+        widgets::add_error(self, pa, ns, range, msg)
+    }
+
+    fn has_gutter(&self, pa: &Pass) -> bool {
+        widgets::has_gutter(self, pa)
+    }
+
+    fn hover_gutter_entries_on(&self, pa: &Pass, point: Point) {
+        widgets::hover_gutter_entries_on(self, pa, point);
+    }
 }
 
 pub mod hooks {

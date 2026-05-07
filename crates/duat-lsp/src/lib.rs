@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use duat_base::widgets::GutterBuffer;
+use duat_base::BaseBuffer;
 use duat_core::{
     buffer::Buffer,
     context::Handle,

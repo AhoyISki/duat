@@ -719,6 +719,7 @@ impl<'t> TextMut<'t> {
     /// interpreted as a range from.
     ///
     /// [range]: TextRange
+    #[track_caller]
     pub fn replace_range(&mut self, range: impl TextRange, edit: impl ToString) {
         let range = range.to_range(self.len());
         let (start, end) = (

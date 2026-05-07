@@ -95,6 +95,8 @@ pub fn setup_hooks() {
 
         let mut text = buf.text_mut(pa);
 
+        context::debug!("{lsp_entry:#?}");
+
         if let Some(edit) = &lsp_entry.text_edit {
             let (range, new_text) = match edit {
                 CompletionTextEdit::Edit(edit) => (edit.range, &edit.new_text),

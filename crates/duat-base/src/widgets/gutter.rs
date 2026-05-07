@@ -740,68 +740,10 @@ pub enum GutterDisplay {
     RightUnder,
 }
 
-#[allow(private_bounds)]
-trait Sealed {}
-/// Trait for adding gutter entries to a [`Buffer`].
-///
-/// [`Buffer`]: duat_core::buffer::Buffer
-#[allow(private_bounds)]
-pub trait GutterBuffer: Sealed {
-    /// Remove all [`Gutter`] entries from a given [`Ns`].
-    #[track_caller]
-    fn remove_gutter_entries(&self, pa: &mut Pass, ns: Ns);
-
-    /// Add a hint to the [`Gutter`] and the [`Buffer`].
-    ///
-    /// This could just be useful information, like the fact that
-    /// something won't be included in compilation because of a `cfg`
-    /// attribute.
-    ///
-    /// Note: This function won't add duplicated entries, instead
-    /// returning the [`GutterEntryId`] of the entry that was already
-    /// in there.
-    #[track_caller]
-    fn add_hint(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId;
-
-    /// Add a warning to the [`Gutter`] and the [`Buffer`].
-    ///
-    /// This could be improvements that you could do to your code, or
-    /// ways in which it is innadequate that don't necessarily hinder
-    /// it from working properly.
-    ///
-    /// Note: This function won't add duplicated entries, instead
-    /// returning the [`GutterEntryId`] of the entry that was already
-    /// in there.
-    #[track_caller]
-    fn add_warning(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text)
-    -> GutterEntryId;
-
-    /// Add an error to the [`Gutter`] and the [`Buffer`].
-    ///
-    /// These are fundamental issues in your code, and either prevent
-    /// compilation, or prevent it from working properly.
-    ///
-    /// Note: This function won't add duplicated entries, instead
-    /// returning the [`GutterEntryId`] of the entry that was already
-    /// in there.
-    fn add_error(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId;
-
-    /// Wether  this [`Buffer`] has a [`Gutter`] or not.
-    ///
-    /// This should return `true` everytime, unless you disable this
-    /// functionality.
-    fn has_gutter(&self, pa: &Pass) -> bool;
-
-    /// Hovers over the gutter entries in a [`Point`], as if the mouse
-    /// had gone over them.
-    #[track_caller]
-    fn hover_gutter_entries_on(&self, pa: &Pass, point: Point);
-}
-
 /////////// Buffer functions related to Gutters.
 
 #[track_caller]
-fn remove_gutter_entries(handle: &Handle, pa: &mut Pass, ns: Ns) {
+pub(crate) fn remove_gutter_entries(handle: &Handle, pa: &mut Pass, ns: Ns) {
     let Some((gutter, _)) = handle.get_related::<Gutter>(pa).first().cloned() else {
         panic!("Tried to remove Gutter entries on Buffer with no Gutter");
     };
@@ -837,7 +779,13 @@ fn remove_gutter_entries(handle: &Handle, pa: &mut Pass, ns: Ns) {
     });
 }
 
-fn add_hint(handle: &Handle, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId {
+pub(crate) fn add_hint(
+    handle: &Handle,
+    pa: &mut Pass,
+    ns: Ns,
+    range: impl TextRange,
+    msg: Text,
+) -> GutterEntryId {
     let Some((gutter, _)) = handle.get_related::<Gutter>(pa).first().cloned() else {
         panic!("Tried to add a Gutter entry on Buffer with no Gutter");
     };
@@ -973,7 +921,7 @@ pub(crate) fn has_gutter(handle: &Handle, pa: &Pass) -> bool {
     !handle.get_related::<Gutter>(pa).is_empty()
 }
 
-fn hover_gutter_entries_on(handle: &Handle, pa: &Pass, point: Point) {
+pub(crate) fn hover_gutter_entries_on(handle: &Handle, pa: &Pass, point: Point) {
     assert!(
         point <= handle.text(pa).end_point(),
         "{point:?} out of bounds"
