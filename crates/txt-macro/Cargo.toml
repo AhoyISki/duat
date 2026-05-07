@@ -1,0 +1,17 @@
+[package]
+name = "txt-macro"
+version = "0.1.0"
+edition = "2024"
+authors = ["AhoyISki"]
+description = "A macro to create a Text struct from duat"
+repository = "https://github.com/AhoyISki/txt-macro"
+license = "AGPL-3.0-or-later"
+readme = "README.md"
+keywords = ["macro", "text"]
+categories = ["rust-patterns", "value-formatting"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+litrs = "1.0.0"
