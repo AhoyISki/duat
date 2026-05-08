@@ -328,7 +328,6 @@ impl mode::Mode for Prompt {
                     s.replace("");
                 });
 
-                update(pa);
                 reset(pa, self);
             }
             event!(Enter) => {

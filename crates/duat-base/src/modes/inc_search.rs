@@ -2,15 +2,22 @@
 //!
 //! This specific feature of Duat is kind of split across this crate
 //! and [`duat-core`], since some of the low level features (like
-//! spawning a bazillion [`SelectionMut`]s) were only possible with access
-//! to private things.
+//! spawning a bazillion [`SelectionMut`]s) were only possible with
+//! access to private things.
 //!
 //! [`duat-core`]: duat_core
 //! [`SelectionMut`]: duat_core::mode::SelectionMut
 use std::sync::{LazyLock, Once};
 
 use duat_core::{
-    Ns, buffer::Buffer, context::{self, Handle}, data::Pass, form::{self, Form}, hook, text::{Text, txt}, ui::{PrintInfo, RwArea}
+    Ns,
+    buffer::Buffer,
+    context::{self, Handle},
+    data::Pass,
+    form::{self, Form},
+    hook,
+    text::{Text, txt},
+    ui::{PrintInfo, RwArea},
 };
 
 use crate::{
@@ -83,7 +90,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
         let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
         text.remove_tags(*NS, ..);
 
-        let handle = context::current_buffer(pa);
+        let buffer = context::current_buffer(pa);
 
         if text == self.prev {
             return text;
@@ -96,9 +103,9 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 
         match regex_syntax::parse(&pat) {
             Ok(_) => {
-                handle.area().set_print_info(pa, orig_print_info.clone());
-                let buffer = handle.write(pa);
-                *buffer.selections_mut() = orig_selections.clone();
+                buffer.area().set_print_info(pa, orig_print_info.clone());
+                let buf = buffer.write(pa);
+                *buf.selections_mut() = orig_selections.clone();
 
                 let ast = regex_syntax::ast::parse::Parser::new()
                     .parse(&text.to_string_no_last_nl())
@@ -107,7 +114,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
                 crate::tag_from_ast(*NS, &mut text, &ast);
 
                 if !text.is_empty() {
-                    self.inc.search(pa, &pat, handle);
+                    self.inc.search(pa, &pat, buffer);
                 }
             }
             Err(err) => {
@@ -137,7 +144,13 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
     }
 
     fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &RwArea) {
-        if !text.is_empty() {
+        if text.is_empty() || text == "\n" {
+            let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
+            
+            let buffer = context::current_buffer(pa);
+            buffer.area().set_print_info(pa, orig_print_info.clone());
+            *buffer.write(pa).selections_mut() = orig_selections.clone();
+        } else {
             let pat = text.to_string_no_last_nl();
             if let Err(err) = regex_syntax::parse(&pat) {
                 let regex_syntax::Error::Parse(err) = err else {

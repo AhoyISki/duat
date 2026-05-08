@@ -41,7 +41,7 @@ impl IncSearcher for Split {
     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
         handle.edit_all(pa, |mut s| {
             let range = s.range();
-            if range.is_empty() {
+            if range.end.byte() - range.start.byte() <= 1 {
                 return;
             }
 
@@ -56,10 +56,11 @@ impl IncSearcher for Split {
                 .chain(ranges)
                 .chain([range.end.byte()]);
 
-            while let Some(p0) = iter.next()
-                && let Some(p1) = iter.next()
+            while let Some(b0) = iter.next()
+                && let Some(b1) = iter.next()
+                && b0 != range.end.byte()
             {
-                s.move_to(p0..p1);
+                s.move_to(b0..b1);
                 s.copy();
             }
 
