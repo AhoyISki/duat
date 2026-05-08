@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use duat_base::{
+    BaseBuffer,
     hooks::{CompletionFinished, CompletionSelected},
     widgets::Completions,
 };
@@ -15,8 +16,9 @@ use duat_core::{
 use jsonrpc_lite::Id;
 use lsp_types::{
     CompletionContext, CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse,
-    CompletionTextEdit, CompletionTriggerKind, Documentation, PartialResultParams,
-    TextDocumentIdentifier, TextDocumentPositionParams, Uri, WorkDoneProgressParams,
+    CompletionTextEdit, CompletionTriggerKind, Documentation, InsertTextFormat, InsertTextMode,
+    PartialResultParams, TextDocumentIdentifier, TextDocumentPositionParams, Uri,
+    WorkDoneProgressParams,
     request::{Completion, ResolveCompletionItem},
 };
 
@@ -81,7 +83,8 @@ pub fn setup_hooks() {
     });
 
     hook::add::<CompletionFinished>(|pa, entry| {
-        let buf = context::current_buffer(pa);
+        let buffer = context::current_buffer(pa);
+        let popts = buffer.opts(pa);
 
         let Some(lsp_entry) = entry.get_for::<LspCompletions>() else {
             return;
@@ -93,29 +96,58 @@ pub fn setup_hooks() {
         .flatten()
         .unwrap();
 
-        let mut text = buf.text_mut(pa);
+        let text = buffer.text(pa);
 
-        if let Some(edit) = &lsp_entry.text_edit {
+        let replacement = if let Some(edit) = &lsp_entry.text_edit {
             let (range, new_text) = match edit {
                 CompletionTextEdit::Edit(edit) => (edit.range, &edit.new_text),
                 CompletionTextEdit::InsertAndReplace(edit) => (edit.replace, &edit.new_text),
             };
 
-            let start = encoding.byte_from_pos(&text, range.start);
+            let start = encoding.byte_from_pos(text, range.start);
             // It would otherwise replace just what was typed by the user, not the
             // auto-replaced text.
             let end = start.map(|s| s + entry.replacement.len());
 
             if let (Some(start), Some(end)) = (start, end) {
-                text.replace_range(start..end, new_text);
+                Some((start..end, new_text))
+            } else {
+                None
             }
         } else if let Some(insert) = &lsp_entry.insert_text {
             let cursor = text.main_sel().cursor().byte();
 
-            text.replace_range(cursor - insert.len()..cursor, insert);
+            Some((cursor - insert.len()..cursor, insert))
+        } else {
+            None
+        };
+
+        if let Some((range, edit)) = replacement {
+            let edited;
+            let edit = if let None | Some(InsertTextMode::ADJUST_INDENTATION) =
+                lsp_entry.insert_text_mode
+                && let indent = text
+                    .line(text.point_at_byte(range.start).line())
+                    .indent(popts)
+                && indent > 0
+            {
+                let indented = format!("\n{}", " ".repeat(indent));
+                edited = edit.replace("\n", &indented);
+                &edited
+            } else {
+                edit
+            };
+
+            if let Some(InsertTextFormat::SNIPPET) = lsp_entry.insert_text_format {
+                buffer.replace_with_snippet(pa, range, edit);
+            } else {
+                buffer.text_mut(pa).replace_range(range, edit);
+            }
         }
 
-        for edit in lsp_entry.additional_text_edits.iter().flatten() {
+        let mut text = buffer.text_mut(pa);
+
+        for edit in lsp_entry.additional_text_edits.iter().flatten().rev() {
             let start = encoding.byte_from_pos(&text, edit.range.start);
             let end = encoding.byte_from_pos(&text, edit.range.end);
 
@@ -206,7 +238,7 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
             Text::new()
         };
 
-        txt!("[completion.lsp.label]{entry.label}[]{details}{Spacer}{kind}")
+        txt!("[completion.lsp.label]{entry.label}[]{details} {Spacer}{kind}")
     }
 
     fn matches(&mut self, text: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {

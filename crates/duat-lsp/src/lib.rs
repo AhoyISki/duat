@@ -89,7 +89,7 @@ impl Mode for Lsp {
                             },
                             work_done_progress_params: WorkDoneProgressParams::default(),
                         },
-                        |pa, result| {
+                        |_, result| {
                             duat_core::debug!("{result:#?}");
                         },
                     );

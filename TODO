@@ -4,7 +4,6 @@ FOR NEXT UPDATE:
   [x] Diagnostics.
   [ ] Goto locations.
   [x] Autocompletions.
-  [ ] Snippets.
   [x] Formatting.
   [x] Caching.
 [ ] Snippet support.

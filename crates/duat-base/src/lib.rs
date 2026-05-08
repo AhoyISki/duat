@@ -302,6 +302,22 @@ pub trait BaseBuffer: Sealed {
     /// had gone over them.
     #[track_caller]
     fn hover_gutter_entries_on(&self, pa: &Pass, point: Point);
+
+    ////////// Snippet methods
+
+    /// Replace a range in the `Buffer`'s [`Text`] with a snippet.
+    ///
+    /// This snippet may contain cursor positions. These cursor
+    /// positions can be quickly used to jump around and replace
+    /// parts of the `Text`. For example `"function_call($1, $2)$0"`
+    /// can be used to quickly fill in the arguments of the function.
+    ///
+    /// With `num` being a number, the syntax goes as following:
+    ///
+    /// - `$num` or `${num} for a jump.
+    /// - `${num:placeholder}` for a jump with a placeholder.
+    #[track_caller]
+    fn replace_with_snippet(&self, pa: &mut Pass, range: impl TextRange, snippet: impl ToString);
 }
 
 impl Sealed for Handle<Buffer> {}
@@ -338,6 +354,13 @@ impl BaseBuffer for Handle<Buffer> {
 
     fn hover_gutter_entries_on(&self, pa: &Pass, point: Point) {
         widgets::hover_gutter_entries_on(self, pa, point);
+    }
+
+    #[track_caller]
+    fn replace_with_snippet(&self, pa: &mut Pass, range: impl TextRange, snippet: impl ToString) {
+        let range = range.to_range(self.text(pa).len());
+
+        snippets::replace_with_snippet(self, pa, range, snippet.to_string());
     }
 }
 

@@ -125,8 +125,6 @@ pub fn add(
     encoding: Encoding,
     version: Option<i32>,
 ) {
-    context::debug!("{list:#?}");
-
     list.sort_unstable_by(|lhs, rhs| {
         lhs.severity
             .cmp(&rhs.severity)
