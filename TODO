@@ -6,7 +6,7 @@ FOR NEXT UPDATE:
   [x] Autocompletions.
   [x] Formatting.
   [x] Caching.
-[ ] Snippet support.
+[x] Snippet support.
 [ ] More work on the Gutter.
   [x] Diferentiate hovering, cursoring, related and default display.
   [ ] Implement Widget spawning.
@@ -15,6 +15,7 @@ FOR NEXT UPDATE:
 [ ] Perfect print iterators.
   [ ] Perfect words iterator.
 [ ] Fix pager search.
+[ ] Fix logs scrolling.
 [ ] Stop eagerly merging Selections.
 [x] Additional wrap continuation characters.
 [ ] Add a donation splash screen.

@@ -1,6 +1,6 @@
 use std::sync::{Mutex, atomic::Ordering};
 
-use duat_base::widgets::Completions;
+use duat_base::{BaseBuffer, widgets::Completions};
 use duat_core::{
     Ns,
     buffer::Buffer,
@@ -168,6 +168,14 @@ impl Mode for Insert {
                 }
 
                 self.is_completing = true;
+            }
+            ctrl!('j') => {
+                buffer.jump_snippets(pa, 0);
+                buffer.edit_all(pa, |mut s| s.replace(""));
+            }
+            ctrl!('k') => {
+                buffer.jump_snippets(pa, -1);
+                buffer.edit_all(pa, |mut s| s.replace(""));
             }
 
             // Regular commands

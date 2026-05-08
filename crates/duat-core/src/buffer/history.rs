@@ -731,6 +731,7 @@ impl Buffer {
     /// However, one thing to note is that
     ///
     /// [namespace]: crate::Ns
+    #[track_caller]
     pub fn moment_for(&self, ns: Ns) -> Moment {
         let mut unread = self.history.unread_moments.lock().unwrap();
         if let Some((_, moment)) = unread.iter_mut().find(|(other, _)| *other == ns) {

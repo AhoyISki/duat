@@ -358,7 +358,7 @@ impl<T: ?Sized> RwData<T> {
     /// of freedom in where they can do things, whilst keeping Rust's
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
-    pub fn read<'p>(&'p self, _: &'p Pass) -> &'p T {
+    pub fn read<'p>(&self, _: &'p Pass) -> &'p T {
         self.read_state.store(self.cur_state.load(Relaxed), Relaxed);
         // SAFETY: If one were to try and write to this value, this reference
         // would instantly become invalid, and trying to read from it again

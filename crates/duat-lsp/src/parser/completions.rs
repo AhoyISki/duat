@@ -140,6 +140,8 @@ pub fn setup_hooks() {
 
             if let Some(InsertTextFormat::SNIPPET) = lsp_entry.insert_text_format {
                 buffer.replace_with_snippet(pa, range, edit);
+                buffer.jump_snippets(pa, 0);
+                buffer.edit_all(pa, |mut s| s.replace(""));
             } else {
                 buffer.text_mut(pa).replace_range(range, edit);
             }

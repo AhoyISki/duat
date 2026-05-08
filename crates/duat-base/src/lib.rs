@@ -173,6 +173,8 @@ impl DuatBase {
         widgets::whichkey_setup();
         widgets::completions_setup();
 
+        snippets::add_snippet_hook();
+
         modes::add_prompt_hook();
         if self.default_opts_parser {
             buffer_parser::enable_parser();
@@ -316,8 +318,25 @@ pub trait BaseBuffer: Sealed {
     ///
     /// - `$num` or `${num} for a jump.
     /// - `${num:placeholder}` for a jump with a placeholder.
+    ///
+    /// You can have multiple of the same `num`. This would spawn
+    /// multiple cursors editing the `Text` at the same time.
+    ///
+    /// Additionally, the `$0` or `${0:placeholder}` will always be
+    /// the _last_ position to be jumped to. If there is no `$0`,
+    /// then duat will assume that one should be at the end of the
+    /// string.
     #[track_caller]
     fn replace_with_snippet(&self, pa: &mut Pass, range: impl TextRange, snippet: impl ToString);
+
+    /// Jumps over the snippets.
+    ///
+    /// This will move the selections to the next jump, which could
+    /// be composed of multiple selections. If `by == 0`, it will
+    /// simply move to the last selected jump, if there was one.
+    ///
+    /// Returns `true` if anything happened.
+    fn jump_snippets(&self, pa: &mut Pass, by: i32) -> bool;
 }
 
 impl Sealed for Handle<Buffer> {}
@@ -361,6 +380,10 @@ impl BaseBuffer for Handle<Buffer> {
         let range = range.to_range(self.text(pa).len());
 
         snippets::replace_with_snippet(self, pa, range, snippet.to_string());
+    }
+
+    fn jump_snippets(&self, pa: &mut Pass, by: i32) -> bool {
+        snippets::jump_snippets(self, pa, by)
     }
 }
 
