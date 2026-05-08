@@ -131,7 +131,7 @@ pub fn get_initialize_params(path: &Path, config: &LanguageServerConfig) -> Init
         root_path: Some(rootdir.to_str().unwrap().to_string()),
         #[allow(deprecated)]
         root_uri: Some(path_to_uri(&rootdir).unwrap()),
-        initialization_options: None,
+        initialization_options: config.settings.clone(),
         capabilities: ClientCapabilities {
             workspace: Some(WorkspaceClientCapabilities {
                 apply_edit: Some(true),

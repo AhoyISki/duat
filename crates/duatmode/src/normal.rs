@@ -266,7 +266,7 @@ impl Mode for Normal {
             let (sel_type, succeeded) = one_key.send_key(pa, key_event, &handle);
             self.sel_type = sel_type;
             if self.only_one_action {
-                mode::set(pa, crate::Insert);
+                mode::set(pa, crate::Insert::default());
             }
 
             if succeeded {
@@ -614,7 +614,7 @@ impl Mode for Normal {
             event!('i') => {
                 handle.edit_all(pa, |mut s| _ = s.set_cursor_on_start());
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::Insert);
-                mode::set(pa, crate::Insert);
+                mode::set(pa, crate::Insert::default());
             }
             event!('I') => {
                 if opts.indent_on_capital_i {
@@ -632,7 +632,7 @@ impl Mode for Normal {
                 });
 
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::InsertStart);
-                mode::set(pa, crate::Insert);
+                mode::set(pa, crate::Insert::default());
             }
             event!('a') => {
                 handle.edit_all(pa, |mut s| {
@@ -640,7 +640,7 @@ impl Mode for Normal {
                     s.move_hor(1);
                 });
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::Append);
-                mode::set(pa, crate::Insert);
+                mode::set(pa, crate::Insert::default());
             }
             event!('A') => {
                 handle.edit_all(pa, |mut s| {
@@ -648,14 +648,14 @@ impl Mode for Normal {
                     s.move_to_col(usize::MAX);
                 });
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::AppendEnd);
-                mode::set(pa, crate::Insert);
+                mode::set(pa, crate::Insert::default());
             }
             // TODO: Implement parameter
             event!('o') | alt!('o') => {
                 open_new_line_below(pa);
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::NewLineBelow);
                 if key_event.modifiers == KeyMod::NONE {
-                    mode::set(pa, crate::Insert);
+                    mode::set(pa, crate::Insert::default());
                 }
             }
             // TODO: Implement parameter
@@ -663,7 +663,7 @@ impl Mode for Normal {
                 open_new_line_above(pa);
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::NewLineAbove);
                 if key_event.modifiers == KeyMod::NONE {
-                    mode::set(pa, crate::Insert);
+                    mode::set(pa, crate::Insert::default());
                 }
             }
             event!('.') => {
@@ -940,7 +940,7 @@ impl Mode for Normal {
                 delete_selections(pa);
                 if char == 'c' {
                     *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::Change);
-                    mode::set(pa, crate::Insert);
+                    mode::set(pa, crate::Insert::default());
                 }
             }
             event!(char @ ('p' | 'P')) => {
@@ -1205,7 +1205,7 @@ impl Mode for Normal {
         }
 
         if self.one_key.is_none() && self.only_one_action {
-            mode::set(pa, crate::Insert);
+            mode::set(pa, crate::Insert::default());
         }
     }
 }

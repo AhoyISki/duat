@@ -495,6 +495,8 @@ static DEFAULT_CONFIGS: LazyLock<Mutex<HashMap<&str, (LspList, bool)>>> = LazyLo
         [rust-analyzer]
         root_globs = ["Cargo.toml"]
         single_instance = true
+        [rust-analyzer.settings]
+        files.watcher = "server"
         [rust-analyzer.symbol_kinds]
         Constant = "const"
         Enum = "enum"

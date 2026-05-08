@@ -42,8 +42,10 @@ pub fn add_insert_hook() {
     });
 }
 
-#[derive(Clone, Copy)]
-pub struct Insert;
+#[derive(Clone, Copy, Default)]
+pub struct Insert {
+    is_completing: bool,
+}
 
 impl Mode for Insert {
     type Widget = Buffer;
@@ -67,12 +69,12 @@ impl Mode for Insert {
         })
     }
 
-    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
+    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, buffer: Handle) {
         use mode::KeyCode::*;
 
         let opts = crate::opts::get();
         if let shift!(Left | Down | Up | Right) = key_event {
-            handle.edit_all(pa, |mut s| {
+            buffer.edit_all(pa, |mut s| {
                 if s.anchor().is_none() {
                     s.set_anchor()
                 }
@@ -87,20 +89,27 @@ impl Mode for Insert {
             }
         };
 
+        if !matches!(key_event, event!(Tab)) {
+            self.is_completing = false;
+        }
+
         match key_event {
             // Autocompletion commands
             ctrl!('n') => complete(pa, 1, &mut insert_events),
             ctrl!('p') | shift!(BackTab) => complete(pa, -1, &mut insert_events),
             event!(Tab) => {
-                let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
-                add_reindent(&mut insert_events);
+                let mut indent_info = (!self.is_completing).then(|| {
+                    add_reindent(&mut insert_events);
+                    crate::indents(pa, &buffer)
+                });
 
                 match opts.tab_mode {
                     TabMode::Normal => {
-                        handle.edit_all(pa, |mut s| {
-                            let indent = indents.next().unwrap();
-                            if opts.indent_chars.contains(&'\t')
-                                && is_ts_indent
+                        buffer.edit_all(pa, |mut s| {
+                            if let Some((indents, is_ts_indent)) = &mut indent_info
+                                && let indent = indents.next().unwrap()
+                                && opts.indent_chars.contains(&'\t')
+                                && *is_ts_indent
                                 && reindent(s.indent(), indent, &mut s)
                             {
                                 return;
@@ -115,11 +124,12 @@ impl Mode for Insert {
                             }
                         });
                     }
-                    TabMode::Smart => handle.edit_all(pa, |mut s| {
+                    TabMode::Smart => buffer.edit_all(pa, |mut s| {
                         let char_col = s.v_cursor().char_col();
-                        let indent = indents.next().unwrap();
-                        if (opts.indent_chars.contains(&'\t') || char_col <= s.indent())
-                            && is_ts_indent
+                        if let Some((indents, is_ts_indent)) = &mut indent_info
+                            && let indent = indents.next().unwrap()
+                            && (opts.indent_chars.contains(&'\t') || char_col <= s.indent())
+                            && *is_ts_indent
                             && reindent(s.indent(), indent, &mut s)
                         {
                             return;
@@ -136,13 +146,17 @@ impl Mode for Insert {
                     }),
                     TabMode::VerySmart => {
                         let mut do_scroll = true;
-                        handle.edit_all(pa, |mut s| {
+                        buffer.edit_all(pa, |mut s| {
                             let char_col = s.v_cursor().char_col();
-                            let indent = indents.next().unwrap();
-                            let has_reindented = (opts.indent_chars.contains(&'\t')
-                                || char_col <= s.indent())
-                                && is_ts_indent
-                                && reindent(s.indent(), indent, &mut s);
+                            let has_reindented =
+                                if let Some((indents, is_ts_indent)) = &mut indent_info {
+                                    let indent = indents.next().unwrap();
+                                    (opts.indent_chars.contains(&'\t') || char_col <= s.indent())
+                                        && *is_ts_indent
+                                        && reindent(s.indent(), indent, &mut s)
+                                } else {
+                                    false
+                                };
 
                             do_scroll &= !has_reindented
                         });
@@ -152,17 +166,19 @@ impl Mode for Insert {
                         }
                     }
                 }
+
+                self.is_completing = true;
             }
 
             // Regular commands
             event!(Char(char)) => {
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     insert_str(&mut s, char, 1, &mut insert_events);
                 });
                 if opts.indent_chars.contains(&char) {
-                    let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
+                    let (mut indents, is_ts_indent) = crate::indents(pa, &buffer);
                     if is_ts_indent {
-                        handle.edit_all(pa, |mut s| {
+                        buffer.edit_all(pa, |mut s| {
                             let indent = indents.next().unwrap();
                             if opts.indent_chars.contains(&char)
                                 && s.indent() == s.v_cursor().char_col() - 1
@@ -175,7 +191,7 @@ impl Mode for Insert {
             }
 
             event!(Enter) => {
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     let (cursor, anchor) = (s.cursor(), s.anchor());
                     remove_trailing_before_cursor(&mut s);
                     if let Some(anchor) = anchor {
@@ -191,21 +207,21 @@ impl Mode for Insert {
                     insert_str(&mut s, '\n', 1, &mut insert_events)
                 });
                 if opts.indent_chars.contains(&'\n') {
-                    handle.edit_all(pa, |mut s| {
+                    buffer.edit_all(pa, |mut s| {
                         if s.add_comment() {
                             s.insert(' ');
                             s.move_hor(1);
                         }
                     });
-                    let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
-                    handle.edit_all(pa, |mut s| {
+                    let (mut indents, is_ts_indent) = crate::indents(pa, &buffer);
+                    buffer.edit_all(pa, |mut s| {
                         if is_ts_indent || opts.auto_indent {
                             _ = reindent(0, indents.next().unwrap(), &mut s)
                         }
                     });
                 }
             }
-            event!(Backspace) => handle.edit_all(pa, |mut s| {
+            event!(Backspace) => buffer.edit_all(pa, |mut s| {
                 let prev_cursor = s.cursor();
                 let prev_anchor = s.unset_anchor();
 
@@ -230,7 +246,7 @@ impl Mode for Insert {
                     }
                 }
             }),
-            event!(Delete) => handle.edit_all(pa, |mut s| {
+            event!(Delete) => buffer.edit_all(pa, |mut s| {
                 let prev_cursor = s.cursor();
                 let prev_anchor = s.unset_anchor();
                 s.set_anchor();
@@ -252,11 +268,11 @@ impl Mode for Insert {
                     s.swap_ends();
                 }
             }),
-            event!(Left) | shift!(Left) => handle.edit_all(pa, |mut s| {
+            event!(Left) | shift!(Left) => buffer.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 move_hor(&mut s, -1, &mut insert_events);
             }),
-            event!(Down) | shift!(Down) => handle.edit_all(pa, |mut s| {
+            event!(Down) | shift!(Down) => buffer.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 if key_event.modifiers == KeyMod::NONE {
                     s.unset_anchor();
@@ -264,7 +280,7 @@ impl Mode for Insert {
                 }
                 move_ver(&mut s, 1, &mut insert_events);
             }),
-            event!(Up) | shift!(Up) => handle.edit_all(pa, |mut s| {
+            event!(Up) | shift!(Up) => buffer.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 if key_event.modifiers == KeyMod::NONE {
                     s.unset_anchor();
@@ -272,26 +288,26 @@ impl Mode for Insert {
                 }
                 move_ver(&mut s, -1, &mut insert_events);
             }),
-            event!(Right) | shift!(Right) => handle.edit_all(pa, |mut s| {
+            event!(Right) | shift!(Right) => buffer.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 move_hor(&mut s, 1, &mut insert_events);
             }),
 
-            event!(Home) => handle.edit_all(pa, |mut s| s.move_to_col(0)),
-            event!(End) => handle.edit_all(pa, |mut s| s.move_to_col(usize::MAX)),
+            event!(Home) => buffer.edit_all(pa, |mut s| s.move_to_col(0)),
+            event!(End) => buffer.edit_all(pa, |mut s| s.move_to_col(usize::MAX)),
 
             event!(Esc) => {
-                handle.text_mut(pa).new_moment();
+                buffer.text_mut(pa).new_moment();
                 mode::set(pa, Normal::new());
             }
             alt!(';') => mode::set(pa, Normal::only_one_action()),
-            ctrl!('u') => handle.text_mut(pa).new_moment(),
+            ctrl!('u') => buffer.text_mut(pa).new_moment(),
             _ => {}
         }
     }
 }
 
-/// How `<Tab>`s should be handled in [`Insert`] mode
+/// How `<Tab>`s should be bufferd in [`Insert`] mode
 ///
 /// These options concern `\t` insertion, reindentation, and command
 /// completion.
@@ -326,32 +342,32 @@ pub enum TabMode {
     VerySmart,
 }
 
-pub(crate) fn repeat_last_insert(pa: &mut Pass, handle: &Handle) {
+pub(crate) fn repeat_last_insert(pa: &mut Pass, buffer: &Handle) {
     let insert_events = INSERT_EVENTS.lock().unwrap();
 
     for event in insert_events.iter() {
         match event {
-            InsertEvent::MoveHor(hor) => handle.edit_all(pa, |mut s| _ = s.move_hor(*hor)),
-            InsertEvent::MoveVer(ver) => handle.edit_all(pa, |mut s| _ = s.move_ver_wrapped(*ver)),
-            InsertEvent::Delete(del) => handle.edit_all(pa, |mut s| {
+            InsertEvent::MoveHor(hor) => buffer.edit_all(pa, |mut s| _ = s.move_hor(*hor)),
+            InsertEvent::MoveVer(ver) => buffer.edit_all(pa, |mut s| _ = s.move_ver_wrapped(*ver)),
+            InsertEvent::Delete(del) => buffer.edit_all(pa, |mut s| {
                 s.set_anchor();
                 s.move_hor(*del as i32 - 1);
                 s.replace("");
             }),
-            InsertEvent::Backspace(back) => handle.edit_all(pa, |mut s| {
+            InsertEvent::Backspace(back) => buffer.edit_all(pa, |mut s| {
                 s.move_hor(-1);
                 s.set_anchor();
                 s.move_hor(-(*back as i32 - 1));
                 s.replace("");
             }),
-            InsertEvent::Insert(str, hor) => handle.edit_all(pa, |mut s| {
+            InsertEvent::Insert(str, hor) => buffer.edit_all(pa, |mut s| {
                 s.insert(str);
                 s.move_hor(*hor as i32);
             }),
             InsertEvent::Reindent => {
-                let (mut indents, is_ts_indent) = crate::indents(pa, handle);
+                let (mut indents, is_ts_indent) = crate::indents(pa, buffer);
                 if is_ts_indent {
-                    handle.edit_all(pa, |mut s| {
+                    buffer.edit_all(pa, |mut s| {
                         reindent(s.indent(), indents.next().unwrap(), &mut s);
                     })
                 }
