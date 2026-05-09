@@ -118,6 +118,7 @@ pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
     // Things that happen before the switch, in order to signal that a
     // switch has happened.
     *MODE_NAME.lock().unwrap() = std::any::type_name::<M>();
+    assert!(new_mode.is::<M>());
     *MODE.write(pa) = Some(new_mode);
     *SEND_KEY.write(pa) = Some(|pa, keys| send_key_fn::<M>(pa, keys));
 }
@@ -206,7 +207,12 @@ fn send_key_fn<M: Mode>(pa: &mut Pass, key_event: KeyEvent) {
             let old = (mode as Box<dyn Any + Send>, old_name, handle.to_dyn());
             let new = (new_mode, new_name, new_handle);
             let ms = hook::trigger(pa, ModeSwitched { old, new });
-            *MODE.write(pa) = Some(ms.new.0);
+
+            // The mode could've changed within the hook.
+            let mode = MODE.write(pa);
+            if mode.is_none() {
+                *mode = Some(ms.new.0);
+            }
         }
         None => *MODE.write(pa) = Some(mode),
     }
