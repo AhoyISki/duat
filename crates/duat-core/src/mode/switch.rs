@@ -22,9 +22,12 @@ use crate::{
 };
 
 static MODE_NAME: Mutex<&str> = Mutex::new("");
-static MODE: LazyLock<RwData<Option<Box<dyn Any + Send>>>> = LazyLock::new(RwData::default);
+static MODE: LazyLock<RwData<Option<Box<dyn Any + Send>>>> =
+    LazyLock::new(|| RwData::new(Some(Box::new(()))));
 static SEND_KEY: LazyLock<RwData<Option<KeyFn>>> = LazyLock::new(RwData::default);
 static RESET_MODES: LazyLock<Mutex<HashMap<TypeId, ResetFn>>> = LazyLock::new(Mutex::default);
+static DEFERRED: LazyLock<RwData<Vec<Box<dyn FnOnce(&mut Pass) + Send>>>> =
+    LazyLock::new(RwData::default);
 
 type KeyFn = fn(&mut Pass, KeyEvent);
 type ResetFn = Box<dyn FnMut(&mut Pass) + Send>;
@@ -71,6 +74,11 @@ pub fn set_default<M: Mode + Clone>(mode: M) {
 ///
 /// [`Widget`]: Mode::Widget
 pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
+    let Some(old_mode) = MODE.write(pa).take() else {
+        DEFERRED.write(pa).push(Box::new(move |pa| set(pa, mode)));
+        return;
+    };
+
     let old_handle = context::current_widget(pa).clone();
 
     // If we are on the correct widget, no switch is needed.
@@ -101,12 +109,8 @@ pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
     let new_name = duat_name::<M>();
     let old_name = std::mem::replace(context::mode_name().write(pa), new_name);
 
-    crate::mode::set_mode_for_remapper::<M>(pa);
-
-    let mode_opt = MODE.write(pa).take();
-
     // This is the case if we're not in a send_key call.
-    let new_mode = if let Some(old_mode) = mode_opt {
+    let new_mode = if !old_mode.is::<()>() {
         let old = (old_mode, old_name, old_handle);
         let new = (Box::new(mode) as Box<dyn Any + Send>, new_name, new_handle);
         let ms = hook::trigger(pa, ModeSwitched { old, new });
@@ -118,9 +122,13 @@ pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
     // Things that happen before the switch, in order to signal that a
     // switch has happened.
     *MODE_NAME.lock().unwrap() = std::any::type_name::<M>();
-    assert!(new_mode.is::<M>());
     *MODE.write(pa) = Some(new_mode);
+    crate::mode::set_mode_for_remapper::<M>(pa);
     *SEND_KEY.write(pa) = Some(|pa, keys| send_key_fn::<M>(pa, keys));
+
+    for deferred_set in std::mem::take(DEFERRED.write(pa)) {
+        deferred_set(pa);
+    }
 }
 
 /// Returns `true` if the [`Widget`] has a default [`Mode`]
@@ -195,25 +203,8 @@ fn send_key_fn<M: Mode>(pa: &mut Pass, key_event: KeyEvent) {
 
     catch_panic(|| mode.send_key(pa, key_event, handle.clone()));
 
-    let mode_opt = MODE.write(pa).take();
-    // A new mode may have been set in the send_key function.
-    match mode_opt {
-        Some(new_mode) => {
-            let new_handle = context::current_widget(pa).clone();
-            // Where the mode switch actually happens.
-            let old_name = duat_name::<M>();
-            let new_name = *context::mode_name().read(pa);
-
-            let old = (mode as Box<dyn Any + Send>, old_name, handle.to_dyn());
-            let new = (new_mode, new_name, new_handle);
-            let ms = hook::trigger(pa, ModeSwitched { old, new });
-
-            // The mode could've changed within the hook.
-            let mode = MODE.write(pa);
-            if mode.is_none() {
-                *mode = Some(ms.new.0);
-            }
-        }
-        None => *MODE.write(pa) = Some(mode),
+    *MODE.write(pa) = Some(mode);
+    for deferred_set in std::mem::take(DEFERRED.write(pa)) {
+        deferred_set(pa);
     }
 }

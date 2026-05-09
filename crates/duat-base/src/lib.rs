@@ -228,14 +228,17 @@ impl DuatBase {
         form::set_weak("logbook.target", Form::mimic("module"));
 
         cmd::add("logs", |pa: &mut _| {
-            // if mode::is::<Pager>() {
-            //     context::debug!("mode is Pager");
-            //     if let Some(logbook) = context::handle_of::<LogBook>(pa) {
-            //         _ = logbook.area().hide(pa);
-            //     }
-            // } else {
+            let Some(logbook) = context::handle_of::<LogBook>(pa) else {
+                return Ok(None);
+            };
+
+            if logbook.area().width(pa) > 0.0 && logbook.area().height(pa) > 0.0 {
+                _ = logbook.area().hide(pa);
+            } else {
+                _ = logbook.area().reveal(pa);
                 mode::set(pa, Pager::<LogBook>::new());
-            // }
+            }
+
             Ok(None)
         })
         .doc(

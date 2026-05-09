@@ -17,7 +17,7 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     form, hook,
-    mode::{self, KeyEvent, Mode, alt, event, shift},
+    mode::{self, KeyEvent, Mode, User, alt, event, shift},
     text::{RegexHaystack, Text, txt},
     ui::{PrintInfo, RwArea, Widget},
 };
@@ -58,6 +58,7 @@ impl<W: Widget> Mode for Pager<W> {
                 event!('n') | alt!('n') => txt!("Go to [a]next[],[a]previous[] search match"),
                 event!(Esc) => txt!("[mode]Leave[] pager mode"),
                 event!(':') => txt!("[a]Run commands[] in prompt line"),
+                event!(' ') => txt!("Enter [mode]User[] mode"),
             })
         } else {
             mode::bindings!(match _ {
@@ -70,6 +71,7 @@ impl<W: Widget> Mode for Pager<W> {
                 event!('n' | 'N') => txt!("Go to [a]next[],[a]previous[] search match"),
                 event!(Esc) => txt!("[mode]Leave[] pager mode"),
                 event!(':') => txt!("[a]Run commands[] in prompt line"),
+                event!(' ') => txt!("Enter [mode]User[] mode"),
             })
         }
     }
@@ -116,6 +118,7 @@ impl<W: Widget> Mode for Pager<W> {
             }
             (event!(Esc), _) => mode::reset::<Buffer>(pa),
             (event!(':'), _) => mode::set(pa, RunCommands::new()),
+            (event!(' '), _) => mode::set(pa, User),
             _ => {}
         }
     }
