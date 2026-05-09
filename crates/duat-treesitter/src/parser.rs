@@ -100,16 +100,20 @@ pub(crate) fn add_parser_hook() {
             let mut parser = TsParser::new();
             parser.set_language(lang_parts.1).unwrap();
 
-            PARSERS.register(pa, handle, Parser {
-                parser,
-                trees: Trees::new([Ranges::new(0..len_bytes)]),
-                lang_parts,
-                forms: forms_from_lang_parts(lang_parts),
-                injections: Vec::new(),
-                ranges_to_inject: Ranges::new(0..len_bytes),
-                is_parsing: false,
-                ns: Ns::new(),
-            });
+            PARSERS.register(
+                pa,
+                handle,
+                Parser {
+                    parser,
+                    trees: Trees::new([Ranges::new(0..len_bytes)]),
+                    lang_parts,
+                    forms: forms_from_lang_parts(lang_parts),
+                    injections: Vec::new(),
+                    ranges_to_inject: Ranges::new(0..len_bytes),
+                    is_parsing: false,
+                    ns: Ns::new(),
+                },
+            );
 
             async_parse(pa, handle, printed_lines.clone(), false);
         }
@@ -344,7 +348,9 @@ impl Parser {
         let mut defered_ranges = Vec::new();
 
         for (_, tree) in self.trees.intersecting(range.clone()) {
-            let ts_tree = tree.ts_tree.as_ref().unwrap();
+            let Some(ts_tree) = tree.ts_tree.as_ref() else {
+                continue;
+            };
 
             cursor.set_byte_range(range.clone());
 
