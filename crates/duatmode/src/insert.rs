@@ -63,6 +63,8 @@ impl Mode for Insert {
             ctrl!('p') | shift!(BackTab) => txt!("Previous completion entry"),
             event!(Tab) => txt!("Reindent or next completion entry"),
             event!(Backspace | Delete) => txt!("Remove character or selection"),
+            ctrl!('l') => txt!("Replace next snippet jump"),
+            ctrl!('h') => txt!("Replace prev snippet jump"),
             event!(Esc) => txt!("Return to [mode]Normal[] mode"),
             alt!(';') => txt!("Run a single [mode]Normal[] mode command"),
             ctrl!('u') => txt!("Merge changes to this point in a single [a]Moment"),
@@ -169,15 +171,17 @@ impl Mode for Insert {
 
                 self.is_completing = true;
             }
-            ctrl!('j') => {
+
+            // Snippet commands
+            ctrl!('l') => {
                 buffer.jump_snippets(pa, 0);
                 buffer.edit_all(pa, |mut s| s.replace(""));
             }
-            ctrl!('k') => {
+            ctrl!('h') => {
                 buffer.jump_snippets(pa, -1);
                 buffer.edit_all(pa, |mut s| s.replace(""));
             }
-
+            
             // Regular commands
             event!(Char(char)) => {
                 buffer.edit_all(pa, |mut s| {

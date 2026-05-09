@@ -123,7 +123,7 @@ pub(crate) fn add_snippet_jumps(buffer: &Handle, pa: &mut Pass, snippet: Vec<Vec
         )
     };
 
-    let snippet_form = form::id_of!("snippet").to_tag(150);
+    let snippet_form = form::id_of!("snippet").to_tag(144);
     let ns = *NS;
 
     let mut text = buf.text_mut();

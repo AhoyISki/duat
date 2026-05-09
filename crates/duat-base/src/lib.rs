@@ -124,7 +124,7 @@ use duat_core::{
     Ns,
     buffer::Buffer,
     cmd,
-    context::Handle,
+    context::{self, Handle},
     data::Pass,
     form::{self, Form},
     mode,
@@ -228,11 +228,17 @@ impl DuatBase {
         form::set_weak("logbook.target", Form::mimic("module"));
 
         cmd::add("logs", |pa: &mut _| {
-            mode::set(pa, Pager::<LogBook>::new());
+            if mode::is::<Pager>() {
+                if let Some(logbook) = context::handle_of::<LogBook>(pa) {
+                    _ = logbook.area().hide(pa);
+                }
+            } else {
+                mode::set(pa, Pager::<LogBook>::new());
+            }
             Ok(None)
         })
         .doc(
-            txt!("Open the [a]Logs[] and enter [mode]Pager[] mode"),
+            txt!("Toggle the [a]Logs[] and enter [mode]Pager[] mode"),
             None,
         );
     }

@@ -25,6 +25,7 @@ use lsp_types::{
 use crate::{Encoding, parser::PARSERS, path_to_uri, server::Server};
 
 pub fn setup_hooks() {
+    
     hook::add::<CompletionSelected>(|_, entry| {
         let Some(lsp_entry) = entry.get_for::<LspCompletions>() else {
             return;
@@ -197,15 +198,24 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
     const ALLOW_WITH_MULTIPLE_SELECTIONS: bool = false;
 
     fn default_fmt(entry: &Self::Entry) -> Text {
-        let details = if let Some(details) = &entry.label_details
-            && let Some(detail) = &details.detail
-        {
-            txt!("[completion.lsp.detail]{detail}")
+        let (details, description) = entry
+            .label_details
+            .as_ref()
+            .map(|d| (d.detail.as_ref(), d.description.as_ref()))
+            .unwrap_or_default();
+
+        let detail = if let Some(details) = details {
+            txt!("[completion.lsp.detail]{details}")
         } else {
             Text::new()
         };
-
-        let kind = if let Some(kind) = &entry.kind {
+        
+        let description = if description != details
+            && let Some(description) = description
+            && description != &entry.label
+        {
+            txt!("[completion.lsp.description]{description}")
+        } else if let Some(kind) = &entry.kind {
             match *kind {
                 CompletionItemKind::TEXT => txt!("[completion.lsp.kind.text] "),
                 CompletionItemKind::METHOD => txt!("[completion.lsp.kind.method] "),
@@ -240,7 +250,7 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
             Text::new()
         };
 
-        txt!("[completion.lsp.label]{entry.label}[]{details} {Spacer}{kind}")
+        txt!("[completion.lsp.label]{entry.label}[]{detail} {Spacer}{description}")
     }
 
     fn matches(&mut self, text: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {

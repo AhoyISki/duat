@@ -1,8 +1,8 @@
 use std::sync::{LazyLock, Mutex, atomic::Ordering};
 
-use duat_base::modes::{
+use duat_base::{BaseBuffer, modes::{
     ExtendFwd, ExtendRev, IncSearch, PipeSelections, RunCommands, SearchFwd, SearchRev,
-};
+}};
 use duat_core::{
     Ns,
     buffer::Buffer,
@@ -95,7 +95,7 @@ impl Mode for Normal {
                 event!('i') => txt!("first character in line"),
                 event!('a') => txt!("last swapped [a]Buffer"),
                 event!('n') => txt!("next [a]Buffer"),
-                event!('N') => txt!("previous [a]Buffer"),
+                event!('N') => txt!("prev [a]Buffer"),
                 event!('o') => txt!("move [a]Buffer[] to new window"),
             })
         };
@@ -106,10 +106,10 @@ impl Mode for Normal {
                 ["extend", "to", "next"],
                 ["select", "until", "next"],
                 ["extend", "until", "next"],
-                ["select", "to", "previous"],
-                ["extend", "to", "previous"],
-                ["select", "until", "previous"],
-                ["extend", "until", "previous"],
+                ["select", "to", "prev"],
+                ["extend", "to", "prev"],
+                ["select", "until", "prev"],
+                ["extend", "until", "prev"],
             ];
 
             words
@@ -152,10 +152,10 @@ impl Mode for Normal {
             event!('F') => (txt!("Extend to next match"), tf.next().unwrap()),
             event!('t') => (txt!("Select until next match"), tf.next().unwrap()),
             event!('T') => (txt!("Extend until next match"), tf.next().unwrap()),
-            alt!('f') => (txt!("Select to previous match"), tf.next().unwrap()),
-            alt!('F') => (txt!("Extend to previous match"), tf.next().unwrap()),
-            alt!('t') => (txt!("Select until previous match"), tf.next().unwrap()),
-            alt!('T') => (txt!("Extend until previous match"), tf.next().unwrap()),
+            alt!('f') => (txt!("Select to prev match"), tf.next().unwrap()),
+            alt!('F') => (txt!("Extend to prev match"), tf.next().unwrap()),
+            alt!('t') => (txt!("Select until prev match"), tf.next().unwrap()),
+            alt!('T') => (txt!("Extend until prev match"), tf.next().unwrap()),
             alt!('.') => txt!(
                 "Repeats the last \
                  [a]'[separator],[a]\"[separator],[a]g[separator],[a]f[separator],[a]t[] \
@@ -175,7 +175,7 @@ impl Mode for Normal {
             alt!('}') => (txt!("Extend until [a]object[] end"), obj.next().unwrap()),
             event!('%') => txt!("Select whole [a]Buffer"),
             event!('m' | 'M') => txt!("{select} to next matching pair"),
-            alt!('m' | 'M') => txt!("{select} to previous matching pair"),
+            alt!('m' | 'M') => txt!("{select} to prev matching pair"),
             event!('i') => txt!("[mode]Insert[] before selection"),
             event!('I') => txt!("[mode]Insert[] at the line's start"),
             event!('a') => txt!("[mode]Insert[] after selection"),
@@ -216,16 +216,18 @@ impl Mode for Normal {
             alt!('k') => txt!("[mode]Keep[] matching selections"),
             alt!('K') => txt!("[mode]Keep[] [a]non[] matching selections"),
             event!('n' | 'N') => txt!("{select} to next search match"),
-            alt!('n' | 'N') => txt!("{select} to previous search match"),
+            alt!('n' | 'N') => txt!("{select} to prev search match"),
             event!('*') => txt!("Set main selection as search pattern"),
             event!('u' | 'U') => undo.clone(),
+            ctrl!('j') => txt!("Move to next snippet jump"),
+            ctrl!('k') => txt!("Move to prev snippet jump"),
             event!(':') => txt!("[a]Run commands[] in prompt line"),
             event!('|') => txt!("[a]Pipe selections[] to external command"),
             event!('g') => (txt!("Go to [parameter]line[] or to places"), goto.clone()),
             event!('G') => (txt!("Select to [paramenter]line[] or to places"), goto),
             alt!('Q') => txt!("Toggle macro recording"),
             alt!('q') => txt!("Replay macro"),
-            ctrl!('o') => txt!("Go to previous jump"),
+            ctrl!('o') => txt!("Go to prev jump"),
             ctrl!('i') | event!(Tab) => txt!("Go to next jump"),
             event!(' ') => txt!("Enter [mode]User[] mode"),
             alt!('u' | 'U') => txt!("{undo} last selection change"),
@@ -233,7 +235,7 @@ impl Mode for Normal {
         })
     }
 
-    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
+    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, buffer: Handle) {
         static LAST_INSERT_KEY: Mutex<Option<InsertKey>> = Mutex::new(None);
         static ALT_DOT: Mutex<Option<(OneKey, KeyEvent)>> = Mutex::new(None);
 
@@ -244,7 +246,7 @@ impl Mode for Normal {
 
         use mode::KeyCode::*;
 
-        let popts = handle.opts(pa);
+        let popts = buffer.opts(pa);
         let opts = crate::opts::get();
 
         let do_match_on_spot = |[c0, c1]: [_; 2], alt_word, moved| {
@@ -260,10 +262,10 @@ impl Mode for Normal {
             )
         };
 
-        handle.text_mut(pa).new_moment();
+        buffer.text_mut(pa).new_moment();
 
         if let Some(one_key) = self.one_key.take() {
-            let (sel_type, succeeded) = one_key.send_key(pa, key_event, &handle);
+            let (sel_type, succeeded) = one_key.send_key(pa, key_event, &buffer);
             self.sel_type = sel_type;
             if self.only_one_action {
                 mode::set(pa, crate::Insert::default());
@@ -279,7 +281,7 @@ impl Mode for Normal {
             return;
         }
 
-        let jump_id = handle.record_jump(pa, *U_ALT_U_ID, false);
+        let jump_id = buffer.record_jump(pa, *U_ALT_U_ID, false);
         let rec = if jump_id.is_some() { 2 } else { 1 };
 
         let (param, param_was_set) = if let event!(Char(char)) = key_event
@@ -294,7 +296,7 @@ impl Mode for Normal {
 
         // Insert mode functions
         let open_new_line_below = |pa: &mut Pass| {
-            handle.edit_all(pa, |mut s| {
+            buffer.edit_all(pa, |mut s| {
                 s.set_cursor_on_end();
                 let cursor = s.cursor();
                 s.move_to_col(usize::MAX);
@@ -307,20 +309,20 @@ impl Mode for Normal {
             });
 
             if key_event.modifiers == KeyMod::NONE {
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     if s.add_comment() {
                         s.insert(' ');
                         s.move_hor(1);
                     }
                 });
-                let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
+                let (mut indents, is_ts_indent) = crate::indents(pa, &buffer);
                 if is_ts_indent {
-                    handle.edit_all(pa, |mut s| _ = reindent(0, indents.next().unwrap(), &mut s));
+                    buffer.edit_all(pa, |mut s| _ = reindent(0, indents.next().unwrap(), &mut s));
                 }
             }
         };
         let open_new_line_above = |pa: &mut Pass| {
-            handle.edit_all(pa, |mut s| {
+            buffer.edit_all(pa, |mut s| {
                 s.set_cursor_on_start();
                 let char_col = s.v_cursor().char_col();
                 s.move_to_col(0);
@@ -331,20 +333,20 @@ impl Mode for Normal {
             });
 
             if key_event.modifiers == KeyMod::NONE {
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     if s.add_comment() {
                         s.insert(' ');
                         s.move_hor(1);
                     }
                 });
-                let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
+                let (mut indents, is_ts_indent) = crate::indents(pa, &buffer);
                 if is_ts_indent {
-                    handle.edit_all(pa, |mut s| _ = reindent(0, indents.next().unwrap(), &mut s));
+                    buffer.edit_all(pa, |mut s| _ = reindent(0, indents.next().unwrap(), &mut s));
                 }
             }
         };
         let delete_selections = |pa: &mut Pass| {
-            handle.edit_all(pa, |mut s| {
+            buffer.edit_all(pa, |mut s| {
                 let prev_char = s.text()[..s.cursor()].chars().next_back();
                 if s.range().end == s.len()
                     && s.selection() == "\n"
@@ -363,7 +365,7 @@ impl Mode for Normal {
         match key_event {
             ////////// Basic movement keys
             event!(Char('h' | 'H') | Left) | shift!(Left) => {
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     let set_anchor =
                         key_event.code == Char('H') || key_event.modifiers == KeyMod::SHIFT;
                     set_anchor_if_needed(set_anchor, &mut s);
@@ -371,18 +373,18 @@ impl Mode for Normal {
                 });
                 self.sel_type = SelType::Normal;
             }
-            event!(Down) => handle.edit_all(pa, |mut s| {
+            event!(Down) => buffer.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers.contains(KeyMod::SHIFT), &mut s);
                 s.move_ver_wrapped(param as i32);
             }),
-            event!(Up) => handle.edit_all(pa, |mut s| {
+            event!(Up) => buffer.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers.contains(KeyMod::SHIFT), &mut s);
                 s.move_ver_wrapped(-(param as i32));
             }),
-            alt!(Down) => handle.scroll_ver(pa, param as i32),
-            alt!(Up) => handle.scroll_ver(pa, -(param as i32)),
+            alt!(Down) => buffer.scroll_ver(pa, param as i32),
+            alt!(Up) => buffer.scroll_ver(pa, -(param as i32)),
             event!(Char('l' | 'L') | Right) | shift!(Right) => {
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     let set_anchor =
                         key_event.code == Char('L') || key_event.modifiers == KeyMod::SHIFT;
                     set_anchor_if_needed(set_anchor, &mut s);
@@ -390,7 +392,7 @@ impl Mode for Normal {
                 });
                 self.sel_type = SelType::Normal;
             }
-            event!(char @ ('j' | 'J' | 'k' | 'K')) => handle.edit_all(pa, |mut s| {
+            event!(char @ ('j' | 'J' | 'k' | 'K')) => buffer.edit_all(pa, |mut s| {
                 set_anchor_if_needed(char == 'J' || char == 'K', &mut s);
 
                 let param = match char {
@@ -418,7 +420,7 @@ impl Mode for Normal {
             }),
 
             ////////// Object selection keys
-            event!(char @ ('w' | 'e')) => handle.edit_all(pa, |mut s| {
+            event!(char @ ('w' | 'e')) => buffer.edit_all(pa, |mut s| {
                 let alt = char == 'e';
                 let iter = s.text()[s.cursor()..]
                     .char_indices()
@@ -436,7 +438,7 @@ impl Mode for Normal {
                     }
                 };
             }),
-            event!(char @ ('b' | 'v')) => handle.edit_all(pa, |mut s| {
+            event!(char @ ('b' | 'v')) => buffer.edit_all(pa, |mut s| {
                 let alt = char == 'v';
                 let init = {
                     let iter = [(s.cursor().byte(), s.char())]
@@ -462,7 +464,7 @@ impl Mode for Normal {
                 };
             }),
 
-            event!(char @ ('W' | 'E')) => handle.edit_all(pa, |mut s| {
+            event!(char @ ('W' | 'E')) => buffer.edit_all(pa, |mut s| {
                 let alt = char == 'E';
                 set_anchor_if_needed(true, &mut s);
                 s.move_hor(1);
@@ -475,7 +477,7 @@ impl Mode for Normal {
                     s.move_hor(-1);
                 }
             }),
-            event!(char @ ('B' | 'V')) => handle.edit_all(pa, |mut s| {
+            event!(char @ ('B' | 'V')) => buffer.edit_all(pa, |mut s| {
                 let alt = char == 'V';
                 set_anchor_if_needed(true, &mut s);
                 if let Some(range) = {
@@ -487,7 +489,7 @@ impl Mode for Normal {
                 }
             }),
 
-            event!('x') => handle.edit_all(pa, |mut s| {
+            event!('x') => buffer.edit_all(pa, |mut s| {
                 self.sel_type = SelType::ToEndOfLine;
                 set_anchor_if_needed(true, &mut s);
                 s.set_cursor_on_start();
@@ -516,20 +518,20 @@ impl Mode for Normal {
             }
             alt!('.') => {
                 if let Some((one_key, key_event)) = *ALT_DOT.lock().unwrap() {
-                    let (sel_type, _) = one_key.send_key(pa, key_event, &handle);
+                    let (sel_type, _) = one_key.send_key(pa, key_event, &buffer);
                     self.sel_type = sel_type;
                 } else {
                     context::warn!("No previous 2 key sequence");
                 }
             }
-            alt!('l' | 'L') | event!(End) | shift!(End) => handle.edit_all(pa, |mut s| {
+            alt!('l' | 'L') | event!(End) | shift!(End) => buffer.edit_all(pa, |mut s| {
                 if key_event.code == Char('l') {
                     s.unset_anchor();
                 }
                 select_to_end_of_line(true, s);
                 self.sel_type = SelType::BeforeEndOfLine;
             }),
-            alt!('h' | 'H') | event!(Home) | shift!(Home) => handle.edit_all(pa, |mut s| {
+            alt!('h' | 'H') | event!(Home) | shift!(Home) => buffer.edit_all(pa, |mut s| {
                 if key_event.code == Char('h') {
                     s.unset_anchor();
                 }
@@ -546,7 +548,7 @@ impl Mode for Normal {
             alt!(']') => self.one_key = Some(OneKey::ToNext(param, true, true)),
             alt!('{') => self.one_key = Some(OneKey::ToPrevious(param, true, false)),
             alt!('}') => self.one_key = Some(OneKey::ToNext(param, true, false)),
-            event!('%') => handle.edit_main(pa, |mut s| {
+            event!('%') => buffer.edit_main(pa, |mut s| {
                 if let Some(last_point) = s.last_point() {
                     s.move_to_start();
                     s.set_anchor();
@@ -556,7 +558,7 @@ impl Mode for Normal {
             event!(char @ ('m' | 'M')) => {
                 let mut failed = false;
                 let failed = &mut failed;
-                edit_or_destroy_all(pa, &handle, failed, |s| {
+                edit_or_destroy_all(pa, &buffer, failed, |s| {
                     let mut i = 0;
                     let object = Object::new(key_event, popts, opts.brackets).unwrap();
 
@@ -584,7 +586,7 @@ impl Mode for Normal {
             alt!(char @ ('m' | 'M')) => {
                 let mut failed = false;
                 let failed = &mut failed;
-                edit_or_destroy_all(pa, &handle, failed, |s| {
+                edit_or_destroy_all(pa, &buffer, failed, |s| {
                     let mut i = 0;
                     let object = Object::new(key_event, popts, opts.brackets).unwrap();
 
@@ -612,21 +614,21 @@ impl Mode for Normal {
 
             ////////// Insertion mode keys
             event!('i') => {
-                handle.edit_all(pa, |mut s| _ = s.set_cursor_on_start());
+                buffer.edit_all(pa, |mut s| _ = s.set_cursor_on_start());
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::Insert);
                 mode::set(pa, crate::Insert::default());
             }
             event!('I') => {
                 if opts.indent_on_capital_i {
-                    let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
+                    let (mut indents, is_ts_indent) = crate::indents(pa, &buffer);
                     if is_ts_indent {
-                        handle.edit_all(pa, |mut s| {
+                        buffer.edit_all(pa, |mut s| {
                             reindent(s.indent(), indents.next().unwrap(), &mut s);
                         });
                     }
                 }
 
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     s.unset_anchor();
                     s.move_to_col(s.indent());
                 });
@@ -635,7 +637,7 @@ impl Mode for Normal {
                 mode::set(pa, crate::Insert::default());
             }
             event!('a') => {
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     s.set_cursor_on_end();
                     s.move_hor(1);
                 });
@@ -643,7 +645,7 @@ impl Mode for Normal {
                 mode::set(pa, crate::Insert::default());
             }
             event!('A') => {
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     s.unset_anchor();
                     s.move_to_col(usize::MAX);
                 });
@@ -669,15 +671,15 @@ impl Mode for Normal {
             event!('.') => {
                 match *LAST_INSERT_KEY.lock().unwrap() {
                     Some(InsertKey::Insert) => {
-                        handle.edit_all(pa, |mut s| _ = s.set_cursor_on_start())
+                        buffer.edit_all(pa, |mut s| _ = s.set_cursor_on_start())
                     }
-                    Some(InsertKey::Append) => handle.edit_all(pa, |mut s| {
+                    Some(InsertKey::Append) => buffer.edit_all(pa, |mut s| {
                         s.set_cursor_on_end();
                         s.move_hor(1);
                     }),
                     Some(InsertKey::Change) => delete_selections(pa),
                     Some(InsertKey::InsertStart) => {
-                        handle.edit_all(pa, |mut s| {
+                        buffer.edit_all(pa, |mut s| {
                             s.unset_anchor();
                             if !opts.indent_on_capital_i {
                                 s.move_to_col(s.indent());
@@ -685,15 +687,15 @@ impl Mode for Normal {
                         });
 
                         if opts.indent_on_capital_i {
-                            let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
+                            let (mut indents, is_ts_indent) = crate::indents(pa, &buffer);
                             if is_ts_indent {
-                                handle.edit_all(pa, |mut s| {
+                                buffer.edit_all(pa, |mut s| {
                                     reindent(s.indent(), indents.next().unwrap(), &mut s);
                                 })
                             }
                         }
                     }
-                    Some(InsertKey::AppendEnd) => handle.edit_all(pa, |mut s| {
+                    Some(InsertKey::AppendEnd) => buffer.edit_all(pa, |mut s| {
                         s.unset_anchor();
                         s.move_to_col(usize::MAX);
                     }),
@@ -701,20 +703,20 @@ impl Mode for Normal {
                     Some(InsertKey::NewLineBelow) => open_new_line_below(pa),
                     None => context::warn!("No previous insertion"),
                 }
-                crate::insert::repeat_last_insert(pa, &handle)
+                crate::insert::repeat_last_insert(pa, &buffer)
             }
 
             ////////// Selection alteration keys
             event!('r') => self.one_key = Some(OneKey::Replace),
-            event!('`') => handle.edit_all(pa, |mut s| {
+            event!('`') => buffer.edit_all(pa, |mut s| {
                 let lower = s.selection().chars().flat_map(char::to_lowercase);
                 s.replace(lower.collect::<String>());
             }),
-            event!('~') => handle.edit_all(pa, |mut s| {
+            event!('~') => buffer.edit_all(pa, |mut s| {
                 let upper = s.selection().chars().flat_map(char::to_uppercase);
                 s.replace(upper.collect::<String>());
             }),
-            alt!('`') => handle.edit_all(pa, |mut s| {
+            alt!('`') => buffer.edit_all(pa, |mut s| {
                 let inverted = s.selection().chars().map(|s| {
                     if s.is_uppercase() {
                         s.to_lowercase().collect::<String>()
@@ -726,38 +728,38 @@ impl Mode for Normal {
             }),
 
             ////////// Advanced selection manipulation
-            alt!(';') => handle.edit_all(pa, |mut s| s.swap_ends()),
-            event!(';') => handle.edit_all(pa, |mut s| _ = s.unset_anchor()),
-            alt!(':') => handle.edit_all(pa, |mut s| _ = s.set_cursor_on_end()),
-            event!(')') => handle.selections_mut(pa).rotate_main(1),
-            event!('(') => handle.selections_mut(pa).rotate_main(-1),
+            alt!(';') => buffer.edit_all(pa, |mut s| s.swap_ends()),
+            event!(';') => buffer.edit_all(pa, |mut s| _ = s.unset_anchor()),
+            alt!(':') => buffer.edit_all(pa, |mut s| _ = s.set_cursor_on_end()),
+            event!(')') => buffer.selections_mut(pa).rotate_main(1),
+            event!('(') => buffer.selections_mut(pa).rotate_main(-1),
             // TODO: Implement parameter
             alt!(')') => {
-                if handle.selections(pa).len() == 1 {
+                if buffer.selections(pa).len() == 1 {
                     return;
                 }
 
                 let mut last_sel = None;
 
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     if let Some(last_sel) = last_sel.replace(s.selection().to_string()) {
                         s.set_anchor_if_needed();
                         s.replace(last_sel);
                     }
                 });
 
-                handle.edit_nth(pa, 0, |mut s| s.replace(last_sel.unwrap()));
+                buffer.edit_nth(pa, 0, |mut s| s.replace(last_sel.unwrap()));
             }
             // TODO: Implement parameter
             alt!('(') => {
-                if handle.selections(pa).len() == 1 {
+                if buffer.selections(pa).len() == 1 {
                     return;
                 }
                 let mut selections = Vec::<String>::new();
-                handle.edit_all(pa, |s| selections.push(s.selection().to_string()));
+                buffer.edit_all(pa, |s| selections.push(s.selection().to_string()));
                 let mut s_iter = selections.into_iter().cycle();
                 s_iter.next();
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     if let Some(next) = s_iter.next() {
                         s.set_anchor_if_needed();
                         s.replace(next);
@@ -765,17 +767,17 @@ impl Mode for Normal {
                 });
             }
             alt!('_') => {
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     s.set_cursor_on_end();
                     s.move_hor(1);
                 });
                 // In the first iteration, connected SelectionMuts are joined, this
                 // one just undoes the movement.
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     s.move_hor(-1);
                 });
             }
-            event!('X') => handle.edit_all(pa, |mut s| {
+            event!('X') => buffer.edit_all(pa, |mut s| {
                 s.set_cursor_on_start();
                 let Some(end) = s.anchor() else {
                     return;
@@ -795,7 +797,7 @@ impl Mode for Normal {
                 s.move_to(last_end);
                 s.swap_ends();
             }),
-            event!('D') => handle.edit_all(pa, |mut s| {
+            event!('D') => buffer.edit_all(pa, |mut s| {
                 if s.anchor().is_some() {
                     let mut e_copy = s.copy();
                     e_copy.swap_ends();
@@ -807,7 +809,7 @@ impl Mode for Normal {
             ////////// Line alteration keys
             event!('>') => {
                 let mut processed_lines = Vec::new();
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     let range = s.range_excl();
                     let old_cursor = s.v_cursor();
                     let old_anchor = s.v_anchor();
@@ -839,7 +841,7 @@ impl Mode for Normal {
             }
             event!('<') => {
                 let mut processed_lines = Vec::new();
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     let range = s.range_excl();
 
                     let mut cursor = (s.cursor().line(), s.v_cursor().char_col());
@@ -889,7 +891,7 @@ impl Mode for Normal {
             }
             alt!('j') => {
                 let mut processed_lines = Vec::new();
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     let c_range = s.range();
 
                     if c_range.start.line() == c_range.end.line() {
@@ -932,10 +934,10 @@ impl Mode for Normal {
             }
 
             ////////// Clipboard keys
-            event!('y') => duat_base::modes::copy_selections(pa, &handle),
+            event!('y') => duat_base::modes::copy_selections(pa, &buffer),
             event!(char @ ('d' | 'c')) | alt!(char @ ('d' | 'c')) => {
                 if key_event.modifiers == KeyMod::NONE {
-                    duat_base::modes::copy_selections(pa, &handle);
+                    duat_base::modes::copy_selections(pa, &buffer);
                 }
                 delete_selections(pa);
                 if char == 'c' {
@@ -949,7 +951,7 @@ impl Mode for Normal {
                     return;
                 }
                 let mut p_iter = pastes.iter().cycle();
-                handle.edit_all(pa, |mut s| {
+                buffer.edit_all(pa, |mut s| {
                     let paste = p_iter.next().unwrap().repeat(param);
 
                     let anchor_is_start = s.anchor_is_start();
@@ -994,7 +996,7 @@ impl Mode for Normal {
                 let pastes = duat_base::modes::paste_strings();
                 if !pastes.is_empty() {
                     let mut p_iter = pastes.iter().cycle();
-                    handle.edit_all(pa, |mut s| {
+                    buffer.edit_all(pa, |mut s| {
                         s.set_anchor_if_needed();
                         s.replace(p_iter.next().unwrap().repeat(param))
                     });
@@ -1002,7 +1004,7 @@ impl Mode for Normal {
             }
 
             ////////// SelectionMut creation and destruction
-            event!(',') => handle.selections_mut(pa).remove_extras(),
+            event!(',') => buffer.selections_mut(pa).remove_extras(),
             event!('C') | alt!('C') => {
                 fn cols_eq(lhs: (VPoint, Option<VPoint>), rhs: (VPoint, Option<VPoint>)) -> bool {
                     lhs.0.visual_col() == rhs.0.visual_col()
@@ -1013,12 +1015,12 @@ impl Mode for Normal {
                 }
 
                 let (nth, mult) = if key_event.modifiers == KeyMod::NONE {
-                    (handle.read(pa).selections().len() - 1, 1)
+                    (buffer.read(pa).selections().len() - 1, 1)
                 } else {
                     (0, -1)
                 };
 
-                handle.edit_nth(pa, nth, |mut s| {
+                buffer.edit_nth(pa, nth, |mut s| {
                     s.copy();
                     let (v_cursor, v_anchor) = (s.v_cursor(), s.v_anchor());
                     let lines_diff = v_anchor.map(|vp| vp.line().abs_diff(v_cursor.line()) as i32);
@@ -1041,7 +1043,7 @@ impl Mode for Normal {
                     s.destroy();
                 });
 
-                handle
+                buffer
                     .selections_mut(pa)
                     .set_main(nth + (key_event.modifiers == KeyMod::NONE) as usize);
             }
@@ -1062,7 +1064,7 @@ impl Mode for Normal {
                     context::warn!("No search pattern set");
                     return;
                 }
-                handle.edit_main(pa, |mut s| {
+                buffer.edit_main(pa, |mut s| {
                     let found = if key_event.modifiers == KeyMod::ALT {
                         s.search(&*search)
                             .to_cursor()
@@ -1091,7 +1093,7 @@ impl Mode for Normal {
                     context::warn!("No search pattern set");
                     return;
                 }
-                handle.edit_main(pa, |mut s| {
+                buffer.edit_main(pa, |mut s| {
                     let mut found = Vec::new();
                     if key_event.modifiers == KeyMod::ALT {
                         found.extend(s.search(&*search).to_cursor().rev().take(param));
@@ -1117,7 +1119,7 @@ impl Mode for Normal {
                     }
                 });
             }
-            event!('*') => handle.edit_main(pa, |s| {
+            event!('*') => buffer.edit_main(pa, |s| {
                 let pat = s.selection().to_string();
                 *SEARCH.lock().unwrap() = escaped_str(&pat);
                 context::info!("Set search pattern to [a]{pat}");
@@ -1126,8 +1128,8 @@ impl Mode for Normal {
             ////////// Jumping
             alt!(char @ ('u' | 'U')) => {
                 let jmp = if char == 'u' { -rec } else { rec };
-                if let Some(jump) = handle.move_jumps_by(pa, *U_ALT_U_ID, jmp) {
-                    jump.apply(pa, &handle);
+                if let Some(jump) = buffer.move_jumps_by(pa, *U_ALT_U_ID, jmp) {
+                    jump.apply(pa, &buffer);
                 }
             }
 
@@ -1169,38 +1171,42 @@ impl Mode for Normal {
             }
 
             ////////// Jumping around
-            ctrl!('o') => jump_list::jump_by(pa, &handle, -1),
-            ctrl!('i') | event!(Tab) => jump_list::jump_by(pa, &handle, 1),
+            ctrl!('o') => jump_list::jump_by(pa, &buffer, -1),
+            ctrl!('i') | event!(Tab) => jump_list::jump_by(pa, &buffer, 1),
 
             ////////// Other mode changing keys
             event!(':') => mode::set(pa, RunCommands::new()),
             event!('|') => mode::set(pa, PipeSelections::new()),
             event!('g') if param_was_set => {
-                handle.selections_mut(pa).remove_extras();
-                handle.edit_main(pa, |mut s| {
+                buffer.selections_mut(pa).remove_extras();
+                buffer.edit_main(pa, |mut s| {
                     s.unset_anchor();
                     s.move_to_coords(param - 1, 0);
                 });
                 mode::reset_current_sequence(pa);
-                jump_list::register(pa, &handle, 5);
+                jump_list::register(pa, &buffer, 5);
             }
             event!('g') => self.one_key = Some(OneKey::GoTo(SelType::Normal)),
             event!('G') if param_was_set => {
-                handle.selections_mut(pa).remove_extras();
-                handle.edit_main(pa, |mut s| {
+                buffer.selections_mut(pa).remove_extras();
+                buffer.edit_main(pa, |mut s| {
                     s.set_anchor_if_needed();
                     s.move_to_coords(param - 1, 0)
                 });
                 mode::reset_current_sequence(pa);
-                jump_list::register(pa, &handle, 5);
+                jump_list::register(pa, &buffer, 5);
             }
             event!('G') => self.one_key = Some(OneKey::GoTo(SelType::Extend)),
             event!(' ') => mode::set(pa, mode::User),
 
             ////////// History manipulation
-            event!('u') => handle.text_mut(pa).undo(),
-            event!('U') => handle.text_mut(pa).redo(),
+            event!('u') => buffer.text_mut(pa).undo(),
+            event!('U') => buffer.text_mut(pa).redo(),
             ctrl!('r') => _ = duat_core::cmd::call_notify(pa, "reload"),
+
+            ////////// Snippets
+            ctrl!('j') => _ = buffer.jump_snippets(pa, 1),
+            ctrl!('k') => _ = buffer.jump_snippets(pa, -1),
             _ => {}
         }
 
@@ -1303,15 +1309,15 @@ pub(crate) mod jump_list {
     ///
     /// If an equal jump was found at most `eq_lookback` jumps
     /// back, then don't register.
-    pub fn register(pa: &mut Pass, handle: &Handle, eq_lookback: usize) {
+    pub fn register(pa: &mut Pass, buffer: &Handle, eq_lookback: usize) {
         let mut jl = JUMP_LIST.lock().unwrap();
 
-        let jump_id = handle.record_or_get_current_jump(pa, *JUMPS_ID);
+        let jump_id = buffer.record_or_get_current_jump(pa, *JUMPS_ID);
 
         for (jump_id, buffer_id) in jl.list[..jl.cur].iter().rev().take(eq_lookback) {
-            if *buffer_id == handle.read(pa).buffer_id()
-                && let Some(jump) = handle.get_jump(pa, *JUMPS_ID, *jump_id)
-                && jump.is_eq(handle.read(pa))
+            if *buffer_id == buffer.read(pa).buffer_id()
+                && let Some(jump) = buffer.get_jump(pa, *JUMPS_ID, *jump_id)
+                && jump.is_eq(buffer.read(pa))
             {
                 return;
             }
@@ -1319,13 +1325,13 @@ pub(crate) mod jump_list {
 
         let cur = jl.cur;
         jl.list.truncate(cur);
-        jl.list.push((jump_id, handle.read(pa).buffer_id()));
+        jl.list.push((jump_id, buffer.read(pa).buffer_id()));
         jl.cur += 1;
     }
 
     /// Jumps by `by` jumps, which can go across [`Buffer`]s and
     /// stuff.
-    pub fn jump_by(pa: &mut Pass, handle: &Handle, by: i32) {
+    pub fn jump_by(pa: &mut Pass, buffer: &Handle, by: i32) {
         let mut jl = JUMP_LIST.lock().unwrap();
 
         if jl.list.is_empty() || by == 0 {
@@ -1337,30 +1343,30 @@ pub(crate) mod jump_list {
         while let Some((jump_id, buffer_id)) = jl.list.get(jl.cur).cloned() {
             let cur = jl.cur;
 
-            let new_handle = if buffer_id != handle.read(pa).buffer_id() {
-                if let Some(handle) = {
+            let new_buffer = if buffer_id != buffer.read(pa).buffer_id() {
+                if let Some(buffer) = {
                     context::windows()
                         .buffers(pa)
                         .into_iter()
-                        .find(|handle| handle.read(pa).buffer_id() == buffer_id)
+                        .find(|buffer| buffer.read(pa).buffer_id() == buffer_id)
                 } {
                     hook::remove(*JUMPS_NS);
-                    mode::reset_to(pa, &handle);
+                    mode::reset_to(pa, &buffer);
                     add_jump_hook();
 
-                    handle.clone()
+                    buffer.clone()
                 } else {
                     jl.list.remove(cur);
                     jl.cur = jl.cur.saturating_sub((by < 0) as usize);
                     continue;
                 }
             } else {
-                handle.clone()
+                buffer.clone()
             };
 
-            if let Some(jump) = new_handle.go_to_jump(pa, *JUMPS_ID, jump_id) {
-                if !new_handle.ptr_eq(handle.widget()) || !jump.is_eq(new_handle.read(pa)) {
-                    jump.apply(pa, &new_handle);
+            if let Some(jump) = new_buffer.go_to_jump(pa, *JUMPS_ID, jump_id) {
+                if !new_buffer.ptr_eq(buffer.widget()) || !jump.is_eq(new_buffer.read(pa)) {
+                    jump.apply(pa, &new_buffer);
                 } else if jl.cur > 0 {
                     jl.cur -= 1;
                     continue;

@@ -48,7 +48,6 @@ mod paths;
 mod words;
 
 static BUFFER_COMPLETIONS: Mutex<Option<BufferCompletionsFn>> = Mutex::new(None);
-static OPENED_PARAM_COMPLETION: Mutex<Option<Vec<TypeId>>> = Mutex::new(None);
 static NS: LazyLock<Ns> = Ns::new_lazy();
 static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (usize, ParamCompletions)>>> =
     LazyLock::new(Mutex::default);
@@ -402,7 +401,6 @@ impl Completions {
     /// for them.
     pub fn open_for(pa: &mut Pass, param_type_ids: &[TypeId]) {
         let completions = COMPLETIONS.lock().unwrap();
-        let mut opened_param_completion = OPENED_PARAM_COMPLETION.lock().unwrap();
 
         let mut builder = Completions::builder();
         builder.min_prefix = builder.cmd_min_prefix;
@@ -418,16 +416,6 @@ impl Completions {
         }
 
         param_fns.sort_by_key(|(_, (priority, _))| priority);
-
-        if param_fns
-            .iter()
-            .map(|(ty, _)| ty)
-            .eq(opened_param_completion.iter().flatten())
-        {
-            return;
-        }
-
-        *opened_param_completion = Some(param_fns.iter().map(|(ty, _)| *ty).collect());
 
         for (_, (_, param_fn)) in param_fns {
             builder = (param_fn.lock().unwrap())(pa, builder);
@@ -745,12 +733,6 @@ impl Widget for Completions {
 
     fn text_mut(&mut self) -> TextMut<'_> {
         self.text.as_mut()
-    }
-}
-
-impl Drop for Completions {
-    fn drop(&mut self) {
-        *OPENED_PARAM_COMPLETION.lock().unwrap() = None;
     }
 }
 

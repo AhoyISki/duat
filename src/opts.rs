@@ -782,7 +782,7 @@ impl Default for Opts {
             duatmode: DuatModeOpts::default(),
             one_line_footer: false,
             footer_on_top: false,
-            help_key: Some(KeyEvent::new(KeyCode::Char('h'), KeyMod::CONTROL)),
+            help_key: Some(KeyEvent::new(KeyCode::Char('k'), KeyMod::CONTROL)),
             linenumbers: LineNumbersOpts::default(),
             gutter: GutterOpts::default(),
             completions: CompletionsOpts::default(),

@@ -676,7 +676,7 @@ impl PromptMode for PipeSelections {
     }
 }
 
-#[derive(Clone, Eq)]
+#[derive(Debug, Clone, Eq)]
 enum Completion {
     Caller,
     Parameters(Vec<TypeId>),

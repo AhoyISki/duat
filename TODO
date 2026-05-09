@@ -6,6 +6,7 @@ FOR NEXT UPDATE:
   [x] Autocompletions.
   [x] Formatting.
   [x] Caching.
+  [ ] Rename.
 [x] Snippet support.
 [ ] More work on the Gutter.
   [x] Diferentiate hovering, cursoring, related and default display.
@@ -16,6 +17,7 @@ FOR NEXT UPDATE:
   [ ] Perfect words iterator.
 [ ] Fix pager search.
 [ ] Fix logs scrolling.
+[x] Fix commandline completion bs.
 [ ] Stop eagerly merging Selections.
 [x] Additional wrap continuation characters.
 [ ] Add a donation splash screen.

@@ -175,8 +175,8 @@ fn enable_layout_hooks(opts: &mut Opts) {
     hook::add::<WindowOpened>(move |pa, window| {
         use duat_core::ui::Side::*;
 
-        let too_tall = logs.height > window.height();
-        let too_wide = logs.width > window.width();
+        let too_tall = logs.height > window.height() * logs.max_proportion;
+        let too_wide = logs.width > window.width() * logs.max_proportion;
         logs.hidden = match (logs.side, too_tall, too_wide) {
             (Above | Below, true, _) => true,
             (Above | Below, false, _) => logs.hidden,

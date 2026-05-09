@@ -396,7 +396,10 @@ pub fn add_defalt_commands() {
     )
     .doc(
         txt!("Switch to a [a]Buffer[] or open it on another window"),
-        None,
+        Some(txt!(
+            "If no buffer is provided, will instead try to move the current [a]Buffer[] to \
+             another window"
+        )),
     )
     .doc_param(txt!("Fails if the file doesn't exist"), None, None)
     .doc_param(

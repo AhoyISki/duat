@@ -182,13 +182,12 @@ pub struct LogBookOpts {
     /// Requested width for the [`LogBook`], ignored if pushing
     /// vertically
     pub width: f32,
-    /// Wether the source of a log should be shown
+    /// Max proportion that it the [`LogBook`] is allowed to
+    /// take of the screen, `hidden` is set to `false`.
     ///
-    /// Can be disabled for less noise. This option is ignored when
-    /// there is [custom formatting].
-    ///
-    /// [custom formatting]: Self::fmt
-    pub show_source: bool,
+    /// If it would be larger than that proportion, it won't be
+    /// shown by default.
+    pub max_proportion: f32,
 }
 
 impl LogBookOpts {
@@ -263,7 +262,7 @@ impl Default for LogBookOpts {
             side: Side::Below,
             height: 8.0,
             width: 50.0,
-            show_source: true,
+            max_proportion: 0.5,
         }
     }
 }

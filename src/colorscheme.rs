@@ -404,8 +404,8 @@ pub(crate) fn add_default() {
                 ("cursor.extra.Insert", Form::new().with(c.base).on(c.yellow)),
                 // Used when typing arguments to commands.
                 ("param", Form::new().with(c.lavender)),
-                ("param.flag", Form::new().with(c.pink)),
-                ("snippet", Form::new().on(c.rosewater)),
+                ("param.flag", Form::new().on(c.base).with(c.pink)),
+                ("snippet", Form::new().on(c.yellow)),
                 // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.text)),
                 ("variable.builtin", Form::new().with(c.peach)),
@@ -458,6 +458,7 @@ pub(crate) fn add_default() {
                 ("diff.minus", Form::new().with(c.red)),
                 ("unresolved", Form::new().underlined().underline(c.red)),
                 ("completion.lsp.detail", Form::new().with(c.teal)),
+                ("completion.lsp.description", Form::new().with(c.subtext1)),
                 ("completion.lsp.kind", Form::new().with(c.blue)),
             ]
         }
@@ -652,6 +653,7 @@ pub(crate) fn add_default() {
                 ("diff.minus", Form::new().with(c.red)),
                 ("unresolved", Form::new().underlined().underline(c.red)),
                 ("completion.lsp.detail", Form::new().with(c.teal)),
+                ("completion.lsp.description", Form::new().with(c.fg_dark)),
                 ("completion.lsp.kind", Form::new().with(c.blue)),
             ]
         }
@@ -831,6 +833,7 @@ pub(crate) fn add_default() {
                 ("diff.minus", Form::new().with(c.red)),
                 ("unresolved", Form::new().underlined().underline(c.red)),
                 ("completion.lsp.detail", Form::new().with(c.teal)),
+                ("completion.lsp.description", Form::new().with(c.text_muted)),
                 ("completion.lsp.kind", Form::new().with(c.blue)),
             ]
         }
@@ -997,6 +1000,7 @@ pub(crate) fn add_default() {
                 ("diff.minus", Form::new().with(c.red)),
                 ("unresolved", Form::new().underlined().underline(c.red)),
                 ("completion.lsp.detail", Form::new().with(c.teal)),
+                ("completion.lsp.description", Form::new().with(c.comment)),
                 ("completion.lsp.kind", Form::new().with(c.blue)),
             ]
         }
@@ -1172,6 +1176,7 @@ pub(crate) fn add_default() {
                 ("diff.minus", Form::new().with(c.red)),
                 ("unresolved", Form::new().underlined().underline(c.red)),
                 ("completion.lsp.detail", Form::new().with(c.cyan)),
+                ("completion.lsp.description", Form::new().with(c.comment)),
                 ("completion.lsp.kind", Form::new().with(c.yellow)),
             ]
         }
@@ -1338,6 +1343,7 @@ pub(crate) fn add_default() {
                 ("diff.minus", Form::new().with(c.nord11)),
                 ("unresolved", Form::new().underlined().underline(c.nord11)),
                 ("completion.lsp.detail", Form::new().with(c.nord9)),
+                ("completion.lsp.description", Form::new().with(c.nord4)),
                 ("completion.lsp.kind", Form::new().with(c.nord8)),
             ]
         }
@@ -1544,6 +1550,7 @@ pub(crate) fn add_default() {
                 ("diff.delta.renamed", Form::new().with(c.autumn_yellow)),
                 ("diff.minus", Form::new().with(c.samurai_red)),
                 ("completion.lsp.detail", Form::new().with(c.boat_yellow2)),
+                ("completion.lsp.description", Form::new().with(c.fuji_gray)),
                 ("completion.lsp.kind", Form::new().with(c.crystal_blue)),
             ]
         }
