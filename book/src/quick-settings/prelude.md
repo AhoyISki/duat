@@ -205,8 +205,6 @@ fn setup(opts: &mut Opts) {
     opts.logs.height = 8.0;
     // Is ignored when the side is Above or Below.
     opts.logs.width = 50.0;
-    // Wether to show the source of the message (on the default fmt).
-    opts.logs.show_source = true;
 
     // Hook enabling/disabling options
     // Enables the default BufferOpts parser.
