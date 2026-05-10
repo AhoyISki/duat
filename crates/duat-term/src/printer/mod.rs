@@ -1,6 +1,6 @@
 use std::{
     io::Write,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, Ordering::Relaxed},
 };
 
 use crossterm::{
@@ -135,10 +135,7 @@ impl Printer {
     pub fn set_spawn_len(&self, id: SpawnId, len: Option<f64>) {
         self.sync_solver.lock().unwrap().set_spawn_len(id, len);
         if len == Some(0.0) {
-            self.spawned_lines
-                .lock()
-                .unwrap()
-                .retain(|(_, other, ..)| *other != id);
+            self.retain_spawns(|(_, other, ..)| *other != id);
         }
     }
 
@@ -196,7 +193,7 @@ impl Printer {
         }
         drop(vars);
 
-        self.spawned_lines.lock().unwrap().retain_mut(|(list, ..)| {
+        self.retain_spawns(|(list, ..)| {
             list.retain(|(id, _)| *id != rect.id());
             !list.is_empty()
         });
@@ -227,7 +224,6 @@ impl Printer {
                 vars.remove(tl_y);
             }
         }
-        drop(vars);
     }
 
     /// Inserts the [`Variables`] taken from a [`Rect`].
@@ -249,21 +245,15 @@ impl Printer {
 
         let mut vars = self.vars.lock().unwrap();
         vars.update_variables(changes);
-        self.has_to_print_edges.store(true, Ordering::Relaxed);
+        self.has_to_print_edges.store(true, Relaxed);
     }
 
     /// Clears a spawned Widget from screen, not actually deleting it.
     pub fn clear_spawn(&self, area_id: AreaId) {
-        let mut spawned_lines = self.spawned_lines.lock().unwrap();
-        let old_len = spawned_lines.len();
-        spawned_lines.retain_mut(|(list, ..)| {
+        self.retain_spawns(|(list, ..)| {
             list.retain(|(id, _)| *id != area_id);
             !list.is_empty()
         });
-        if old_len != spawned_lines.len() {
-            self.has_to_print_edges.store(true, Ordering::Relaxed);
-            self.spawns_have_changed.store(true, Ordering::Relaxed);
-        }
     }
 
     /// Replace a set of [`Equality`]s with another.
@@ -291,7 +281,7 @@ impl Printer {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
 
         let new_lines = std::mem::take(&mut *self.new_lines.lock().unwrap());
-        let has_to_print_edges = self.has_to_print_edges.swap(false, Ordering::Relaxed);
+        let has_to_print_edges = self.has_to_print_edges.swap(false, Relaxed);
 
         let mut stdout = stdout::get();
 
@@ -310,9 +300,8 @@ impl Printer {
 
         // If there are no more spawns, print everything at least one more
         // time, to clear the spawned areas.
-        let print_old_lines =
-            self.spawns_have_changed.load(Ordering::Relaxed) || !spawned_lines.is_empty();
-        self.spawns_have_changed.store(false, Ordering::Relaxed);
+        let print_old_lines = self.spawns_have_changed.load(Relaxed) || !spawned_lines.is_empty();
+        self.spawns_have_changed.store(false, Relaxed);
 
         for y in 0..max.y {
             write!(stdout, "\x1b[{}H", y + 1).unwrap();
@@ -351,10 +340,10 @@ impl Printer {
             .filter_map(|lines| lines.real_cursor)
             .reduce(|prev, was_real| prev || was_real)
         {
-            CURSOR_IS_REAL.store(was_real, Ordering::Relaxed);
+            CURSOR_IS_REAL.store(was_real, Relaxed);
             was_real
         } else {
-            CURSOR_IS_REAL.load(Ordering::Relaxed)
+            CURSOR_IS_REAL.load(Relaxed)
         };
 
         let frame_form = form::from_id(terminal_border_id);
@@ -398,17 +387,6 @@ impl Printer {
 
             old_lines.insert(i, info);
         }
-    }
-
-    /// Clears every area.
-    ///
-    /// This function should be used when unloading in order to
-    /// prevent lingering static references to the old loaded config,
-    /// preventing possible segmentation faults.
-    pub fn clear(&self) {
-        *self.old_lines.lock().unwrap() = Vec::new();
-        *self.new_lines.lock().unwrap() = Vec::new();
-        *self.spawned_lines.lock().unwrap() = Vec::new();
     }
 
     ////////// Lines functions
@@ -457,7 +435,18 @@ impl Printer {
             list.push((area_id, lines));
         }
 
-        self.spawns_have_changed.store(true, Ordering::Relaxed);
+        self.spawns_have_changed.store(true, Relaxed);
+    }
+
+    /// Retains the spawned lines based on a predicate.
+    fn retain_spawns(&self, pred: impl FnMut(&mut (Vec<(AreaId, Lines)>, SpawnId, Frame)) -> bool) {
+        let mut spawned_lines = self.spawned_lines.lock().unwrap();
+        let old_len = spawned_lines.len();
+        spawned_lines.retain_mut(pred);
+        if spawned_lines.len() != old_len {
+            self.spawns_have_changed.store(true, Relaxed);
+            self.has_to_print_edges.store(true, Relaxed);
+        }
     }
 
     ////////// Querying functions

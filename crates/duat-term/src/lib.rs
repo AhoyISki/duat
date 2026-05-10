@@ -146,7 +146,6 @@ impl RawUi for Ui {
                 match event {
                     Event::Print => printer.print(terminal_border_id),
                     Event::UpdatePrinter => printer.update(true, true),
-                    Event::ClearPrinter => printer.clear(),
                     Event::NewPrinter(new_printer) => printer = new_printer,
                 }
             }
@@ -201,7 +200,6 @@ impl RawUi for Ui {
         // from another thread
         ui.layouts.reset();
         ui.win = 0;
-        ui.term_tx.send(Event::ClearPrinter).unwrap();
     }
 
     fn new_root(&self, cache: <Self::Area as RawArea>::Cache) -> Self::Area {
@@ -296,7 +294,6 @@ pub enum Anchor {
 enum Event {
     Print,
     UpdatePrinter,
-    ClearPrinter,
     NewPrinter(Arc<Printer>),
 }
 

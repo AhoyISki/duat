@@ -44,6 +44,7 @@ KNOWN BUGS:
   [ ] Overlays can't remove previous Forms early.
   [ ] Sometimes the Completions randomly don't open on prompt line.
   [ ] Diagnostics randomly triggers an integer overflow probably.
+  [ ] Unfocused widgets not being reprinted as spawned ones disappear.
 
 FUTURE UPDATES:
 [ ] Remove Widget argument from Modes.

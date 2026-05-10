@@ -510,12 +510,14 @@ impl Layout {
             .find_map(|(i, (_, rect))| Some(i).zip(rect.delete(&self.printer, id)))
         {
             if let Deletion::Child(rect, cons, rm_list) = deletion {
+                self.printer.clear_spawn(rect.id());
                 (rect, cons, rm_list)
             } else {
                 let (mut info, mut rect) = self.spawned.remove(i);
                 self.printer.remove_rect(&mut rect);
                 self.printer.remove_eqs(info.cons.drain());
                 self.printer.remove_spawn_info(info.id);
+                self.printer.clear_spawn(rect.id());
 
                 return Some(remove_dependents(
                     &mut rect,
@@ -1426,7 +1428,7 @@ fn remove_dependents(
     };
 
     let rm_spawned: Vec<(SpawnInfo, Rect)> = spawned
-        .extract_if(.., |(info, _)| {
+        .extract_if(.., |(info, rect)| {
             let Some((_, tl, br)) = p.get_spawn_info(info.id) else {
                 return false;
             };
@@ -1436,6 +1438,7 @@ fn remove_dependents(
                 .chain(br.iter())
                 .any(|expr| expr.terms.iter().any(|term| vars.contains(&term.variable)))
             {
+                p.clear_spawn(rect.id());
                 p.remove_spawn_info(info.id);
                 true
             } else {
