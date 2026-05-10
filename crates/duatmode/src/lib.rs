@@ -480,12 +480,12 @@ mod one_key;
 
 use duat_base::hooks::SearchPerformed;
 use duat_core::{
-    buffer::Buffer,
     context::Handle,
     data::Pass,
     form, hook,
     mode::{self, KeyEvent, SelectionMut, alt, event},
     opts::PrintOpts,
+    ui::Widget,
     utils::Memoized,
 };
 use duat_jump_list::JumpList;
@@ -738,7 +738,7 @@ impl DuatMode {
         require(TypeId::of::<DuatTreeSitter>(), || DuatTreeSitter._plug());
 
         mode::set_alt_is_reverse(true);
-        mode::set_default(Normal::new());
+        mode::set_default(Normal::new);
 
         hook::add::<SearchPerformed>(|_, search| *SEARCH.lock().unwrap() = search.to_string());
 
@@ -754,7 +754,7 @@ impl DuatMode {
 
 fn edit_or_destroy_all(
     pa: &mut Pass,
-    handle: &Handle,
+    handle: &Handle<dyn Widget>,
     failed_at_least_once: &mut bool,
     mut f: impl FnMut(&mut SelectionMut) -> Option<()> + Clone,
 ) {
@@ -1135,8 +1135,8 @@ fn escaped_str(str: impl ToString) -> String {
 
 static SEARCH: Mutex<String> = Mutex::new(String::new());
 
-fn indents(pa: &mut Pass, handle: &Handle) -> (std::vec::IntoIter<usize>, bool) {
-    fn prev_non_empty_line(s: &mut SelectionMut<Buffer>) -> Option<usize> {
+fn indents(pa: &mut Pass, widget: &Handle<dyn Widget>) -> (std::vec::IntoIter<usize>, bool) {
+    fn prev_non_empty_line(s: &mut SelectionMut<'_, dyn Widget>) -> Option<usize> {
         let line_start = s.text().point_at_coords(s.cursor().line(), 0);
 
         s.text()[..line_start]
@@ -1147,11 +1147,13 @@ fn indents(pa: &mut Pass, handle: &Handle) -> (std::vec::IntoIter<usize>, bool) 
             .map(|(i, _)| s.cursor().line() - (i + 1))
     }
 
-    if let Some(indents) = handle.ts_get_indentations(pa, ..) {
+    if let Some(buffer) = widget.get_as()
+        && let Some(indents) = buffer.ts_get_indentations(pa, ..)
+    {
         (indents.into_iter(), true)
     } else {
         let mut indents = Vec::new();
-        handle.edit_all(pa, |mut s| {
+        widget.edit_all(pa, |mut s| {
             indents.push(
                 prev_non_empty_line(&mut s)
                     .map(|line| s.indent_on(line))

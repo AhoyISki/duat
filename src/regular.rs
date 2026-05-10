@@ -1,21 +1,21 @@
 use std::sync::Mutex;
 
 use duat_base::modes::{IncSearch, RunCommands, SearchFwd};
-use duat_core::mode::{ctrl, shift};
+use duat_core::{
+    mode::{ctrl, shift},
+    ui::Widget,
+};
 #[cfg(feature = "treesitter")]
 use duat_treesitter::TsHandle;
 
-use crate::{
-    prelude::{
-        Handle, cmd,
-        data::Pass,
-        mode::{
-            self,
-            KeyCode::{self, *},
-            KeyEvent, event,
-        },
+use crate::prelude::{
+    Handle, cmd,
+    data::Pass,
+    mode::{
+        self,
+        KeyCode::{self, *},
+        KeyEvent, event,
     },
-    widgets::Buffer,
 };
 
 /// The regular, bogstandard mode, a.k.a., supposed to be like VSCode
@@ -24,30 +24,30 @@ use crate::{
 /// overlap with default terminal commands, so I had to use slight
 /// alternatives.
 #[derive(Clone)]
-pub struct Regular;
+pub struct Regular(Handle<dyn Widget>);
 
 impl mode::Mode for Regular {
-    type Widget = Buffer;
-
-    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle<Self::Widget>) {
+    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent) {
         static LAST_CODE: Mutex<Option<KeyCode>> = Mutex::new(None);
         let mut last_code = LAST_CODE.lock().unwrap();
+
+        let widget = &self.0;
 
         match key_event {
             // Characters
             event!(Char(char)) => {
                 if !matches!(*last_code, Some(Char(_))) || char == ' ' {
-                    handle.write(pa).text_mut().new_moment();
+                    widget.text_mut(pa).new_moment();
                 }
-                handle.edit_all(pa, |mut s| {
+                widget.edit_all(pa, |mut s| {
                     s.replace(char);
                     s.unset_anchor();
                     s.move_hor(1);
                 })
             }
             event!(Enter) => {
-                handle.write(pa).text_mut().new_moment();
-                handle.edit_all(pa, |mut s| {
+                widget.text_mut(pa).new_moment();
+                widget.edit_all(pa, |mut s| {
                     #[cfg(not(feature = "treesitter"))]
                     let indent = s.indent();
 
@@ -60,9 +60,11 @@ impl mode::Mode for Regular {
                 });
 
                 #[cfg(feature = "treesitter")]
-                if let Some(indents) = handle.ts_get_indentations(pa, ..) {
+                if let Some(buffer) = widget.get_as()
+                    && let Some(indents) = buffer.ts_get_indentations(pa, ..)
+                {
                     let mut indents = indents.into_iter();
-                    handle.edit_all(pa, |mut s| {
+                    widget.edit_all(pa, |mut s| {
                         duatmode::reindent(s.indent(), indents.next().unwrap(), &mut s);
                     });
                 }
@@ -71,7 +73,7 @@ impl mode::Mode for Regular {
             // Text Removal
             event!(Backspace) => {
                 let mut major_removal = false;
-                handle.edit_all(pa, |mut s| {
+                widget.edit_all(pa, |mut s| {
                     if s.anchor().is_some()
                         || (s.move_hor(-1) != 0
                             && s.set_anchor_if_needed()
@@ -82,83 +84,83 @@ impl mode::Mode for Regular {
                 });
 
                 if !matches!(*last_code, Some(Backspace)) || major_removal {
-                    handle.write(pa).text_mut().new_moment();
+                    widget.text_mut(pa).new_moment();
                 }
 
-                handle.edit_all(pa, |mut s| {
+                widget.edit_all(pa, |mut s| {
                     s.replace("");
                     s.unset_anchor();
                 })
             }
             event!(Delete) => {
                 let mut major_removal = false;
-                handle.edit_all(pa, |mut s| {
+                widget.edit_all(pa, |mut s| {
                     s.set_anchor_if_needed();
                     major_removal |= s.selection().chars().any(|s| s == '\n');
                 });
 
                 if !matches!(*last_code, Some(Delete)) || major_removal {
-                    handle.write(pa).text_mut().new_moment();
+                    widget.text_mut(pa).new_moment();
                 }
 
-                handle.edit_all(pa, |mut s| {
+                widget.edit_all(pa, |mut s| {
                     s.replace("");
                     s.unset_anchor();
                 })
             }
 
             // Movement
-            event!(Left) => handle.edit_all(pa, |mut s| {
+            event!(Left) => widget.edit_all(pa, |mut s| {
                 s.unset_anchor();
                 s.move_hor(-1);
             }),
-            event!(Right) => handle.edit_all(pa, |mut s| {
+            event!(Right) => widget.edit_all(pa, |mut s| {
                 s.unset_anchor();
                 s.move_hor(1);
             }),
-            event!(Up) => handle.edit_all(pa, |mut s| {
+            event!(Up) => widget.edit_all(pa, |mut s| {
                 s.unset_anchor();
                 s.move_ver(-1);
             }),
-            event!(Down) => handle.edit_all(pa, |mut s| {
+            event!(Down) => widget.edit_all(pa, |mut s| {
                 s.unset_anchor();
                 s.move_ver(1);
             }),
-            shift!(Left) => handle.edit_all(pa, |mut s| {
+            shift!(Left) => widget.edit_all(pa, |mut s| {
                 s.set_anchor_if_needed();
                 s.move_hor(-1);
             }),
-            shift!(Right) => handle.edit_all(pa, |mut s| {
+            shift!(Right) => widget.edit_all(pa, |mut s| {
                 s.set_anchor_if_needed();
                 s.move_hor(1);
             }),
-            shift!(Up) => handle.edit_all(pa, |mut s| {
+            shift!(Up) => widget.edit_all(pa, |mut s| {
                 s.set_anchor_if_needed();
                 s.move_ver(-1);
             }),
-            shift!(Down) => handle.edit_all(pa, |mut s| {
+            shift!(Down) => widget.edit_all(pa, |mut s| {
                 s.set_anchor_if_needed();
                 s.move_ver(1);
             }),
 
             // Basic commands
-            ctrl!('z') => handle.write(pa).text_mut().undo(),
-            ctrl!('y' | 'Z') => handle.write(pa).text_mut().redo(),
+            ctrl!('z') => widget.text_mut(pa).undo(),
+            ctrl!('y' | 'Z') => widget.text_mut(pa).redo(),
             ctrl!(char @ ('x' | 's')) => {
                 if char == 'x' {
-                    handle.write(pa).text_mut().new_moment();
+                    widget.text_mut(pa).new_moment();
                 }
                 let mut prev = Vec::new();
-                handle.edit_all(pa, |mut s| {
+                widget.edit_all(pa, |mut s| {
                     prev.push((s.range(), s.anchor_is_start()));
                     if s.anchor().is_none() {
                         let range = s.text().line(s.cursor().line()).byte_range();
                         s.move_to(range);
                     }
                 });
-                crate::mode::copy_selections(pa, &handle);
+                crate::mode::copy_selections(pa, widget);
                 let mut ranges = prev.into_iter();
-                handle.edit_all(pa, |mut s| {
+                widget.edit_all(pa, |mut s| {
                     if char == 'x' {
                         s.replace("");
                     } else {
@@ -173,10 +175,10 @@ impl mode::Mode for Regular {
             ctrl!('v') => {
                 let pastes = crate::mode::paste_strings();
                 if !pastes.is_empty() {
-                    handle.write(pa).text_mut().new_moment();
+                    widget.text_mut(pa).new_moment();
                     let mut p_iter = pastes.iter().cycle();
 
-                    handle.edit_all(pa, |mut s| {
+                    widget.edit_all(pa, |mut s| {
                         let paste = p_iter.next().unwrap();
                         if !paste.is_empty() {
                             let mut s = s.copy();
@@ -201,7 +203,7 @@ impl mode::Mode for Regular {
             }
 
             // Searching
-            ctrl!('f') => mode::set(pa, IncSearch::new(SearchFwd)),
+            ctrl!('f') => mode::set(pa, IncSearch::new(SearchFwd, widget.clone())),
 
             // Control
             ctrl!('P') | event!(F(1)) => mode::set(pa, RunCommands::new()),

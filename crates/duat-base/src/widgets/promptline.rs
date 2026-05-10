@@ -21,7 +21,7 @@ use duat_core::{
     Ns,
     context::Handle,
     data::Pass,
-    hook::{self, KeySent, ModeSwitched},
+    hook::{self, KeySent, WidgetSwitched},
     opts::PrintOpts,
     text::{Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
@@ -33,9 +33,9 @@ use crate::modes::PromptMode;
 pub fn promptline_setup() {
     let hook_ns = Ns::new();
 
-    hook::add::<ModeSwitched>(move |_, switch| {
+    hook::add::<WidgetSwitched>(move |_, (_, new)| {
         hook::remove(hook_ns);
-        let Some(promptline) = switch.new.handle.get_as::<PromptLine>() else {
+        let Some(promptline) = new.get_as::<PromptLine>() else {
             return;
         };
 

@@ -3,12 +3,12 @@ use std::sync::{Mutex, atomic::Ordering};
 use duat_base::{BaseBuffer, widgets::Completions};
 use duat_core::{
     Ns,
-    buffer::Buffer,
     context::{self, Handle},
     data::Pass,
     hook::{self, BufferSwitched, ModeSwitched},
     mode::{self, KeyEvent, KeyMod, Mode, SelectionMut, alt, ctrl, event, shift},
     text::Mask,
+    ui::Widget,
 };
 use duat_filetype::AutoPrefix;
 
@@ -42,14 +42,20 @@ pub fn add_insert_hook() {
     });
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone)]
 pub struct Insert {
     is_completing: bool,
+    widget: Handle<dyn Widget>,
+}
+
+impl Insert {
+    /// Enters `Insert` [`Mode`] on a specific [`Widget`].
+    pub fn new(widget: Handle<dyn Widget>) -> Self {
+        Self { is_completing: false, widget }
+    }
 }
 
 impl Mode for Insert {
-    type Widget = Buffer;
-
     fn bindings() -> mode::Bindings {
         use duat_core::text::txt;
         use mode::KeyCode::*;
@@ -71,12 +77,12 @@ impl Mode for Insert {
         })
     }
 
-    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, buffer: Handle) {
+    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent) {
         use mode::KeyCode::*;
 
         let opts = crate::opts::get();
         if let shift!(Left | Down | Up | Right) = key_event {
-            buffer.edit_all(pa, |mut s| {
+            self.widget.edit_all(pa, |mut s| {
                 if s.anchor().is_none() {
                     s.set_anchor()
                 }
@@ -95,6 +101,8 @@ impl Mode for Insert {
             self.is_completing = false;
         }
 
+        let widget = &self.widget;
+
         match key_event {
             // Autocompletion commands
             ctrl!('n') => complete(pa, 1, &mut insert_events),
@@ -102,12 +110,12 @@ impl Mode for Insert {
             event!(Tab) => {
                 let mut indent_info = (!self.is_completing).then(|| {
                     add_reindent(&mut insert_events);
-                    crate::indents(pa, &buffer)
+                    crate::indents(pa, widget)
                 });
 
                 match opts.tab_mode {
                     TabMode::Normal => {
-                        buffer.edit_all(pa, |mut s| {
+                        widget.edit_all(pa, |mut s| {
                             if let Some((indents, is_ts_indent)) = &mut indent_info
                                 && let indent = indents.next().unwrap()
                                 && opts.indent_chars.contains(&'\t')
@@ -126,7 +134,7 @@ impl Mode for Insert {
                             }
                         });
                     }
-                    TabMode::Smart => buffer.edit_all(pa, |mut s| {
+                    TabMode::Smart => widget.edit_all(pa, |mut s| {
                         let char_col = s.v_cursor().char_col();
                         if let Some((indents, is_ts_indent)) = &mut indent_info
                             && let indent = indents.next().unwrap()
@@ -148,7 +156,7 @@ impl Mode for Insert {
                     }),
                     TabMode::VerySmart => {
                         let mut do_scroll = true;
-                        buffer.edit_all(pa, |mut s| {
+                        widget.edit_all(pa, |mut s| {
                             let char_col = s.v_cursor().char_col();
                             let has_reindented =
                                 if let Some((indents, is_ts_indent)) = &mut indent_info {
@@ -173,24 +181,24 @@ impl Mode for Insert {
             }
 
             // Snippet commands
-            ctrl!('l') => {
-                buffer.jump_snippets(pa, 0);
-                buffer.edit_all(pa, |mut s| s.replace(""));
+            ctrl!('l') if let Some(widget) = widget.get_as() => {
+                widget.jump_snippets(pa, 0);
+                widget.edit_all(pa, |mut s| s.replace(""));
             }
-            ctrl!('h') => {
-                buffer.jump_snippets(pa, -1);
-                buffer.edit_all(pa, |mut s| s.replace(""));
+            ctrl!('h') if let Some(widget) = widget.get_as() => {
+                widget.jump_snippets(pa, -1);
+                widget.edit_all(pa, |mut s| s.replace(""));
             }
-            
+
             // Regular commands
             event!(Char(char)) => {
-                buffer.edit_all(pa, |mut s| {
+                widget.edit_all(pa, |mut s| {
                     insert_str(&mut s, char, 1, &mut insert_events);
                 });
                 if opts.indent_chars.contains(&char) {
-                    let (mut indents, is_ts_indent) = crate::indents(pa, &buffer);
+                    let (mut indents, is_ts_indent) = crate::indents(pa, widget);
                     if is_ts_indent {
-                        buffer.edit_all(pa, |mut s| {
+                        widget.edit_all(pa, |mut s| {
                             let indent = indents.next().unwrap();
                             if opts.indent_chars.contains(&char)
                                 && s.indent() == s.v_cursor().char_col() - 1
@@ -203,7 +211,7 @@ impl Mode for Insert {
             }
 
             event!(Enter) => {
-                buffer.edit_all(pa, |mut s| {
+                widget.edit_all(pa, |mut s| {
                     let (cursor, anchor) = (s.cursor(), s.anchor());
                     remove_trailing_before_cursor(&mut s);
                     if let Some(anchor) = anchor {
@@ -219,21 +227,23 @@ impl Mode for Insert {
                     insert_str(&mut s, '\n', 1, &mut insert_events)
                 });
                 if opts.indent_chars.contains(&'\n') {
-                    buffer.edit_all(pa, |mut s| {
-                        if s.add_comment() {
-                            s.insert(' ');
-                            s.move_hor(1);
-                        }
-                    });
-                    let (mut indents, is_ts_indent) = crate::indents(pa, &buffer);
-                    buffer.edit_all(pa, |mut s| {
+                    if let Some(buffer) = widget.get_as() {
+                        buffer.edit_all(pa, |mut s| {
+                            if s.add_comment() {
+                                s.insert(' ');
+                                s.move_hor(1);
+                            }
+                        });
+                    }
+                    let (mut indents, is_ts_indent) = crate::indents(pa, widget);
+                    widget.edit_all(pa, |mut s| {
                         if is_ts_indent || opts.auto_indent {
                             _ = reindent(0, indents.next().unwrap(), &mut s)
                         }
                     });
                 }
             }
-            event!(Backspace) => buffer.edit_all(pa, |mut s| {
+            event!(Backspace) => widget.edit_all(pa, |mut s| {
                 let prev_cursor = s.cursor();
                 let prev_anchor = s.unset_anchor();
 
@@ -258,7 +268,7 @@ impl Mode for Insert {
                     }
                 }
             }),
-            event!(Delete) => buffer.edit_all(pa, |mut s| {
+            event!(Delete) => widget.edit_all(pa, |mut s| {
                 let prev_cursor = s.cursor();
                 let prev_anchor = s.unset_anchor();
                 s.set_anchor();
@@ -280,11 +290,11 @@ impl Mode for Insert {
                     s.swap_ends();
                 }
             }),
-            event!(Left) | shift!(Left) => buffer.edit_all(pa, |mut s| {
+            event!(Left) | shift!(Left) => widget.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 move_hor(&mut s, -1, &mut insert_events);
             }),
-            event!(Down) | shift!(Down) => buffer.edit_all(pa, |mut s| {
+            event!(Down) | shift!(Down) => widget.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 if key_event.modifiers == KeyMod::NONE {
                     s.unset_anchor();
@@ -292,7 +302,7 @@ impl Mode for Insert {
                 }
                 move_ver(&mut s, 1, &mut insert_events);
             }),
-            event!(Up) | shift!(Up) => buffer.edit_all(pa, |mut s| {
+            event!(Up) | shift!(Up) => widget.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 if key_event.modifiers == KeyMod::NONE {
                     s.unset_anchor();
@@ -300,20 +310,20 @@ impl Mode for Insert {
                 }
                 move_ver(&mut s, -1, &mut insert_events);
             }),
-            event!(Right) | shift!(Right) => buffer.edit_all(pa, |mut s| {
+            event!(Right) | shift!(Right) => widget.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 move_hor(&mut s, 1, &mut insert_events);
             }),
 
-            event!(Home) => buffer.edit_all(pa, |mut s| s.move_to_col(0)),
-            event!(End) => buffer.edit_all(pa, |mut s| s.move_to_col(usize::MAX)),
+            event!(Home) => widget.edit_all(pa, |mut s| s.move_to_col(0)),
+            event!(End) => widget.edit_all(pa, |mut s| s.move_to_col(usize::MAX)),
 
             event!(Esc) => {
-                buffer.text_mut(pa).new_moment();
-                mode::set(pa, Normal::new());
+                widget.text_mut(pa).new_moment();
+                mode::set(pa, Normal::new(widget.clone()));
             }
-            alt!(';') => mode::set(pa, Normal::only_one_action()),
-            ctrl!('u') => buffer.text_mut(pa).new_moment(),
+            alt!(';') => mode::set(pa, Normal::new(widget.clone()).only_one_action()),
+            ctrl!('u') => widget.text_mut(pa).new_moment(),
             _ => {}
         }
     }
@@ -354,32 +364,32 @@ pub enum TabMode {
     VerySmart,
 }
 
-pub(crate) fn repeat_last_insert(pa: &mut Pass, buffer: &Handle) {
+pub(crate) fn repeat_last_insert(pa: &mut Pass, widget: &Handle<dyn Widget>) {
     let insert_events = INSERT_EVENTS.lock().unwrap();
 
     for event in insert_events.iter() {
         match event {
-            InsertEvent::MoveHor(hor) => buffer.edit_all(pa, |mut s| _ = s.move_hor(*hor)),
-            InsertEvent::MoveVer(ver) => buffer.edit_all(pa, |mut s| _ = s.move_ver_wrapped(*ver)),
-            InsertEvent::Delete(del) => buffer.edit_all(pa, |mut s| {
+            InsertEvent::MoveHor(hor) => widget.edit_all(pa, |mut s| _ = s.move_hor(*hor)),
+            InsertEvent::MoveVer(ver) => widget.edit_all(pa, |mut s| _ = s.move_ver_wrapped(*ver)),
+            InsertEvent::Delete(del) => widget.edit_all(pa, |mut s| {
                 s.set_anchor();
                 s.move_hor(*del as i32 - 1);
                 s.replace("");
             }),
-            InsertEvent::Backspace(back) => buffer.edit_all(pa, |mut s| {
+            InsertEvent::Backspace(back) => widget.edit_all(pa, |mut s| {
                 s.move_hor(-1);
                 s.set_anchor();
                 s.move_hor(-(*back as i32 - 1));
                 s.replace("");
             }),
-            InsertEvent::Insert(str, hor) => buffer.edit_all(pa, |mut s| {
+            InsertEvent::Insert(str, hor) => widget.edit_all(pa, |mut s| {
                 s.insert(str);
                 s.move_hor(*hor as i32);
             }),
             InsertEvent::Reindent => {
-                let (mut indents, is_ts_indent) = crate::indents(pa, buffer);
+                let (mut indents, is_ts_indent) = crate::indents(pa, widget);
                 if is_ts_indent {
-                    buffer.edit_all(pa, |mut s| {
+                    widget.edit_all(pa, |mut s| {
                         reindent(s.indent(), indents.next().unwrap(), &mut s);
                     })
                 }
@@ -444,8 +454,8 @@ fn complete(pa: &mut Pass, scroll: i32, insert_events: &mut Vec<InsertEvent>) {
     }
 }
 
-fn insert_str(
-    s: &mut SelectionMut,
+fn insert_str<W: Widget + ?Sized>(
+    s: &mut SelectionMut<'_, W>,
     new: impl ToString,
     len: i32,
     insert_events: &mut Vec<InsertEvent>,

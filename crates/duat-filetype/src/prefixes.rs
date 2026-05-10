@@ -4,7 +4,7 @@
 //! [`SelectionMut`]s add prefixes (e.g. comments, list headings, etc).
 use std::{collections::HashMap, sync::LazyLock};
 
-use duat_core::{mode::SelectionMut, text::RegexHaystack};
+use duat_core::{buffer::Buffer, mode::SelectionMut, text::RegexHaystack};
 
 use super::FileType;
 
@@ -20,7 +20,7 @@ pub trait AutoPrefix {
     fn add_comment(&mut self) -> bool;
 }
 
-impl AutoPrefix for SelectionMut<'_> {
+impl AutoPrefix for SelectionMut<'_, Buffer> {
     fn add_comment(&mut self) -> bool {
         let Some(prev_lnum) = self.cursor().line().checked_sub(1) else {
             return false;

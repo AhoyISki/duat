@@ -1,4 +1,4 @@
-//! Utilities for incremental search in Duat
+//! Utilities for incremental search in Duat.
 //!
 //! This specific feature of Duat is kind of split across this crate
 //! and [`duat-core`], since some of the low level features (like
@@ -7,17 +7,15 @@
 //!
 //! [`duat-core`]: duat_core
 //! [`SelectionMut`]: duat_core::mode::SelectionMut
-use std::sync::{LazyLock, Once};
+use std::sync::LazyLock;
 
 use duat_core::{
     Ns,
-    buffer::Buffer,
     context::{self, Handle},
     data::Pass,
-    form::{self, Form},
-    hook,
+    form, hook,
     text::{Text, txt},
-    ui::{PrintInfo, RwArea},
+    ui::{PrintInfo, RwArea, Widget},
 };
 
 use crate::{
@@ -27,7 +25,7 @@ use crate::{
 
 static NS: LazyLock<Ns> = LazyLock::new(Ns::new);
 
-/// The [`PromptMode`] that makes use of [`IncSearcher`]s
+/// The [`PromptMode`] that makes use of [`IncSearcher`]s.
 ///
 /// In order to make use of incremental search, you'd do something
 /// like this:
@@ -55,6 +53,7 @@ pub struct IncSearch<I: IncSearcher> {
     inc: I,
     orig: Option<(duat_core::mode::Selections, PrintInfo)>,
     prev: String,
+    widget: Handle<dyn Widget>,
 }
 
 impl<I: IncSearcher> Clone for IncSearch<I> {
@@ -63,34 +62,29 @@ impl<I: IncSearcher> Clone for IncSearch<I> {
             inc: self.inc.clone(),
             orig: self.orig.clone(),
             prev: self.prev.clone(),
+            widget: self.widget.clone(),
         }
     }
 }
 
 impl<I: IncSearcher> IncSearch<I> {
-    /// Returns a [`Prompt`] with [`IncSearch<I>`] as its
-    /// [`PromptMode`]
+    /// Returns a [`Prompt`] with `IncSearch<I>` as its
+    /// [`PromptMode`], for a specific [`Widget`].
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(inc: I) -> Prompt {
-        static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            form::set_weak("regex.error", Form::mimic("accent.error"));
-            form::set_weak("regex.operator", Form::mimic("operator"));
-            form::set_weak("regex.class", Form::mimic("constant"));
-            form::set_weak("regex.bracket", Form::mimic("punctuation.bracket"));
-        });
-        Prompt::new(Self { inc, orig: None, prev: String::new() })
+    pub fn new(inc: I, widget: Handle<dyn Widget>) -> Prompt {
+        Prompt::new(Self {
+            inc,
+            orig: None,
+            prev: String::new(),
+            widget,
+        })
     }
 }
 
 impl<I: IncSearcher> PromptMode for IncSearch<I> {
-    type ExitWidget = Buffer;
-
     fn update(&mut self, pa: &mut Pass, mut text: Text, _: &RwArea) -> Text {
         let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
         text.remove_tags(*NS, ..);
-
-        let buffer = context::current_buffer(pa);
 
         if text == self.prev {
             return text;
@@ -103,9 +97,10 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 
         match regex_syntax::parse(&pat) {
             Ok(_) => {
-                buffer.area().set_print_info(pa, orig_print_info.clone());
-                let buf = buffer.write(pa);
-                *buf.selections_mut() = orig_selections.clone();
+                self.widget
+                    .area()
+                    .set_print_info(pa, orig_print_info.clone());
+                *self.widget.selections_mut(pa) = orig_selections.clone();
 
                 let ast = regex_syntax::ast::parse::Parser::new()
                     .parse(&text.to_string_no_last_nl())
@@ -114,7 +109,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
                 crate::tag_from_ast(*NS, &mut text, &ast);
 
                 if !text.is_empty() {
-                    self.inc.search(pa, &pat, buffer);
+                    self.inc.search(pa, &pat, &self.widget);
                 }
             }
             Err(err) => {
@@ -133,11 +128,9 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
     }
 
     fn on_switch(&mut self, pa: &mut Pass, text: Text, _: &RwArea) -> Text {
-        let handle = context::current_buffer(pa);
-
         self.orig = Some((
-            handle.read(pa).selections().clone(),
-            handle.area().get_print_info(pa),
+            self.widget.selections(pa).clone(),
+            self.widget.area().get_print_info(pa),
         ));
 
         text
@@ -146,10 +139,11 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
     fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &RwArea) {
         if text.is_empty() || text == "\n" {
             let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
-            
-            let buffer = context::current_buffer(pa);
-            buffer.area().set_print_info(pa, orig_print_info.clone());
-            *buffer.write(pa).selections_mut() = orig_selections.clone();
+
+            self.widget
+                .area()
+                .set_print_info(pa, orig_print_info.clone());
+            *self.widget.selections_mut(pa) = orig_selections.clone();
         } else {
             let pat = text.to_string_no_last_nl();
             if let Err(err) = regex_syntax::parse(&pat) {
@@ -175,9 +169,13 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
     fn prompt(&self) -> Text {
         txt!("{}", self.inc.prompt())
     }
+
+    fn return_handle(&self) -> Option<Handle<dyn Widget>> {
+        Some(self.widget.clone())
+    }
 }
 
-/// An abstraction trait used to handle incremental search
+/// An abstraction trait used to handle incremental search.
 ///
 /// This trait can be used for various ways of interpreting what
 /// incremental search should do, right now, these are the
@@ -225,27 +223,27 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 ///
 /// [`duat-kak`]: https://docs.rs/duat-kak
 pub trait IncSearcher: Clone + Send + 'static {
-    /// Performs an incremental search with a `pat`
+    /// Performs an incremental search with a `pat`.
     ///
     /// Using this `pat` inside any searching method is guaranteed not
     /// to panic.
-    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>);
+    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle<dyn Widget>);
 
-    /// What prompt to show in the [`PromptLine`]
+    /// What prompt to show in the [`PromptLine`].
     ///
     /// [`PromptLine`]: crate::widgets::PromptLine
     fn prompt(&self) -> Text;
 }
 
-/// Searches forward on each [`SelectionMut`]
+/// Searches forward on each [`SelectionMut`].
 ///
 /// [`SelectionMut`]: duat_core::mode::SelectionMut
 #[derive(Clone, Copy)]
 pub struct SearchFwd;
 
 impl IncSearcher for SearchFwd {
-    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
-        handle.edit_all(pa, |mut s| {
+    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle<dyn Widget>) {
+        widget.edit_all(pa, |mut s| {
             if let Some(range) = {
                 s.search(pat).from_cursor_excl().next().or_else(|| {
                     context::info!("search wrapped around buffer");
@@ -262,15 +260,15 @@ impl IncSearcher for SearchFwd {
     }
 }
 
-/// Searches backwards on each [`SelectionMut`]
+/// Searches backwards on each [`SelectionMut`].
 ///
 /// [`SelectionMut`]: duat_core::mode::SelectionMut
 #[derive(Clone, Copy)]
 pub struct SearchRev;
 
 impl IncSearcher for SearchRev {
-    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
-        handle.edit_all(pa, |mut s| {
+    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle<dyn Widget>) {
+        widget.edit_all(pa, |mut s| {
             if let Some(range) = {
                 s.search(pat).to_cursor().next_back().or_else(|| {
                     context::info!("search wrapped around buffer");
@@ -287,15 +285,15 @@ impl IncSearcher for SearchRev {
     }
 }
 
-/// Extends forward on each [`SelectionMut`]
+/// Extends forward on each [`SelectionMut`].
 ///
 /// [`SelectionMut`]: duat_core::mode::SelectionMut
 #[derive(Clone, Copy)]
 pub struct ExtendFwd;
 
 impl IncSearcher for ExtendFwd {
-    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
-        handle.edit_all(pa, |mut s| {
+    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle<dyn Widget>) {
+        widget.edit_all(pa, |mut s| {
             if let Some(range) = {
                 s.search(pat).from_cursor_excl().next().or_else(|| {
                     context::info!("search wrapped around buffer");
@@ -313,15 +311,15 @@ impl IncSearcher for ExtendFwd {
     }
 }
 
-/// Extends backwards on each [`SelectionMut`]
+/// Extends backwards on each [`SelectionMut`].
 ///
 /// [`SelectionMut`]: duat_core::mode::SelectionMut
 #[derive(Clone, Copy)]
 pub struct ExtendRev;
 
 impl IncSearcher for ExtendRev {
-    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
-        handle.edit_all(pa, |mut s| {
+    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle<dyn Widget>) {
+        widget.edit_all(pa, |mut s| {
             if let Some(range) = {
                 s.search(pat).to_cursor().next_back().or_else(|| {
                     context::info!("search wrapped around buffer");

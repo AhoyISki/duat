@@ -70,14 +70,6 @@ impl WhichKey {
         mut fmt: Option<Box<dyn FnMut(Description) -> Option<(Text, Text)>>>,
         mut specs: DynSpawnSpecs,
     ) {
-        static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            form::set(
-                "default.WhichKeyDescriptions",
-                Form::mimic("default.WhichKey"),
-            );
-        });
-
         let mut keys_builder = Text::builder();
         let mut descs_builder = Text::builder();
 
@@ -146,11 +138,10 @@ impl WhichKey {
             area.set_width(size.x + 1.0).unwrap();
         }
 
-        let descs_handle = keys_handle.push_inner_widget(
-            pa,
-            descs,
-            PushSpecs { side: Side::Right, ..Default::default() },
-        );
+        let descs_handle = keys_handle.push_inner_widget(pa, descs, PushSpecs {
+            side: Side::Right,
+            ..Default::default()
+        });
         keys_handle.write(pa).1 = Some(descs_handle.clone());
 
         let (descs, area) = descs_handle.write_with_area(pa);

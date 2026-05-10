@@ -570,16 +570,19 @@ pub mod hook {
     //! Currently, these are the existing hooks in `duat-core` and
     //! `duat-base`:
     //!
+    //!
     //! - [`BufferOpened`] is an alias for [`WidgetOpened<Buffer>`].
     //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
     //! - [`BufferClosed`] triggers when you close/unload a buffer.
     //! - [`BufferUpdated`] triggers whenever a buffer changes.
-    //! - [`BufferSwitched`] triggers when switching buffers.
+    //! - [`BufferSwitched`] triggers when switching the active buffer.
     //! - [`ConfigLoaded`] triggers after loading the config crate.
-    //! - [`ConfigUnloaded`] triggers after unloading the config.
+    //! - [`ConfigUnloaded`] triggers after unloading the config crate.
     //! - [`FocusedOnDuat`] triggers when Duat gains focus.
     //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
     //! - [`WidgetOpened`] triggers when a [`Widget`] is opened.
+    //! - [`WidgetSwitched`] triggers when switching the active window.
+    //! - [`FocusedUpdated`] triggers when a focused [`Widget`] updates.
     //! - [`WindowOpened`] triggers when a [`Window`] is created.
     //! - [`ModeSwitched`] triggers when you change [`Mode`].
     //! - [`KeySent`] triggers when a keys are sent.
@@ -587,7 +590,7 @@ pub mod hook {
     //! - [`OnMouseEvent`] triggers with mouse events.
     //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
     //! - [`ColorschemeSet`] triggers whenever a [colorscheme is set].
-    //! - [`MsgLogged`] triggers after logging macros like [`debug!`].
+    //! - [`MsgLogged`] triggers after logginng macros like [`debug!`].
     //! - [`SearchPerformed`] triggers after a search is performed.
     //! - [`SearchUpdated`]  triggers after a search updates.
     //!
@@ -715,12 +718,12 @@ pub mod prelude {
             self, BufferClosed, BufferOpened, BufferSaved, BufferSwitched, BufferUpdated,
             ColorschemeSet, CompletionFinished, CompletionSelected, ConfigLoaded, ConfigUnloaded,
             FocusedOnDuat, FormSet, Hookable, KeySent, KeyTyped, ModeSwitched, OnMouseEvent,
-            SearchPerformed, SearchUpdated, UnfocusedFromDuat, WidgetOpened, WindowOpened,
-            WindowSwitched,
+            SearchPerformed, SearchUpdated, UnfocusedFromDuat, WidgetClosed, WidgetOpened,
+            WidgetSwitched, WindowOpened,
         },
         mode::{
-            self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,
-            User, alias, alt, ctrl, event, map, shift,
+            self, Insert, KeyCode, KeyEvent, Mode, Normal, Prompt, Selection, Selections, User,
+            alias, alt, ctrl, event, map, shift,
         },
         opts::{Opts, ScrollOff, TabMode},
         plug, setup_duat,

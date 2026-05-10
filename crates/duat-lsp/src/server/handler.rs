@@ -176,7 +176,7 @@ impl ServerBridge {
         let handle = buffer.clone();
 
         if let Some(result_id) = parser.tokens.result_id(self.ns()) {
-            let id = Id::Str(format!("{version}{}", parser.uri().to_string()));
+            let id = Id::Str(format!("{version}{}", **parser.uri()));
             self.send_request_with_id::<SemanticTokensFullDeltaRequest>(
                 id,
                 SemanticTokensDeltaParams {

@@ -45,7 +45,7 @@ use crate::{
     context::Handle,
     data::{Pass, RwData},
     form,
-    hook::{self, OnMouseEvent},
+    hook::{self, BufferClosed, OnMouseEvent, WidgetClosed},
     mode::{ToggleEvent, TwoPointsPlace},
     opts::PrintOpts,
     session::UiMouseEvent,
@@ -87,6 +87,7 @@ pub(crate) struct Node {
     handle: Handle<dyn Widget>,
     print: Arc<dyn Fn(&mut Pass) + Send + Sync>,
     on_mouse_event: Arc<dyn Fn(&mut Pass, UiMouseEvent) + Send + Sync>,
+    on_close: fn(&mut Pass, &Handle<dyn Widget>),
 }
 
 impl Node {
@@ -171,6 +172,11 @@ impl Node {
                     }
                 }
             }),
+            on_close: if handle.widget().is::<Buffer>() {
+                |pa, handle| _ = hook::trigger(pa, BufferClosed((handle.get_as().unwrap(), false)))
+            } else {
+                |pa, handle| _ = hook::trigger(pa, WidgetClosed(handle.get_as::<W>().unwrap()))
+            },
         }
     }
 
@@ -253,6 +259,11 @@ impl Node {
 
     pub(crate) fn on_mouse_event(&self, pa: &mut Pass, mouse_event: UiMouseEvent) {
         (self.on_mouse_event)(pa, mouse_event);
+    }
+
+    pub(crate) fn on_close(&self, pa: &mut Pass) {
+        self.handle.declare_closed();
+        (self.on_close)(pa, &self.handle)
     }
 }
 

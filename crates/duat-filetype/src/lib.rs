@@ -50,7 +50,7 @@ impl FileType for Buffer {
     }
 }
 
-impl FileType for SelectionMut<'_> {
+impl FileType for SelectionMut<'_, Buffer> {
     fn filetype(&self) -> Option<&'static str> {
         self.widget().filetype()
     }

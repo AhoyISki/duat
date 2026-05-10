@@ -6,7 +6,7 @@ use std::{
 use duat_base::BaseBuffer;
 use duat_core::{
     buffer::Buffer,
-    context::Handle,
+    context,
     data::Pass,
     form::{self, Form},
     mode::{self, KeyEvent, Mode, User, event},
@@ -55,8 +55,6 @@ impl DuatLsp {
 pub struct Lsp;
 
 impl Mode for Lsp {
-    type Widget = Buffer;
-
     fn bindings() -> duat_core::mode::Bindings {
         mode::bindings!(match _ {
             event!('h') => txt!("Show hover info"),
@@ -64,7 +62,9 @@ impl Mode for Lsp {
         })
     }
 
-    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, buffer: Handle<Self::Widget>) {
+    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent) {
+        let buffer = context::current_buffer(pa);
+
         match key_event {
             event!('f') => buffer.lsp_format(pa, None),
             event!('h') if let Some(servers) = server::get_servers_for(&buffer.read(pa).path()) => {

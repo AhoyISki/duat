@@ -14,7 +14,7 @@ use crate::{
     mode::{ModSelection, Selection, SelectionMut, Selections},
     opts::PrintOpts,
     text::{Text, TextMut, TextParts, TwoPoints},
-    ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, SpawnId, Widget},
+    ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, SpawnId, Widget, Window},
 };
 
 /// A handle to a [`Widget`] in Duat.
@@ -408,6 +408,19 @@ impl<W: 'static + ?Sized> Handle<W> {
             .collect()
     }
 
+    /// The [`Window`] this `Handle` belongs to.
+    ///
+    /// Returns [`None`] if the [`Widget`] is [closed].
+    ///
+    /// [closed]: Self::is_closed
+    #[track_caller]
+    pub fn window(&self, pa: &Pass) -> Option<Window> {
+        context::windows()
+            .iter(pa)
+            .find(|window| window.handles(pa).any(|handle| handle == self))
+            .cloned()
+    }
+
     /// Raw access to the related widgets.
     pub(crate) fn related(&self) -> &RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>> {
         &self.related
@@ -423,6 +436,31 @@ impl<W: 'static + ?Sized> Handle<W> {
     /// Declares that this `Handle` has been closed.
     pub(crate) fn declare_closed(&self) {
         self.is_closed.store(true, Ordering::Relaxed);
+    }
+
+    /// Sets this [`Handle`] as "active".
+    ///
+    /// This has a few effects, but the most prominent ones is that
+    /// [aliases] will show up on this widget's [`Text`] (if it has
+    /// selections), and [`Completions`] will also be spawned on said
+    /// `Text` (again, with selections).
+    ///
+    /// This function will fail if the `Self` [was already closed].
+    ///
+    /// [`Completions`]: https://docs.rs/crates/duat/latest/widgets/struct.Completions.html
+    /// [was already closed]: Self::is_closed
+    #[track_caller]
+    pub fn set_as_active(&self, pa: &mut Pass) {
+        if let Some((_, node)) = {
+            context::windows()
+                .entries(pa)
+                .find(|(_, node)| node.handle() == self)
+        } {
+            let node = node.clone();
+            context::set_current_node(pa, node);
+        } else {
+            context::error!("Tried setting a [a]closed[] Handle as active");
+        }
     }
 }
 

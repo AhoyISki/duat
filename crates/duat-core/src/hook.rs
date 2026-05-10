@@ -41,8 +41,9 @@
 //! - [`FocusedOnDuat`] triggers when Duat gains focus.
 //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
 //! - [`WidgetOpened`] triggers when a [`Widget`] is opened.
+//! - [`WidgetSwitched`] triggers when switching the active window.
+//! - [`FocusedUpdated`] triggers when a focused [`Widget`] updates.
 //! - [`WindowOpened`] triggers when a [`Window`] is created.
-//! - [`WindowSwitched`] triggers when switching the active window.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`KeySent`] triggers when a keys are sent.
 //! - [`KeyTyped`] triggers when keys are _typed_, not _sent_.
@@ -481,6 +482,66 @@ impl<W: 'static> Hookable for WidgetOpened<W> {
     }
 }
 
+/// [`Hookable`]: Triggers when a [`Widget`] is closed.
+///
+/// In Rust, you'd usually expect to implement this hook via the
+/// [`Drop`] trait. However, since [`Handle`]s make use of reference
+/// counted memory, you can't reliably gauge when a `Widget` is
+/// actually dropped.
+///
+/// This serves as an alternative, which happens whenever a `Widget`
+/// is closed, either due to a call to [`Handle::close`] or because
+/// its [`Window`] was closed.
+///
+/// # Arguments
+///
+/// - The [`Handle<W>`] of the closed `Widget`.
+pub struct WidgetClosed<W>(pub(crate) Handle<W>);
+
+impl<W: 'static> Hookable for WidgetClosed<W> {
+    type Input<'h> = &'h Handle<W>;
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        &self.0
+    }
+}
+
+/// [`Hookable`]: Triggers when you switch the active [`Widget`].
+///
+/// # Arguments
+///
+/// - The former `Widget`'s [`Handle<dyn Widget>`].
+/// - The current `Widget`'s `Handle<dyn widget>`.
+pub struct WidgetSwitched(pub(crate) (Handle<dyn Widget>, Handle<dyn Widget>));
+
+impl Hookable for WidgetSwitched {
+    type Input<'h> = (&'h Handle<dyn Widget>, &'h Handle<dyn Widget>);
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        (&self.0.0, &self.0.1)
+    }
+}
+
+/// [`Hookable`]: triggers when a focused [`Widget`] is updated.
+///
+/// This triggers very similarly to [`BufferUpdated`], but only on the
+/// widget that is currently focused.
+///
+/// The focused `Widget` is almost always the one being typed on, and
+/// functions like [`Handle::set_as_active`] and [`mode::reset`] can
+/// be used to change the active widget.
+///
+/// # Arguments
+pub struct FocusedUpdated<W: Widget + ?Sized = dyn Widget>(pub(crate) Handle<W>);
+
+impl<W: Widget + ?Sized> Hookable for FocusedUpdated<W> {
+    type Input<'h> = &'h Handle<W>;
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        &self.0
+    }
+}
+
 /// [`Hookable`]: Triggers when a new window is opened.
 ///
 /// # Arguments
@@ -556,22 +617,6 @@ impl Hookable for WindowOpened {
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &mut self.0
-    }
-}
-
-/// [`Hookable`]: Triggers when you switch the active [`Window`].
-///
-/// # Arguments
-///
-/// - The former [`Option<Window>`], which is [`None`] if it was closed.
-/// - The current [`Window`].
-pub struct WindowSwitched(pub(crate) (Option<Window>, Window));
-
-impl Hookable for WindowSwitched {
-    type Input<'h> = (Option<&'h mut Window>, &'h mut Window);
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        (self.0.0.as_mut(), &mut self.0.1)
     }
 }
 
@@ -816,13 +861,12 @@ impl Hookable for UnfocusedFromDuat {
 /// # Arguments
 ///
 /// - A [`ModeSwitch`], which contains information about the `old` and
-///   `new` `Mode`s. This includes the `Mode` itself, its name, and
-///   its active [`Handle<dyn Widget>`].
+///   `new` `Mode`s. This includes the `Mode` itself and its name.
 ///
 /// [`Mode`]: crate::mode::Mode
 pub struct ModeSwitched {
-    pub(crate) old: (Box<dyn Any + Send>, &'static str, Handle<dyn Widget>),
-    pub(crate) new: (Box<dyn Any + Send>, &'static str, Handle<dyn Widget>),
+    pub(crate) old: (Box<dyn Any + Send>, &'static str),
+    pub(crate) new: (Box<dyn Any + Send>, &'static str),
 }
 
 impl Hookable for ModeSwitched {
@@ -833,12 +877,10 @@ impl Hookable for ModeSwitched {
             old: ModeParts {
                 mode: self.old.0.as_mut(),
                 name: self.old.1,
-                handle: &self.old.2,
             },
             new: ModeParts {
                 name: self.new.1,
                 mode: self.new.0.as_mut(),
-                handle: &self.new.2,
             },
         }
     }
@@ -870,10 +912,6 @@ pub struct ModeParts<'h> {
     ///
     /// [`Mode`]: crate::mode::Mode
     pub name: &'static str,
-    /// The handle of this [`Mode`].
-    ///
-    /// [`Mode`]: crate::mode::Mode
-    pub handle: &'h Handle<dyn Widget>,
 }
 
 impl ModeParts<'_> {

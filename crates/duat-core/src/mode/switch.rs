@@ -5,7 +5,6 @@
 //! the parts of Duat that rely on the current mode.
 use std::{
     any::{Any, TypeId},
-    collections::HashMap,
     sync::{LazyLock, Mutex},
 };
 
@@ -17,7 +16,7 @@ use crate::{
     context::{self, Handle},
     data::{Pass, RwData},
     hook::{self, ModeSwitched},
-    ui::{Node, Widget},
+    ui::Widget,
     utils::{catch_panic, duat_name},
 };
 
@@ -25,14 +24,17 @@ static MODE_NAME: Mutex<&str> = Mutex::new("");
 static MODE: LazyLock<RwData<Option<Box<dyn Any + Send>>>> =
     LazyLock::new(|| RwData::new(Some(Box::new(()))));
 static SEND_KEY: LazyLock<RwData<Option<KeyFn>>> = LazyLock::new(RwData::default);
-static RESET_MODES: LazyLock<Mutex<HashMap<TypeId, ResetFn>>> = LazyLock::new(Mutex::default);
+static SET_DEFAULT: Mutex<Option<ResetFn>> = Mutex::new(None);
 static DEFERRED: LazyLock<RwData<Vec<Box<dyn FnOnce(&mut Pass) + Send>>>> =
     LazyLock::new(RwData::default);
 
 type KeyFn = fn(&mut Pass, KeyEvent);
-type ResetFn = Box<dyn FnMut(&mut Pass) + Send>;
+type ResetFn = Box<dyn FnMut(&mut Pass, Handle<dyn Widget>) + Send>;
 
-/// Sets the new default mode
+/// Sets the new default mode.
+///
+/// This mode needs to be usable across various different [`Widget`]s,
+/// since it will be set by default if one needs to focus on them.
 ///
 /// This is the mode that will be set when [`mode::reset`] is
 /// called. The `mode::reset` function is always called for the
@@ -40,24 +42,12 @@ type ResetFn = Box<dyn FnMut(&mut Pass) + Send>;
 /// function to effectively change the default mode of Duat.
 ///
 /// [`mode::reset`]: reset
-pub fn set_default<M: Mode + Clone>(mode: M) {
-    let mut reset_modes = RESET_MODES.lock().unwrap();
-    let type_id = TypeId::of::<M::Widget>();
-
-    if let Some(reset_fn) = reset_modes.get_mut(&type_id) {
-        *reset_fn = Box::new(move |pa| {
-            let mode = mode.clone();
-            set::<M>(pa, mode);
-        });
-    } else {
-        reset_modes.insert(
-            TypeId::of::<M::Widget>(),
-            Box::new(move |pa| {
-                let mode = mode.clone();
-                set::<M>(pa, mode);
-            }),
-        );
-    };
+/// [`Buffer`]: crate::buffer::Buffer
+pub fn set_default<M: Mode>(mut mode_fn: impl FnMut(Handle<dyn Widget>) -> M + Send + 'static) {
+    *SET_DEFAULT.lock().unwrap() = Some(Box::new(move |pa, widget| {
+        widget.set_as_active(pa);
+        set(pa, mode_fn(widget))
+    }));
 }
 
 /// Sets the [`Mode`], switching to the appropriate [`Widget`].
@@ -79,109 +69,82 @@ pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
         return;
     };
 
-    let old_handle = context::current_widget(pa).clone();
-
-    // If we are on the correct widget, no switch is needed.
-    if !old_handle.widget().is::<M::Widget>() {
-        let node = {
-            let windows = context::windows();
-            if TypeId::of::<M::Widget>() == TypeId::of::<Buffer>() {
-                let pk = context::current_buffer(pa).read(pa).path_kind();
-                windows
-                    .buffer_entry(pa, pk)
-                    .map(|(.., handle)| Node::from_handle(handle))
-            } else {
-                windows.node_of::<M::Widget>(pa).cloned()
-            }
-        };
-
-        match node {
-            Ok(node) => context::set_current_node(pa, node.clone()),
-            Err(err) => {
-                context::error!("{err}");
-                return;
-            }
-        }
-    };
-
-    let new_handle = context::current_widget(pa).clone();
-
     let new_name = duat_name::<M>();
     let old_name = std::mem::replace(context::mode_name().write(pa), new_name);
+    
+    // Things that happen before the switch, in order to signal that a
+    // switch has happened.
+    *MODE_NAME.lock().unwrap() = std::any::type_name::<M>();
+    *SEND_KEY.write(pa) = Some(|pa, keys| send_key_fn::<M>(pa, keys));
+    crate::mode::set_mode_for_remapper::<M>(pa);
 
     // This is the case if we're not in a send_key call.
     let new_mode = if !old_mode.is::<()>() {
-        let old = (old_mode, old_name, old_handle);
-        let new = (Box::new(mode) as Box<dyn Any + Send>, new_name, new_handle);
+        let old = (old_mode, old_name);
+        let new = (Box::new(mode) as Box<dyn Any + Send>, new_name);
         let ms = hook::trigger(pa, ModeSwitched { old, new });
         ms.new.0
     } else {
         Box::new(mode)
     };
 
-    // Things that happen before the switch, in order to signal that a
-    // switch has happened.
-    *MODE_NAME.lock().unwrap() = std::any::type_name::<M>();
     *MODE.write(pa) = Some(new_mode);
-    crate::mode::set_mode_for_remapper::<M>(pa);
-    *SEND_KEY.write(pa) = Some(|pa, keys| send_key_fn::<M>(pa, keys));
 
     for deferred_set in std::mem::take(DEFERRED.write(pa)) {
         deferred_set(pa);
     }
 }
 
-/// Returns `true` if the [`Widget`] has a default [`Mode`]
-pub fn has_default<W: Widget>() -> bool {
-    RESET_MODES
-        .lock()
-        .unwrap()
-        .get(&TypeId::of::<W>())
-        .is_some()
-}
-
-/// Resets the mode to the [default] of a given [`Widget`]
+/// Resets the mode to the [default] on a given [`Widget`]
 ///
-/// Does nothing if no default was set for the given [`Widget`].
+/// This default [`Mode`] is a [`UniversalMode`], which means it
+/// should make sense to use it within any `Widget` (that isn't tied
+/// to a [`Buffer`]). By default, this is [`duatmode::Normal`].
+///
+/// This function will also [make the `Handle` active], making it so
+/// [aliases] and [`Completions`] show up on it.
 ///
 /// [default]: set_default
+/// [`duatmode::Normal`]: https://docs.rs/crates/duat/latest/prelude/struct.Normal.html
+/// [aliases]: super::alias
+/// [`Completions`]: https://docs.rs/crates/duat/latest/widgets/struct.Completions.html
+/// [`Buffer`]: crate::buffer::Buffer
+#[track_caller]
 pub fn reset<W: Widget>(pa: &mut Pass) {
-    let mut reset_modes = RESET_MODES.lock().unwrap();
-    let type_id = TypeId::of::<W>();
+    let mut set_default = SET_DEFAULT.lock().unwrap();
 
-    if let Some(reset_fn) = reset_modes.get_mut(&type_id) {
-        reset_fn(pa);
-    } else if TypeId::of::<W>() == TypeId::of::<Buffer>() {
-        panic!("Something went terribly wrong, somehow");
+    if let Some(set_default) = set_default.as_mut() {
+        if TypeId::of::<W>() == TypeId::of::<Buffer>() {
+            set_default(pa, context::current_buffer(pa).to_dyn());
+        } else if let Some(widget) = context::handle_of::<W>(pa) {
+            set_default(pa, widget.to_dyn())
+        } else {
+            context::error!("No widget of type [a]{}", crate::utils::duat_name::<W>());
+        }
     } else {
-        context::error!(
-            "There is no default [a]Mode[] set for [a]{}[]",
-            crate::utils::duat_name::<W>()
-        );
+        panic!("No default mode set");
     }
 }
 
 /// Resets to the default [`Mode`] of the given [`Widget`], on a
 /// given [`Handle`]
-pub fn reset_to(pa: &mut Pass, handle: &Handle<impl Widget + ?Sized>) {
-    let mut reset_modes = RESET_MODES.lock().unwrap();
-    let type_id = handle.widget().type_id();
+#[track_caller]
+pub fn reset_to(pa: &mut Pass, widget: &Handle<impl Widget + ?Sized>) {
+    let mut set_default = SET_DEFAULT.lock().unwrap();
 
-    if let Some(reset_fn) = reset_modes.get_mut(&type_id) {
-        let node = context::windows()
-            .entries(pa)
-            .find(|(.., node)| node.ptr_eq(handle.widget()))
-            .map(|(.., node)| node.clone());
-
-        if let Some(node) = node {
-            context::set_current_node(pa, node.clone());
-            reset_fn(pa);
+    if let Some(set_default) = set_default.as_mut() {
+        if let Some((_, node)) = {
+            context::windows()
+                .entries(pa)
+                .find(|(_, node)| node.handle() == widget)
+        } {
+            set_default(pa, node.handle().clone());
         } else {
-            context::error!("The Handle was already closed");
+            context::error!("Tried setting a [a]closed[] Handle as active");
         }
     } else {
-        context::error!("There is no default [a]Mode[] set for the [a]Widget",);
-    };
+        panic!("No default mode set");
+    }
 }
 
 /// Sends the [`KeyEvent`] to the active [`Mode`]
@@ -191,17 +154,12 @@ pub(super) fn send_final_key(pa: &mut Pass, key: KeyEvent) {
 
 /// Static dispatch function that sends keys to a [`Mode`]
 fn send_key_fn<M: Mode>(pa: &mut Pass, key_event: KeyEvent) {
-    let handle = context::current_widget_node(pa)
-        .node(pa)
-        .try_downcast()
-        .unwrap();
-
     let mut mode: Box<M> = {
         let mode = MODE.write(pa).take().unwrap();
         mode.downcast().unwrap()
     };
 
-    catch_panic(|| mode.send_key(pa, key_event, handle.clone()));
+    catch_panic(|| mode.send_key(pa, key_event));
 
     *MODE.write(pa) = Some(mode);
     for deferred_set in std::mem::take(DEFERRED.write(pa)) {

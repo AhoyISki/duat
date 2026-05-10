@@ -132,10 +132,7 @@ use duat_core::{
 };
 use regex_syntax::ast::Ast;
 
-use crate::{
-    modes::Pager,
-    widgets::{GutterEntryId, LogBook},
-};
+use crate::widgets::{GutterEntryId, LogBook};
 
 mod buffer_parser;
 pub mod modes;
@@ -194,6 +191,10 @@ impl DuatBase {
 
         // Setup for the PromptLine
         form::set_weak("prompt.preview", Form::mimic("comment"));
+        form::set_weak("regex.error", Form::mimic("accent.error"));
+        form::set_weak("regex.operator", Form::mimic("operator"));
+        form::set_weak("regex.class", Form::mimic("constant"));
+        form::set_weak("regex.bracket", Form::mimic("punctuation.bracket"));
 
         // Setup for Completions
         form::set_weak("default.Completions", Form::new().on_dark_grey());
@@ -216,6 +217,10 @@ impl DuatBase {
         form::set_weak("key.angle", Form::mimic("punctuation.bracket"));
         form::set_weak("key.special", Form::new().yellow());
         form::set_weak("remap", Form::new().italic());
+        form::set_weak(
+            "default.WhichKeyDescriptions",
+            Form::mimic("default.WhichKey"),
+        );
 
         // Setup for the LogBook
         form::set_weak("default.LogBook", Form::new().on_dark_grey());
@@ -236,7 +241,7 @@ impl DuatBase {
                 _ = logbook.area().hide(pa);
             } else {
                 _ = logbook.area().reveal(pa);
-                mode::set(pa, Pager::<LogBook>::new());
+                mode::reset_to(pa, &logbook);
             }
 
             Ok(None)

@@ -139,6 +139,7 @@ pub(crate) fn add_snippet_jumps(buffer: &Handle, pa: &mut Pass, snippet: Vec<Vec
 /// Use `$num` or `${num}` for a jump and `${num:placeholder}` for a
 /// jump with a placeholder.
 #[track_caller]
+#[allow(clippy::single_range_in_vec_init)]
 pub(crate) fn replace_with_snippet(
     buffer: &Handle,
     pa: &mut Pass,

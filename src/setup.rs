@@ -11,10 +11,7 @@ use std::{
 
 #[cfg(feature = "term-ui")]
 use duat_base::widgets::{Completions, PathCompletions, WordCompletions};
-use duat_base::{
-    modes::Pager,
-    widgets::{FooterWidgets, LogBook, WhichKey, status},
-};
+use duat_base::widgets::{FooterWidgets, WhichKey, status};
 use duat_core::{
     buffer::{BufferOpts, PathKind},
     context::{self, cache},
@@ -48,8 +45,7 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
         panic!("No ui for running Duat has been chosen!");
     }
 
-    mode::set_default(Pager::<LogBook>::new());
-    mode::map::<mode::User>("L", "<Esc>:logs<Enter>").doc(txt!("Open [mode]Logs"));
+    mode::map::<mode::User>("L", "<Esc>:logs<Enter>").doc(txt!("Toggle [mode]Logs"));
 
     // Cache hooks
 
@@ -230,7 +226,7 @@ fn enable_whichkey_hooks(opts: &Opts) {
         }
     });
 
-    hook::add::<ModeSwitched>(move |pa, _| {
+    hook::add::<ModeSwitched>(move |pa, switch| {
         let opts = OPTS.lock().unwrap();
         if opts
             .whichkey

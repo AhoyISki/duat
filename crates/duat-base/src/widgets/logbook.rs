@@ -15,12 +15,12 @@ use std::{
 use duat_core::{
     Ns, cmd,
     context::{self, Handle, Location, Record},
-    data::{Pass, RwData},
-    hook::{self, ModeSwitched, MsgLogged, OnMouseEvent, WindowSwitched},
+    data::Pass,
+    hook::{self, MsgLogged, OnMouseEvent, WidgetClosed, WidgetSwitched},
     mode::{self, MouseButton, TwoPointsPlace},
     opts::PrintOpts,
     text::{Point, Spawn, Text, TextMut, txt},
-    ui::{DynSpawnSpecs, Orientation, PushSpecs, PushTarget, Side, Widget},
+    ui::{DynSpawnSpecs, Orientation, PushSpecs, PushTarget, Side, Widget, Window},
 };
 
 use crate::widgets::Info;
@@ -67,18 +67,15 @@ pub fn logbook_setup() {
         }
     });
 
-    hook::add::<WindowSwitched>(|pa, (former, current)| {
-        let former = former.and_then(|former| {
-            former
+    hook::add::<WidgetSwitched>(|pa, (former, current)| {
+        let get_logbook = |window: Window| {
+            window
                 .handles(pa)
                 .filter_map(|handle| handle.get_as::<LogBook>())
                 .next()
-        });
-
-        let current = current
-            .handles(pa)
-            .filter_map(|handle| handle.get_as::<LogBook>())
-            .next();
+        };
+        let former = former.window(pa).and_then(get_logbook);
+        let current = current.window(pa).and_then(get_logbook);
 
         match (former, current) {
             (Some(former), Some(current)) => {
@@ -95,10 +92,18 @@ pub fn logbook_setup() {
     })
     .lateness(0);
 
-    hook::add::<ModeSwitched>(|pa, switch| {
-        if let Some(logbook) = switch.new.handle.get_as::<LogBook>() {
+    hook::add::<WidgetClosed<LogBook>>(|pa, logbook| {
+        if !logbook.text(pa).is_empty() {
+            let mut global = GLOBAL_LOGS.lock().unwrap();
+            let closed = logbook.write(pa);
+            std::mem::swap(&mut *global, closed);
+        }
+    });
+
+    hook::add::<WidgetSwitched>(|pa, (old, new)| {
+        if let Some(logbook) = new.get_as::<LogBook>() {
             logbook.area().reveal(pa).unwrap()
-        } else if let Some(logbook) = switch.old.handle.get_as::<LogBook>()
+        } else if let Some(logbook) = old.get_as::<LogBook>()
             && logbook.read(pa).close_on_unfocus
         {
             logbook.area().hide(pa).unwrap()

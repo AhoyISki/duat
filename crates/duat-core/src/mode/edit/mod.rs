@@ -79,7 +79,7 @@ macro_rules! sel_mut {
 /// [`replace`]: SelectionMut::replace
 /// [`insert`]: SelectionMut::insert
 /// [`append`]: SelectionMut::append
-pub struct SelectionMut<'w, W: Widget + ?Sized = crate::buffer::Buffer> {
+pub struct SelectionMut<'w, W: Widget + ?Sized = dyn Widget> {
     selections: &'w mut Vec<Option<ModSelection>>,
     sels_i: usize,
     initial: Selection,
@@ -490,6 +490,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     ////////// Text queries
 
     /// Returns the [`char`] in the `cursor`.
+    #[track_caller]
     pub fn char(&self) -> char {
         self.text().char_at(sel!(self).cursor()).unwrap()
     }

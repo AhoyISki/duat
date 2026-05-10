@@ -1020,18 +1020,13 @@ enum DescriptionType<'a> {
 }
 
 fn remove_alias_and(pa: &mut Pass, f: impl FnOnce(TextMut, usize)) {
-    let widget = context::current_widget_node(pa);
-    // SAFETY: Given that the Pass is immediately mutably borrowed, it
-    // can't be used to act on CurWidget.current.
-    widget.mutate_data(pa, |handle| {
-        let pa = unsafe { &mut Pass::new() };
-        let mut text = handle.text_mut(pa);
-        if let Some(main) = text.get_main_sel() {
-            let byte = main.cursor().byte();
-            text.remove_tags(Ns::for_alias(), ..);
-            f(text, byte)
-        }
-    })
+    let widget = context::current_widget(pa).clone();
+    let mut text = widget.text_mut(pa);
+    if let Some(main) = text.get_main_sel() {
+        let byte = main.cursor().byte();
+        text.remove_tags(Ns::for_alias(), ..);
+        f(text, byte)
+    }
 }
 
 #[derive(Clone)]

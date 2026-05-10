@@ -57,6 +57,7 @@ pub fn add_prompt_hook() {
             let Some(promptline) = context::handle_of::<PromptLine>(pa) else {
                 return;
             };
+            promptline.set_as_active(pa);
 
             let text = {
                 let pl = promptline.write(pa);
@@ -128,7 +129,6 @@ pub struct Prompt {
     mode: Box<dyn PromptMode>,
     starting_text: String,
     ty: TypeId,
-    reset_fn: fn(&mut Pass),
     history_index: Option<usize>,
 }
 
@@ -143,7 +143,6 @@ impl Prompt {
             mode: Box::new(mode),
             starting_text: String::new(),
             ty: TypeId::of::<M>(),
-            reset_fn: |pa| mode::reset::<M::ExitWidget>(pa),
             history_index: None,
         }
     }
@@ -159,7 +158,6 @@ impl Prompt {
             mode: Box::new(mode),
             starting_text: initial.to_string(),
             ty: TypeId::of::<M>(),
-            reset_fn: |pa| mode::reset::<M::ExitWidget>(pa),
             history_index: None,
         }
     }
@@ -185,8 +183,6 @@ impl Prompt {
 }
 
 impl mode::Mode for Prompt {
-    type Widget = PromptLine;
-
     fn bindings() -> mode::Bindings {
         use mode::KeyCode::*;
 
@@ -200,8 +196,10 @@ impl mode::Mode for Prompt {
         })
     }
 
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, promptline: Handle<Self::Widget>) {
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent) {
         use duat_core::mode::KeyCode::*;
+
+        let promptline = context::handle_of::<PromptLine>(pa).unwrap();
 
         let ty_eq = |&&(ty, _): &&(TypeId, _)| ty == self.ty;
 
@@ -215,7 +213,7 @@ impl mode::Mode for Prompt {
             if let Some(ret_handle) = prompt.mode.return_handle() {
                 mode::reset_to(pa, &ret_handle);
             } else {
-                (prompt.reset_fn)(pa);
+                mode::reset::<Buffer>(pa);
             }
         };
 
@@ -413,14 +411,6 @@ impl mode::Mode for Prompt {
 /// buffer if the match failed.
 #[allow(unused_variables)]
 pub trait PromptMode: Send + 'static {
-    /// What [`Widget`] to exit to, upon pressing enter, esc, or
-    /// backspace in an empty [`PromptLine`]
-    ///
-    /// Usually, this would be [`Buffer`]
-    type ExitWidget: Widget
-    where
-        Self: Sized;
-
     /// Updates the [`PromptLine`] and [`Text`] of the [`Prompt`]
     ///
     /// This function is triggered every time the user presses a key
@@ -501,8 +491,6 @@ impl RunCommands {
 }
 
 impl PromptMode for RunCommands {
-    type ExitWidget = Buffer;
-
     fn update(&mut self, pa: &mut Pass, mut text: Text, _: &RwArea) -> Text {
         text.remove_tags(*NS, ..);
 
@@ -598,8 +586,6 @@ impl PipeSelections {
 }
 
 impl PromptMode for PipeSelections {
-    type ExitWidget = Buffer;
-
     fn update(&mut self, _: &mut Pass, mut text: Text, _: &RwArea) -> Text {
         fn is_in_path(program: &str) -> bool {
             if let Ok(path) = std::env::var("PATH") {

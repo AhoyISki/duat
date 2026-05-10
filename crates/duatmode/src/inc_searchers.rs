@@ -1,9 +1,9 @@
 use duat_base::modes::IncSearcher;
 use duat_core::{
-    buffer::Buffer,
     context::Handle,
     data::Pass,
     text::{Text, txt},
+    ui::Widget,
 };
 
 /// Selects matches from within every selection
@@ -11,7 +11,7 @@ use duat_core::{
 pub(crate) struct Select;
 
 impl IncSearcher for Select {
-    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, handle: &Handle<dyn Widget>) {
         handle.edit_all(pa, |mut s| {
             s.set_cursor_on_start();
             let Some(anchor) = s.anchor() else { return };
@@ -38,7 +38,7 @@ impl IncSearcher for Select {
 pub(crate) struct Split;
 
 impl IncSearcher for Split {
-    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, handle: &Handle<dyn Widget>) {
         handle.edit_all(pa, |mut s| {
             let range = s.range();
             if range.end.byte() - range.start.byte() <= 1 {
@@ -78,7 +78,7 @@ impl IncSearcher for Split {
 pub(crate) struct KeepMatching(pub bool);
 
 impl IncSearcher for KeepMatching {
-    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, handle: &Handle<dyn Widget>) {
         let keep = self.0;
 
         handle.edit_all(pa, |mut s| {

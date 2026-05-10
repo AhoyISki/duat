@@ -12,7 +12,7 @@
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
 use duat_core::{
     data::Pass,
-    hook::{self, ModeSwitched},
+    hook::{self, WidgetSwitched},
     try_or_log_err,
     ui::PushTarget,
 };
@@ -35,7 +35,7 @@ pub use self::{
         CommandsCompletions, CompletionEntry, Completions, CompletionsBuilder, CompletionsProvider,
         PathCompletions, WordCompletions,
     },
-    gutter::{Gutter,GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts},
+    gutter::{Gutter, GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts},
     info::Info,
     linenumbers::{LineNumbers, LineNumbersOpts},
     logbook::{LogBook, LogBookOpts},
@@ -140,20 +140,20 @@ impl FooterWidgets {
 
         let hook_ns = duat_core::Ns::new();
 
-        hook::add::<ModeSwitched>({
+        hook::add::<WidgetSwitched>({
             let notifications = notifications.clone();
-            move |pa, switch| {
+            move |pa, (old, new)| {
                 if notifications.is_closed() {
                     hook::remove(hook_ns);
                     return;
                 }
 
-                if let Some(promptline) = switch.new.handle.get_as::<PromptLine>() {
+                if let Some(promptline) = new.get_as::<PromptLine>() {
                     try_or_log_err! {
                         notifications.area().hide(pa)?;
                         promptline.area().reveal(pa)?;
                     }
-                } else if let Some(promptline) = switch.old.handle.get_as::<PromptLine>() {
+                } else if let Some(promptline) = old.get_as::<PromptLine>() {
                     try_or_log_err! {
                         notifications.area().reveal(pa)?;
                         promptline.area().hide(pa)?;

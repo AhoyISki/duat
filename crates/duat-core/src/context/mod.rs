@@ -14,7 +14,7 @@ use crate::{
     buffer::Buffer,
     data::{Pass, RwData},
     session::{DuatEvent, UiMouseEvent},
-    ui::{Area, Node, Widget},
+    ui::Area,
 };
 
 pub mod cache;
@@ -31,7 +31,7 @@ mod global {
         },
     };
 
-    use super::{CurWidgetNode, DynBuffer};
+    use super::DynBuffer;
     use crate::{
         context::{DuatReceiver, DuatSender, Handle},
         data::{Pass, RwData},
@@ -180,11 +180,6 @@ mod global {
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn current_widget(pa: &Pass) -> &Handle<dyn Widget> {
         windows().current_widget(pa).read(pa).handle()
-    }
-
-    /// The [`CurWidgetNode`]
-    pub(crate) fn current_widget_node(pa: &Pass) -> CurWidgetNode {
-        CurWidgetNode(windows().current_widget(pa).clone())
     }
 
     ////////// Other getters
@@ -472,21 +467,5 @@ impl Clone for DynBuffer {
             cur_buffer: RwData::new(self.cur_buffer.read(INTERNAL_PASS).clone()),
             saved_buffer: self.saved_buffer.clone(),
         }
-    }
-}
-
-/// The current [`Widget`].
-pub(crate) struct CurWidgetNode(RwData<Node>);
-
-impl CurWidgetNode {
-    /// Mutates the [`RwData<dyn Widget>`], its [`Area`], and related
-    /// [`Widget`]s.
-    pub(crate) fn mutate_data<R>(&self, pa: &Pass, f: impl FnOnce(&Handle<dyn Widget>) -> R) -> R {
-        f(self.0.read(pa).handle())
-    }
-
-    /// The inner [`Node`].
-    pub(crate) fn node(&self, pa: &Pass) -> Node {
-        self.0.read(pa).clone()
     }
 }

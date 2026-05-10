@@ -31,7 +31,7 @@ pub(crate) use self::edit::{ModSelection, on_each_sel, reinsert_selections};
 #[doc(inline)]
 pub use self::{bindings::*, patterns::*};
 pub use self::{
-    edit::{CaretOrRange, SelectionMut, SelectionMutMatches, Selection, Selections, VPoint},
+    edit::{CaretOrRange, Selection, SelectionMut, SelectionMutMatches, Selections, VPoint},
     remap::*,
     switch::*,
 };
@@ -76,7 +76,7 @@ mod switch;
 /// ```
 /// # duat_core::doc_duat!(duat);
 /// use duat::prelude::*;
-/// 
+///
 /// map::<User>("fb", |pa: &mut Pass| {
 ///     mode::set(pa, mode::RunCommands::new_with("frobnificate "));
 /// });
@@ -92,15 +92,13 @@ mod switch;
 pub struct User;
 
 impl Mode for User {
-    type Widget = Buffer;
-
     fn bindings() -> Bindings {
         bindings!(match _ {
             event!(KeyCode::Esc) => txt!(""),
         })
     }
 
-    fn send_key(&mut self, pa: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {
+    fn send_key(&mut self, pa: &mut Pass, _: KeyEvent) {
         reset::<Buffer>(pa);
     }
 }
@@ -204,10 +202,11 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// modify widgets.
 ///
 /// For this example, I will create a `Menu` widget. This example
-/// doesn't make use of the [`SelectionMut`] methods from the [`Handle`].
-/// Those are methods that modify [`Selection`]s, and can use them to
-/// modify the [`Text`] in a declarative fashion. For an example with
-/// [`SelectionMut`]s, see the documentation for `Handle`s.
+/// doesn't make use of the [`SelectionMut`] methods from the
+/// [`Handle`]. Those are methods that modify [`Selection`]s, and can
+/// use them to modify the [`Text`] in a declarative fashion. For an
+/// example with [`SelectionMut`]s, see the documentation for
+/// `Handle`s.
 ///
 /// First, the [`Widget`] itself:
 ///
@@ -407,13 +406,9 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// [`Text`]: crate::text::Text
 /// [`&mut Selections`]: Selections
 /// [mask]: crate::text::Mask
-#[allow(unused_variables)]
-pub trait Mode: Sized + Send + 'static {
-    /// The [`Widget`] that this [`Mode`] controls
-    type Widget: Widget;
-
+pub trait Mode: Send + 'static {
     /// Sends a [`KeyEvent`] to this [`Mode`]
-    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle<Self::Widget>);
+    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent);
 
     /// A list of all available keybindings for this `Mode`
     ///
@@ -436,8 +431,7 @@ pub trait Mode: Sized + Send + 'static {
     /// struct VimNormal;
     ///
     /// impl Mode for VimNormal {
-    ///     # type Widget = Buffer;
-    ///     # fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {}
+    ///     # fn send_key(&mut self, _: &mut Pass, _: KeyEvent) {}
     ///     // ...
     ///     fn bindings() -> mode::Bindings {
     ///         let word = txt!("[a]word[separator]|[a]WORD");
@@ -474,7 +468,10 @@ pub trait Mode: Sized + Send + 'static {
     /// is not supposed to depend on the state of the application.
     ///
     /// [`Text`]: crate::text::Text
-    fn bindings() -> Bindings {
+    fn bindings() -> Bindings
+    where
+        Self: Sized,
+    {
         bindings!(match _ {
             _ => txt!("No key binding declarations, implement [function]Mode::bindings"),
         })

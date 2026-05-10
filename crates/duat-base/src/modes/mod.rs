@@ -34,24 +34,22 @@
 //! ```
 //!
 //! The above [`IncSearcher`] will do the incremental search, and keep
-//! only the [`SelectionMut`]s that matched at some point inside of their
-//! selections.
+//! only the [`SelectionMut`]s that matched at some point inside of
+//! their selections.
 //!
 //! [`Mode`]: duat_core::mode::Mode
 //! [`SelectionMut`]: duat_core::mode::SelectionMut
 use std::sync::Mutex;
 
-use duat_core::{buffer::Buffer, context::Handle, data::Pass};
+use duat_core::{context::Handle, data::Pass, ui::Widget};
 
 pub(crate) use crate::modes::prompt::add_prompt_hook;
 pub use crate::modes::{
     inc_search::{ExtendFwd, ExtendRev, IncSearch, IncSearcher, SearchFwd, SearchRev},
-    pager::{Pager, PagerSearch},
     prompt::{PipeSelections, Prompt, PromptMode, RunCommands},
 };
 
 mod inc_search;
-mod pager;
 mod prompt;
 
 static CLIPBOARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -68,7 +66,7 @@ static CLIPBOARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// clipboard.
 ///
 /// [`Selection`]: duat_core::mode::Selection
-pub fn copy_selections(pa: &mut Pass, handle: &Handle<Buffer>) {
+pub fn copy_selections(pa: &mut Pass, handle: &Handle<impl Widget + ?Sized>) {
     let mut copies: Vec<String> = Vec::new();
     handle.edit_all(pa, |s| copies.push(s.selection().to_string()));
     if copies.len() == 1 && !copies.first().unwrap().is_empty() {

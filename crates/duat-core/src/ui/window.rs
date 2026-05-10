@@ -20,7 +20,7 @@ use crate::{
     buffer::{Buffer, BufferOpts, PathKind},
     context::{self, Handle},
     data::{Pass, RwData},
-    hook::{self, BufferClosed, BufferSwitched, WidgetOpened, WindowOpened, WindowSwitched},
+    hook::{self, BufferSwitched, WidgetOpened, WidgetSwitched, WindowOpened},
     mode,
     session::UiMouseEvent,
     text::{Text, txt},
@@ -40,7 +40,7 @@ struct InnerWindows {
     list: Vec<Window>,
     new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
     cur_buffer: RwData<Handle>,
-    cur_widget: RwData<Node>,
+    cur_node: RwData<Node>,
     cur_win: usize,
     buffer_history: BufferHistory,
 }
@@ -63,7 +63,7 @@ impl Windows {
                 list: vec![window.clone()],
                 new_additions,
                 cur_buffer: RwData::new(node.try_downcast().unwrap()),
-                cur_widget: RwData::new(node.clone()),
+                cur_node: RwData::new(node.clone()),
                 cur_win: 0,
                 buffer_history: BufferHistory::default(),
             }),
@@ -343,8 +343,6 @@ impl Windows {
         // If it's a Buffer, swap all buffers ahead, so this one becomes the
         // last.
         if let Some(buf_handle) = handle.get_as::<Buffer>() {
-            hook::trigger(pa, BufferClosed((buf_handle.clone(), false)));
-
             let buffers_ahead: Vec<Node> = self.inner.read(pa).list[win]
                 .nodes(pa)
                 .filter(|node| {
@@ -378,7 +376,7 @@ impl Windows {
 
         // If this is the active Handle, pick another one to make active.
         let inner = self.inner.read(pa);
-        if handle == inner.cur_widget.read(pa).handle() || handle == inner.cur_buffer.read(pa) {
+        if handle == inner.cur_node.read(pa).handle() || handle == inner.cur_buffer.read(pa) {
             if let Some(handle) = handle.get_as::<Buffer>() {
                 self.inner.write(pa).buffer_history.remove(&handle);
 
@@ -536,15 +534,14 @@ impl Windows {
 
         let win = self.handle_window(pa, node.handle())?;
         let inner = self.inner.write(pa);
-        *inner.cur_widget.write(internal_pass) = node.clone();
-
-        let old_win = std::mem::replace(&mut inner.cur_win, win);
+        let old_node = std::mem::replace(inner.cur_node.write(internal_pass), node.clone());
+        inner.cur_win = win;
         self.ui.switch_window(win);
 
-        if old_win != inner.cur_win {
-            let former = inner.list.get(old_win).cloned();
-            let current = inner.list[inner.cur_win].clone();
-            hook::trigger(pa, WindowSwitched((former, current)));
+        if old_node.handle() != inner.cur_node.read(internal_pass).handle() {
+            let former = old_node.handle().clone();
+            let current = inner.cur_node.read(internal_pass).handle().clone();
+            hook::trigger(pa, WidgetSwitched((former, current)));
         }
 
         let inner = self.inner.write(pa);
@@ -553,7 +550,9 @@ impl Windows {
             let former = std::mem::replace(inner.cur_buffer.write(internal_pass), current.clone());
             inner.buffer_history.insert(former.clone(), current.clone());
 
-            hook::trigger(pa, BufferSwitched((former, current)));
+            if former != current {
+                hook::trigger(pa, BufferSwitched((former, current)));
+            }
         }
 
         Ok(())
@@ -835,7 +834,7 @@ impl Windows {
 
     /// The [`RwData`] that points to the currently active [`Widget`].
     pub(crate) fn current_widget<'a>(&'a self, pa: &'a Pass) -> &'a RwData<Node> {
-        &self.inner.read(pa).cur_widget
+        &self.inner.read(pa).cur_node
     }
 
     /// Gets the new additions to the [`Windows`].
@@ -1094,12 +1093,12 @@ impl Window {
             unreachable!("This isn't supposed to fail");
         };
 
-        node.handle().declare_closed();
+        node.on_close(pa);
 
         let (do_rm_window, rm_areas) = node.area().delete(pa);
         if do_rm_window {
-            for handle in self.handles(pa).cloned().collect::<Vec<_>>() {
-                handle.declare_closed();
+            for node in self.nodes(pa).cloned().collect::<Vec<_>>() {
+                node.on_close(pa);
             }
             return true;
         }
@@ -1113,7 +1112,7 @@ impl Window {
 
         nodes.retain(|node| {
             if rm_areas.iter().any(|a| a.is_eq(pa, node.handle().area())) {
-                node.handle().declare_closed();
+                node.on_close(pa);
                 false
             } else {
                 true
@@ -1121,7 +1120,7 @@ impl Window {
         });
         spawned.retain(|(_, node)| {
             if rm_areas.iter().any(|a| a.is_eq(pa, node.handle().area())) {
-                node.handle().declare_closed();
+                node.on_close(pa);
                 false
             } else {
                 true
@@ -1145,8 +1144,8 @@ impl Window {
         }
 
         if self.buffers(pa).is_empty() {
-            for handle in self.handles(pa).cloned().collect::<Vec<_>>() {
-                handle.declare_closed();
+            for node in self.nodes(pa).cloned().collect::<Vec<_>>() {
+                node.on_close(pa);
             }
             true
         } else {

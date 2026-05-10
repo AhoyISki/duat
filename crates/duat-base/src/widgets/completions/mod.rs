@@ -26,7 +26,7 @@ use duat_core::{
     },
     context::{self, Handle},
     data::Pass,
-    hook::{self, BufferUpdated, KeySent, ModeSwitched, OnMouseEvent, WidgetOpened},
+    hook::{self, BufferUpdated, KeySent, OnMouseEvent, WidgetOpened, WidgetSwitched},
     mode::{KeyCode, MouseEventKind, event},
     text::{Point, Spawn, Text, TextMut, txt},
     ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
@@ -170,11 +170,9 @@ pub fn completions_setup() {
         }
     });
 
-    hook::add::<ModeSwitched>(move |pa, switch| {
-        if switch.old.handle != switch.new.handle {
-            switch.old.handle.text_mut(pa).remove_tags(*NS, ..);
-            Completions::close(pa);
-        }
+    hook::add::<WidgetSwitched>(move |pa, (old, _)| {
+        old.text_mut(pa).remove_tags(*NS, ..);
+        Completions::close(pa);
     });
 
     hook::add::<OnMouseEvent<Completions>>(|pa, event| match event.kind {
