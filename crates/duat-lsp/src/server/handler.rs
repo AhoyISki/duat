@@ -8,6 +8,7 @@ use duat_core::{
     notify::Watcher,
 };
 use globset::{Glob, GlobMatcher};
+use jsonrpc_lite::Id;
 use lsp_types::{
     DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions, FileChangeType,
     FileEvent, GlobPattern, OneOf, PartialResultParams, SemanticTokensDeltaParams,
@@ -175,7 +176,9 @@ impl ServerBridge {
         let handle = buffer.clone();
 
         if let Some(result_id) = parser.tokens.result_id(self.ns()) {
-            self.send_request::<SemanticTokensFullDeltaRequest>(
+            let id = Id::Str(format!("{version}{}", parser.uri().to_string()));
+            self.send_request_with_id::<SemanticTokensFullDeltaRequest>(
+                id,
                 SemanticTokensDeltaParams {
                     work_done_progress_params,
                     partial_result_params,
