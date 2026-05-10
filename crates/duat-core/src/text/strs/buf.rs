@@ -87,8 +87,12 @@ impl StrsBuf {
             [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
         };
 
+        if crate::utils::catch_panic(|| {
         self.line_ranges
             .transform(start_rec, old_len, new_len, array);
+        }).is_none() {
+            crate::debug!("{start_rec:?}, {old_len:?}, {new_len:?}, {change:#?}, {self:#?}");
+        };
     }
 
     /// Increment the version of the `StrsBuf` by 1

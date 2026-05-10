@@ -239,8 +239,6 @@ pub(crate) fn replace_with_snippet(
 
     buffer.text_mut(pa).replace_range(range, snippet);
 
-    duat_core::debug!("{jumps:#?}");
-
     add_snippet_jumps(buffer, pa, jumps);
 }
 

@@ -716,6 +716,7 @@ pub mod prelude {
             ColorschemeSet, CompletionFinished, CompletionSelected, ConfigLoaded, ConfigUnloaded,
             FocusedOnDuat, FormSet, Hookable, KeySent, KeyTyped, ModeSwitched, OnMouseEvent,
             SearchPerformed, SearchUpdated, UnfocusedFromDuat, WidgetOpened, WindowOpened,
+            WindowSwitched,
         },
         mode::{
             self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,

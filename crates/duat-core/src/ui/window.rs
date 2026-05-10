@@ -20,7 +20,7 @@ use crate::{
     buffer::{Buffer, BufferOpts, PathKind},
     context::{self, Handle},
     data::{Pass, RwData},
-    hook::{self, BufferSwitched, BufferClosed, WidgetOpened, WindowOpened},
+    hook::{self, BufferClosed, BufferSwitched, WidgetOpened, WindowOpened, WindowSwitched},
     mode,
     session::UiMouseEvent,
     text::{Text, txt},
@@ -72,10 +72,7 @@ impl Windows {
         });
 
         hook::trigger(pa, WindowOpened(window));
-        hook::trigger(
-            pa,
-            WidgetOpened(node.handle().get_as::<Buffer>().unwrap()),
-        );
+        hook::trigger(pa, WidgetOpened(node.handle().get_as::<Buffer>().unwrap()));
     }
 
     ////////// Functions for new Widgets
@@ -91,10 +88,7 @@ impl Windows {
         inner.list.push(window);
 
         hook::trigger(pa, WindowOpened(self.inner.read(pa).list[win].clone()));
-        hook::trigger(
-            pa,
-            WidgetOpened(node.handle().get_as::<Buffer>().unwrap()),
-        );
+        hook::trigger(pa, WidgetOpened(node.handle().get_as::<Buffer>().unwrap()));
 
         node
     }
@@ -542,6 +536,18 @@ impl Windows {
 
         let win = self.handle_window(pa, node.handle())?;
         let inner = self.inner.write(pa);
+        *inner.cur_widget.write(internal_pass) = node.clone();
+
+        let old_win = std::mem::replace(&mut inner.cur_win, win);
+        self.ui.switch_window(win);
+
+        if old_win != inner.cur_win {
+            let former = inner.list.get(old_win).cloned();
+            let current = inner.list[inner.cur_win].clone();
+            hook::trigger(pa, WindowSwitched((former, current)));
+        }
+
+        let inner = self.inner.write(pa);
 
         if let Some(current) = node.try_downcast::<Buffer>() {
             let former = std::mem::replace(inner.cur_buffer.write(internal_pass), current.clone());
@@ -549,11 +555,6 @@ impl Windows {
 
             hook::trigger(pa, BufferSwitched((former, current)));
         }
-
-        let inner = self.inner.write(pa);
-        *inner.cur_widget.write(internal_pass) = node.clone();
-        inner.cur_win = win;
-        self.ui.switch_window(win);
 
         Ok(())
     }

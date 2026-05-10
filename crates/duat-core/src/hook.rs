@@ -42,6 +42,7 @@
 //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
 //! - [`WidgetOpened`] triggers when a [`Widget`] is opened.
 //! - [`WindowOpened`] triggers when a [`Window`] is created.
+//! - [`WindowSwitched`] triggers when switching the active window.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`KeySent`] triggers when a keys are sent.
 //! - [`KeyTyped`] triggers when keys are _typed_, not _sent_.
@@ -555,6 +556,22 @@ impl Hookable for WindowOpened {
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &mut self.0
+    }
+}
+
+/// [`Hookable`]: Triggers when you switch the active [`Window`].
+///
+/// # Arguments
+///
+/// - The former [`Option<Window>`], which is [`None`] if it was closed.
+/// - The current [`Window`].
+pub struct WindowSwitched(pub(crate) (Option<Window>, Window));
+
+impl Hookable for WindowSwitched {
+    type Input<'h> = (Option<&'h mut Window>, &'h mut Window);
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        (self.0.0.as_mut(), &mut self.0.1)
     }
 }
 

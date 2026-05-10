@@ -219,8 +219,8 @@ impl Mode for Normal {
             alt!('n' | 'N') => txt!("{select} to prev search match"),
             event!('*') => txt!("Set main selection as search pattern"),
             event!('u' | 'U') => undo.clone(),
-            ctrl!('j') => txt!("Move to next snippet jump"),
-            ctrl!('k') => txt!("Move to prev snippet jump"),
+            ctrl!('l') => txt!("Move to next snippet jump"),
+            ctrl!('h') => txt!("Move to prev snippet jump"),
             event!(':') => txt!("[a]Run commands[] in prompt line"),
             event!('|') => txt!("[a]Pipe selections[] to external command"),
             event!('g') => (txt!("Go to [parameter]line[] or to places"), goto.clone()),
@@ -1205,8 +1205,8 @@ impl Mode for Normal {
             ctrl!('r') => _ = duat_core::cmd::call_notify(pa, "reload"),
 
             ////////// Snippets
-            ctrl!('j') => _ = buffer.jump_snippets(pa, 1),
-            ctrl!('k') => _ = buffer.jump_snippets(pa, -1),
+            ctrl!('l') => _ = buffer.jump_snippets(pa, 1),
+            ctrl!('h') => _ = buffer.jump_snippets(pa, -1),
             _ => {}
         }
 

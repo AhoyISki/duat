@@ -7,13 +7,16 @@
 //! that you don't care about.
 //!
 //! [`Notifications`]: super::Notifications
-use std::{path::Path, sync::Mutex};
+use std::{
+    path::Path,
+    sync::{LazyLock, Mutex},
+};
 
 use duat_core::{
     Ns, cmd,
     context::{self, Handle, Location, Record},
-    data::Pass,
-    hook::{self, ModeSwitched, MsgLogged, OnMouseEvent},
+    data::{Pass, RwData},
+    hook::{self, ModeSwitched, MsgLogged, OnMouseEvent, WindowSwitched},
     mode::{self, MouseButton, TwoPointsPlace},
     opts::PrintOpts,
     text::{Point, Spawn, Text, TextMut, txt},
@@ -22,15 +25,25 @@ use duat_core::{
 
 use crate::widgets::Info;
 
+static GLOBAL_LOGS: LazyLock<Mutex<LogBook>> = LazyLock::new(|| {
+    Mutex::new(LogBook {
+        text: Text::default(),
+        location_ranges: Vec::new(),
+        close_on_unfocus: false,
+    })
+});
+
 /// Initial setup for the [`LogBook`].
 pub fn logbook_setup() {
     use duat_core::mode::MouseEventKind::*;
     hook::add::<MsgLogged>(|pa, rec| {
-        let Some(logbook) = context::handle_of::<LogBook>(pa) else {
-            return;
+        let local = context::handle_of::<LogBook>(pa);
+        let mut global_logs = GLOBAL_LOGS.lock().unwrap();
+        let (lb, data) = if let Some(logbook) = &local {
+            (logbook.write(pa), Some((logbook.widget(), logbook.area())))
+        } else {
+            (&mut *global_logs, None)
         };
-
-        let (lb, area) = logbook.write_with_area(pa);
 
         let mut fmt_rec = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
             if let Some(rec_text) = fmt(rec.clone()) {
@@ -42,16 +55,45 @@ pub fn logbook_setup() {
 
         let mut global_fmt = GLOBAL_FMT.lock().unwrap();
 
-        if let Some(fmt) = lb.fmt.as_mut() {
-            fmt_rec(fmt);
-        } else if let Some(fmt) = global_fmt.as_mut() {
+        if let Some(fmt) = global_fmt.as_mut() {
             fmt_rec(fmt);
         } else {
             fmt_rec(&mut default_fmt);
         }
 
-        area.scroll_ver(&lb.text, i32::MAX, lb.print_opts());
+        if let Some((logbook, area)) = data {
+            let (lb, area) = pa.write_many((logbook, area));
+            area.scroll_ver(&lb.text, i32::MAX, lb.print_opts());
+        }
     });
+
+    hook::add::<WindowSwitched>(|pa, (former, current)| {
+        let former = former.and_then(|former| {
+            former
+                .handles(pa)
+                .filter_map(|handle| handle.get_as::<LogBook>())
+                .next()
+        });
+
+        let current = current
+            .handles(pa)
+            .filter_map(|handle| handle.get_as::<LogBook>())
+            .next();
+
+        match (former, current) {
+            (Some(former), Some(current)) => {
+                let (former, current) = pa.write_many((&former, &current));
+                std::mem::swap(former, current);
+            }
+            (Some(other), None) | (None, Some(other)) => {
+                let mut global = GLOBAL_LOGS.lock().unwrap();
+                let other = other.write(pa);
+                std::mem::swap(&mut *global, other);
+            }
+            (None, None) => {}
+        }
+    })
+    .lateness(0);
 
     hook::add::<ModeSwitched>(|pa, switch| {
         if let Some(logbook) = switch.new.handle.get_as::<LogBook>() {
@@ -132,16 +174,18 @@ static GLOBAL_FMT: Mutex<Option<Box<dyn FnMut(Record) -> Option<Text> + Send>>> 
 pub struct LogBook {
     text: Text,
     location_ranges: Vec<(Point, Location)>,
-    fmt: Option<Box<dyn FnMut(Record) -> Option<Text> + Send>>,
     /// Wether to close this [`Widget`] after unfocusing, `true` by
     /// default
     pub close_on_unfocus: bool,
 }
 
 impl LogBook {
-    /// Reformats this `LogBook`
-    pub fn fmt(&mut self, fmt: impl FnMut(Record) -> Option<Text> + Send + 'static) {
-        self.fmt = Some(Box::new(fmt))
+    /// Reformats all `LogBook`s.
+    ///
+    /// Note that you can't reformat just one of them. And this
+    /// function will only be applied to future entries.
+    pub fn fmt(fmt: impl FnMut(Record) -> Option<Text> + Send + 'static) {
+        *GLOBAL_FMT.lock().unwrap() = Some(Box::new(fmt))
     }
 
     /// Returns a [`LogBookOpts`], so you can push `LogBook`s around
@@ -193,32 +237,9 @@ pub struct LogBookOpts {
 impl LogBookOpts {
     /// Push a [`LogBook`] around the given [`PushTarget`]
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<LogBook> {
-        let logs = context::logs();
-        let records = logs.get(..).unwrap();
-
-        let mut global_fmt = GLOBAL_FMT.lock().unwrap();
-        let mut text = Text::new();
-        let mut path_ranges = Vec::new();
-
-        let fmt_recs = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
-            for rec in records.into_iter() {
-                if let Some(rec_text) = fmt(rec.clone()) {
-                    text.append_text(text.len(), &rec_text);
-                    path_ranges.push((text.end_point(), rec.location()));
-                }
-            }
-        };
-
-        if let Some(fmt) = global_fmt.as_mut() {
-            fmt_recs(fmt);
-        } else {
-            fmt_recs(&mut default_fmt);
-        }
-
         let log_book = LogBook {
-            text,
-            location_ranges: path_ranges,
-            fmt: None,
+            text: Text::new(),
+            location_ranges: Vec::new(),
             close_on_unfocus: self.close_on_unfocus,
         };
 
@@ -239,7 +260,16 @@ impl LogBookOpts {
             },
         };
 
-        push_target.push_outer(pa, log_book, specs)
+        let logbook = push_target.push_outer(pa, log_book, specs);
+
+        if let Some(other) = context::handle_of::<LogBook>(pa)
+            && other == logbook
+        {
+            let mut global_logs = GLOBAL_LOGS.lock().unwrap();
+            std::mem::swap(&mut *global_logs, logbook.write(pa));
+        }
+
+        logbook
     }
 
     /// Changes the way [`Record`]s are formatted by the [`LogBook`]

@@ -42,6 +42,8 @@ KNOWN BUGS:
   [ ] tree-sitter-duat-text is not being used.
   [ ] For now, on Windows, duat can only reload if there is only one instance open.
   [ ] Overlays can't remove previous Forms early.
+  [ ] Sometimes the Completions randomly don't open on prompt line.
+  [ ] Diagnostics randomly triggers an integer overflow probably.
 
 FUTURE UPDATES:
 [ ] Remove Widget argument from Modes.
