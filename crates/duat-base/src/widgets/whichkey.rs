@@ -3,12 +3,9 @@
 //! This widget is automatically displayed when deemed necessary.
 //! Normally, this is done on some modes, and when typing remapped key
 //! sequences, be them maps or aliases.
-use std::sync::Once;
-
 use duat_core::{
     context::{self, Handle},
     data::Pass,
-    form::{self, Form},
     hook::{self, KeyTyped, ModeSwitched, OnMouseEvent},
     mode::{self, Description, MouseEventKind},
     text::{Text, TextMut, txt},

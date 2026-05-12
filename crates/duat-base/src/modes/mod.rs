@@ -17,7 +17,7 @@
 //! struct KeepMatching;
 //!
 //! impl IncSearcher for KeepMatching {
-//!     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
+//!     fn search(&mut self, pa: &mut Pass, pat: &str, handle: &Handle<dyn Widget>) {
 //!         handle.edit_all(pa, |mut s| {
 //!             s.set_cursor_on_start();
 //!             let range = s.range();

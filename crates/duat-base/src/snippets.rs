@@ -228,6 +228,31 @@ pub(crate) fn replace_with_snippet(
         start_idx = idx;
     }
 
+    enum Esc {
+        S,
+        B,
+        D,
+    }
+
+    let escaped = Vec::from_iter(
+        snippet
+            .match_indices(r"\\")
+            .map(|(idx, _)| (idx, Esc::S))
+            .chain(snippet.match_indices(r"\}").map(|(idx, _)| (idx, Esc::B)))
+            .chain(snippet.match_indices(r"\$").map(|(idx, _)| (idx, Esc::D))),
+    );
+
+    for (i, (idx, esc)) in escaped.into_iter().enumerate() {
+        let idx = idx - i;
+        let rep = match esc {
+            Esc::S => r"\",
+            Esc::B => "}",
+            Esc::D => "$",
+        };
+
+        replace(&mut snippet, rep, &mut jumps, range.start, idx..idx + 2);
+    }
+
     if let Some(jump) = zeroth_jump {
         jumps.push(jump)
     } else {
@@ -313,7 +338,12 @@ fn find_unesc<const N: usize>(
     chars: [char; N],
 ) -> Option<(usize, &str)> {
     if let Some(idx) = haystack[start..].find(chars)
-        && !haystack[..idx].ends_with('\\')
+        && let bs_count = haystack[..idx]
+            .bytes()
+            .rev()
+            .take_while(|b| *b == b'\\')
+            .count()
+        && bs_count % 2 == 0
     {
         Some((start + idx, &haystack[start + idx..start + idx + 1]))
     } else {

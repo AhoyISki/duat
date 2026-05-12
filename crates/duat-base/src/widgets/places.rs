@@ -7,7 +7,6 @@ use duat_core::{text::Text, ui::Widget};
 /// A [`Widget`] that is mostly used to jump to locations in
 /// [`Buffer`]s.
 ///
-///
 pub struct Places {
     text: Text,
 }

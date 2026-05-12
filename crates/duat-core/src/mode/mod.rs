@@ -323,11 +323,11 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// fn add_menu_hooks() {
 ///     let mask_ns = Ns::new();
 ///
-///     hook::add::<ModeSwitched>(move |pa, switch| {
-///         if let Some(menu) = switch.new.handle.get_as::<Menu>() {
+///     hook::add::<WidgetSwitched>(move |pa, (old, new)| {
+///         if let Some(menu) = new.get_as::<Menu>() {
 ///             menu.text_parts(pa).tags.remove(mask_ns, ..);
 ///             menu.text_parts(pa).tags.insert(mask_ns, .., Mask("active"));
-///         } else if let Some(menu) = switch.old.handle.get_as::<Menu>() {
+///         } else if let Some(menu) = old.get_as::<Menu>() {
 ///             menu.text_parts(pa).tags.remove(mask_ns, ..);
 ///             menu.text_parts(pa)
 ///                 .tags
@@ -374,12 +374,12 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// struct MenuMode;
 ///
 /// impl Mode for MenuMode {
-///     type Widget = Menu;
+///     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent) {
+///         use KeyCode::{Up, Down, Enter, Tab, Char, Esc};
 ///
-///     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle<Self::Widget>) {
-///         use KeyCode::*;
+///         let menu = context::handle_of::<Menu>(pa).expect("no menu 🙁");
+///         let menu = menu.write(pa);
 ///
-///         let menu = handle.write(pa);
 ///         match key_event {
 ///             event!(Down) => menu.shift_selection(1),
 ///             event!(Up) => menu.shift_selection(-1),
@@ -590,18 +590,3 @@ pub fn key_events<const LEN: usize>(str: &str, modif: KeyMod) -> [KeyEvent; LEN]
 
     events
 }
-
-// This implementation exists only to allow &strs to be passed to
-// remaps.
-// impl Mode for &'static str {
-//     // Doesn't matter
-//     type Widget = Buffer;
-//
-//     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _:
-// Handle<Self::Widget>) {         unreachable!("&strs are only meant
-// to be sent as AsGives, turning into keys");     }
-//
-//     fn just_keys(&self) -> Option<&str> {
-//         Some(self)
-//     }
-// }

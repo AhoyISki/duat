@@ -226,7 +226,7 @@ fn enable_whichkey_hooks(opts: &Opts) {
         }
     });
 
-    hook::add::<ModeSwitched>(move |pa, switch| {
+    hook::add::<ModeSwitched>(move |pa, _| {
         let opts = OPTS.lock().unwrap();
         if opts
             .whichkey

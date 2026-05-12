@@ -24,8 +24,7 @@ use crate::{
 /// in order to edit the [`Text`] in a very declarative way.
 ///
 /// One of the places where this is commonly done is within [`Mode`]s,
-/// where you get access to the [`Handle`] of the currently active
-/// [`Widget`]. Below is a very straightforward [`Mode`]:
+/// which provide a unified interface for handling keys:
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
@@ -36,10 +35,7 @@ use crate::{
 /// struct PlacesCharactersAndMoves;
 ///
 /// impl Mode for PlacesCharactersAndMoves {
-///     type Widget = Buffer;
-///
-///     // ..
-///     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {
+///     fn send_key(&mut self, _: &mut Pass, _: KeyEvent) {
 ///         todo!();
 ///     }
 /// }
@@ -51,7 +47,6 @@ use crate::{
 /// - A [`&mut Pass`], which will give you access to all of duat's
 ///   shared state;
 /// - The [key] that was sent, may be a [mapped] key.
-/// - The [`Handle`] for a [`Mode::Widget`].
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
@@ -60,9 +55,7 @@ use crate::{
 /// #[derive(Clone)]
 /// struct PlacesCharactersAndMoves;
 /// impl Mode for PlacesCharactersAndMoves {
-///     type Widget = Buffer;
-///
-///     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
+///     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent) {
 ///         match key_event {
 ///             // actions based on the key pressed
 ///             event!(KeyCode::Char(char)) => {
@@ -104,23 +97,23 @@ use crate::{
 /// # #[derive(Clone)]
 /// # struct PlacesCharactersAndMoves;
 /// impl Mode for PlacesCharactersAndMoves {
-///     type Widget = Buffer;
-///
-///     // ..
-///     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
+///     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent) {
 ///         use KeyCode::*;
+///
+///         let buffer = context::current_buffer(pa);
+///
 ///         match key_event {
-///             event!(Char(char)) => handle.edit_all(pa, |mut s| {
+///             event!(Char(char)) => buffer.edit_all(pa, |mut s| {
 ///                 s.insert('s');
 ///                 s.move_hor(1);
 ///             }),
-///             shift!(Right) => handle.edit_all(pa, |mut s| {
+///             shift!(Right) => buffer.edit_all(pa, |mut s| {
 ///                 if s.anchor().is_none() {
 ///                     s.set_anchor();
 ///                 }
 ///                 s.move_hor(1);
 ///             }),
-///             event!(KeyCode::Right) => handle.edit_all(pa, |mut s| {
+///             event!(KeyCode::Right) => buffer.edit_all(pa, |mut s| {
 ///                 s.unset_anchor();
 ///                 s.move_hor(1);
 ///             }),

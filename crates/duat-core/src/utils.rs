@@ -463,11 +463,11 @@ macro_rules! doc_duat {
                 pub use $crate::mode::*;
                 pub use super::modes::*;
             }
-                
+
             pub mod prelude {
                 pub use std::ops::Range;
                 pub use $crate::try_or_log_err;
-                
+
                 pub use $crate::{
                     Ns, buffer::Buffer, cmd,
                     context::{self, Handle},
@@ -477,7 +477,7 @@ macro_rules! doc_duat {
                         self, BufferOpened, BufferSaved, BufferUpdated, ColorschemeSet,
                         ConfigLoaded, ConfigUnloaded, FocusedOnDuat,
                         FormSet, Hookable, KeySent, ModeSwitched, UnfocusedFromDuat,
-                        WidgetOpened, WindowOpened,
+                        WidgetOpened, WindowOpened, WidgetSwitched
                     },
                     text::{
                         self, Builder, Conceal, Inlay, Spacer, Spawn, Strs, Text, txt, Point, Mask,
@@ -577,27 +577,13 @@ macro_rules! doc_duat {
                 #[derive(Clone)]
                 pub struct Pager;
                 impl $crate::mode::Mode for Pager {
-                    type Widget = $crate::buffer::Buffer;
-                    fn send_key(
-                        &mut self,
-                        _: &mut Pass,
-                        _: $crate::mode::KeyEvent,
-                        _: Handle<Self::Widget>,
-                    ) {
-                    }
+                    fn send_key(&mut self, _: &mut Pass,_: $crate::mode::KeyEvent) {}
                 }
-                
+
                 #[derive(Clone)]
                 pub struct Prompt;
                 impl $crate::mode::Mode for Prompt {
-                    type Widget = $crate::buffer::Buffer;
-                    fn send_key(
-                        &mut self,
-                        _: &mut Pass,
-                        _: $crate::mode::KeyEvent,
-                        _: Handle<Self::Widget>,
-                    ) {
-                    }
+                    fn send_key(&mut self, _: &mut Pass,_: $crate::mode::KeyEvent) {}
                 }
 
                 #[derive(Clone)]

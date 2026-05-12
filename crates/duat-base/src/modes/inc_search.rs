@@ -39,11 +39,10 @@ static NS: LazyLock<Ns> = LazyLock::new(Ns::new);
 /// struct Emacs;
 ///
 /// impl Mode for Emacs {
-///     type Widget = Buffer;
-///
-///     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) {
+///     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent) {
+///         let buffer = context::current_buffer(pa).to_dyn();
 ///         match event {
-///             ctrl!('s') => _ = mode::set(pa, IncSearch::new(SearchFwd)),
+///             ctrl!('s') => _ = mode::set(pa, IncSearch::new(SearchFwd, buffer)),
 ///             other_keys_oh_god => todo!(),
 ///         }
 ///     }
@@ -197,7 +196,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 /// struct SearchAround;
 ///
 /// impl IncSearcher for SearchAround {
-///     fn search(&mut self, pa: &mut Pass, pat: &str, buffer: Handle<Buffer>) {
+///     fn search(&mut self, pa: &mut Pass, pat: &str, buffer: &Handle<dyn Widget>) {
 ///         buffer.edit_all(pa, |mut s| {
 ///             s.set_cursor_on_end();
 ///             let Some(e_range) = s.search(pat).from_cursor().next() else {
