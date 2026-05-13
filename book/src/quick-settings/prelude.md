@@ -150,6 +150,8 @@ fn setup(opts: &mut Opts) {
     opts.duatmode.indent_on_capital_i = true;
     // Makes the 'f' and 't' keys set the search pattern.
     opts.duatmode.f_and_t_set_search = true;
+    // Makes `<a-j>` automatically remove indentation.
+    opts.duatmode.remove_joined_line_indent = true;
     // Bracket pairs to be considered by keys like 'm' and the 'u' object.
     opts.duatmode.set_brackets([["(", ")"], ["{", "}"], ["[", "]"]]);
 

@@ -190,9 +190,12 @@ impl Mode for Normal {
             event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
             alt!('o' | 'O') => txt!("Add new line {below}"),
             event!('.') => txt!("Repeats the last [mode]Insert[] command"),
-            event!('r') => (txt!("Replace range"), match _ {
-                event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
-            }),
+            event!('r') => (
+                txt!("Replace range"),
+                match _ {
+                    event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
+                }
+            ),
             event!('`') => txt!("Lowercase the selection"),
             event!('~') => txt!("Uppercase the selection"),
             alt!('`') => txt!("Swap case of selection"),
@@ -905,12 +908,18 @@ impl Mode for Normal {
             }
             alt!('j') => {
                 let mut processed_lines = Vec::new();
+                let rm_str = if opts.remove_joined_line_indent {
+                    "\n\\s*"
+                } else {
+                    "\n"
+                };
+                
                 widget.edit_all(pa, |mut s| {
                     let c_range = s.range();
 
                     if c_range.start.line() == c_range.end.line() {
                         if !processed_lines.contains(&c_range.start.line())
-                            && let Some(range) = { s.search("\n").from_cursor().next() }
+                            && let Some(range) = { s.search(rm_str).from_cursor().next() }
                         {
                             s.move_to(range);
                             s.replace(" ");
@@ -920,7 +929,7 @@ impl Mode for Normal {
                     } else {
                         let cursor_was_on_end = s.set_cursor_on_start();
                         let range = s.cursor()..c_range.end;
-                        let nls: Vec<_> = s.search("\n").range(range).collect();
+                        let nls: Vec<_> = s.search(rm_str).range(range).collect();
 
                         let mut lines_joined = 0;
                         for (line, range) in nls.into_iter().rev().enumerate() {

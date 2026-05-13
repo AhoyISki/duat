@@ -631,6 +631,10 @@ pub mod opts {
         ///
         /// [`Buffer`]: duat_core::buffer::Buffer
         pub f_and_t_set_search: bool,
+        /// Wether `<a-j>` should remove the indentation of joined lines.
+        ///
+        /// The default is `true`
+        pub remove_joined_line_indent: bool,
         pub(crate) brackets: Brackets,
     }
 
@@ -645,6 +649,7 @@ pub mod opts {
                 indent_chars: &['\n', '(', ')', '{', '}', '[', ']'],
                 indent_on_capital_i: true,
                 f_and_t_set_search: true,
+                remove_joined_line_indent: true,
                 brackets: B_PATS,
             }
         }
