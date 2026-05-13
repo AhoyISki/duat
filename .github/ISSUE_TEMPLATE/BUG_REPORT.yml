@@ -9,16 +9,6 @@ body:
     attributes:
       value: |
         Thanks for filling out this bug report!
-  - type: checkboxes
-    id: is-duat-related
-    attributes:
-      label: Is this issue duat related? Or is it related to some plugin or extension?
-      description: |
-        For example, if your issue is about syntax highlighting, it is probably related
-        to [`duat-treesitter`](https://github.com/AhoyISki/duat-treesitter), not duat.      
-      options:
-        - label: Yes, it is most closely related to duat.
-          required: true
   - type: textarea
     id: what-happened
     attributes:
