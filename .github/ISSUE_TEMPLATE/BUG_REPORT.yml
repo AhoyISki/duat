@@ -39,20 +39,26 @@ body:
       default: 0
     validations:
       required: true
-  - type: markdown
+  - type: textarea
+    id: latest-rust-version
     attributes:
-      value: |
-        If you installed with `--featues git-deps`, try running the `reload --clear` command inside duat.
-        That should remove the `~/.config/duat/target`, `~/.local/share/duat` and `~/.cache/duat` directories,
-        which should essentially rebuild the latest version of everything, while also removing potentially
-        incompatible cache entries. **NOTE** Rebuilding everything may take a little bit of time, so be patient.
+      label: |
+        What version of rust are you using? Paste the output of `rustc --version` below.
+      description: |
+        Remember, Duat only has a commitment to support the latest version of rust stable
+        (and probably nightly too). If you have problems compiling, the toolchain version
+        is a likely culprit.
+        You can relieve that by running `rustup update`. This is extremely unlikely to
+        result in your config no longer compiling if it wasn't compiling before.
+    validations:
+      required: true
   - type: input
     id: os
     attributes:
       label: What operating system(s) are you using?
       description: |
-        Currently, support for OSX is spotty, and support for Windows is untested and likely not working
-        outside of WSL.
+        Linux, MacOS and Windows should be supported. There are a few kinks with Windows at the moment,
+        but feel free to report bugs for any of these operating systems.
       placeholder: linux
       value: linux
     validations:

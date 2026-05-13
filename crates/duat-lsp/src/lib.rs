@@ -67,37 +67,35 @@ impl Mode for Lsp {
 
         match key_event {
             event!('f') => buffer.lsp_format(pa, None),
-            event!('h') => {
-                if let Some(servers) = server::get_servers_for(&buffer.read(pa).path()) {
-                    for server in servers {
-                        let Some(capabilities) = server.capabilities() else {
-                            continue;
-                        };
-                        let encoding = Encoding::new(capabilities);
-                        if capabilities.hover_provider.is_none() {
-                            continue;
-                        }
-
-                        let buf = buffer.read(pa);
-                        let uri = path_to_uri(&buf.path()).unwrap();
-
-                        server.send_request::<HoverRequest>(
-                            HoverParams {
-                                text_document_position_params: TextDocumentPositionParams {
-                                    text_document: TextDocumentIdentifier { uri },
-                                    position: encoding
-                                        .pos_from_point(buf.text(), buf.text().main_sel().cursor()),
-                                },
-                                work_done_progress_params: WorkDoneProgressParams::default(),
-                            },
-                            |_, result| {
-                                duat_core::debug!("{result:#?}");
-                            },
-                        );
+            event!('h') if let Some(servers) = server::get_servers_for(&buffer.read(pa).path()) => {
+                for server in servers {
+                    let Some(capabilities) = server.capabilities() else {
+                        continue;
+                    };
+                    let encoding = Encoding::new(capabilities);
+                    if capabilities.hover_provider.is_none() {
+                        continue;
                     }
 
-                    buffer.hover_gutter_entries_on(pa, buffer.selections(pa).main().cursor());
+                    let buf = buffer.read(pa);
+                    let uri = path_to_uri(&buf.path()).unwrap();
+
+                    server.send_request::<HoverRequest>(
+                        HoverParams {
+                            text_document_position_params: TextDocumentPositionParams {
+                                text_document: TextDocumentIdentifier { uri },
+                                position: encoding
+                                    .pos_from_point(buf.text(), buf.text().main_sel().cursor()),
+                            },
+                            work_done_progress_params: WorkDoneProgressParams::default(),
+                        },
+                        |_, result| {
+                            duat_core::debug!("{result:#?}");
+                        },
+                    );
                 }
+
+                buffer.hover_gutter_entries_on(pa, buffer.selections(pa).main().cursor())
             }
             _ => {}
         }

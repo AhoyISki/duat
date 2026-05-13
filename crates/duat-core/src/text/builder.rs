@@ -389,7 +389,9 @@ impl<D: Display> AsBuilderPart<D, D> for D {
 #[macro_export]
 macro_rules! txt {
     ($($tokens:tt)*) => {{
-        $crate::private_exports::txt!($crate, $($tokens)*)
+        #[allow(unused_imports)]
+        use $crate as duat;
+        $crate::private_exports::txt!($($tokens)*)
     }}
 }
 

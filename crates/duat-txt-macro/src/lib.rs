@@ -15,24 +15,7 @@ use proc_macro::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenSt
 pub fn txt(input: TokenStream) -> TokenStream {
     let mut stream = input.into_iter();
 
-    let (crate_path, first_token) = match stream.next() {
-        Some(first @ TokenTree::Literal(_)) => (
-            TokenStream::from_iter([TokenTree::Ident(Ident::new("duat", Span::mixed_site()))]),
-            Some(first),
-        ),
-        Some(first) => match get_crate_path(first, &mut stream) {
-            Ok(crate_path) => (crate_path, stream.next()),
-            Err(compile_err) => return compile_err,
-        },
-        None => {
-            return compile_err(
-                Span::mixed_site(),
-                "expected a crate path followed by a string literal",
-            );
-        }
-    };
-
-    let (str_span, str) = match get_str(first_token) {
+    let (str_span, str) = match get_str(stream.next()) {
         Ok(str_and_span) => str_and_span,
         Err(compile_err) => return compile_err,
     };
@@ -214,22 +197,20 @@ pub fn txt(input: TokenStream) -> TokenStream {
 
     let positional_provided = exprs.len();
     let mut exprs = exprs.into_iter();
-    let needs_as_builder_part_import = args
-        .iter()
-        .any(|arg| matches!(arg, Arg::Positional(_, "") | Arg::Inlined(_, "")));
 
     let mut tokens = {
-        let mut tokens = Vec::new();
+        let mut tokens = vec![ident("use")];
+        extend_with_path(&mut tokens, false, &["duat", "text", "AsBuilderPart"]);
 
-        if needs_as_builder_part_import {
-            tokens.push(ident("use"));
-            extend_with_crate_path(&mut tokens, &crate_path, &["text", "AsBuilderPart"]);
-            tokens.push(punct(';'));
-        }
+        tokens.extend([
+            punct(';'),
+            ident("let"),
+            ident("mut"),
+            ident("builder"),
+            punct('='),
+        ]);
 
-        tokens.extend([ident("let"), ident("mut"), ident("builder"), punct('=')]);
-
-        extend_with_crate_path(&mut tokens, &crate_path, &["text", "Text", "builder"]);
+        extend_with_path(&mut tokens, false, &["duat", "text", "Text", "builder"]);
 
         tokens.extend([fn_args([]), punct(';')]);
 
@@ -280,7 +261,7 @@ pub fn txt(input: TokenStream) -> TokenStream {
                     extend_with_path(&mut tokens, true, &["core", "primitive", "u8"]);
                     tokens.push(punct('='));
 
-                    extend_with_crate_path(&mut tokens, &crate_path, &["priority"]);
+                    extend_with_path(&mut tokens, false, &["duat", "priority"]);
                     tokens.extend([
                         fn_args([literal(modif)]),
                         punct(';'),
@@ -290,11 +271,11 @@ pub fn txt(input: TokenStream) -> TokenStream {
                     ]);
 
                     if form_name.is_empty() {
-                        extend_with_crate_path(&mut tokens, &crate_path, &["form", "DEFAULT_ID"]);
+                        extend_with_path(&mut tokens, false, &["duat", "form", "DEFAULT_ID"]);
                     } else if form_name == "a" {
-                        extend_with_crate_path(&mut tokens, &crate_path, &["form", "ACCENT_ID"]);
+                        extend_with_path(&mut tokens, false, &["duat", "form", "ACCENT_ID"]);
                     } else {
-                        extend_with_crate_path(&mut tokens, &crate_path, &["form", "id_of"]);
+                        extend_with_path(&mut tokens, false, &["duat", "form", "id_of"]);
                         tokens.extend([
                             punct('!'),
                             fn_args([TokenTree::Literal({
@@ -430,25 +411,6 @@ fn get_str(token: Option<TokenTree>) -> Result<(Span, litrs::StringLit<String>),
     Ok((str_span, str))
 }
 
-fn get_crate_path(
-    first: TokenTree,
-    stream: &mut proc_macro::token_stream::IntoIter,
-) -> Result<TokenStream, TokenStream> {
-    let span = first.span();
-    let mut tokens = vec![first];
-
-    for token in stream.by_ref() {
-        match token {
-            TokenTree::Punct(ref punct) if punct.as_char() == ',' => {
-                return Ok(TokenStream::from_iter(tokens));
-            }
-            token => tokens.push(token),
-        }
-    }
-
-    Err(compile_err(span, "expected a comma after the crate path"))
-}
-
 enum Arg<'s> {
     Str(String, Range<usize>),
     Positional(Range<usize>, &'s str),
@@ -523,22 +485,6 @@ fn extend_with_path(tokens: &mut Vec<TokenTree>, is_abs: bool, idents: &[&'stati
             tokens.push(colon.clone())
         }
 
-        tokens.push(TokenTree::Ident(Ident::new(ident, Span::mixed_site())));
-    }
-}
-
-fn extend_with_crate_path(
-    tokens: &mut Vec<TokenTree>,
-    crate_path: &TokenStream,
-    idents: &[&'static str],
-) {
-    let colon = TokenTree::Punct(Punct::new(':', Spacing::Joint));
-
-    tokens.extend(crate_path.clone());
-
-    for ident in idents {
-        tokens.push(colon.clone());
-        tokens.push(colon.clone());
         tokens.push(TokenTree::Ident(Ident::new(ident, Span::mixed_site())));
     }
 }

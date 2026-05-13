@@ -154,10 +154,8 @@ pub(crate) fn replace_with_snippet(
         let mut chars = snippet[idx + 1..].chars();
         let (is_placeholder, number) = {
             let num_start = match chars.next() {
-                Some('{') => match chars.next() {
-                    Some('0'..='9') => idx + 2,
-                    _ => panic!("Invalid snippet syntax: expected a number"),
-                },
+                Some('{') if let Some('0'..='9') = chars.next() => idx + 2,
+                Some('{') => panic!("Invalid snippet syntax: expected a number"),
                 Some('0'..='9') => idx + 1,
                 Some(char) => {
                     panic!("Invalid snippet syntax: expected '{{' or a number, found {char}")

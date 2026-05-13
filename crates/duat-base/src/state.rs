@@ -212,12 +212,15 @@ pub fn main_col(buffer: &Buffer, area: &Area) -> usize {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_txt(buffer: &Buffer, area: &Area) -> Text {
-    txt!(
-        "[coord]{}[separator]:[coord]{}[separator]/[coord]{}",
-        main_col(buffer, area),
-        main_line(buffer),
-        buffer.len_lines()
-    )
+    {
+        use duat_core as duat;
+        duat_core::private_exports::txt!(
+            "[coord]{}[separator]:[coord]{}[separator]/[coord]{}",
+            main_col(buffer, area),
+            main_line(buffer),
+            buffer.len_lines()
+        )
+    }
 }
 
 /// [`StatusLine`] part: The number of selections
