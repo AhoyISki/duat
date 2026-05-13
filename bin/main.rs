@@ -34,7 +34,7 @@ struct Args {
     #[arg(long)]
     cfg_manifest: bool,
     /// Load the default config
-    #[arg(long, conflicts_with_all = ["load", "profile", "init-config"])]
+    #[arg(long, conflicts_with_all = ["load", "profile", "init_config"])]
     no_load: bool,
     #[cfg_attr(
         target_os = "windows",
