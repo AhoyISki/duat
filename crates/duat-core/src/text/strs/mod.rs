@@ -14,7 +14,7 @@
 use std::{ops::Range, sync::LazyLock};
 
 pub use pattern::{
-    DoubleEndedSearcher as StrsDoubleEndedSearcher, Pattern as StrsPattern,
+    DoubleEndedSearcher as StrsDoubleEndedSearcher, Pattern as StrsPattern, SearchStep,
     Searcher as StrsSearcher,
 };
 
@@ -30,7 +30,6 @@ use crate::{
                 RMatchRanges, RMatches, RSplit, RSplitN, RSplitTerminator, Split, SplitInclusive,
                 SplitInternal, SplitN, SplitNInternal, SplitTerminator,
             },
-            pattern::SearchStep,
         },
     },
 };
@@ -576,8 +575,6 @@ impl Strs {
     /// assert_eq!(Text::from("").split_whitespace().next(), None);
     /// assert_eq!(Text::from("   ").split_whitespace().next(), None);
     /// ```
-    ///
-    /// [`split_ascii_whitespace`]: Strs::split_ascii_whitespace
     #[must_use = "this returns the split string as an iterator, without modifying the original"]
     #[inline]
     pub fn split_whitespace(&self) -> impl DoubleEndedIterator<Item = &Strs> + Clone {
@@ -679,6 +676,8 @@ impl Strs {
     /// assert!(bananas.contains("nana"));
     /// assert!(!bananas.contains("apples"));
     /// ```
+    ///
+    /// [pattern]: StrsPattern
     #[inline]
     pub fn contains<P: StrsPattern>(&self, pat: P) -> bool {
         pat.into_searcher(self).next_match().is_some()
@@ -720,6 +719,8 @@ impl Strs {
     /// assert!(bananas.starts_with(&['b', 'a', 'n', 'a']));
     /// assert!(bananas.starts_with(&['a', 'b', 'c', 'd']));
     /// ```
+    ///
+    /// [pattern]: StrsPattern
     pub fn starts_with<P: StrsPattern>(&self, pat: P) -> bool {
         matches!(pat.into_searcher(self).next(), SearchStep::Match(..))
     }
@@ -744,6 +745,8 @@ impl Strs {
     /// assert!(bananas.ends_with("anas"));
     /// assert!(!bananas.ends_with("nana"));
     /// ```
+    ///
+    /// [pattern]: StrsPattern
     pub fn ends_with<P: StrsPattern>(&self, pat: P) -> bool
     where
         for<'a> P::Searcher<'a>: StrsDoubleEndedSearcher<'a>,
@@ -804,6 +807,8 @@ impl Strs {
     ///
     /// assert_eq!(s.find(x), None);
     /// ```
+    ///
+    /// [pattern]: StrsPattern
     #[inline]
     pub fn find<P: StrsPattern>(&self, pat: P) -> Option<Range<usize>> {
         pat.into_searcher(self).next_match().map(|(s, e)| s..e)
@@ -857,6 +862,8 @@ impl Strs {
     ///
     /// assert_eq!(s.rfind(x), None);
     /// ```
+    ///
+    /// [pattern]: StrsPattern
     #[inline]
     pub fn rfind<P: StrsPattern>(&self, pat: P) -> Option<Range<usize>>
     where
@@ -1016,6 +1023,7 @@ impl Strs {
     ///
     /// Use [`split_whitespace`] for this behavior.
     ///
+    /// [pattern]: StrsPattern
     /// [`rsplit`]: Strs::rsplit
     /// [`split_whitespace`]: Strs::split_whitespace
     #[inline]
@@ -1072,6 +1080,8 @@ impl Strs {
     ///     "little lamb.\n"
     /// ]);
     /// ```
+    ///
+    /// [pattern]: StrsPattern
     #[inline]
     pub fn split_inclusive<P: StrsPattern>(&self, pat: P) -> SplitInclusive<'_, P> {
         SplitInclusive(SplitInternal {
@@ -1136,6 +1146,7 @@ impl Strs {
     /// assert_eq!(v, ["ghi", "def", "abc"]);
     /// ```
     ///
+    /// [pattern]: StrsPattern
     /// [`split`]: Strs::split
     #[inline]
     pub fn rsplit<P: StrsPattern>(&self, pat: P) -> RSplit<'_, P>
@@ -1188,6 +1199,7 @@ impl Strs {
     /// assert_eq!(v, ["A", "B", "C", "D"]);
     /// ```
     ///
+    /// [pattern]: StrsPattern
     /// [`split`]: Strs::split
     /// [`rsplit_terminator`]: Strs::rsplit_terminator
     #[inline]
@@ -1239,6 +1251,8 @@ impl Strs {
     /// let v: Vec<&Strs> = x.rsplit_terminator(&['.', ':'][..]).collect();
     /// assert_eq!(v, ["D", "C", "B", "A"]);
     /// ```
+    ///
+    /// [pattern]: StrsPattern
     /// [`split`]: Strs::split
     /// [`split_terminator`]: Strs::split_terminator
     #[inline]
@@ -1304,6 +1318,7 @@ impl Strs {
     /// assert_eq!(v, ["abc", "defXghi"]);
     /// ```
     ///
+    /// [pattern]: StrsPattern
     /// [`rsplitn`]: Strs::rsplitn
     #[inline]
     pub fn splitn<P: StrsPattern>(&self, n: usize, pat: P) -> SplitN<'_, P> {
@@ -1361,6 +1376,7 @@ impl Strs {
     /// assert_eq!(v, ["ghi", "abc1def"]);
     /// ```
     ///
+    /// [pattern]: StrsPattern
     /// [`splitn`]: Strs::splitn
     #[inline]
     pub fn rsplitn<P: StrsPattern>(&self, n: usize, pat: P) -> RSplitN<'_, P>
@@ -1373,6 +1389,10 @@ impl Strs {
     /// Splits the string on the first occurrence of the specified
     /// delimiter and returns prefix before delimiter and suffix
     /// after delimiter.
+    ///
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s,
+    /// or a function or closure that determines if a character
+    /// matches.
     ///
     /// # Examples
     ///
@@ -1397,6 +1417,8 @@ impl Strs {
     ///         .is_some_and(|(l, r)| l == "cfg" && r == "foo=bar")
     /// );
     /// ```
+    ///
+    /// [pattern]: StrsPattern
     #[inline]
     pub fn split_once<P: StrsPattern>(&self, delimiter: P) -> Option<(&'_ Strs, &'_ Strs)> {
         let (start, end) = delimiter.into_searcher(self).next_match()?;
@@ -1406,6 +1428,10 @@ impl Strs {
     /// Splits the string on the last occurrence of the specified
     /// delimiter and returns prefix before delimiter and suffix
     /// after delimiter.
+    ///
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s,
+    /// or a function or closure that determines if a character
+    /// matches.
     ///
     /// # Examples
     ///
@@ -1430,6 +1456,8 @@ impl Strs {
     ///         .is_some_and(|(l, r)| l == "cfg=foo" && r == "bar")
     /// );
     /// ```
+    ///
+    /// [pattern]: StrsPattern
     #[inline]
     pub fn rsplit_once<P: StrsPattern>(&self, delimiter: P) -> Option<(&'_ Strs, &'_ Strs)>
     where
@@ -1472,6 +1500,7 @@ impl Strs {
     /// assert_eq!(v, ["1", "2", "3"]);
     /// ```
     ///
+    /// [pattern]: StrsPattern
     /// [`rmatches`]: Strs::rmatches
     #[inline]
     pub fn matches<P: StrsPattern>(&self, pat: P) -> Matches<'_, P> {
@@ -1509,6 +1538,7 @@ impl Strs {
     /// assert_eq!(v, ["3", "2", "1"]);
     /// ```
     ///
+    /// [pattern]: StrsPattern
     /// [`matches`]: Strs::matches
     #[inline]
     pub fn rmatches<P: StrsPattern>(&self, pat: P) -> RMatches<'_, P>
@@ -1567,6 +1597,7 @@ impl Strs {
     /// assert_eq(v, [(0..3, "aba")]); // only the first `aba`
     /// ```
     ///
+    /// [pattern]: StrsPattern
     /// [`rmatch_ranges`]: Strs::rmatch_ranges
     /// [range]: Range
     #[inline]
@@ -1622,6 +1653,7 @@ impl Strs {
     /// assert_eq(v, [(2..5, "aba")]); // only the last `aba`
     /// ```
     ///
+    /// [pattern]: StrsPattern
     /// [`match_ranges`]: Strs::match_ranges
     /// [range]: Range
     #[inline]
@@ -1779,6 +1811,8 @@ impl Strs {
     ///     "foo1bar"
     /// );
     /// ```
+    ///
+    /// [pattern]: StrsPattern
     #[must_use = "this returns the trimmed string as a new slice, without modifying the original"]
     pub fn trim_matches<P: StrsPattern>(&self, pat: P) -> &Strs
     where
@@ -1831,6 +1865,8 @@ impl Strs {
     /// let x: &[_] = &['1', '2'];
     /// assert_eq!(Text::from("12foo1bar12").trim_start_matches(x), "foo1bar12");
     /// ```
+    ///
+    /// [pattern]: StrsPattern
     #[must_use = "this returns the trimmed string as a new slice, without modifying the original"]
     pub fn trim_start_matches<P: StrsPattern>(&self, pat: P) -> &Strs {
         let mut i = self.len();
@@ -1885,6 +1921,8 @@ impl Strs {
     ///     "1foo"
     /// );
     /// ```
+    ///
+    /// [pattern]: StrsPattern
     #[must_use = "this returns the trimmed string as a new slice, without modifying the original"]
     pub fn trim_end_matches<P: StrsPattern>(&self, pat: P) -> &Strs
     where
@@ -1930,6 +1968,7 @@ impl Strs {
     /// );
     /// ```
     ///
+    /// [pattern]: StrsPattern
     /// [`trim_start_matches`]: Self::trim_start_matches
     #[must_use = "this returns the remaining substring as a new slice, without modifying the \
                   original"]
@@ -1973,6 +2012,7 @@ impl Strs {
     /// );
     /// ```
     ///
+    /// [pattern]: StrsPattern
     /// [`trim_end_matches`]: Self::trim_end_matches
     #[must_use = "this returns the remaining substring as a new slice, without modifying the \
                   original"]
@@ -1991,7 +2031,7 @@ impl Strs {
 impl<Idx: TextRange> std::ops::Index<Idx> for Strs {
     type Output = Self;
 
-	#[track_caller]
+    #[track_caller]
     fn index(&self, index: Idx) -> &Self::Output {
         let formed = FormedStrs::new(self);
         let range = index.to_range(formed.len as usize);

@@ -124,7 +124,6 @@ use crate::{
 /// ```
 ///
 /// [`Mode`]: crate::mode::Mode
-/// [`Mode::Widget`]: crate::mode::Mode::Widget
 /// [`&mut Pass`]: Pass
 /// [`PromptLine`]: https://docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
 /// [`Mode::send_key`]: crate::mode::Mode::send_key
@@ -132,7 +131,6 @@ use crate::{
 /// [mapped]: crate::mode::map
 /// [`read`]: RwData::read
 /// [`write`]: RwData::write
-/// [`Self::Widget`]: crate::mode::Mode::Widget
 /// [`Some(selections)`]: Some
 /// [`Area`]: crate::ui::Area
 /// [commands]: crate::cmd
@@ -357,10 +355,10 @@ impl<W: 'static + ?Sized> Handle<W> {
     /// Returns a [`SpawnId`], if this `Handle` was spawned.
     ///
     /// You can use this if, for example, you want to compare a
-    /// `Handle` with a specific [`RawTag`], when calling
+    /// `Handle` with a specific [`TagPart`], when calling
     /// [`tags.remove_if`].
     ///
-    /// [`RawTag`]: crate::text::RawTag
+    /// [`TagPart`]: crate::text::TagPart
     /// [`tags.remove_if`]: crate::text::Tags::remove_if
     pub fn spawn_id(&self) -> Option<SpawnId> {
         self.spawn_id
@@ -440,6 +438,7 @@ impl<W: 'static + ?Sized> Handle<W> {
     ///
     /// This function will fail if the `Self` [was already closed].
     ///
+    /// [aliases]: crate::mode::alias
     /// [`Completions`]: https://docs.rs/crates/duat/latest/widgets/struct.Completions.html
     /// [was already closed]: Self::is_closed
     #[track_caller]

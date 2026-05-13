@@ -224,7 +224,7 @@ pub unsafe trait DoubleEndedSearcher<'s>: Searcher<'s> {
     fn next_back(&mut self) -> SearchStep;
 
     /// Finds the next [`Match`][SearchStep::Match] result.
-    /// See [`next_back()`][ReverseSearcher::next_back].
+    /// See [`next_back()`][DoubleEndedSearcher::next_back].
     #[inline]
     fn next_match_back(&mut self) -> Option<(usize, usize)> {
         loop {
@@ -237,7 +237,7 @@ pub unsafe trait DoubleEndedSearcher<'s>: Searcher<'s> {
     }
 
     /// Finds the next [`Reject`][SearchStep::Reject] result.
-    /// See [`next_back()`][ReverseSearcher::next_back].
+    /// See [`next_back()`][DoubleEndedSearcher::next_back].
     #[inline]
     fn next_reject_back(&mut self) -> Option<(usize, usize)> {
         loop {

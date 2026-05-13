@@ -569,13 +569,13 @@ pub mod state {
     //! understood with no other meddling.
     //!
     //! Examples of functions in here are [`main_txt`], which will
-    //! show a formatted version of the main [`Cursor`], and
+    //! show a formatted version of the main [`Selection`], and
     //! [`mode_txt`] which will show a formatted version of the
     //! current [`Mode`] of Duat.
     //!
     //! [`StatusLine`]: crate::widgets::StatusLine
     //! [`status!`]: crate::widgets::status
-    //! [`Cursor`]: crate::mode::Cursor
+    //! [`Selection`]: crate::mode::Selection
     //! [`Mode`]: crate::mode::Mode
     pub use duat_base::state::*;
     pub use duatmode::{duat_param, duat_param_txt};

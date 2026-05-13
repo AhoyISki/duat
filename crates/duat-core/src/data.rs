@@ -604,9 +604,9 @@ impl<I: ?Sized, O> DataMap<I, O> {
     /// actually been changed, it just means a mutable reference was
     /// acquired after the last call to [`has_changed`].
     ///
-    /// Some types like [`Text`], and traits like [`Widget`] offer
-    /// [`needs_update`] methods, you should try to determine what
-    /// parts to look for changes.
+    /// The [`Text`] type provides the [`Text::version`] method, which
+    /// can more accurately be used to determine when changes took
+    /// place.
     ///
     /// Generally though, you can use this method to gauge that.
     ///
@@ -616,7 +616,7 @@ impl<I: ?Sized, O> DataMap<I, O> {
     /// [`has_changed`]: RwData::has_changed
     /// [`Text`]: crate::text::Text
     /// [`Widget`]: crate::ui::Widget
-    /// [`needs_update`]: crate::ui::Widget::needs_update
+    /// [`Text::version`]: crate::text::Text::version
     pub fn has_changed(&self) -> bool {
         self.data.has_changed()
     }

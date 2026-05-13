@@ -234,14 +234,12 @@ impl CompletionEntry {
 /// the [`Selection`] if it moves to other words.
 ///
 /// Initially, even if there is no word before the [cursor],
-/// completions will be shown, unless you set [`show_without_prefix`]
-/// to `false`. However, as the list moves around, completions will
-/// only show up if there is a word behind the [cursor], as to not be
-/// bothersome.
+/// completions will be shown. However, as the list moves around,
+/// completions will only show up if there is a word behind the
+/// [cursor], as to not be bothersome.
 ///
 /// [`Selection`]: duat_core::mode::Selection
 /// [cursor]: duat_core::mode::Selection::cursor
-/// [`show_without_prefix`]: Self::show_without_prefix
 #[derive(Default)]
 pub struct CompletionsBuilder {
     providers: Option<ProvidersFn>,

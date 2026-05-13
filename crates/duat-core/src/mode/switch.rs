@@ -61,8 +61,6 @@ pub fn set_default<M: Mode>(mut mode_fn: impl FnMut(Handle<dyn Widget>) -> M + S
 ///   ends instead.
 /// - If you're _not_ in a [`Mode::send_key`] call, the hook will be
 ///   triggered immediately.
-///
-/// [`Widget`]: Mode::Widget
 pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
     let Some(old_mode) = MODE.write(pa).take() else {
         DEFERRED.write(pa).push(Box::new(move |pa| set(pa, mode)));
@@ -97,9 +95,8 @@ pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
 
 /// Resets the mode to the [default] on a given [`Widget`]
 ///
-/// This default [`Mode`] is a [`UniversalMode`], which means it
-/// should make sense to use it within any `Widget` (that isn't tied
-/// to a [`Buffer`]). By default, this is [`duatmode::Normal`].
+/// This default [`Mode`] should make sense to be used on any
+/// `Widget`, not just [`Buffer`]s.
 ///
 /// This function will also [make the `Handle` active], making it so
 /// [aliases] and [`Completions`] show up on it.

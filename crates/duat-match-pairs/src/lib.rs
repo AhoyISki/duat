@@ -78,7 +78,7 @@
 //! - Also for now, normal pairs use regex, while treesitter pairs use
 //!   strings.
 //!
-//! [`Plugin`]: duat_core::Plugin
+//! [`Plugin`]: https://docs.rs/crates/duat/latest/struct.Plugin.html
 use std::{
     any::TypeId,
     collections::HashMap,
@@ -108,7 +108,7 @@ pub struct DuatMatchPairs {
 }
 
 impl DuatMatchPairs {
-    /// Returns a new [`MatchPairs`]
+    /// Returns a new `DuatMatchPairs`
     pub fn new() -> Self {
         Self {
             ts_and_reg: vec![[b"(", b")"], [b"{", b"}"], [b"[", b"]"]],

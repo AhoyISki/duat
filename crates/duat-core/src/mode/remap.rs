@@ -59,7 +59,7 @@ mod global {
     /// The mapping is done once the `RemapBuilder` is [dropped], so
     /// assigning it to a variable is not recommended
     ///
-    /// [`Plugin`]: crate::Plugin
+    /// [`Plugin`]: https://docs.rs/duat/trait.Plugin.html
     /// [dropped]: Drop::drop
     pub struct RemapBuilder {
         pub(super) takes: Vec<KeyEvent>,

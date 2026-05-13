@@ -448,9 +448,9 @@ pub trait PromptMode: Send + 'static {
     /// a [`Inlay`]
     fn prompt(&self) -> Text;
 
-    /// An optional returning [`Handle`] for the [`ExitWidget`]
+    /// An optional returning [`Handle`] for the exiting widget.
     ///
-    /// [`ExitWidget`]: PromptMode::ExitWidget
+    /// This widget will be focused on when this mode is finished.
     fn return_handle(&self) -> Option<Handle<dyn Widget>> {
         None
     }

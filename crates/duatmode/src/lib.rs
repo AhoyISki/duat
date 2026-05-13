@@ -465,6 +465,7 @@
 //! [`opts`]: https://docs.rs/duat/latest/duat/opts
 //! [word chars]: duat_core::opts::PrintOpts::extra_word_chars
 //! [tab mode]: TabMode
+//! [`Plugin`]: https://docs.rs/crates/duat/latest/struct.Plugin.html
 use std::{any::TypeId, sync::Mutex};
 
 use crate::normal::Brackets;

@@ -399,9 +399,7 @@ mod global {
         HOOKS.trigger(pa, hookable)
     }
 
-    /// Checks if a give group exists.
-    ///
-    /// The hook can either be a string type, or a [`GroupId`].
+    /// Checks if a given group exists.
     ///
     /// Returns `true` if said group was added via
     /// [`HookBuilder::grouped`], and no [`hook::remove`]
@@ -532,6 +530,10 @@ impl Hookable for WidgetSwitched {
 /// be used to change the active widget.
 ///
 /// # Arguments
+///
+/// - The focused `Widget`'s [`Handle<W>`]
+///
+/// [`mode::reset`]: crate::mode::reset
 pub struct FocusedUpdated<W: Widget + ?Sized = dyn Widget>(pub(crate) Handle<W>);
 
 impl<W: Widget + ?Sized> Hookable for FocusedUpdated<W> {
@@ -925,6 +927,8 @@ impl ModeParts<'_> {
     }
 
     /// Check if the [`Mode`] is of a given type.
+    ///
+    /// [`Mode`]: crate::mode::Mode
     pub fn is<M: 'static>(&self) -> bool {
         self.mode.is::<M>()
     }

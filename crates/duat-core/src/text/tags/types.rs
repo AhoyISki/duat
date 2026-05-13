@@ -94,7 +94,7 @@ pub(super) trait Sealed<Index>: Sized {
 ///
 /// This struct can be created from the [`FormId::to_tag`] method,
 /// granting it a priority that is used to properly order the
-/// [`RawTag`]s within.
+/// `RawTag`s within.
 ///
 /// The [`Form`] is able to intersect with other [`Form`]s, which,
 /// unlike when pushing [`Form`]s to a [`Builder`], interfere
@@ -558,7 +558,7 @@ impl Spawn {
     ///
     /// Do note that this [`Widget`] will only be added to Duat and be
     /// able to be printed to the screen once the [`Text`] itself
-    /// is printed. And it will be removed once the [`RawTag`] within
+    /// is printed. And it will be removed once the `RawTag` within
     /// gets dropped, either by being removed from the `Text`, or by
     /// the `Text` itself being dropped.
     ///
@@ -566,7 +566,7 @@ impl Spawn {
     /// >
     /// > For now, if you clone a [`Text`] with spawned [`Widget`]s
     /// > within, those `Widget`s will not be cloned to the new
-    /// > `Text`, and the [`RawTag::SpawnedWidget`]s within will also
+    /// > `Text`, and the `RawTag::SpawnedWidget`s within will also
     /// > be removed.
     ///
     /// [`Tags::insert`]: super::Tags::insert
@@ -923,10 +923,9 @@ pub enum TagPart<'t> {
     Inlay(&'t Inlay),
 
     /// Starts concealing the [`Text`], skipping all [`Tag`]s and
-    /// [`char`]s until the [`EndConceal`] tag shows up.
+    /// [`char`]s until the `EndConceal` tag shows up.
     ///
     /// [`Text`]: super::Text
-    /// [`EndConceal`]: RawTag::EndConceal
     StartConceal,
     /// Stops concealing the [`Text`], returning the iteration process
     /// back to the regular [`Text`] iterator.

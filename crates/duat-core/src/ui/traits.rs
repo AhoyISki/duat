@@ -484,7 +484,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     ///
     /// If you want to calculate the column of a `TwoPoints`,
     /// regardless of wether or not it would be printed, check out
-    /// [`RawArea::column_at_points`].
+    /// [`RawArea::columns_at`].
     fn coord_at_points(
         &self,
         _: UiPass,

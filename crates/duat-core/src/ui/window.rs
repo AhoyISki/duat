@@ -1195,7 +1195,7 @@ impl Window {
     ///
     /// Each `Handle` takes care of one [`Widget`], if you want to see
     /// which one exactly is being used, you can use the
-    /// [`Handle::try_downcast`] and [`Handle::read_as`] methods.
+    /// [`Handle::get_as`] and [`Handle::read_as`] methods.
     ///
     /// If you just want an iterator over the [`Buffer`]s, then check
     /// out [`Window::buffers`].

@@ -333,6 +333,7 @@ pub struct GutterOpts {
     /// `Form`.
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
+    /// [`Form`]: duat_core::form::Form
     pub hint: GutterSymbolOpts,
     /// Warnings are problems with your code that don't necessarily
     /// prevent it from working or compiling, but otherwise represent
@@ -346,6 +347,7 @@ pub struct GutterOpts {
     /// `buffer.warning` `Form`.
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
+    /// [`Form`]: duat_core::form::Form
     pub warning: GutterSymbolOpts,
     /// Errors are fundamental issues with your code. Either the
     /// compiler couldn't figure out what you meant, or the code is
@@ -359,6 +361,7 @@ pub struct GutterOpts {
     /// `buffer.error` `Form`.
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
+    /// [`Form`]: duat_core::form::Form
     pub error: GutterSymbolOpts,
     /// Which [`Corner`] to spawn when spawning a corner widget.
     ///
@@ -436,18 +439,8 @@ impl GutterOpts {
         )
     }
 
-    /// The mutable [`GutterSymbolOpts`] for a given [`EntryKind`]
-    pub fn symbol_opts_mut(&mut self, kind: EntryKind) -> &mut GutterSymbolOpts {
-        match kind {
-            EntryKind::Hint => &mut self.hint,
-            EntryKind::Warning => &mut self.warning,
-            EntryKind::Error => &mut self.error,
-            EntryKind::_Custom(..) => todo!(),
-        }
-    }
-
     /// The [`GutterSymbolOpts`] for a given [`EntryKind`]
-    pub fn symbol_opts(&self, kind: EntryKind) -> &GutterSymbolOpts {
+    fn symbol_opts(&self, kind: EntryKind) -> &GutterSymbolOpts {
         match kind {
             EntryKind::Hint => &self.hint,
             EntryKind::Warning => &self.warning,
@@ -730,10 +723,6 @@ pub enum GutterDisplay {
     Spawn,
     /// The [`Text`] will be show as a spawned widget on one of the
     /// corners.
-    ///
-    /// If [`OnWindow`] is set to true, this will spawn it on the
-    /// corners of the window. Otherwise, it will be spawned on the
-    /// corners of the [`Buffer`]
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
     Corner,

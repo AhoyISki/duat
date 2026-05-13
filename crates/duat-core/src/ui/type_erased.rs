@@ -280,7 +280,7 @@ impl RwArea {
     /// This will return [`None`] if the `RawArea` within is of a
     /// different type.
     ///
-    /// [`Plugin`]: crate::Plugin
+    /// [`Plugin`]: https://docs.rs/duat/latest/struct.Plugin.html
     pub fn read_as<'a, A: RawArea>(&'a self, pa: &'a Pass) -> Option<&'a A> {
         (TypeId::of::<A>() == *CANONICAL_AREA.get().unwrap()).then(|| {
             let ptr = Box::as_ref(&self.0.read(pa).inner) as *const dyn std::any::Any;
@@ -309,7 +309,7 @@ impl RwArea {
     /// This will return [`None`] if the `RawArea` within is of a
     /// different type.
     ///
-    /// [`Plugin`]: crate::Plugin
+    /// [`Plugin`]: https://docs.rs/duat/latest/struct.Plugin.html
     pub fn write_as<'a, A: RawArea>(&'a self, pa: &'a mut Pass) -> Option<&'a mut A> {
         (TypeId::of::<A>() == *CANONICAL_AREA.get().unwrap()).then(|| {
             let ptr = Box::as_mut(&mut self.0.write(pa).inner) as *mut dyn std::any::Any;

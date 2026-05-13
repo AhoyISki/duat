@@ -87,7 +87,7 @@ mod switch;
 /// });
 /// ```
 ///
-/// [`Plugin`]: crate::Plugin
+/// [`Plugin`]: https://docs.rs/duat/trait.Plugin.html
 #[derive(Clone, Copy, Debug)]
 pub struct User;
 

@@ -82,8 +82,6 @@ pub struct BufferOpts {
     /// are used by the `Gutter` in order to show diagnostics, and it
     /// looks nicer if the line wraps at the end of the connecting
     /// bits.
-    ///
-    /// [`Buffer`]: crate::widgets::Buffer
     pub indent_wrap_chars: &'static [char],
     /// How much space a tab should occupy.
     ///

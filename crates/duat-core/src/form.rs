@@ -1190,7 +1190,7 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
     }
 }
 
-/// A struct to create [`Form`]s from [`RawTag`] in a [`Text`].
+/// A struct to create [`Form`]s from [`TagPart`] in a [`Text`].
 ///
 /// This [`Painter`] not only prints the [`Form`]s in the [`Text`],
 /// but within it there is also a "mask". This mask will remap
@@ -1243,8 +1243,7 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
 /// [hooks]: crate::hook
 /// [`Buffer`]: crate::buffer::Buffer
 /// [`Text`]: crate::text::Text
-///
-/// [`RawTag`]: crate::text::RawTag
+/// [`TagPart`]: crate::text::TagPart
 /// [`Text`]: crate::text::Text
 pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,

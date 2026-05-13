@@ -31,6 +31,7 @@ static PARSERS: PerBuffer<Parser> = PerBuffer::new();
 /// [`Selections`] values, "jumping" around in the history.
 ///
 /// [`Selections`]: duat_core::mode::Selections
+/// [`Plugin`]: https://docs.rs/crates/duat/latest/struct.Plugin.html
 #[derive(Default)]
 pub struct JumpList;
 

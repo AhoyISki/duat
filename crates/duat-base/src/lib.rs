@@ -8,7 +8,7 @@
 //!
 //! The crate has the following elements:
 //!
-//! - 8 [`widgets`]:
+//! - 10 [`widgets`]:
 //!   - [`LineNumbers`] shows the numbers on a [`Buffer`] (for now),
 //!     and you can configure their alignment, relativeness, etc.
 //!   - The [`PromptLine`] lets you run commands and do other things,
@@ -22,8 +22,8 @@
 //!     [`Logs`] of Duat, through the [`error!`], [`warn!`] and
 //!     [`info!`] macros.
 //!   - [`LogBook`] is a log of everything that has been notified to
-//!     Duat. It is usually more admissive than `Notifications`, and
-//!     is most commonly scrolled by the [`Pager`] [`Mode`].
+//!     Duat. It is usually more admissive than `Notifications`. It
+//!     can be focused on by calling the `"logs"` command.
 //!   - [`Completions`] is Duat's completion widget, it provides an
 //!     extensible completions list, which allows you to format the
 //!     entries and add new providers via the [`CompletionsProvider`]
@@ -35,15 +35,14 @@
 //!     expected (e.g. Vim's `s`, `d`, `f` and others).
 //!   - [`Info`] just shows static information, resizing itself to
 //!     properly show as much of it as possible.
+//!   - [`Picker`] shows options for places to jump to, or things to
+//!     enact, like code actions. It comes with builtin preview.
 //!
-//! - 2 [`modes`]:
+//! - 1 [mode](mode::Mode):
 //!   - [`Prompt`] is a multitool that can serve many purposes,
 //!     through the [`PromptMode`] trait, which allows one to act on
 //!     the `PromptLine` while abstracting over less important
 //!     elements of the `Widget`.
-//!   - [`Pager`] is a simple, read only `Mode`, designed for
-//!     scrolling and searching through `Widget`s, most commonly the
-//!     `LogBook`.
 //!
 //! - For the [`PromptLine`], there are 4 [`PromptMode`]s:
 //!   - [`RunCommands`] will interpret and run Duat commands, with
@@ -67,7 +66,7 @@
 //!     the previous match.
 //!
 //! Note that the [`IncSearcher`] trait can be used for many more
-//! interesting things, like in [`duat-kak`] for example, where its
+//! interesting things, like in [`duatmode`] for example, where its
 //! implementors allow for splitting selections, selecting everything
 //! within a range, and many more such things in the future.
 //!
@@ -75,9 +74,10 @@
 //!   - [`SearchUpdated`] for when an `IncSearch` is updated.
 //!   - [`SearchPerformed`] for when an `IncSearch` is finished.
 //!
-//! And finally, there is the [`state`] module, which contains a bunch
-//! of [`StatusLine`] parts for you to customize the `StatusLine`
-//! with.
+//! There is the [`state`] module, which contains a bunch of
+//! [`StatusLine`] parts for you to customize the `StatusLine` with.
+//!
+//! And finally, `duat-base` also adds support for snippets.
 //!
 //! I would consider this crate essential for all `config`s of Duat
 //! out there, since it defines primitives that are not only hard to
@@ -113,13 +113,14 @@
 //! [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak
 //! [`SearchUpdated`]: hooks::SearchUpdated
 //! [`SearchPerformed`]: hooks::SearchPerformed
-//! [`Pager`]: modes::Pager
 //! [`LogBook`]: widgets::LogBook
 //! [`Completions`]: widgets::Completions
 //! [`CompletionsProvider`]: widgets::CompletionsProvider
 //! [`WhichKey`]: widgets::WhichKey
 //! [`Info`]: widgets::Info
 //! [`Gutter`]: widgets::Gutter
+//! [`Picker`]: widgets::Picker
+//! [`duatmode`]: https://docs.rs/duatmode
 use duat_core::{
     Ns,
     buffer::Buffer,
@@ -246,10 +247,7 @@ impl DuatBase {
 
             Ok(None)
         })
-        .doc(
-            txt!("Toggle the [a]Logs[] and enter [mode]Pager[] mode"),
-            None,
-        );
+        .doc(txt!("Toggle and focus on the [a]Logs[]"), None);
     }
 }
 

@@ -56,16 +56,6 @@ impl Tags<'_> {
     /// Insertion may fail if you try to push a `Tag` to a position or
     /// range which already has the exact same `Tag` with the exact
     /// same `Ns`.
-    ///
-    /// For some `Tag`s (like [`Inlay`]) can return an id (like
-    /// [`InlayId`]). This id can then be used in order to insert the
-    /// same `Tag`. In the [`Inlay`] example, that would print the
-    /// same ghost [`Text`] multiple times without needing to
-    /// pointlessly copy the [`Text`] for every time you want to
-    /// insert the same ghost.
-    ///
-    /// When the `Tag` doesn't return an id, it will return `Some(())`
-    /// if the `Tag` was successfully added, and `None` otherwise.
     #[track_caller]
     pub fn insert<Idx>(&mut self, ns: Ns, idx: Idx, tag: impl Tag<Idx>) {
         self.0.insert_inner(ns, idx, tag, false)
@@ -135,10 +125,7 @@ impl Tags<'_> {
 
     /// Like [`Tags::remove`], but removes base on a predicate
     ///
-    /// If the function returns `true`, then the tag is removed. Note
-    /// that every [`RawTag`] in here is guaranteed to have the same
-    /// [`Ns`] as the one passed to the function, so you don't
-    /// need to chack for that.
+    /// If the function returns `true`, then the tag is removed.
     #[track_caller]
     pub fn remove_if(
         &mut self,
@@ -391,7 +378,7 @@ impl InnerTags {
         }
     }
 
-    /// Removes every [`RawTag`] from a range that matches a given
+    /// Removes every [`TagPart`] from a range that matches a given
     /// predicate
     pub(super) fn remove_if(
         &mut self,
@@ -693,7 +680,7 @@ impl InnerTags {
         (self.tags_version, self.meta_tags_version)
     }
 
-    /// Returns true if there are no [`RawTag`]s
+    /// Returns true if there are no tags
     pub fn is_empty(&self) -> bool {
         self.list.is_empty()
     }

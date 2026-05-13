@@ -13,7 +13,6 @@
 //!   [`Handle<Buffer>`]. Its implementors are [`RwData<Buffer>`],
 //!   [`Handle<Buffer>`].
 //!
-//! [`Plugin`]: duat_core::Plugin
 //! [`filetype`]: FileType::filetype
 //! [`Buffer`]: duat_core::buffer::Buffer
 //! [`&str`]: str
@@ -23,6 +22,7 @@
 //! [`RwData<Buffer>`]: duat_core::data::RwData
 //! [hook]: duat_core::hook
 //! [`prelude`]: https://docs.rs/duat/latest/duat/prelude
+//! [`Plugin`]: https://docs.rs/crates/duat/latest/struct.Plugin.html
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},

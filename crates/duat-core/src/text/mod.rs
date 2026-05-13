@@ -102,7 +102,7 @@ pub use crate::{
         builder::{AsBuilderPart, Builder, BuilderPart},
         iter::{FwdIter, RevIter, TextPart, TextPlace},
         search::{Matches, RegexHaystack, RegexPattern},
-        strs::{Lines, Strs, StrsDoubleEndedSearcher, StrsPattern, StrsSearcher},
+        strs::{Lines, Strs, StrsDoubleEndedSearcher, StrsPattern, StrsSearcher, SearchStep},
         tags::{Conceal, FormTag, Inlay, Mask, Overlay, Spacer, Spawn, Tag, TagPart, Tags, Toggle},
         utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     },
@@ -520,7 +520,7 @@ impl Text {
     /// Like [`Text::remove_tags`], but removes base on a predicate.
     ///
     /// If the function returns `true`, then the tag is removed. Note
-    /// that every [`RawTag`] in here is guaranteed to have the same
+    /// that every [`TagPart`] in here is guaranteed to have the same
     /// [`Ns`] as the one passed to the function, so you don't
     /// need to chack for that.
     #[track_caller]
@@ -598,20 +598,18 @@ impl Text {
         self.0.tags.rev_at(b, lookaround)
     }
 
-    /// A forward [`Iterator`] over the [`RawTag`]s.
+    /// A forward [`Iterator`] over the [`TagPart`]s.
     ///
     /// This [`Iterator`] does not take into account [`Tag`] ranges
-    /// that intersect with the starting point, unlike
-    /// [`Text::tags_fwd`]
+    /// that intersect with the starting point.
     pub fn tag_parts_fwd(&self, b: usize) -> impl Iterator<Item = (usize, TagPart<'_>)> {
         self.0.tags.tag_parts_fwd(b)
     }
 
-    /// A reverse [`Iterator`] over the [`RawTag`]s.
+    /// A reverse [`Iterator`] over the [`TagPart`]s.
     ///
     /// This [`Iterator`] does not take into account [`Tag`] ranges
-    /// that intersect with the starting point, unlike
-    /// [`Text::tags_rev`]
+    /// that intersect with the starting point.
     pub fn tag_parts_rev(&self, b: usize) -> impl Iterator<Item = (usize, TagPart<'_>)> {
         self.0.tags.tag_parts_rev(b)
     }
@@ -889,7 +887,7 @@ impl<'t> TextMut<'t> {
     /// predicate.
     ///
     /// If the function returns `true`, then the tag is removed. Note
-    /// that every [`RawTag`] in here is guaranteed to have the same
+    /// that every [`TagPart`] in here is guaranteed to have the same
     /// [`Ns`] as the one passed to the function, so you don't
     /// need to chack for that.
     #[track_caller]
