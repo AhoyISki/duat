@@ -250,20 +250,17 @@ fn spawn_persistent(socket_dir: &'static Path, request: PersistentSpawnRequest) 
             read_output(stdout_stream.clone(), stdout, proc_id, &caller);
             read_output(stderr_stream.clone(), stderr, proc_id, &caller);
 
-            processes.insert(
-                proc_id,
-                Process {
-                    child,
-                    stdout_conn: Arc::new(Connector {
-                        listener: stdout_listener,
-                        stream: stdout_stream,
-                    }),
-                    stderr_conn: Arc::new(Connector {
-                        listener: stderr_listener,
-                        stream: stderr_stream,
-                    }),
-                },
-            );
+            processes.insert(proc_id, Process {
+                child,
+                stdout_conn: Arc::new(Connector {
+                    listener: stdout_listener,
+                    stream: stdout_stream,
+                }),
+                stderr_conn: Arc::new(Connector {
+                    listener: stderr_listener,
+                    stream: stderr_stream,
+                }),
+            });
         }
         Err(err) => send(MsgFromParent::SpawnResult(Err(err))).unwrap(),
     }

@@ -1991,7 +1991,7 @@ impl Strs {
 impl<Idx: TextRange> std::ops::Index<Idx> for Strs {
     type Output = Self;
 
-    #[track_caller]
+	#[track_caller]
     fn index(&self, index: Idx) -> &Self::Output {
         let formed = FormedStrs::new(self);
         let range = index.to_range(formed.len as usize);

@@ -1492,7 +1492,10 @@ pub(crate) fn add_default() {
                     default.on(c.panel).interpolate(default, 50),
                 ),
                 ("default.Completions", default.on(c.panel)),
-                ("selected.Completions", Form::new().with(c.bg).on(c.fg_idle)),
+                (
+                    "selected.Completions",
+                    Form::new().with(c.bg).on(c.fg_idle),
+                ),
                 ("default.WhichKey", default.with(c.fg)),
                 // For duatmode
                 ("cursor.main.Insert", Form::new().with(c.bg).on(c.constant)),

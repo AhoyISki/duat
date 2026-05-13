@@ -71,7 +71,7 @@ pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
 
     let new_name = duat_name::<M>();
     let old_name = std::mem::replace(context::mode_name().write(pa), new_name);
-
+    
     // Things that happen before the switch, in order to signal that a
     // switch has happened.
     *MODE_NAME.lock().unwrap() = std::any::type_name::<M>();

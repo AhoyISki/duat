@@ -135,11 +135,10 @@ impl WhichKey {
             area.set_width(size.x + 1.0).unwrap();
         }
 
-        let descs_handle = keys_handle.push_inner_widget(
-            pa,
-            descs,
-            PushSpecs { side: Side::Right, ..Default::default() },
-        );
+        let descs_handle = keys_handle.push_inner_widget(pa, descs, PushSpecs {
+            side: Side::Right,
+            ..Default::default()
+        });
         keys_handle.write(pa).1 = Some(descs_handle.clone());
 
         let (descs, area) = descs_handle.write_with_area(pa);

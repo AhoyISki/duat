@@ -263,13 +263,10 @@ impl StatusLineFmt {
         });
 
         let specs = self.specs;
-        let statusline = StatusLine::new(
-            self,
-            match push_target.try_downcast() {
-                Some(handle) => BufferHandle::Fixed(handle),
-                None => BufferHandle::Dynamic(context::dynamic_buffer(pa)),
-            },
-        );
+        let statusline = StatusLine::new(self, match push_target.try_downcast() {
+            Some(handle) => BufferHandle::Fixed(handle),
+            None => BufferHandle::Dynamic(context::dynamic_buffer(pa)),
+        });
 
         let checker = statusline.checker.clone();
         let statusline = push_target.push_outer(pa, statusline, specs);

@@ -19,7 +19,7 @@ use duat_core::{
     buffer::{Buffer, PerBuffer},
     context::Handle,
     data::Pass,
-    hook::{self, BufferClosed, BufferOpened},
+    hook::{self, BufferOpened, BufferClosed},
 };
 use gap_buf::GapBuffer;
 
