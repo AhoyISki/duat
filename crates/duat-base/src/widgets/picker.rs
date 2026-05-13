@@ -21,8 +21,6 @@ use duat_term::Frame;
 pub struct Picker {
     maps: Vec<(Range<usize>, Box<dyn Any + Send>)>,
     text: Text,
-    on_focus: Box<dyn FnMut(&mut Pass, &mut Box<dyn Any + Send>) + Send>,
-    on_selected: Box<dyn FnMut(&mut Pass, &mut Box<dyn Any + Send>) + Send>,
     current: usize,
 }
 
@@ -65,8 +63,6 @@ impl Picker {
         let picker = Picker {
             maps,
             text: builder.build(),
-            on_focus: Box::new(|_, _| {}),
-            on_selected: Box::new(|_, _| {}),
             current: 0,
         };
 
@@ -117,3 +113,4 @@ impl<S: AsRef<str>> BufferPlace<S> {
         }
     }
 }
+
