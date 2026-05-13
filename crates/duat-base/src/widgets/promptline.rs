@@ -117,7 +117,7 @@ impl Widget for PromptLine {
     }
 
     fn text_mut(&mut self) -> TextMut<'_> {
-        self.text.as_mut()
+        self.text.as_mut_with_strs_mutation()
     }
 
     fn print_opts(&self) -> PrintOpts {

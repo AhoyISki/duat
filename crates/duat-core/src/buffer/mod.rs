@@ -343,7 +343,7 @@ impl Buffer {
     /// This is the same as [`Widget::text_mut`], but doesn't need the
     /// [`Widget`] trait to be in scope.
     pub fn text_mut(&mut self) -> TextMut<'_> {
-        let mut text = self.text.as_mut();
+        let mut text = self.text.as_mut_with_strs_mutation();
         text.attach_history(&mut self.history);
         text
     }

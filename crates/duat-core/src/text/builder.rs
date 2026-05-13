@@ -224,6 +224,11 @@ impl Builder {
         }
     }
 
+    /// The length of the [`Text`] within.
+    pub fn len(&self) -> usize {
+        self.text.len()
+    }
+
     /// Pushes [`Text`] directly
     fn push_text(&mut self, text: &Text) {
         self.last_was_empty = text.is_empty();

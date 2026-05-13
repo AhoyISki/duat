@@ -405,7 +405,7 @@ pub(crate) fn add_default() {
                 // Used when typing arguments to commands.
                 ("param", Form::new().with(c.lavender)),
                 ("param.flag", Form::new().on(c.base).with(c.pink)),
-                ("snippet", Form::new().on(c.yellow)),
+                ("snippet", Form::new().with(c.base).on(c.yellow)),
                 // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.text)),
                 ("variable.builtin", Form::new().with(c.peach)),
@@ -601,7 +601,7 @@ pub(crate) fn add_default() {
                 ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
                 ("param.flag", Form::new().with(c.cyan)),
-                ("snippet", Form::new().on(c.yellow)),
+                ("snippet", Form::new().with(c.bg).on(c.yellow)),
                 // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.text)),
                 ("variable.builtin", Form::new().with(c.orange)),
@@ -778,7 +778,7 @@ pub(crate) fn add_default() {
                 ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
                 ("param.flag", Form::new().with(c.teal)),
-                ("snippet", Form::new().on(c.yellow)),
+                ("snippet", Form::new().with(c.bg).on(c.yellow)),
                 // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.text)),
                 ("variable.builtin", Form::new().with(c.orange)),
@@ -945,7 +945,7 @@ pub(crate) fn add_default() {
                 ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
                 ("param.flag", Form::new().with(c.teal)),
-                ("snippet", Form::new().on(c.yellow)),
+                ("snippet", Form::new().with(c.bg).on(c.yellow)),
                 // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.text)),
                 ("variable.builtin", Form::new().with(c.teal)),
@@ -1124,7 +1124,7 @@ pub(crate) fn add_default() {
                 ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
                 ("param.flag", Form::new().with(c.pink)),
-                ("snippet", Form::new().on(c.yellow)),
+                ("snippet", Form::new().with(c.bg).on(c.yellow)),
                 // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.fg)),
                 ("variable.builtin", Form::new().with(c.orange)),
@@ -1288,7 +1288,7 @@ pub(crate) fn add_default() {
                 ),
                 ("param", Form::new().with(c.nord15)),
                 ("param.flag", Form::new().with(c.nord8)),
-                ("snippet", Form::new().on(c.nord15)),
+                ("snippet", Form::new().with(c.nord0).on(c.nord15)),
                 // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.nord4)),
                 ("variable.builtin", Form::new().with(c.nord12)),
@@ -1502,7 +1502,7 @@ pub(crate) fn add_default() {
                 ("cursor.extra.Insert", Form::new().with(c.bg).on(c.operator)),
                 ("param", Form::new().with(c.constant)),
                 ("param.flag", Form::new().with(c.tag)),
-                ("snippet", Form::new().on(c.operator)),
+                ("snippet", Form::new().with(c.bg).on(c.operator)),
                 // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.fg)),
                 ("variable.builtin", Form::new().with(c.accent)),
@@ -1707,7 +1707,7 @@ pub(crate) fn add_default() {
                 ),
                 ("param", Form::new().with(c.oni_violet2)),
                 ("param.flag", Form::new().with(c.oni_violet2)),
-                ("snippet", Form::new().on(c.boat_yellow1)),
+                ("snippet", Form::new().with(c.sumi_ink3).on(c.boat_yellow1)),
                 // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.fuji_white)),
                 ("variable.builtin", Form::new().with(c.surimi_orange)),

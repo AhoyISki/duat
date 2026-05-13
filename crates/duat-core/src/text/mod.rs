@@ -229,12 +229,45 @@ impl Text {
     /// function is not supposed to allow the user to swap the
     /// [`Text`], which could break the history of the [`Buffer`].
     ///
-    /// For the `Buffer` specifically, it also attaches that `Buffer`
-    /// s `History` to it, which lets one undo and redo things.
+    /// For the `Buffer` specifically, it also attaches that
+    /// `Buffer`'s `History` to it, which lets one undo and redo
+    /// things.
+    ///
+    /// One thing to note is that, while this function lets others
+    /// change the [`Tag`]s and [`Selection`]s of this `Text`, it
+    /// doesn't let them change the `Strs` of it. This is in order to
+    /// prevent users from inadvertently breaking widgets, while still
+    /// letting them use them as if they were regular [`Buffer`]s.
+    ///
+    /// If you want to let them change the `Text`, which is something
+    /// you sometimes might want to do, for example for a `PromptLine`
+    /// widget, you can check out [`Text::as_mut_with_strs_mutation`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn as_mut(&mut self) -> TextMut<'_> {
-        TextMut { text: self, history: None }
+        TextMut {
+            text: self,
+            history: None,
+            allow_mutation: false,
+        }
+    }
+
+    /// Returns the [`TextMut`] of this `Text`, with [`Strs`] mutation
+    /// enabled.
+    ///
+    /// This function will return the same struct as [`Text::as_mut`],
+    /// with the exception that [`TextMut::replace_range`] will work
+    /// as expected.
+    ///
+    /// Use this if you want users to be able to change the `Strs` of
+    /// your [`Widget`]. Most of the time, you won't want to do that,
+    /// so you should use `Text::as_mut` instead.
+    pub fn as_mut_with_strs_mutation(&mut self) -> TextMut<'_> {
+        TextMut {
+            text: self,
+            history: None,
+            allow_mutation: true,
+        }
     }
 
     ////////// Tag related query functions
@@ -708,6 +741,7 @@ impl std::ops::Deref for Text {
 pub struct TextMut<'t> {
     text: &'t mut Text,
     history: Option<&'t mut History>,
+    allow_mutation: bool,
 }
 
 impl<'t> TextMut<'t> {
@@ -721,6 +755,10 @@ impl<'t> TextMut<'t> {
     /// [range]: TextRange
     #[track_caller]
     pub fn replace_range(&mut self, range: impl TextRange, edit: impl ToString) {
+        if !self.allow_mutation {
+            crate::warn!("This [a]TextMut[] has disabled mutation");
+        }
+
         let range = range.to_range(self.len());
         let (start, end) = (
             self.point_at_byte(range.start),
@@ -746,6 +784,23 @@ impl<'t> TextMut<'t> {
         let history = self.history.as_mut();
         let insertion_i = history.map(|h| h.apply_change(guess_i, change));
         (insertion_i, selections_taken)
+    }
+
+    /// Returns wether or not [`TextMut::replace_range`] is allowed.
+    ///
+    /// For the majority of `TextMut`s obtained via
+    /// [`Widget::text_mut`], you aren't allowed to change the content
+    /// of the `Text` via `replace_range`, only via [`Tag`]
+    /// addition/removal and [`Selection`] manipulation.
+    ///
+    /// This is to prevent breakage of the `Widget`s, which could rely
+    /// on the structure of the `Text` to function properly.
+    ///
+    /// This function simply tells you wether or not you are allowed
+    /// to call `replace_range`. If you aren't allowed, calling that
+    /// function will result in a warning sent to the logs.
+    pub fn can_replace_range(&self) -> bool {
+        self.allow_mutation
     }
 
     ////////// Functions for Tag modifications

@@ -125,6 +125,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     ///
     /// [`insert`]: Self::insert
     /// [`append`]: Self::append
+    #[track_caller]
     pub fn replace(&mut self, edit: impl ToString) {
         let change = {
             let edit = edit.to_string();
@@ -160,6 +161,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     ///
     /// [`replace`]: Self::replace
     /// [`append`]: Self::append
+    #[track_caller]
     pub fn insert(&mut self, edit: impl ToString) {
         let cursor_point = sel!(self).cursor();
         let range = cursor_point..cursor_point;
@@ -188,6 +190,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     ///
     /// [`replace`]: Self::replace
     /// [`insert`]: Self::insert
+    #[track_caller]
     pub fn append(&mut self, edit: impl ToString) {
         let cursor = sel!(self).cursor();
         let after = cursor.fwd(self.widget.text().char_at(cursor).unwrap());
@@ -207,6 +210,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     }
 
     /// Edits the buffer with a [`Change`].
+    #[track_caller]
     fn edit(&mut self, change: Change<'static, String>) {
         let mut text = self.widget.text_mut();
         let (change_i, selections_taken) =

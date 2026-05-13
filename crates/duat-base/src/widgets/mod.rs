@@ -43,6 +43,7 @@ pub use self::{
     promptline::{PromptLine, PromptLineBuilder},
     statusline::{State, StatusLine, StatusLineFmt, status},
     whichkey::WhichKey,
+    picker::{Picker, BufferPlace},
 };
 
 mod completions;
@@ -51,7 +52,7 @@ mod info;
 mod linenumbers;
 mod logbook;
 mod notifications;
-mod places;
+mod picker;
 mod promptline;
 mod statusline;
 mod whichkey;
