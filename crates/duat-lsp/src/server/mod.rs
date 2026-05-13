@@ -252,13 +252,16 @@ fn defer_store(server: &Server) {
     hook::add::<ConfigUnloaded>(move |pa, is_quitting| {
         if !is_quitting
             && let Some(init_parts) = server.init_parts.get()
-            && let Ok(_) = storage::store(pa, ServerParts {
-                capabilities: init_parts.capabilities.clone(),
-                info: init_parts.info.clone(),
-                offset_encoding: init_parts.offset_encoding.clone(),
-                roots: server.roots.lock().unwrap().clone(),
-                bridge: server.bridge.clone(),
-            })
+            && let Ok(_) = storage::store(
+                pa,
+                ServerParts {
+                    capabilities: init_parts.capabilities.clone(),
+                    info: init_parts.info.clone(),
+                    offset_encoding: init_parts.offset_encoding.clone(),
+                    roots: server.roots.lock().unwrap().clone(),
+                    bridge: server.bridge.clone(),
+                },
+            )
         {
         } else {
             server.bridge.send_request::<Shutdown>((), |_, _| {});

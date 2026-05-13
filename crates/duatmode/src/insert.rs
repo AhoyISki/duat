@@ -181,13 +181,17 @@ impl Mode for Insert {
             }
 
             // Snippet commands
-            ctrl!('l') if let Some(widget) = widget.get_as() => {
-                widget.jump_snippets(pa, 0);
-                widget.edit_all(pa, |mut s| s.replace(""));
+            ctrl!('l') => {
+                if let Some(widget) = widget.get_as() {
+                    widget.jump_snippets(pa, 0);
+                    widget.edit_all(pa, |mut s| s.replace(""));
+                }
             }
-            ctrl!('h') if let Some(widget) = widget.get_as() => {
-                widget.jump_snippets(pa, -1);
-                widget.edit_all(pa, |mut s| s.replace(""));
+            ctrl!('h') => {
+                if let Some(widget) = widget.get_as() {
+                    widget.jump_snippets(pa, -1);
+                    widget.edit_all(pa, |mut s| s.replace(""));
+                }
             }
 
             // Regular commands

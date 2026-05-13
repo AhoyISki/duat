@@ -298,11 +298,10 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
         ("vala", &[SLASH_ASTERISK, ASTERISK, SLASHES]),
         ("vera", &[SLASH_ASTERISK, ASTERISK, SLASHES]),
         ("verilog", &[SLASH_ASTERISK, ASTERISK, SLASHES]),
-        ("verilog_systemverilog", &[
-            SLASH_ASTERISK,
-            ASTERISK,
-            SLASHES,
-        ]),
+        (
+            "verilog_systemverilog",
+            &[SLASH_ASTERISK, ASTERISK, SLASHES],
+        ),
         ("sass", &[SLASH_ASTERISK, ASTERISK, SLASHES]),
         ("asciidoc", &[SLASHES]),
         ("ats", &[SLASHES]),
@@ -320,13 +319,16 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
         ("xkb", &[SLASHES]),
         ("s", &[SLASH_ASTERISK, ASTERISK, DOC_SLASHES, SLASHES]),
         ("cpp", &[SLASH_ASTERISK, ASTERISK, DOC_SLASHES, SLASHES]),
-        ("rust", &[
-            SLASH_ASTERISK,
-            ASTERISK,
-            DOC_SLASHES,
-            INNER_DOC_SLASHES,
-            SLASHES,
-        ]),
+        (
+            "rust",
+            &[
+                SLASH_ASTERISK,
+                ASTERISK,
+                DOC_SLASHES,
+                INNER_DOC_SLASHES,
+                SLASHES,
+            ],
+        ),
         ("zig", &[DOC_SLASHES, INNER_DOC_SLASHES, SLASHES]),
         ("spectre", &[SLASHES, const { pf(r"^\s*\*", "*", None) }]),
         ("emblem", &[const { pf(r"^\s*/", "/", None) }]),
@@ -475,10 +477,10 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
         ("vasp", &[EXCLAMATION]),
         ("xdefaults", &[EXCLAMATION]),
         ("xpm2", &[EXCLAMATION]),
-        ("factor", &[
-            EXCLAMATION,
-            const { pf(r"^\s*!#", "!#", None) },
-        ]),
+        (
+            "factor",
+            &[EXCLAMATION, const { pf(r"^\s*!#", "!#", None) }],
+        ),
         // Dollar sign group
         ("master", &[DOLLAR_SIGN]),
         ("nastran", &[DOLLAR_SIGN]),

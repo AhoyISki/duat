@@ -2,7 +2,8 @@ use duat_core::{
     cmd,
     context::{self, Handle},
     data::Pass,
-    mode::{self, KeyEvent, event}, ui::Widget,
+    mode::{self, KeyEvent, event},
+    ui::Widget,
 };
 
 use crate::{

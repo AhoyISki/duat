@@ -430,7 +430,7 @@ impl<T: ?Sized> RwData<T> {
     pub fn declare_unwritten(&self) {
         _ = self
             .cur_state
-            .try_update(Relaxed, Relaxed, |old| old.checked_sub(1));
+            .fetch_update(Relaxed, Relaxed, |old| old.checked_sub(1));
     }
 
     ////////// Mapping of the inner value

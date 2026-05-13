@@ -190,9 +190,12 @@ impl Mode for Normal {
             event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
             alt!('o' | 'O') => txt!("Add new line {below}"),
             event!('.') => txt!("Repeats the last [mode]Insert[] command"),
-            event!('r') => (txt!("Replace range"), match _ {
-                event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
-            }),
+            event!('r') => (
+                txt!("Replace range"),
+                match _ {
+                    event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
+                }
+            ),
             event!('`') => txt!("Lowercase the selection"),
             event!('~') => txt!("Uppercase the selection"),
             alt!('`') => txt!("Swap case of selection"),
@@ -1187,9 +1190,15 @@ impl Mode for Normal {
             }
 
             ////////// Jumping around
-            ctrl!('o') if let Some(buffer) = widget.get_as() => jump_list::jump_by(pa, &buffer, -1),
-            ctrl!('i') | event!(Tab) if let Some(buffer) = widget.get_as() => {
-                jump_list::jump_by(pa, &buffer, 1)
+            ctrl!('o') => {
+                if let Some(buffer) = widget.get_as() {
+                    jump_list::jump_by(pa, &buffer, -1);
+                }
+            }
+            ctrl!('i') | event!(Tab) => {
+                if let Some(buffer) = widget.get_as() {
+                    jump_list::jump_by(pa, &buffer, 1);
+                }
             }
 
             ////////// Other mode changing keys
@@ -1228,8 +1237,16 @@ impl Mode for Normal {
             ctrl!('r') => _ = duat_core::cmd::call_notify(pa, "reload"),
 
             ////////// Snippets
-            ctrl!('l') if let Some(buffer) = widget.get_as() => _ = buffer.jump_snippets(pa, 1),
-            ctrl!('h') if let Some(buffer) = widget.get_as() => _ = buffer.jump_snippets(pa, -1),
+            ctrl!('l') => {
+                if let Some(buffer) = widget.get_as() {
+                    _ = buffer.jump_snippets(pa, 1);
+                }
+            }
+            ctrl!('h') => {
+                if let Some(buffer) = widget.get_as() {
+                    _ = buffer.jump_snippets(pa, -1);
+                }
+            }
             _ => {}
         }
 

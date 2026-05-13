@@ -1062,22 +1062,22 @@ impl Frame {
         }
 
         let corners = [
-            (above && right).then_some((Coord::new(coords.br.x, coords.tl.y - 1), [
-                Side::Above,
-                Side::Right,
-            ])),
-            (below && right).then_some((Coord::new(coords.br.x, coords.br.y), [
-                Side::Below,
-                Side::Right,
-            ])),
-            (below && left).then_some((Coord::new(coords.tl.x - 1, coords.br.y), [
-                Side::Below,
-                Side::Left,
-            ])),
-            (above && left).then_some((Coord::new(coords.tl.x - 1, coords.tl.y - 1), [
-                Side::Above,
-                Side::Left,
-            ])),
+            (above && right).then_some((
+                Coord::new(coords.br.x, coords.tl.y - 1),
+                [Side::Above, Side::Right],
+            )),
+            (below && right).then_some((
+                Coord::new(coords.br.x, coords.br.y),
+                [Side::Below, Side::Right],
+            )),
+            (below && left).then_some((
+                Coord::new(coords.tl.x - 1, coords.br.y),
+                [Side::Below, Side::Left],
+            )),
+            (above && left).then_some((
+                Coord::new(coords.tl.x - 1, coords.tl.y - 1),
+                [Side::Above, Side::Left],
+            )),
         ];
 
         for (coord, sides) in corners.into_iter().flatten() {

@@ -209,13 +209,17 @@ pub fn setup_hooks() {
                 });
             }
 
-			let version = text.version().strs;
-			
-            let (parser, buf) = PARSERS.register(pa, buffer, Parser {
-                uri,
-                servers: servers.clone(),
-                tokens: BufferTokens::default(),
-            });
+            let version = text.version().strs;
+
+            let (parser, buf) = PARSERS.register(
+                pa,
+                buffer,
+                Parser {
+                    uri,
+                    servers: servers.clone(),
+                    tokens: BufferTokens::default(),
+                },
+            );
 
             for server in &servers {
                 server.send_semantic_tokens_request(buffer, version, parser);

@@ -88,9 +88,11 @@ impl StrsBuf {
         };
 
         if crate::utils::catch_panic(|| {
-        self.line_ranges
-            .transform(start_rec, old_len, new_len, array);
-        }).is_none() {
+            self.line_ranges
+                .transform(start_rec, old_len, new_len, array);
+        })
+        .is_none()
+        {
             crate::debug!("{start_rec:?}, {old_len:?}, {new_len:?}, {change:#?}, {self:#?}");
         };
     }

@@ -139,20 +139,26 @@ impl Node {
 
                     let points = handle.area().points_at_coord(pa, text, event.coord, opts);
 
-                    hook::trigger(pa, OnMouseEvent {
-                        handle: dyn_handle.clone(),
-                        points,
-                        coord: event.coord,
-                        kind: event.kind,
-                        modifiers: event.modifiers,
-                    });
-                    hook::trigger(pa, OnMouseEvent {
-                        handle: handle.clone(),
-                        points,
-                        coord: event.coord,
-                        kind: event.kind,
-                        modifiers: event.modifiers,
-                    });
+                    hook::trigger(
+                        pa,
+                        OnMouseEvent {
+                            handle: dyn_handle.clone(),
+                            points,
+                            coord: event.coord,
+                            kind: event.kind,
+                            modifiers: event.modifiers,
+                        },
+                    );
+                    hook::trigger(
+                        pa,
+                        OnMouseEvent {
+                            handle: handle.clone(),
+                            points,
+                            coord: event.coord,
+                            kind: event.kind,
+                            modifiers: event.modifiers,
+                        },
+                    );
 
                     if let Some(TwoPointsPlace::Within(points)) = points {
                         let event = ToggleEvent {

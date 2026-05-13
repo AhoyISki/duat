@@ -192,12 +192,15 @@ fn update_counts(pa: &mut Pass, buffer: &Handle, ns: Ns) {
             (Some(info), false) => info.count += 1,
             (None, false) => {
                 let upper = word.to_uppercase().into();
-                buffer_words.insert(word.into(), WordInfo {
-                    word: word.to_string(),
-                    source: source.clone(),
-                    count: 1,
-                    upper,
-                });
+                buffer_words.insert(
+                    word.into(),
+                    WordInfo {
+                        word: word.to_string(),
+                        source: source.clone(),
+                        count: 1,
+                        upper,
+                    },
+                );
             }
             (Some(info), true) if info.count > 1 => info.count -= 1,
             (Some(_), true) => {

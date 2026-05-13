@@ -70,10 +70,13 @@ impl LineRanges {
             [start[0].saturating_sub(s0.len())..(start[0] + new_len[0]).saturating_sub(s0.len())];
         let s0 = &s0[start[0].min(s0.len())..(start[0] + new_len[0]).min(s0.len())];
 
-        line_ranges.shift_by(start[2] + 1, [
-            new_len[0] as i32 - old_len[0] as i32,
-            new_len[1] as i32 - old_len[1] as i32,
-        ]);
+        line_ranges.shift_by(
+            start[2] + 1,
+            [
+                new_len[0] as i32 - old_len[0] as i32,
+                new_len[1] as i32 - old_len[1] as i32,
+            ],
+        );
 
         let [mut b, mut s, mut l] = start;
         for char in s0.chars().chain(s1.chars()) {

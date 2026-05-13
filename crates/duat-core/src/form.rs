@@ -18,22 +18,31 @@ static BASE_FORMS: &[(&str, Form)] = &[
     ("default", Form::new()),
     ("accent", Form::new().bold()),
     ("cursor.main", Form::new().reverse()),
-    ("cursor.extra", Form {
-        kind: Ref(2, default_style()),
-        ..Form::new().reverse()
-    }),
+    (
+        "cursor.extra",
+        Form {
+            kind: Ref(2, default_style()),
+            ..Form::new().reverse()
+        },
+    ),
     ("selection.main", Form::new().white().on_dark_grey()),
     ("selection.extra", Form::new().white().on_grey()),
     ("cloak", Form::new().grey().on_black()),
     ("character.control", Form::new().grey()),
     ("param.path", Form::new().yellow()),
-    ("param.path.exists", Form {
-        kind: Ref(8, ContentStyle {
-            attributes: Attributes::none().with(Attribute::Underlined),
-            ..default_style()
-        }),
-        ..Form::new().yellow().underlined()
-    }),
+    (
+        "param.path.exists",
+        Form {
+            kind: Ref(
+                8,
+                ContentStyle {
+                    attributes: Attributes::none().with(Attribute::Underlined),
+                    ..default_style()
+                },
+            ),
+            ..Form::new().yellow().underlined()
+        },
+    ),
     ("replace", Form::new().grey()),
 ];
 
