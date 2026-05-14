@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-992a84d6.js";
+            window.path_to_searchindex_js = "searchindex-60616fce.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-74f781a9.js"></script>
@@ -1733,7 +1733,7 @@ fn test&lt;W: Widget&gt;(pa: &amp;mut Pass, handle: &amp;Handle&lt;W&gt;) {
     let (widget, area): (&amp;mut W, &amp;mut Area) = handle.write_with_area(pa);
 
     area.set_height(10.0).unwrap();
-    widget.text_mut().replace_range(.., "lmao");
+    handle.text_mut(pa).replace_range(.., "lmao");
 }</code></pre>
 <p>If required, you can also access the unerased version of the <code>Area</code> by calling
 <code>RwArea::write_as</code> or <code>RwArea::read_as</code>, which takes in a type argument <code>A</code> and
