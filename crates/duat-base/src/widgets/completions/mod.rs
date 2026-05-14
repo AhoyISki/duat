@@ -21,7 +21,7 @@ use std::{
 use duat_core::{
     Ns,
     cmd::{
-        CfgOrManifest, ColorSchemeArg, Existing, OtherBuffer, Parameter, ReloadOptions,
+        CfgOrScratch, ColorSchemeArg, Existing, OtherBuffer, Parameter, ReloadOptions,
         ValidFilePath,
     },
     context::{self, Handle},
@@ -92,8 +92,8 @@ pub fn completions_setup() {
         builder.with_provider(["--existing"])
     });
 
-    Completions::set_for_parameter::<CfgOrManifest>(30, |_, builder| {
-        builder.with_provider(["--cfg", "--cfg-manifest"])
+    Completions::set_for_parameter::<CfgOrScratch>(30, |_, builder| {
+        builder.with_provider(["--cfg", "--cfg-manifest", "--scratch"])
     });
 
     Completions::set_for_parameter::<ReloadOptions>(50, |_, builder| {

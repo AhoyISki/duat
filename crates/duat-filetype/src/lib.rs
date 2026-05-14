@@ -25,7 +25,6 @@
 //! [`Plugin`]: https://docs.rs/crates/duat/latest/struct.Plugin.html
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
     sync::{LazyLock, Mutex},
 };
 

@@ -584,6 +584,7 @@ pub enum PathOrBufferOrCfg {
     Buffer(Handle),
     Cfg,
     CfgManifest,
+    Scratch,
 }
 
 impl Parameter for PathOrBufferOrCfg {
@@ -597,14 +598,15 @@ impl Parameter for PathOrBufferOrCfg {
 
         let _guard = DropGuard;
 
-        args.use_completions_for::<CfgOrManifest>();
+        args.use_completions_for::<CfgOrScratch>();
         args.use_completions_for::<Handle>();
         args.use_completions_for::<ValidFilePath>();
 
-        if let Ok((cfg_or_manifest, form)) = args.next_as_with_form::<CfgOrManifest>(pa) {
+        if let Ok((cfg_or_manifest, form)) = args.next_as_with_form::<CfgOrScratch>(pa) {
             match cfg_or_manifest {
-                CfgOrManifest::Cfg => Ok((Self::Cfg, form)),
-                CfgOrManifest::Manifest => Ok((Self::CfgManifest, form)),
+                CfgOrScratch::Cfg => Ok((Self::Cfg, form)),
+                CfgOrScratch::Manifest => Ok((Self::CfgManifest, form)),
+                CfgOrScratch::Scratch => Ok((Self::Scratch, form)),
             }
         } else if let Ok((handle, form)) = args.next_as_with_form::<Handle>(pa) {
             Ok((Self::Buffer(handle), form))
@@ -655,19 +657,22 @@ impl Parameter for Existing {
 ///
 /// This is a quick shorthand to get `{duat_config}/src/main.rs` or
 /// `{duat_config}/Cargo.toml`, respectively
-pub enum CfgOrManifest {
+pub enum CfgOrScratch {
     /// Represents `{duat_config}/src/main.rs`
     Cfg,
     /// Represents `{duat_config}/Cargo.toml`
     Manifest,
+    /// Represents a scratch buffer.
+    Scratch
 }
 
-impl Parameter for CfgOrManifest {
+impl Parameter for CfgOrScratch {
     fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         if let Ok((flag, form)) = args.next_as_with_form::<Flag>(pa)
             && let Some(ret) = match flag.as_word()?.as_str() {
                 "cfg" => Some((Self::Cfg, form)),
                 "cfg-manifest" => Some((Self::Manifest, form)),
+                "scratch" => Some((Self::Scratch, form)),
                 _ => None,
             }
         {

@@ -323,6 +323,7 @@ pub fn add_defalt_commands() {
                     mode::reset_to(pa, &buffer);
                     return Ok(Some(txt!("Switched to {}", buffer.read(pa).name())));
                 }
+                PathOrBufferOrCfg::Scratch => PathKind::new_unset(),
             };
 
             let buffer = if let Some(buffer) = context::buffers(pa)
@@ -331,7 +332,7 @@ pub fn add_defalt_commands() {
             {
                 buffer.to_dyn()
             } else {
-                let buffer = Buffer::new(pk.as_path(), *session::BUFFER_OPTS.get().unwrap());
+                let buffer = Buffer::new(pk.clone(), *session::BUFFER_OPTS.get().unwrap());
                 windows.new_buffer(pa, buffer).handle().clone()
             };
 
@@ -372,6 +373,7 @@ pub fn add_defalt_commands() {
                     PathKind::from(crate::utils::crate_dir()?.join("Cargo.toml")),
                     None,
                 ),
+                Some(PathOrBufferOrCfg::Scratch) => (PathKind::new_unset(), None),
                 Some(PathOrBufferOrCfg::Path(path)) => (PathKind::from(path), None),
                 Some(PathOrBufferOrCfg::Buffer(buffer)) => {
                     let pk = buffer.read(pa).path_kind();

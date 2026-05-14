@@ -513,7 +513,7 @@ impl Windows {
             // The Handle in question is already in its own window, so no need
             // to move it to another one.
             Ok((.., handle)) => Node::from_handle(handle),
-            Err(_) => self.new_window(pa, Buffer::new(pk.as_path(), default_buffer_opts)),
+            Err(_) => self.new_window(pa, Buffer::new(pk.clone(), default_buffer_opts)),
         };
 
         if context::current_buffer(pa).read(pa).path_kind() != pk {

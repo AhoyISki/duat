@@ -67,7 +67,7 @@ impl Mode for Lsp {
 
         match key_event {
             event!('f') => buffer.lsp_format(pa, None),
-            event!('h') if let Some(servers) = server::get_servers_for(&buffer.read(pa)) => {
+            event!('h') if let Some(servers) = server::get_servers_for(buffer.read(pa)) => {
                 for server in servers {
                     let Some(capabilities) = server.capabilities() else {
                         continue;

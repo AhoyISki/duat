@@ -297,7 +297,7 @@ pub fn setup_hooks() {
     });
 
     hook::add::<BufferClosed>(|pa, (buffer, is_reloading)| {
-        if is_reloading {
+        if is_reloading || PARSERS.write(pa, buffer).is_none() {
             return;
         }
 

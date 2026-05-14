@@ -117,9 +117,9 @@ pub struct Buffer {
 
 impl Buffer {
     /// Returns a new [`Buffer`], private for now.
-    pub(crate) fn new(path: Option<PathBuf>, opts: BufferOpts) -> Self {
-        let (text, path) = match path {
-            Some(path) => {
+    pub(crate) fn new(path_kind: PathKind, opts: BufferOpts) -> Self {
+        let (text, path) = match path_kind {
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
                 let canon_path = path.canonicalize();
                 if let Ok(path) = &canon_path
                     && let Ok(buffer) = std::fs::read_to_string(path)
@@ -142,7 +142,7 @@ impl Buffer {
                     (Text::with_default_main_selection(), PathKind::new_unset())
                 }
             }
-            None => (Text::with_default_main_selection(), PathKind::new_unset()),
+            pk @ PathKind::NotSet(..) => (Text::with_default_main_selection(), pk),
         };
 
         let history = History::new(&text);
@@ -667,7 +667,6 @@ impl PathKind {
     pub(crate) fn new_unset() -> PathKind {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static UNSET_COUNT: AtomicUsize = AtomicUsize::new(1);
-
         PathKind::NotSet(UNSET_COUNT.fetch_add(1, Ordering::Relaxed))
     }
 

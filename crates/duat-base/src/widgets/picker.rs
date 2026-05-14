@@ -103,7 +103,7 @@ pub struct BufferPlace<S: AsRef<str>> {
 }
 
 impl<S: AsRef<str>> BufferPlace<S> {
-    /// Creates a `BufferPlace<String>` from this `BufferPlace`. 
+    /// Creates a `BufferPlace<String>` from this `BufferPlace`.
     pub fn to_string_location(&self) -> BufferPlace<String> {
         BufferPlace {
             path: self.path.as_ref().to_string(),
@@ -112,5 +112,4 @@ impl<S: AsRef<str>> BufferPlace<S> {
     }
 }
 
-enum PreviewMode {
-}
+enum PreviewMode {}
