@@ -6,3 +6,4 @@ book/book/
 
 # for `direnv` users
 .envrc
+.direnv/
