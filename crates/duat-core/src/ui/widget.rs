@@ -49,7 +49,7 @@ use crate::{
     mode::{ToggleEvent, TwoPointsPlace},
     opts::PrintOpts,
     session::UiMouseEvent,
-    text::{Text, TextMut},
+    text::{Text, TextId, TextMut, TextVersion},
     ui::{PrintInfo, RwArea, SpawnId},
 };
 
@@ -112,6 +112,7 @@ pub(crate) struct Node {
     print: Arc<dyn Fn(&mut Pass) + Send + Sync>,
     on_mouse_event: Arc<dyn Fn(&mut Pass, UiMouseEvent) + Send + Sync>,
     on_close: fn(&mut Pass, &Handle<dyn Widget>),
+    last_printed: RwData<Option<(TextVersion, TextId)>>,
 }
 
 impl Node {
@@ -163,20 +164,26 @@ impl Node {
 
                     let points = handle.area().points_at_coord(pa, text, event.coord, opts);
 
-                    hook::trigger(pa, OnMouseEvent {
-                        handle: dyn_handle.clone(),
-                        points,
-                        coord: event.coord,
-                        kind: event.kind,
-                        modifiers: event.modifiers,
-                    });
-                    hook::trigger(pa, OnMouseEvent {
-                        handle: handle.clone(),
-                        points,
-                        coord: event.coord,
-                        kind: event.kind,
-                        modifiers: event.modifiers,
-                    });
+                    hook::trigger(
+                        pa,
+                        OnMouseEvent {
+                            handle: dyn_handle.clone(),
+                            points,
+                            coord: event.coord,
+                            kind: event.kind,
+                            modifiers: event.modifiers,
+                        },
+                    );
+                    hook::trigger(
+                        pa,
+                        OnMouseEvent {
+                            handle: handle.clone(),
+                            points,
+                            coord: event.coord,
+                            kind: event.kind,
+                            modifiers: event.modifiers,
+                        },
+                    );
 
                     if let Some(TwoPointsPlace::Within(points)) = points {
                         let event = ToggleEvent {
@@ -201,6 +208,7 @@ impl Node {
             } else {
                 |pa, handle| _ = hook::trigger(pa, WidgetClosed(handle.get_as::<W>().unwrap()))
             },
+            last_printed: RwData::new(None),
         }
     }
 
@@ -244,9 +252,16 @@ impl Node {
 
     /// Wether this [`Widget`] needs to be updated
     pub(crate) fn needs_update(&self, pa: &Pass) -> bool {
-        self.handle.update_requested.load(Ordering::Relaxed)
-            || self.handle.widget().has_changed()
-            || self.handle.area.has_changed(pa)
+        if let Some(last_printed) = self.last_printed.read(pa) {
+            let text = self.handle.text(pa);
+            let new = (text.version(), text.id());
+            *last_printed != new
+                || self.handle.update_requested.load(Ordering::Relaxed)
+                || self.handle.widget().has_changed()
+                || self.handle.area.has_changed(pa)
+        } else {
+            true
+        }
     }
 
     ////////// Eventful functions
@@ -276,6 +291,10 @@ impl Node {
 
         self.handle.declare_as_read();
         self.handle.area().0.declare_as_read();
+
+        let text = self.handle.text(pa);
+        let new_version_printed = (text.version(), text.id());
+        *self.last_printed.write(pa) = Some(new_version_printed);
     }
 
     pub(crate) fn on_mouse_event(&self, pa: &mut Pass, mouse_event: UiMouseEvent) {

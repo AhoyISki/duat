@@ -100,9 +100,10 @@ use crate::{
 pub use crate::{
     text::{
         builder::{AsBuilderPart, Builder, BuilderPart},
+        id::TextId,
         iter::{FwdIter, RevIter, TextPart, TextPlace},
         search::{Matches, RegexHaystack, RegexPattern},
-        strs::{Lines, Strs, StrsDoubleEndedSearcher, StrsPattern, StrsSearcher, SearchStep},
+        strs::{Lines, SearchStep, Strs, StrsDoubleEndedSearcher, StrsPattern, StrsSearcher},
         tags::{Conceal, FormTag, Inlay, Mask, Overlay, Spacer, Spawn, Tag, TagPart, Tags, Toggle},
         utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     },
@@ -135,6 +136,7 @@ struct InnerText {
     buf: StrsBuf,
     tags: InnerTags,
     selections: Selections,
+    id: TextId,
 }
 
 impl Text {
@@ -176,7 +178,12 @@ impl Text {
             buf.apply_change(Change::str_insert("\n", buf.end_point()));
         }
 
-        Self(Box::new(InnerText { buf, tags, selections }))
+        Self(Box::new(InnerText {
+            buf,
+            tags,
+            selections,
+            id: TextId::new(),
+        }))
     }
 
     /// Returns a [`Builder`] for [`Text`].
@@ -686,6 +693,14 @@ impl Text {
         }
     }
 
+    /// A unique identifier for this `Text`.
+    ///
+    /// Use this if you want to check if a `Text` was swapped out with
+    /// another one.
+    pub fn id(&self) -> TextId {
+        self.0.id
+    }
+
     /////////// Internal functions
 
     /// Prepares the `Text` for reloading, to be used on [`Buffer`]s.
@@ -1164,3 +1179,20 @@ implPartialEq!(text: Text, other: TextMut<'_>, *text == other.text);
 implPartialEq!(str: &str, text_mut: TextMut<'_>, text_mut.text.0.buf == **str);
 implPartialEq!(str: str, text_mut: TextMut<'_>, text_mut.text.0.buf == *str);
 implPartialEq!(str: String, text_mut: TextMut<'_>, text_mut.text.0.buf == **str);
+
+mod id {
+    use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
+
+    /// An identifier for `Text`, used for checking if things need
+    /// reprinting.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub struct TextId(u64);
+
+    impl TextId {
+        /// Returns a new `TextId`.
+        pub(super) fn new() -> Self {
+            static COUNT: AtomicU64 = AtomicU64::new(0);
+            Self(COUNT.fetch_add(1, Relaxed))
+        }
+    }
+}
