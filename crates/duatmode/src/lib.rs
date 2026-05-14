@@ -631,7 +631,8 @@ pub mod opts {
         ///
         /// [`Buffer`]: duat_core::buffer::Buffer
         pub f_and_t_set_search: bool,
-        /// Wether `<a-j>` should remove the indentation of joined lines.
+        /// Wether `<a-j>` should remove the indentation of joined
+        /// lines.
         ///
         /// The default is `true`
         pub remove_joined_line_indent: bool,
@@ -1142,7 +1143,7 @@ fn escaped_str(str: impl ToString) -> String {
 static SEARCH: Mutex<String> = Mutex::new(String::new());
 
 fn indents(pa: &mut Pass, widget: &Handle<dyn Widget>) -> (std::vec::IntoIter<usize>, bool) {
-    fn prev_non_empty_line(s: &mut SelectionMut<'_, dyn Widget>) -> Option<usize> {
+    fn prev_non_empty_line(s: &mut SelectionMut) -> Option<usize> {
         let line_start = s.text().point_at_coords(s.cursor().line(), 0);
 
         s.text()[..line_start]

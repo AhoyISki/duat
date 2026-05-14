@@ -5,7 +5,7 @@
 //! sequences, be them maps or aliases.
 use duat_core::{
     context::{self, Handle},
-    data::Pass,
+    data::{Pass, RwData},
     hook::{self, KeyTyped, ModeSwitched, OnMouseEvent},
     mode::{self, Description, MouseEventKind},
     text::{Text, TextMut, txt},
@@ -142,7 +142,7 @@ impl WhichKey {
         keys_handle.write(pa).1 = Some(descs_handle.clone());
 
         let (descs, area) = descs_handle.write_with_area(pa);
-        if let Ok(size) = area.size_of_text(descs.print_opts(), descs.text()) {
+        if let Ok(size) = area.size_of_text(descs.print_opts(), &descs.0) {
             area.set_width(size.x).unwrap();
         }
 
@@ -160,26 +160,31 @@ impl WhichKey {
             _ = descs_handle.close(pa);
         });
     }
+
+    /// The [`Text`] of the [`WhichKey`]s.
+    pub fn text(&self) -> &Text {
+        &self.0
+    }
 }
 
 impl Widget for WhichKey {
-    fn text(&self) -> &Text {
-        &self.0
+    fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text {
+        &widget.read(pa).0
     }
 
-    fn text_mut(&mut self) -> TextMut<'_> {
-        self.0.as_mut()
+    fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+        widget.write(pa).0.as_mut()
     }
 }
 
 struct WhichKeyDescriptions(Text, Option<Handle<WhichKey>>);
 
 impl Widget for WhichKeyDescriptions {
-    fn text(&self) -> &Text {
-        &self.0
+    fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text {
+        &widget.read(pa).0
     }
 
-    fn text_mut(&mut self) -> TextMut<'_> {
-        self.0.as_mut()
+    fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+        widget.write(pa).0.as_mut()
     }
 }

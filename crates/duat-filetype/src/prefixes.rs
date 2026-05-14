@@ -1,12 +1,11 @@
 //! Prefix autocompletion for various filetypes.
 //!
 //! This module provides the [`AutoPrefix`] trait, which lets
-//! [`SelectionMut`]s add prefixes (e.g. comments, list headings, etc).
+//! [`SelectionMut`]s add prefixes (e.g. comments, list headings,
+//! etc).
 use std::{collections::HashMap, sync::LazyLock};
 
-use duat_core::{buffer::Buffer, mode::SelectionMut, text::RegexHaystack};
-
-use super::FileType;
+use duat_core::{mode::SelectionMut, text::RegexHaystack};
 
 /// Trait to add the comment prefix of the previous line.
 pub trait AutoPrefix {
@@ -17,18 +16,16 @@ pub trait AutoPrefix {
     /// taken into account.
     ///
     /// Returns `true` if the line was commented.
-    fn add_comment(&mut self) -> bool;
+    fn add_comment(&mut self, filetype: &str) -> bool;
 }
 
-impl AutoPrefix for SelectionMut<'_, Buffer> {
-    fn add_comment(&mut self) -> bool {
+impl AutoPrefix for SelectionMut<'_, '_> {
+    fn add_comment(&mut self, filetype: &str) -> bool {
         let Some(prev_lnum) = self.cursor().line().checked_sub(1) else {
             return false;
         };
 
-        if let Some(filetype) = self.filetype()
-            && let Some(prefixes) = PREFIXES.get(filetype)
-        {
+        if let Some(prefixes) = PREFIXES.get(filetype) {
             let line = self.text().line(prev_lnum);
             for prefix in prefixes.iter() {
                 if let Some(range) = line.search(prefix.from).next()

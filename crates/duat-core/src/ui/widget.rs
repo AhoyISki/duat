@@ -53,7 +53,7 @@ use crate::{
     ui::{PrintInfo, RwArea, SpawnId},
 };
 
-/// An area where [`Text`] will be printed to the screen
+/// An area where [`Text`] will be printed to the screen.
 ///
 /// Most widgets are supposed to be passive widgets, that simply show
 /// information about the current state of Duat. In order to
@@ -64,11 +64,35 @@ use crate::{
 /// [`Mode`]: crate::mode::Mode
 #[allow(unused)]
 pub trait Widget: Send + 'static {
-    /// The text that this widget prints out
-    fn text(&self) -> &Text;
+    /// The [`Text`] that this widget prints out.
+    ///
+    /// Note here the presence of the [`Pass`] argument. This means
+    /// that this could actually be any `Text` in duat, that is
+    /// accessible through the [`Pass`].
+    ///
+    /// Sometimes, it is annoying to access the `Text` of a widget
+    /// because you don't have the `Pass` available at that moment. In
+    /// those scenarios, the recommendation is that you implement an
+    /// inherent `Self::text` function, indicating that access to the
+    /// `Text` is not reliant on access to global state.
+    fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text
+    where
+        Self: Sized;
 
-    /// A mutable reference to the [`Text`] that is printed
-    fn text_mut(&mut self) -> TextMut<'_>;
+    /// A mutable reference to the [`Text`] that is printed.
+    ///
+    /// Note here the presence of the [`Pass`] argument. This means
+    /// that this could actually be any `Text` in duat, that is
+    /// accessible through the [`Pass`].
+    ///
+    /// Sometimes, it is annoying to access the `Text` of a widget
+    /// because you don't have the `Pass` available at that moment. In
+    /// those scenarios, the recommendation is that you implement an
+    /// inherent `Self::text_mut` function, indicating that access to
+    /// the `Text` is not reliant on access to global state.
+    fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p>
+    where
+        Self: Sized;
 
     /// The [configuration] for how to print [`Text`]
     ///
@@ -237,16 +261,13 @@ impl Node {
         }
 
         let print_info = self.handle.area().get_print_info(pa);
-        // SAFETY: The unsized type is confined to the rest of this block.
-        let (widget, _) = unsafe {
-            crate::data::write_dyn_and_area(self.handle.widget(), self.handle.area(), pa)
-        };
+        let mut text = self.handle.text_mut(pa);
 
         if print_info != PrintInfo::default() {
-            widget.text_mut().update_bounds();
+            text.update_bounds();
         }
 
-        let widgets_to_spawn = widget.text_mut().get_widget_spawns();
+        let widgets_to_spawn = text.get_widget_spawns();
         for (_, spawn) in widgets_to_spawn {
             spawn(pa, win, self.handle.clone());
         }

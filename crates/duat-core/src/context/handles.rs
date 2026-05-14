@@ -2,16 +2,19 @@
 //!
 //! These are used pretty much everywhere, and are essentially just an
 //! [`RwData<W>`] conjoined with an [`Area`].
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    any::Any,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use crate::{
     buffer::Change,
     context,
-    data::{self, Pass, RwData, WriteableTuple},
-    mode::{ModSelection, Selection, SelectionMut, Selections},
+    data::{HandleFns, Pass, RwData, RwText, WriteableTuple},
+    mode::{ModSelection, SelectionMut, Selections},
     opts::PrintOpts,
     text::{Text, TextMut, TextParts, TwoPoints},
     ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, SpawnId, Widget, Window},
@@ -149,9 +152,11 @@ pub struct Handle<W: ?Sized = crate::buffer::Buffer> {
     is_closed: Arc<AtomicBool>,
     pub(crate) update_requested: Arc<AtomicBool>,
     spawn_id: Option<SpawnId>,
+    sized: Arc<dyn Any + Send + Sync>,
+    fns: &'static HandleFns,
 }
 
-impl<W: Widget + ?Sized> Handle<W> {
+impl<W: Widget> Handle<W> {
     /// Returns a new instance of a [`Handle<W, U>`].
     pub(crate) fn new(
         widget: RwData<W>,
@@ -161,7 +166,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         spawn_id: Option<SpawnId>,
     ) -> Self {
         Self {
-            widget,
+            widget: widget.clone(),
             area,
             related: RwData::new(
                 main.map(|handle| (handle, WidgetRelation::Main))
@@ -171,6 +176,23 @@ impl<W: Widget + ?Sized> Handle<W> {
             is_closed,
             update_requested: Arc::new(AtomicBool::new(false)),
             spawn_id,
+            sized: Arc::new(widget),
+            fns: &HandleFns {
+                text: |widget, pa| {
+                    let widget = unsafe {
+                        (widget as *const (dyn Any + Send + 'static) as *const RwData<W>)
+                            .as_ref_unchecked()
+                    };
+                    W::text(widget, pa)
+                },
+                text_mut: |widget, pa| {
+                    let widget = unsafe {
+                        (widget as *const (dyn Any + Send + 'static) as *const RwData<W>)
+                            .as_ref_unchecked()
+                    };
+                    W::text_mut(widget, pa)
+                },
+            },
         }
     }
 }
@@ -275,6 +297,8 @@ impl<W: 'static + ?Sized> Handle<W> {
             is_closed: self.is_closed.clone(),
             update_requested: self.update_requested.clone(),
             spawn_id: self.spawn_id,
+            sized: self.sized.clone(),
+            fns: self.fns,
         })
     }
 
@@ -463,14 +487,14 @@ impl<W: Widget + ?Sized> Handle<W> {
     ///
     /// This is the same as calling `handle.read(pa).text()`.
     pub fn text<'p>(&'p self, pa: &'p Pass) -> &'p Text {
-        self.read(pa).text()
+        (self.fns.text)(self.sized.as_ref(), pa)
     }
 
     /// A mutable reference to the [`Text`] of the [`Widget`].
     ///
     /// This is the same as calling `handle.write(pa).text_mut()`.
     pub fn text_mut<'p>(&'p self, pa: &'p mut Pass) -> TextMut<'p> {
-        self.widget.text_mut(pa)
+        (self.fns.text_mut)(self.sized.as_ref(), pa)
     }
 
     /// The [`TextParts`] of the [`Widget`].
@@ -487,7 +511,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// [`Tags`]: crate::text::Tags
     /// [`Tag`]: crate::text::Tag
     pub fn text_parts<'p>(&'p self, pa: &'p mut Pass) -> TextParts<'p> {
-        self.widget.text_mut(pa).parts()
+        self.text_mut(pa).parts()
     }
 
     /// A shared reference to the [`Selections`] of the [`Widget`]'s
@@ -495,7 +519,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     ///
     /// This is the same as calling `handle.read(pa).selections()`.
     pub fn selections<'p>(&'p self, pa: &'p Pass) -> &'p Selections {
-        self.read(pa).text().selections()
+        self.text(pa).selections()
     }
 
     /// A mutable reference to the [`Selections`] of the [`Widget`]'s
@@ -504,7 +528,18 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// This is the same as calling
     /// `handle.write(pa).selections_mut()`.
     pub fn selections_mut<'p>(&'p self, pa: &'p mut Pass) -> &'p mut Selections {
-        self.text_mut(pa).selections_mut()
+        self.text_mut(pa).mv_selections_mut()
+    }
+
+    /// Returns a read-write handle (similar to [`RwData`]) for this
+    /// [`Widget`]'s [`Text`].
+    ///
+    /// The only reason you'd want to use this is in order to pass
+    /// this as an argument to [`Pass::write_many`], so you can get
+    /// mutable access to the `Text` of a `Widget` alongside other
+    /// things.
+    pub fn rw_text(&self) -> RwText<'_> {
+        RwText::new(&self.widget, self.sized.as_ref(), self.fns)
     }
 
     ////////// Selection Editing functions
@@ -531,36 +566,29 @@ impl<W: Widget + ?Sized> Handle<W> {
         &self,
         pa: &mut Pass,
         n: usize,
-        edit: impl FnOnce(SelectionMut<W>) -> Ret,
+        edit: impl FnOnce(SelectionMut) -> Ret,
     ) -> Ret {
-        #[track_caller]
-        fn get_parts<'a, W: Widget + ?Sized>(
-            pa: &'a mut Pass,
-            handle: &'a Handle<W>,
-            n: usize,
-        ) -> (Selection, bool, &'a mut W, &'a Area) {
-            // SAFETY: ModSelection doesn't expose the `dyn W` mutably.
-            let (widget, area) =
-                unsafe { data::write_dyn_and_area(&handle.widget, &handle.area, pa) };
+        let popts = self.widget.read(pa).print_opts();
+        let (mut text, area) = self.text_and_area(pa);
 
-            // Since Buffers always have selections, this should never happen on
-            // them. Which means their history wouldn't be affected.
-            let selections = populate(widget.text_mut());
+        let mut selections = {
+            let selections = populate(&mut text);
 
             let Some((selection, was_main)) = selections.remove(n) else {
                 panic!("Selection index {n} out of bounds");
             };
 
-            (selection, was_main, widget, area)
-        }
+            vec![Some(ModSelection::new(selection, n, was_main))]
+        };
 
-        let (selection, was_main, widget, area) = get_parts(pa, self, n);
+        let ret = edit(SelectionMut::new(
+            &mut selections,
+            0,
+            (&mut text, area, popts),
+            None,
+        ));
 
-        let mut selections = vec![Some(ModSelection::new(selection, n, was_main))];
-
-        let ret = edit(SelectionMut::new(&mut selections, 0, (widget, area), None));
-
-        crate::mode::reinsert_selections(selections.into_iter().flatten(), widget, None);
+        crate::mode::reinsert_selections(selections.into_iter().flatten(), &mut text, None);
 
         ret
     }
@@ -584,12 +612,8 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// [`edit_last`]: Self::edit_last
     /// [`edit_all`]: Self::edit_all
     /// [`Point::default`]: crate::text::Point::default
-    pub fn edit_main<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(SelectionMut<W>) -> Ret) -> Ret {
-        self.edit_nth(
-            pa,
-            self.widget.read(pa).text().selections().main_index(),
-            edit,
-        )
+    pub fn edit_main<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(SelectionMut) -> Ret) -> Ret {
+        self.edit_nth(pa, self.selections(pa).main_index(), edit)
     }
 
     /// Edits the last [`Selection`] in the [`Text`].
@@ -611,8 +635,9 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// [`edit_main`]: Self::edit_main
     /// [`edit_all`]: Self::edit_all
     /// [`Point::default`]: crate::text::Point::default
-    pub fn edit_last<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(SelectionMut<W>) -> Ret) -> Ret {
-        let len = self.widget.read(pa).text().selections().len();
+    pub fn edit_last<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(SelectionMut) -> Ret) -> Ret {
+        let text = (self.fns.text)(self.sized.as_ref(), pa);
+        let len = text.selections().len();
         self.edit_nth(pa, len.saturating_sub(1), edit)
     }
 
@@ -621,11 +646,11 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// But it can't return a value, and is meant to reduce the
     /// indentation that will inevitably come from using the
     /// equivalent long form call.
-    pub fn edit_all(&self, pa: &mut Pass, edit: impl FnMut(SelectionMut<W>)) {
-        // SAFETY: ModSelection doesn't expose the `dyn W` mutably.
-        let (widget, area) = unsafe { data::write_dyn_and_area(&self.widget, &self.area, pa) };
-        populate(widget.text_mut());
-        crate::mode::on_each_sel(widget, area, edit);
+    pub fn edit_all(&self, pa: &mut Pass, edit: impl FnMut(SelectionMut)) {
+        let popts = self.widget.read(pa).print_opts();
+        let (mut text, area) = self.text_and_area(pa);
+        populate(&mut text);
+        crate::mode::on_each_sel(text, area, popts, edit);
     }
 
     ////////// Area functions
@@ -638,9 +663,9 @@ impl<W: Widget + ?Sized> Handle<W> {
     ///
     /// [`PrintOpts.allow_overscroll`]: crate::opts::PrintOpts::allow_overscroll
     pub fn scroll_ver(&self, pa: &mut Pass, dist: i32) {
-        // SAFETY: The unsized value exists only in this scope.
-        let (widget, area) = unsafe { data::write_dyn_and_area(&self.widget, &self.area, pa) };
-        area.scroll_ver(widget.text(), dist, widget.print_opts());
+        let popts = self.widget.read(pa).print_opts();
+        let (text, area) = self.text_and_area(pa);
+        area.scroll_ver(&text, dist, popts);
         self.widget.declare_written();
     }
 
@@ -650,23 +675,24 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
     pub fn scroll_to_points(&self, pa: &mut Pass, points: TwoPoints) {
-        // SAFETY: The unsized value exists only in this scope.
-        let (widget, area) = unsafe { data::write_dyn_and_area(&self.widget, &self.area, pa) };
-        area.scroll_to_points(widget.text(), points, widget.print_opts());
+        let popts = self.widget.read(pa).print_opts();
+        let (text, area) = self.text_and_area(pa);
+        area.scroll_to_points(&text, points, popts);
         self.widget.declare_written();
     }
 
     /// The start points that should be printed.
     pub fn start_points(&self, pa: &Pass) -> TwoPoints {
-        let widget = self.widget.read(pa);
-        self.area
-            .start_points(pa, widget.text(), widget.print_opts())
+        let popts = self.widget.read(pa).print_opts();
+        let text = (self.fns.text)(self.sized.as_ref(), pa);
+        self.area.start_points(pa, text, popts)
     }
 
     /// The end points that should be printed.
     pub fn end_points(&self, pa: &Pass) -> TwoPoints {
         let widget = self.widget.read(pa);
-        self.area.end_points(pa, widget.text(), widget.print_opts())
+        let text = (self.fns.text)(self.sized.as_ref(), pa);
+        self.area.end_points(pa, text, widget.print_opts())
     }
 
     /// The [`Widget`]'s [`PrintOpts`].
@@ -681,10 +707,24 @@ impl<W: Widget + ?Sized> Handle<W> {
     pub fn close(&self, pa: &mut Pass) -> Result<(), Text> {
         context::windows().close(pa, self)
     }
+
+    /// Get the [`TextMut`] and [`Area`] at once.
+    pub(crate) fn text_and_area<'p>(&'p self, pa: &'p mut Pass) -> (TextMut<'p>, &'p mut Area) {
+        // SAFETY: A Pass is borrowed, and I know that the same object won't
+        // be borrowed multiple times.
+        static INTERNAL_PASS: Pass = unsafe { Pass::new() };
+
+        (
+            (self.fns.text_mut)(self.sized.as_ref(), unsafe {
+                (&raw const INTERNAL_PASS as *mut Pass).as_mut().unwrap()
+            }),
+            self.area.write(pa),
+        )
+    }
 }
 
 #[track_caller]
-fn populate<'t>(mut text: TextMut<'t>) -> &'t mut Selections {
+fn populate<'p, 't>(text: &'t mut TextMut<'p>) -> &'t mut Selections {
     if !text.ends_with('\n') {
         text.apply_change(
             None,
@@ -884,6 +924,8 @@ impl<W: Widget> Handle<W> {
             is_closed: self.is_closed.clone(),
             update_requested: self.update_requested.clone(),
             spawn_id: self.spawn_id,
+            sized: self.sized.clone(),
+            fns: self.fns,
         }
     }
 }
@@ -909,6 +951,8 @@ impl<W: ?Sized> Clone for Handle<W> {
             is_closed: self.is_closed.clone(),
             update_requested: self.update_requested.clone(),
             spawn_id: self.spawn_id,
+            sized: self.sized.clone(),
+            fns: self.fns,
         }
     }
 }

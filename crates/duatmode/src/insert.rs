@@ -10,7 +10,7 @@ use duat_core::{
     text::Mask,
     ui::Widget,
 };
-use duat_filetype::AutoPrefix;
+use duat_filetype::{AutoPrefix, PassFileType};
 
 use crate::{Normal, opts::INSERT_TABS, set_anchor_if_needed};
 
@@ -227,9 +227,11 @@ impl Mode for Insert {
                     insert_str(&mut s, '\n', 1, &mut insert_events)
                 });
                 if opts.indent_chars.contains(&'\n') {
-                    if let Some(buffer) = widget.get_as() {
+                    if let Some(buffer) = widget.get_as()
+                        && let Some(filetype) = buffer.filetype(pa)
+                    {
                         buffer.edit_all(pa, |mut s| {
-                            if s.add_comment() {
+                            if s.add_comment(filetype) {
                                 s.insert(' ');
                                 s.move_hor(1);
                             }
@@ -454,8 +456,8 @@ fn complete(pa: &mut Pass, scroll: i32, insert_events: &mut Vec<InsertEvent>) {
     }
 }
 
-fn insert_str<W: Widget + ?Sized>(
-    s: &mut SelectionMut<'_, W>,
+fn insert_str(
+    s: &mut SelectionMut,
     new: impl ToString,
     len: i32,
     insert_events: &mut Vec<InsertEvent>,

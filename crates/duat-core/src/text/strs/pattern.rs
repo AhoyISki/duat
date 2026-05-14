@@ -88,8 +88,15 @@ pub trait Pattern {
 /// [`DoubleEndedSearcher::next_back()`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchStep {
+    /// Represents a matched region of the [`Strs`].
+    ///
+    /// They must be complete, and never interlap.
     Match(usize, usize),
+    /// Represents an unmatched region of the [`Strs`].
+    ///
+    /// They may be incomplete, but may never interlap.
     Reject(usize, usize),
+    /// Indicates that the search is finished.
     Done,
 }
 

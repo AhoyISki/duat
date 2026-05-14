@@ -25,7 +25,7 @@ use duat_core::{
         ValidFilePath,
     },
     context::{self, Handle},
-    data::Pass,
+    data::{Pass, RwData},
     hook::{self, BufferUpdated, KeySent, OnMouseEvent, WidgetOpened, WidgetSwitched},
     mode::{KeyCode, MouseEventKind, event},
     text::{Point, Spawn, Text, TextMut, txt},
@@ -477,18 +477,17 @@ impl Completions {
     }
 
     #[track_caller]
-    fn update_text_and_position<'a>(
-        pa: &'a mut Pass,
-        completions: &'a Handle<Self>,
+    fn update_text_and_position(
+        pa: &mut Pass,
+        completions: &Handle<Self>,
         scroll: i32,
     ) -> Option<(String, String)> {
         let master_handle = completions.master(pa).unwrap();
-        let (master, (area, comp)) = pa
-            .read_and_write_many(
-                master_handle.widget(),
-                (completions.area(), completions.widget()),
-            )
-            .unwrap();
+        let (master_text, area, comp) = pa.write_many((
+            master_handle.rw_text(),
+            completions.area(),
+            completions.widget(),
+        ));
 
         let found_list = {
             let indices = if let Some((main_idx, _)) = &comp.current_entry {
@@ -510,7 +509,7 @@ impl Completions {
                     .flat_map(|(providers, indices)| indices.into_iter().zip(providers))
                     .map(|(idx, provider)| {
                         let provided = provider.process(
-                            master.text(),
+                            &master_text,
                             scroll,
                             Some(area),
                             comp.max_height,
@@ -560,11 +559,10 @@ impl Completions {
                 // Also necessary, believe it or not.
                 let start_fn = start_fn.unwrap();
 
-                let mut starts = master
-                    .text()
+                let mut starts = master_text
                     .selections()
                     .iter()
-                    .map(|(sel, _)| start_fn(master.text(), sel.cursor()))
+                    .map(|(sel, _)| start_fn(&master_text, sel.cursor()))
                     .collect::<Vec<_>>()
                     .into_iter();
 
@@ -723,12 +721,12 @@ impl Completions {
 }
 
 impl Widget for Completions {
-    fn text(&self) -> &Text {
-        &self.text
+    fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text {
+        &widget.read(pa).text
     }
 
-    fn text_mut(&mut self) -> TextMut<'_> {
-        self.text.as_mut()
+    fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+        widget.write(pa).text.as_mut()
     }
 }
 

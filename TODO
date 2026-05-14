@@ -29,6 +29,7 @@ FOR NEXT UPDATE:
   [x] More fundamental functions.
   [x] Better search functionality.
 [x] Remove Widget argument from Modes.
+[x] Widget::text and Widget::text_mut have been amplified immensely.
 
 KNOWN BUGS:
  HIGH PRIORITY:

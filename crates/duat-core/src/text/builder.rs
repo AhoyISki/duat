@@ -229,6 +229,12 @@ impl Builder {
         self.text.len()
     }
 
+    /// Wether or not the [`Text`] within is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
+
     /// Pushes [`Text`] directly
     fn push_text(&mut self, text: &Text) {
         self.last_was_empty = text.is_empty();

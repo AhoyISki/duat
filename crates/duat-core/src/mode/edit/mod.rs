@@ -12,10 +12,12 @@ use std::{
 
 pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
-    buffer::{Buffer, BufferId, Change},
+    buffer::Change,
     opts::PrintOpts,
-    text::{Matches, Point, RegexHaystack, RegexPattern, Strs, Text, TextIndex, TextRange},
-    ui::{Area, Widget},
+    text::{
+        Matches, Point, RegexHaystack, RegexPattern, Strs, Text, TextIndex, TextMut, TextRange,
+    },
+    ui::Area,
 };
 
 /// The [`Selection`] and [`Selections`] structs.
@@ -79,30 +81,32 @@ macro_rules! sel_mut {
 /// [`replace`]: SelectionMut::replace
 /// [`insert`]: SelectionMut::insert
 /// [`append`]: SelectionMut::append
-pub struct SelectionMut<'w, W: Widget + ?Sized = dyn Widget> {
-    selections: &'w mut Vec<Option<ModSelection>>,
+pub struct SelectionMut<'p, 't> {
+    selections: &'t mut Vec<Option<ModSelection>>,
     sels_i: usize,
     initial: Selection,
-    widget: &'w mut W,
-    area: &'w Area,
-    next_i: Option<&'w Cell<usize>>,
+    text: &'t mut TextMut<'p>,
+    area: &'p Area,
+    popts: PrintOpts,
+    next_i: Option<&'t Cell<usize>>,
 }
 
-impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
+impl<'p, 't> SelectionMut<'p, 't> {
     /// Returns a new instance of [`SelectionMut`].
     pub(crate) fn new(
-        selections: &'w mut Vec<Option<ModSelection>>,
+        selections: &'t mut Vec<Option<ModSelection>>,
         sels_i: usize,
-        (widget, area): (&'w mut W, &'w Area),
-        next_i: Option<&'w Cell<usize>>,
+        (text, area, popts): (&'t mut TextMut<'p>, &'p Area, PrintOpts),
+        next_i: Option<&'t Cell<usize>>,
     ) -> Self {
         let initial = selections[sels_i].as_ref().unwrap().selection.clone();
         Self {
             selections,
             sels_i,
             initial,
-            widget,
+            text,
             area,
+            popts,
             next_i,
         }
     }
@@ -129,10 +133,10 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     pub fn replace(&mut self, edit: impl ToString) {
         let change = {
             let edit = edit.to_string();
-            let range = sel!(self).point_range(self.widget.text());
+            let range = sel!(self).point_range(self.text);
             let (p0, p1) = (range.start, range.end);
             let p1 = if self.anchor().is_some() { p1 } else { p0 };
-            Change::new(edit, p0..p1, self.widget.text(), true)
+            Change::new(edit, p0..p1, self.text, true)
         };
 
         // Disconsider null changes.
@@ -165,7 +169,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     pub fn insert(&mut self, edit: impl ToString) {
         let cursor_point = sel!(self).cursor();
         let range = cursor_point..cursor_point;
-        let change = Change::new(edit.to_string(), range, self.widget.text(), true);
+        let change = Change::new(edit.to_string(), range, self.text, true);
         let (added, taken) = (change.added_end(), change.taken_end());
 
         self.edit(change);
@@ -175,7 +179,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
         {
             let new_anchor = anchor + added - taken;
             sel_mut!(self).swap_ends();
-            sel_mut!(self).move_to(new_anchor, self.widget.text());
+            sel_mut!(self).move_to(new_anchor, self.text);
             sel_mut!(self).swap_ends();
         }
     }
@@ -193,8 +197,8 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     #[track_caller]
     pub fn append(&mut self, edit: impl ToString) {
         let cursor = sel!(self).cursor();
-        let after = cursor.fwd(self.widget.text().char_at(cursor).unwrap());
-        let change = Change::new(edit.to_string(), after..after, self.widget.text(), true);
+        let after = cursor.fwd(self.text.char_at(cursor).unwrap());
+        let change = Change::new(edit.to_string(), after..after, self.text, true);
         let (added, taken) = (change.added_end(), change.taken_end());
 
         self.edit(change);
@@ -204,7 +208,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
         {
             let new_anchor = anchor + added - taken;
             sel_mut!(self).swap_ends();
-            sel_mut!(self).move_to(new_anchor, self.widget.text());
+            sel_mut!(self).move_to(new_anchor, self.text);
             sel_mut!(self).swap_ends();
         }
     }
@@ -212,9 +216,9 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     /// Edits the buffer with a [`Change`].
     #[track_caller]
     fn edit(&mut self, change: Change<'static, String>) {
-        let mut text = self.widget.text_mut();
-        let (change_i, selections_taken) =
-            text.apply_change(sel!(self).change_i.map(|i| i as usize), change);
+        let (change_i, selections_taken) = self
+            .text
+            .apply_change(sel!(self).change_i.map(|i| i as usize), change);
         sel_mut!(self).change_i = change_i.map(|i| i as u32);
 
         // The Change may have happened before the index of the next curossr,
@@ -237,7 +241,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
         if by == 0 {
             return 0;
         }
-        sel_mut!(self).move_hor(by, self.widget.text())
+        sel_mut!(self).move_hor(by, self.text)
     }
 
     /// Moves the selection vertically. May cause horizontal movement.
@@ -248,7 +252,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
         if by == 0 {
             return false;
         }
-        sel_mut!(self).move_ver(by, self.widget.text(), self.area, self.widget.print_opts())
+        sel_mut!(self).move_ver(by, self.text, self.area, self.popts)
     }
 
     /// Moves the selection vertically a number of wrapped lines. May
@@ -260,12 +264,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
         if count == 0 {
             return false;
         }
-        sel_mut!(self).move_ver_wrapped(
-            count,
-            self.widget.text(),
-            self.area,
-            self.widget.print_opts(),
-        )
+        sel_mut!(self).move_ver_wrapped(count, self.text, self.area, self.popts)
     }
 
     /// Moves the selection to a [`Point`] or a [range] of [`Point`]s.
@@ -290,7 +289,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     /// the [`Text`].
     #[track_caller]
     pub fn move_to_start(&mut self) {
-        sel_mut!(self).move_to(Point::default(), self.widget.text());
+        sel_mut!(self).move_to(Point::default(), self.text);
     }
 
     /// Moves the selection to a `line` and a `column`.
@@ -386,7 +385,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     /// [`Selections`], unless you [destroy] it.
     ///
     /// [destroy]: Self::destroy
-    pub fn copy(&mut self) -> SelectionMut<'_, W> {
+    pub fn copy(&mut self) -> SelectionMut<'p, '_> {
         let copy = self.selections[self.sels_i].clone().unwrap();
         self.selections
             .push(Some(ModSelection { was_main: false, ..copy }));
@@ -395,7 +394,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
         SelectionMut::new(
             self.selections,
             sels_i,
-            (self.widget, self.area),
+            (self.text, self.area, self.popts),
             self.next_i,
         )
     }
@@ -409,16 +408,14 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     pub fn destroy(self) {
         // If there are other Selections in the list, or other copies still
         // lying around, the SelectionMut Selection can be destroyed.
-        if self.widget.text().selections().is_empty()
-            && self.selections.iter().flatten().count() <= 1
-        {
+        if self.text.selections().is_empty() && self.selections.iter().flatten().count() <= 1 {
             return;
         }
 
         if self.selections[self.sels_i].as_ref().unwrap().was_main {
             // If there were no selections on the list, the previous one added
             // will be set as the main selection.
-            if self.widget.text().selections().is_empty() {
+            if self.text.selections().is_empty() {
                 let len = self.selections.len();
                 let ranges = self
                     .selections
@@ -428,7 +425,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
                 let next_sel = ranges.into_iter().flatten().rev().flatten().next().unwrap();
                 next_sel.was_main = true;
             } else {
-                self.widget.text_mut().selections_mut().rotate_main(-1);
+                self.text.selections_mut().rotate_main(-1);
             }
         }
 
@@ -456,8 +453,8 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     /// Wether the current selection matches a regex pattern.
     #[track_caller]
     pub fn matches_pat<R: RegexPattern>(&self, pat: R) -> bool {
-        let range = sel!(self).byte_range(self.widget.text());
-        match self.widget.text()[range].matches_pat(pat) {
+        let range = sel!(self).byte_range(self.text);
+        match self.text[range].matches_pat(pat) {
             Ok(result) => result,
             Err(err) => panic!("{err}"),
         }
@@ -481,13 +478,12 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     /// [`cursor`]: Self::cursor
     #[track_caller]
     pub fn search<R: RegexPattern>(&self, pat: R) -> SelectionMutMatches<'_, R> {
-        let text = self.widget.text();
         let cursor = self.cursor();
         let fwd = cursor.fwd(self.char());
         SelectionMutMatches {
-            text_byte_len: text.len(),
+            text_byte_len: self.text.len(),
             cursor_range: cursor.byte()..fwd.byte(),
-            matches: text.search(pat),
+            matches: self.text.search(pat),
         }
     }
 
@@ -530,7 +526,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     /// [`SelectionMut::try_strs`].
     #[track_caller]
     pub fn strs(&self, range: impl TextRange) -> &Strs {
-        &self.widget.text()[range]
+        &self.text[range]
     }
 
     /// Returns the [`Strs`] for the given [`TextRange`].
@@ -539,7 +535,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     /// valid utf8 boundaries. If you expect the value to alway be
     /// `Some`, consider [`SelectionMut::strs`] isntead.
     pub fn try_strs(&self, range: impl TextRange) -> Option<&Strs> {
-        self.widget.text().get(range)
+        self.text.get(range)
     }
 
     /// Returns the length of the [`Text`], in [`Point`].
@@ -554,10 +550,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
 
     /// Gets the current level of indentation.
     pub fn indent(&self) -> usize {
-        self.widget
-            .text()
-            .line(self.cursor().line())
-            .indent(self.opts())
+        self.text.line(self.cursor().line()).indent(self.opts())
     }
 
     /// Gets the indentation level on a given line.
@@ -567,7 +560,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     /// [`PrintOpts`] because of the `tabstop` field.
     #[track_caller]
     pub fn indent_on(&self, line: usize) -> usize {
-        self.widget.text().line(line).indent(self.opts())
+        self.text.line(line).indent(self.opts())
     }
 
     ////////// Selection queries
@@ -609,7 +602,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     /// Use only if you need the things that the [`VPoint`] provides,
     /// in order to preven extraneous calculations.
     pub fn v_cursor(&self) -> VPoint {
-        sel!(self).v_cursor(self.widget.text(), self.area, self.widget.print_opts())
+        sel!(self).v_cursor(self.text, self.area, self.popts)
     }
 
     /// The [`VPoint`] of the anchor, if it exists.
@@ -617,7 +610,7 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
     /// Use only if you need the things that the [`VPoint`] provides,
     /// in order to preven extraneous calculations.
     pub fn v_anchor(&self) -> Option<VPoint> {
-        sel!(self).v_anchor(self.widget.text(), self.area, self.widget.print_opts())
+        sel!(self).v_anchor(self.text, self.area, self.popts)
     }
 
     /// Returns `true` if the `anchor` exists before the `cursor`.
@@ -632,34 +625,16 @@ impl<'w, W: Widget + ?Sized> SelectionMut<'w, W> {
 
     /// The [`Text`] of the [`Widget`].
     pub fn text(&self) -> &Text {
-        self.widget.text()
+        self.text
     }
 
     /// The [`PrintOpts`] in use.
     pub fn opts(&self) -> PrintOpts {
-        self.widget.print_opts()
-    }
-
-    /// The [`Widget`] being modified.
-    pub fn widget(&self) -> &W {
-        self.widget
+        self.popts
     }
 }
 
-impl SelectionMut<'_, Buffer> {
-    /// A unique identifier for this [`Buffer`].
-    ///
-    /// This is more robust than identifying it by its path or name,
-    /// or even [`PathKind`], since those could change, but this
-    /// cannot.
-    ///
-    /// [`PathKind`]: crate::buffer::PathKind
-    pub fn buffer_id(&self) -> BufferId {
-        self.widget.buffer_id()
-    }
-}
-
-impl<'a, W: Widget + ?Sized> std::fmt::Debug for SelectionMut<'a, W> {
+impl<'a, 'b: 'a> std::fmt::Debug for SelectionMut<'a, 'b> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SelectionMut")
             .field("selection", &sel!(self))
@@ -827,25 +802,30 @@ impl<'s, R: RegexPattern> DoubleEndedIterator for SelectionMutMatches<'s, R> {
 }
 
 /// Does an action on every [`SelectionMut`].
-pub(crate) fn on_each_sel<W: Widget + ?Sized>(
-    widget: &mut W,
-    area: &Area,
-    mut func: impl FnMut(SelectionMut<W>),
+pub(crate) fn on_each_sel<'p>(
+    mut text: TextMut<'p>,
+    area: &'p Area,
+    popts: PrintOpts,
+    mut func: impl FnMut(SelectionMut),
 ) {
     let mut current = Vec::new();
     let mut next_i = Cell::new(0);
 
-    while let Some((sel, was_main)) = widget.text_mut().selections_mut().remove(next_i.get()) {
+    while let Some((sel, was_main)) = text.selections_mut().remove(next_i.get()) {
         current.push(Some(ModSelection::new(sel, next_i.get(), was_main)));
 
         func(SelectionMut::new(
             &mut current,
             0,
-            (widget, area),
+            (&mut text, area, popts),
             Some(&next_i),
         ));
 
-        reinsert_selections(current.drain(..).flatten(), widget, Some(next_i.get_mut()));
+        reinsert_selections(
+            current.drain(..).flatten(),
+            &mut text,
+            Some(next_i.get_mut()),
+        );
     }
 }
 
@@ -853,12 +833,11 @@ pub(crate) fn on_each_sel<W: Widget + ?Sized>(
 #[inline]
 pub(crate) fn reinsert_selections(
     mod_sels: impl Iterator<Item = ModSelection>,
-    widget: &mut (impl Widget + ?Sized),
+    text: &mut TextMut,
     mut next_i: Option<&mut usize>,
 ) {
     for mod_sel in mod_sels {
-        let ([inserted_i, selections_taken], last_selection_overhangs) = widget
-            .text_mut()
+        let ([inserted_i, selections_taken], last_selection_overhangs) = text
             .selections_mut()
             .insert(mod_sel.index, mod_sel.selection, mod_sel.was_main);
 
@@ -910,37 +889,37 @@ impl ModSelection {
 pub trait CaretOrRange {
     /// Internal movement function for monomorphization
     #[doc(hidden)]
-    fn move_to<W: Widget + ?Sized>(self, sel: &mut SelectionMut<'_, W>);
+    fn move_to(self, sel: &mut SelectionMut);
 }
 
 impl CaretOrRange for Point {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized>(self, sel: &mut SelectionMut<'_, W>) {
-        sel_mut!(sel).move_to(self, sel.widget.text());
+    fn move_to(self, sel: &mut SelectionMut) {
+        sel_mut!(sel).move_to(self, sel.text);
     }
 }
 
 impl CaretOrRange for usize {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized>(self, sel: &mut SelectionMut<'_, W>) {
-        sel_mut!(sel).move_to(sel.widget.text().point_at_byte(self), sel.widget.text())
+    fn move_to(self, sel: &mut SelectionMut) {
+        sel_mut!(sel).move_to(sel.text.point_at_byte(self), sel.text)
     }
 }
 
 impl<Idx: TextIndex> CaretOrRange for Range<Idx> {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized>(self, sel: &mut SelectionMut<'_, W>) {
+    fn move_to(self, sel: &mut SelectionMut) {
         let range = self.start.to_byte_index()..self.end.to_byte_index();
         assert!(
             range.start <= range.end,
             "slice index start is larger than end"
         );
 
-        sel_mut!(sel).move_to(range.start, sel.widget.text());
+        sel_mut!(sel).move_to(range.start, sel.text);
         if range.start < range.end {
             sel.set_anchor();
-            sel_mut!(sel).move_to(range.end, sel.widget.text());
-            if range.end < sel.widget.text().len() {
+            sel_mut!(sel).move_to(range.end, sel.text);
+            if range.end < sel.text.len() {
                 sel.move_hor(-1);
             }
         } else {
@@ -951,27 +930,27 @@ impl<Idx: TextIndex> CaretOrRange for Range<Idx> {
 
 impl<Idx: TextIndex> CaretOrRange for RangeInclusive<Idx> {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized>(self, sel: &mut SelectionMut<'_, W>) {
+    fn move_to(self, sel: &mut SelectionMut) {
         let range = self.start().to_byte_index()..=self.end().to_byte_index();
         assert!(
             range.start() <= range.end(),
             "slice index start is larger than end"
         );
 
-        sel_mut!(sel).move_to(*range.start(), sel.widget.text());
+        sel_mut!(sel).move_to(*range.start(), sel.text);
         sel.set_anchor();
-        sel_mut!(sel).move_to(*range.end(), sel.widget.text());
+        sel_mut!(sel).move_to(*range.end(), sel.text);
     }
 }
 
 impl<Idx: TextIndex> CaretOrRange for RangeFrom<Idx> {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized>(self, sel: &mut SelectionMut<'_, W>) {
+    fn move_to(self, sel: &mut SelectionMut) {
         let start = self.start.to_byte_index();
-        sel_mut!(sel).move_to(start, sel.widget.text());
+        sel_mut!(sel).move_to(start, sel.text);
         if start < sel.text().len() {
             sel.set_anchor();
-            sel_mut!(sel).move_to(sel.widget.text().len(), sel.widget.text());
+            sel_mut!(sel).move_to(sel.text.len(), sel.text);
             sel.move_hor(-1);
         } else {
             sel.unset_anchor();
@@ -981,7 +960,7 @@ impl<Idx: TextIndex> CaretOrRange for RangeFrom<Idx> {
 
 impl<Idx: TextIndex> CaretOrRange for RangeTo<Idx> {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized>(self, sel: &mut SelectionMut<'_, W>) {
+    fn move_to(self, sel: &mut SelectionMut) {
         let Some(last_point) = sel.text().last_point() else {
             return;
         };
@@ -990,7 +969,7 @@ impl<Idx: TextIndex> CaretOrRange for RangeTo<Idx> {
         sel.move_to_start();
         if 0 < end {
             sel.set_anchor();
-            sel_mut!(sel).move_to(end, sel.widget.text());
+            sel_mut!(sel).move_to(end, sel.text);
             sel.move_hor(-1);
         } else {
             sel.unset_anchor();
@@ -1000,18 +979,18 @@ impl<Idx: TextIndex> CaretOrRange for RangeTo<Idx> {
 
 impl<Idx: TextIndex> CaretOrRange for RangeToInclusive<Idx> {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized>(self, sel: &mut SelectionMut<'_, W>) {
+    fn move_to(self, sel: &mut SelectionMut) {
         sel.move_to_start();
         sel.set_anchor();
-        sel_mut!(sel).move_to(self.end, sel.widget.text());
+        sel_mut!(sel).move_to(self.end, sel.text);
     }
 }
 
 impl CaretOrRange for RangeFull {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized>(self, sel: &mut SelectionMut<'_, W>) {
+    fn move_to(self, sel: &mut SelectionMut) {
         sel.move_to_start();
         sel.set_anchor();
-        sel_mut!(sel).move_to(sel.widget.text().len(), sel.widget.text());
+        sel_mut!(sel).move_to(sel.text.len(), sel.text);
     }
 }

@@ -18,12 +18,12 @@ use duat_core::{
     Ns,
     buffer::Buffer,
     context::{self, Handle},
-    data::Pass,
+    data::{Pass, RwData},
     form::{self, FormId},
     hook::{self, BufferOpened, BufferUpdated, KeyTyped, OnMouseEvent},
     opts::PrintOpts,
     storage::bincode,
-    text::{Builder, Inlay, Mask, Overlay, Point, Text, TextRange, TwoPoints},
+    text::{Builder, Inlay, Mask, Overlay, Point, Text, TextMut, TextRange, TwoPoints},
     txt,
     ui::{Area, Coord, Corner, PushSpecs, Side, Widget},
 };
@@ -307,12 +307,12 @@ impl Gutter {
 }
 
 impl Widget for Gutter {
-    fn text(&self) -> &Text {
-        &self.text
+    fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text {
+        &widget.read(pa).text
     }
 
-    fn text_mut(&mut self) -> duat_core::text::TextMut<'_> {
-        self.text.as_mut()
+    fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+        widget.write(pa).text.as_mut()
     }
 }
 
@@ -529,7 +529,10 @@ fn insert_gutter_entries<'g>(
                 if next_lnum == lnum {
                     true
                 } else if next_lnum < lnum {
-                    panic!("So THIS happened {:#?}, {entry:#?}, {next_lnum}, {lnum}", buf.text());
+                    panic!(
+                        "So THIS happened {:#?}, {entry:#?}, {next_lnum}, {lnum}",
+                        buf.text()
+                    );
                 } else {
                     if next_lnum < buf.text().end_point().line() {
                         start_of_next = buf.text().line(next_lnum).byte_range().start;

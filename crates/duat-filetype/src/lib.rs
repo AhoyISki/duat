@@ -33,7 +33,6 @@ use duat_core::{
     buffer::Buffer,
     context::Handle,
     data::{Pass, RwData},
-    mode::SelectionMut,
 };
 pub use prefixes::AutoPrefix;
 use regex::RegexSet;
@@ -47,12 +46,6 @@ pub trait FileType {
 impl FileType for Buffer {
     fn filetype(&self) -> Option<&'static str> {
         self.path_set()?.filetype()
-    }
-}
-
-impl FileType for SelectionMut<'_, Buffer> {
-    fn filetype(&self) -> Option<&'static str> {
-        self.widget().filetype()
     }
 }
 

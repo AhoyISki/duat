@@ -31,7 +31,7 @@ use crate::{
     context::{self, Handle, cache},
     data::{Pass, RwData, WriteableTuple},
     hook::{self, BufferSaved, BufferUpdated, OnMouseEvent},
-    mode::{SelectionMut, Selections, TwoPointsPlace},
+    mode::{Selections, TwoPointsPlace},
     opts::PrintOpts,
     text::{Point, Strs, StrsBuf, Text, TextMut, TextParts, TextVersion, txt},
     ui::{Area, Coord, PrintInfo, PrintedLine, Widget},
@@ -447,12 +447,12 @@ impl Buffer {
 }
 
 impl Widget for Buffer {
-    fn text(&self) -> &Text {
-        &self.text
+    fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text {
+        &widget.read(pa).text
     }
 
-    fn text_mut(&mut self) -> TextMut<'_> {
-        Buffer::text_mut(self)
+    fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+        widget.write(pa).text_mut()
     }
 
     fn print_opts(&self) -> PrintOpts {
@@ -1116,13 +1116,7 @@ impl BufferPass for Buffer {
         Buffer::buffer_id(self)
     }
 }
-impl<'b> BufferPass for SelectionMut<'b, Buffer> {
-    fn buffer_id(&self) -> BufferId {
-        SelectionMut::buffer_id(self)
-    }
-}
 
 trait InnerBufferPass {}
 
 impl InnerBufferPass for Buffer {}
-impl<'b> InnerBufferPass for SelectionMut<'b, Buffer> {}

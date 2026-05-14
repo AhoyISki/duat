@@ -109,15 +109,25 @@ impl PromptLine {
     pub fn prompt_of_id(&self, id: TypeId) -> Option<Text> {
         self.prompts.get(&id).cloned()
     }
-}
 
-impl Widget for PromptLine {
-    fn text(&self) -> &Text {
+    /// The [`Text`] of the `PromptLine`
+    pub fn text(&self) -> &Text {
         &self.text
     }
 
-    fn text_mut(&mut self) -> TextMut<'_> {
-        self.text.as_mut_with_strs_mutation()
+    /// Mutable reference to the [`Text`] of the `PromptLIne`
+    pub fn text_mut(&mut self) -> &mut Text {
+        &mut self.text
+    }
+}
+
+impl Widget for PromptLine {
+    fn text<'p>(widget: &'p duat_core::data::RwData<Self>, pa: &'p Pass) -> &'p Text {
+        &widget.read(pa).text
+    }
+
+    fn text_mut<'p>(widget: &'p duat_core::data::RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+        widget.write(pa).text.as_mut()
     }
 
     fn print_opts(&self) -> PrintOpts {

@@ -15,7 +15,7 @@ use std::fmt::Alignment;
 use duat_core::{
     buffer::Buffer,
     context::Handle,
-    data::Pass,
+    data::{Pass, RwData},
     form,
     hook::{self, BufferUpdated, OnMouseEvent},
     mode::{MouseButton, MouseEventKind},
@@ -186,12 +186,12 @@ impl LineNumbers {
 }
 
 impl Widget for LineNumbers {
-    fn text(&self) -> &Text {
-        &self.text
+    fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text {
+        &widget.read(pa).text
     }
 
-    fn text_mut(&mut self) -> TextMut<'_> {
-        self.text.as_mut()
+    fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+        widget.write(pa).text.as_mut()
     }
 }
 

@@ -15,7 +15,7 @@ use duat_core::{
     text::{Strs, txt},
     ui::Widget,
 };
-use duat_filetype::AutoPrefix;
+use duat_filetype::{AutoPrefix, PassFileType};
 use duat_jump_list::{BufferJumps, JumpListId};
 
 use crate::{
@@ -190,12 +190,9 @@ impl Mode for Normal {
             event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
             alt!('o' | 'O') => txt!("Add new line {below}"),
             event!('.') => txt!("Repeats the last [mode]Insert[] command"),
-            event!('r') => (
-                txt!("Replace range"),
-                match _ {
-                    event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
-                }
-            ),
+            event!('r') => (txt!("Replace range"), match _ {
+                event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
+            }),
             event!('`') => txt!("Lowercase the selection"),
             event!('~') => txt!("Uppercase the selection"),
             alt!('`') => txt!("Swap case of selection"),
@@ -322,9 +319,11 @@ impl Mode for Normal {
             });
 
             if key_event.modifiers == KeyMod::NONE {
-                if let Some(buffer) = widget.get_as() {
+                if let Some(buffer) = widget.get_as()
+                    && let Some(filetype) = buffer.filetype(pa)
+                {
                     buffer.edit_all(pa, |mut s| {
-                        if s.add_comment() {
+                        if s.add_comment(filetype) {
                             s.insert(' ');
                             s.move_hor(1);
                         }
@@ -348,9 +347,11 @@ impl Mode for Normal {
             });
 
             if key_event.modifiers == KeyMod::NONE {
-                if let Some(buffer) = widget.get_as() {
+                if let Some(buffer) = widget.get_as()
+                    && let Some(filetype) = buffer.filetype(pa)
+                {
                     buffer.edit_all(pa, |mut s| {
-                        if s.add_comment() {
+                        if s.add_comment(filetype) {
                             s.insert(' ');
                             s.move_hor(1);
                         }
@@ -913,7 +914,7 @@ impl Mode for Normal {
                 } else {
                     "\n"
                 };
-                
+
                 widget.edit_all(pa, |mut s| {
                     let c_range = s.range();
 

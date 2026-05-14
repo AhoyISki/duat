@@ -15,7 +15,7 @@ use std::{
 use duat_core::{
     Ns, cmd,
     context::{self, Handle, Location, Record},
-    data::Pass,
+    data::{Pass, RwData},
     hook::{self, MsgLogged, OnMouseEvent, WidgetClosed, WidgetSwitched},
     mode::{self, MouseButton, TwoPointsPlace},
     opts::PrintOpts,
@@ -200,12 +200,12 @@ impl LogBook {
 }
 
 impl Widget for LogBook {
-    fn text(&self) -> &Text {
-        &self.text
+    fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text {
+        &widget.read(pa).text
     }
 
-    fn text_mut(&mut self) -> TextMut<'_> {
-        self.text.as_mut()
+    fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+        widget.write(pa).text.as_mut()
     }
 
     fn print_opts(&self) -> PrintOpts {

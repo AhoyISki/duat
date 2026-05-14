@@ -12,7 +12,7 @@ use std::sync::Mutex;
 use duat_core::{
     Ns,
     context::{self, Handle, Level, Record},
-    data::Pass,
+    data::{Pass, RwData},
     hook::{self, KeyTyped, MsgLogged},
     text::{Mask, Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
@@ -137,12 +137,12 @@ impl Notifications {
 }
 
 impl Widget for Notifications {
-    fn text(&self) -> &Text {
-        &self.text
+    fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text {
+        &widget.read(pa).text
     }
 
-    fn text_mut(&mut self) -> TextMut<'_> {
-        self.text.as_mut()
+    fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+        widget.write(pa).text.as_mut()
     }
 }
 

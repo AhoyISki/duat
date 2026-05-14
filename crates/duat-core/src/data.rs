@@ -36,7 +36,6 @@
 //! [written to]: RwData::write
 //! [`Widget`]: crate::ui::Widget
 //! [`Buffer`]: crate::buffer::Buffer
-//! [`Text`]: crate::text::Text
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
 //! [`context`]: crate::context
 //! [`Mutex`]: std::sync::Mutex
@@ -45,7 +44,7 @@
 //! [updated]: crate::hook::BufferUpdated
 use std::{
     self,
-    any::TypeId,
+    any::{Any, TypeId},
     cell::{RefCell, UnsafeCell},
     marker::PhantomData,
     sync::{
@@ -55,8 +54,8 @@ use std::{
 };
 
 use crate::{
-    text::TextMut,
-    ui::{Area, RwArea, Widget},
+    text::{Text, TextMut},
+    ui::{RwArea, Widget},
 };
 
 /// A container for shared read/write state.
@@ -107,7 +106,6 @@ use crate::{
 ///
 /// [`Mutex`]: std::sync::Mutex
 /// [`MutexGuard`]: std::sync::MutexGuard
-/// [`Text`]: crate::text::Text
 /// [_at the same time_]: Pass::write_many
 #[derive(Debug)]
 pub struct RwData<T: ?Sized> {
@@ -536,22 +534,6 @@ impl<W: Widget> RwData<W> {
     }
 }
 
-impl<W: Widget + ?Sized> RwData<W> {
-    /// Get the [`TextMut`] out of the wrapped [`Widget`].
-    ///
-    /// Note that, unlike other writing methods on the `RwData`, this
-    /// one doesn't require that `T: Sized`.
-    pub fn text_mut<'p>(&self, _: &'p mut Pass) -> TextMut<'p> {
-        let prev = self.cur_state.fetch_add(1, Relaxed);
-        self.read_state.store(prev + 1, Relaxed);
-        // SAFETY: Again, the mutable reference to the Pass ensures that this
-        // is the only _valid_ mutable reference, if another reference,
-        // created prior to this one, were to be reused, that would be a
-        // compile error.
-        unsafe { &mut *self.value.get() }.text_mut()
-    }
-}
-
 // SAFETY: The only parts that are accessible from other threads are
 // the atomic counters from the Arcs. Everything else can only be
 // acquired when there is a Pass, i.e., on the main thread.
@@ -614,7 +596,6 @@ impl<I: ?Sized, O> DataMap<I, O> {
     /// [`write_as`]: RwData::write_as
     /// [`read`]: RwData::read
     /// [`has_changed`]: RwData::has_changed
-    /// [`Text`]: crate::text::Text
     /// [`Widget`]: crate::ui::Widget
     /// [`Text::version`]: crate::text::Text::version
     pub fn has_changed(&self) -> bool {
@@ -673,7 +654,6 @@ impl<I, O> MutDataMap<I, O> {
     /// [`write_as`]: RwData::write_as
     /// [`read`]: RwData::read
     /// [`has_changed`]: RwData::has_changed
-    /// [`Text`]: crate::text::Text
     /// [`Widget`]: crate::ui::Widget
     pub fn has_changed(&self) -> bool {
         self.data.has_changed()
@@ -782,6 +762,41 @@ impl<Data: Default + 'static> BulkDataWriter<Data> {
             }
             map(data)
         })
+    }
+}
+
+/// An accessor for the [`Text`] of a [`Widget`].
+///
+/// This can be used to borrow the `Text` in a [`Pass::write_many`]
+/// call.
+pub struct RwText<'w> {
+    cur_state_ptr: CurStatePtr<'w>,
+    sized: &'w (dyn Any + Send + Sync),
+    fns: &'static HandleFns,
+}
+
+impl<'p> RwText<'p> {
+    /// Returns a new `RwText`.
+    pub(crate) fn new<W: ?Sized>(
+        data: &'p RwData<W>,
+        sized: &'p (dyn Any + Send + Sync),
+        fns: &'static HandleFns,
+    ) -> Self {
+        Self {
+            cur_state_ptr: CurStatePtr(&data.cur_state),
+            sized,
+            fns,
+        }
+    }
+
+    /// Reads the [`Text`] of the [`Widget`].
+    pub fn read(self, pa: &'p Pass) -> &'p Text {
+        (self.fns.text)(self.sized, pa)
+    }
+
+    /// Gets a [`TextMut`] of the [`Widget`].
+    pub fn write(self, pa: &'p mut Pass) -> TextMut<'p> {
+        (self.fns.text_mut)(self.sized, pa)
     }
 }
 
@@ -998,6 +1013,18 @@ macro_rules! implWriteableTuple {
     (@chain ) => { [] };
 }
 
+impl<'p> WriteableTuple<'p, (TextMut<'_>,)> for RwText<'p> {
+    type Return = TextMut<'p>;
+
+    fn write_all(self, pa: &'p mut Pass) -> Option<Self::Return> {
+        Some(self.write(pa))
+    }
+
+    fn state_ptrs(&self) -> impl IntoIterator<Item = CurStatePtr<'_>> {
+        [self.cur_state_ptr]
+    }
+}
+
 impl<'p, Data, T> WriteableTuple<'p, (&mut T,)> for &'p Data
 where
     Data: WriteableData<'p, T>,
@@ -1104,17 +1131,6 @@ impl<'p> WriteableData<'p, crate::ui::Area> for RwArea {
     }
 }
 
-impl<'p, T, F, R> WriteableData<'p, R> for (&'p RwData<T>, F)
-where
-    T: ?Sized,
-    F: Fn(&'p RwData<T>, &'p mut Pass) -> &'p mut R,
-    R: 'p,
-{
-    fn write_one_of_many(&'p self, pa: &'p mut Pass) -> &'p mut R {
-        (self.1)(self.0, pa)
-    }
-}
-
 /// To prevent outside implementations
 trait Sealed<T: ?Sized> {
     fn cur_state_ptr(&self) -> CurStatePtr<'_>;
@@ -1139,16 +1155,6 @@ impl Sealed<crate::ui::Area> for RwArea {
         CurStatePtr(&self.0.cur_state)
     }
 }
-impl<'p, T, F, R> Sealed<R> for (&'p RwData<T>, F)
-where
-    T: ?Sized,
-    F: Fn(&'p RwData<T>, &'p mut Pass) -> &'p mut R,
-    R: 'p,
-{
-    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
-        CurStatePtr(&self.0.cur_state)
-    }
-}
 
 /// A struct for comparison when calling [`Pass::write_many`]
 #[doc(hidden)]
@@ -1161,23 +1167,10 @@ impl std::cmp::PartialEq for CurStatePtr<'_> {
     }
 }
 
-/// Writes to an [`RwData`] where `T: ?Sized` and an [`RwArea`].
+/// Type erased [`Handle`] functions.
 ///
-/// This can only be safely used within duat-core, since I can promise
-/// myself that I won't swap two different [`RwData<T>`]s that don't
-/// have the same concrete type.
-///
-/// # SAFETY
-///
-/// You must ensure that the unsized value is never swapped with
-/// another, otherwise type guarantees break down.
-pub(crate) unsafe fn write_dyn_and_area<'p, W: ?Sized>(
-    not_sized: &'p RwData<W>,
-    area: &'p RwArea,
-    pa: &'p mut Pass,
-) -> (&'p mut W, &'p mut Area) {
-    let prev = not_sized.cur_state.fetch_add(1, Relaxed);
-    not_sized.read_state.store(prev + 1, Relaxed);
-    let not_sized = unsafe { &mut *not_sized.value.get() };
-    (not_sized, area.write(pa))
+/// [`Handle`]: crate::context::Handle
+pub(crate) struct HandleFns {
+    pub(crate) text: for<'p> fn(&'p (dyn Any + Send + Sync), &'p Pass) -> &'p Text,
+    pub(crate) text_mut: for<'p> fn(&'p (dyn Any + Send + Sync), &'p mut Pass) -> TextMut<'p>,
 }

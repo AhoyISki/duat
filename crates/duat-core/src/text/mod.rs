@@ -982,7 +982,11 @@ impl<'t> TextMut<'t> {
 
     /// A mut reference to this `Text`'s [`Selections`] if they
     /// exist.
-    pub fn selections_mut(self) -> &'t mut Selections {
+    pub fn selections_mut(&mut self) -> &mut Selections {
+        &mut self.text.0.selections
+    }
+
+    pub(crate) fn mv_selections_mut(self) -> &'t mut Selections {
         &mut self.text.0.selections
     }
 }

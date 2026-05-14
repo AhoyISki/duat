@@ -19,7 +19,7 @@ use std::sync::{Arc, LazyLock, mpsc};
 
 use duat_core::{
     context::{self, DynBuffer, Handle},
-    data::Pass,
+    data::{Pass, RwData},
     hook::{self, BufferClosed, BufferUpdated},
     text::{Builder, Spacer, Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
@@ -172,12 +172,12 @@ impl StatusLine {
 }
 
 impl Widget for StatusLine {
-    fn text(&self) -> &Text {
-        &self.text
+    fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text {
+        &widget.read(pa).text
     }
 
-    fn text_mut(&mut self) -> TextMut<'_> {
-        self.text.as_mut()
+    fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+        widget.write(pa).text.as_mut()
     }
 }
 

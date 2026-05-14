@@ -8,8 +8,8 @@ use std::{any::Any, ops::Range};
 
 use duat_core::{
     context,
-    data::Pass,
-    text::{Point, Text},
+    data::{Pass, RwData},
+    text::{Point, Text, TextMut},
     ui::{Coord, StaticSpawnSpecs, Widget},
 };
 use duat_term::Frame;
@@ -60,11 +60,7 @@ impl Picker {
             )
         }));
 
-        let picker = Picker {
-            maps,
-            text: builder.build(),
-            current: 0,
-        };
+        let picker = Picker { maps, text: builder.build(), current: 0 };
 
         let handle = window.spawn(pa, picker, specs);
 
@@ -86,12 +82,12 @@ impl Picker {
 }
 
 impl Widget for Picker {
-    fn text(&self) -> &Text {
-        &self.text
+    fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text {
+        &widget.read(pa).text
     }
 
-    fn text_mut(&mut self) -> duat_core::text::TextMut<'_> {
-        self.text.as_mut()
+    fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+        widget.write(pa).text.as_mut()
     }
 }
 
@@ -113,4 +109,3 @@ impl<S: AsRef<str>> BufferPlace<S> {
         }
     }
 }
-
