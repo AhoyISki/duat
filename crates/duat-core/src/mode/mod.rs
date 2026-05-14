@@ -295,15 +295,15 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// # impl Menu {
 /// #     fn build_text(&mut self) { todo!(); }
 /// # }
-/// use duat::prelude::*;
+/// use duat::{data::RwData, prelude::*};
 ///
 /// impl Widget for Menu {
-///     fn text(&self) -> &Text {
-///         &self.text
+///     fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text {
+///         &widget.read(pa).text
 ///     }
 ///
-///     fn text_mut(&mut self) -> TextMut<'_> {
-///         self.text.as_mut()
+///     fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+///         widget.write(pa).text.as_mut()
 ///     }
 /// }
 /// ```
@@ -313,7 +313,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
-/// # use duat::prelude::*;
+/// # use duat::{data::RwData, prelude::*};
 /// # #[derive(Default)]
 /// # struct Menu {
 /// #     text: Text,
@@ -336,8 +336,8 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///     });
 /// }
 /// # impl Widget for Menu {
-/// #     fn text(&self) -> &Text { todo!() }
-/// #     fn text_mut(&mut self) -> TextMut<'_> { todo!() }
+/// #     fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text { todo!() }
+/// #     fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> { todo!() }
 /// # }
 /// ```
 ///
@@ -364,9 +364,10 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// #     pub fn toggle(&mut self) {}
 /// #     fn build_text(&mut self) {}
 /// # }
+/// # use duat::data::RwData;
 /// # impl Widget for Menu {
-/// #     fn text(&self) -> &Text { todo!() }
-/// #     fn text_mut(&mut self) -> TextMut<'_> { todo!() }
+/// #     fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text { todo!() }
+/// #     fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> { todo!() }
 /// # }
 /// use duat::prelude::*;
 ///

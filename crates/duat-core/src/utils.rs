@@ -397,7 +397,7 @@ macro_rules! doc_duat {
         #[allow(unused, missing_docs)]
         mod $duat {
             pub use $crate::{clipboard, notify, process};
-            
+
             pub struct Opts {
                 pub wrap_lines: bool,
                 pub wrap_on_word: bool,
@@ -500,8 +500,10 @@ macro_rules! doc_duat {
             }
 
             pub mod widgets {
+                use $crate::data::RwData;
+                use super::prelude::*;
                 use std::fmt::Alignment;
-                
+
                 pub struct LineNumbers {
                     buffer: Handle,
                     text: Text,
@@ -520,8 +522,10 @@ macro_rules! doc_duat {
                     }}
                 }
                 impl Widget for LineNumbers {
-                    fn text(&self) -> &Text { &self.text }
-                    fn text_mut(&mut self) -> TextMut<'_> { self.text.as_mut() }
+                    fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text { &widget.read(pa).text }
+                    fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+                        widget.write(pa).text.as_mut()
+                    }
                 }
                 #[derive(Clone, Copy, Debug)]
                 pub struct LineNumbersOpts {
@@ -534,7 +538,7 @@ macro_rules! doc_duat {
                 impl LineNumbersOpts {
                     pub fn push_on(self, _: &mut Pass, _: &Handle) {}
                 }
-                
+
                 #[macro_export]
                 macro_rules! status{ ($str: literal) => { $duat::widgets::StatusLine } }
                 pub struct StatusLine;
@@ -560,7 +564,6 @@ macro_rules! doc_duat {
                     pub fn push_on(self, _: &mut Pass, _: &impl $crate::ui::PushTarget) {}
                 }
                 
-                use super::prelude::*;
                 pub struct VertRule;
                 impl VertRule {
                     pub fn builder() -> VertRuleBuilder { VertRuleBuilder }
@@ -613,8 +616,6 @@ macro_rules! doc_duat {
             }
             impl PassFileType for prelude::data::RwData<prelude::Buffer> {}
             impl PassFileType for prelude::Handle {}
-
-            
         }
     }
 }

@@ -209,9 +209,12 @@ impl<T> RwData<T> {
     ///         // ...
     ///     });
     /// }
+    /// # use duat::data::RwData;
     /// # impl Widget for MyWidget {
-    /// #     fn text(&self) -> &Text { &self.text }
-    /// #     fn text_mut(&mut self) -> TextMut { self.text.as_mut() }
+    /// #     fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text { &widget.read(pa).text }
+    /// #     fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+    /// #         widget.write(pa).text.as_mut()
+    /// #     }
     /// # }
     /// ```
     ///
@@ -237,9 +240,12 @@ impl<T> RwData<T> {
     ///         // ...
     ///     });
     /// }
+    /// # use duat::data::RwData;
     /// # impl Widget for MyWidget {
-    /// #     fn text(&self) -> &Text { &self.text }
-    /// #     fn text_mut(&mut self) -> TextMut { self.text.as_mut() }
+    /// #     fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text { &widget.read(pa).text }
+    /// #     fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
+    /// #         widget.write(pa).text.as_mut()
+    /// #     }
     /// # }
     /// ```
     ///

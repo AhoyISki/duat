@@ -266,7 +266,7 @@ fn test<W: Widget>(pa: &mut Pass, handle: &Handle<W>) {
     let (widget, area): (&mut W, &mut Area) = handle.write_with_area(pa);
 
     area.set_height(10.0).unwrap();
-    widget.text_mut().replace_range(.., "lmao");
+    handle.text_mut(pa).replace_range(.., "lmao");
 }
 ```
 
