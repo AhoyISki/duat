@@ -531,7 +531,7 @@ fn insert_gutter_entries<'g>(
                 } else if next_lnum < lnum {
                     panic!(
                         "So THIS happened {:#?}, {entry:#?}, {next_lnum}, {lnum}",
-                        &*buf.text()
+                        &buf.text()[..]
                     );
                 } else {
                     if next_lnum < buf.text().end_point().line() {

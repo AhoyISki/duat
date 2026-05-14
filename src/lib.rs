@@ -447,7 +447,7 @@ pub mod hook {
     //! fn setup(opts: &mut Opts) {
     //!     hook::add::<WidgetOpened<LineNumbers>>(|pa, linenumbers| {
     //!         if let Some(buf) = linenumbers.master_buffer(pa)
-    //!             && let Some("markdown") = buf.filetype(pa)
+    //!             && let Some("markdown") = buf.read(pa).filetype()
     //!         {
     //!             let ln = linenumbers.write(pa);
     //!             ln.align = std::fmt::Alignment::Left;

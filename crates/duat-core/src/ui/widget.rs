@@ -255,9 +255,6 @@ impl Node {
         if let Some(last_printed) = self.last_printed.read(pa) {
             let text = self.handle.text(pa);
             let new = (text.version(), text.id());
-            if new.0.strs != 0 {
-                crate::log_to_file!("{new:?}, {last_printed:?}");
-            }
             *last_printed != new
                 || self.handle.update_requested.load(Ordering::Relaxed)
                 || self.handle.widget().has_changed()

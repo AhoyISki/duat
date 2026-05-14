@@ -179,14 +179,12 @@ impl DuatMatchPairs {
     pub fn _plug(self, require: fn(TypeId, fn())) {
         require(TypeId::of::<DuatTreeSitter>(), || DuatTreeSitter._plug());
 
-        hook::add::<BufferUpdated>(move |pa, handle| {
-            let file = handle.write(pa);
+        hook::add::<BufferUpdated>(move |pa, buffer| {
+            let buf = buffer.write(pa);
 
             let match_pairs_ref = MatchPairsRef {
                 ts_and_reg: &self.ts_and_reg,
-                ts_only: if let Some(path) = file.path_set()
-                    && let Some(filetype) = path.filetype()
-                {
+                ts_only: if let Some(filetype) = buf.filetype() {
                     match filetype {
                         "rust" => &[[b"<".as_slice(), b">"], [b"|", b"|"]],
                         _ => self.ts_only.as_slice(),
@@ -197,8 +195,8 @@ impl DuatMatchPairs {
                 escaped: &self.escaped,
             };
 
-            let range = handle.full_printed_range(pa);
-            match_pairs_ref.update(pa, handle, range);
+            let range = buffer.full_printed_range(pa);
+            match_pairs_ref.update(pa, buffer, range);
         });
     }
 }

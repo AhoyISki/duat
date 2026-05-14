@@ -24,78 +24,60 @@
 //! [`prelude`]: https://docs.rs/duat/latest/duat/prelude
 //! [`Plugin`]: https://docs.rs/crates/duat/latest/struct.Plugin.html
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
-    sync::LazyLock,
+    sync::{LazyLock, Mutex},
 };
 
-use duat_core::{
-    buffer::Buffer,
-    context::Handle,
-    data::{Pass, RwData},
-};
+use duat_core::buffer::{Buffer, BufferId};
 pub use prefixes::AutoPrefix;
 use regex::RegexSet;
 
 mod prefixes;
 
+static STATIC_STRS: LazyLock<Mutex<HashSet<&str>>> = LazyLock::new(Mutex::default);
+static MAPPED: LazyLock<Mutex<HashMap<BufferId, &str>>> = LazyLock::new(Mutex::default);
+
 pub trait FileType {
     fn filetype(&self) -> Option<&'static str>;
+  
+    fn set_filetype(&self, filetype: impl ToString);
 }
 
 impl FileType for Buffer {
     fn filetype(&self) -> Option<&'static str> {
-        self.path_set()?.filetype()
+        let mapped = MAPPED.lock().unwrap();
+        if let Some(filetype) = mapped.get(&self.buffer_id()) {
+            Some(filetype)
+        } else {
+      let path = self.path_set()?;
+          path.extension()
+              .and_then(|ext| EXTENSIONS.get(ext.to_str()?).copied())
+              .or_else(|| FILENAMES.get(path.to_str()?).copied())
+              .or_else(|| FILENAMES.get(path.file_name()?.to_str()?).copied())
+              .or_else(|| {
+                  let (patterns, langs) = &*PATTERNS;
+  
+                  langs
+                      .get(patterns.matches(path.to_str()?).iter().min()?)
+                      .copied()
+              })
+        }
     }
-}
+  
+    fn set_filetype(&self, filetype: impl ToString) {
+        let filetype = filetype.to_string();
+        let mut static_strs = STATIC_STRS.lock().unwrap();
 
-impl FileType for String {
-    fn filetype(&self) -> Option<&'static str> {
-        AsRef::<str>::as_ref(&self).filetype()
-    }
-}
+        let filetype = if let Some(filetype) = static_strs.get(filetype.as_str()) {
+            filetype
+        } else {
+            let filetype = filetype.leak() as &'static str;
+            static_strs.insert(filetype);
+            filetype
+        };
 
-impl FileType for &'_ str {
-    fn filetype(&self) -> Option<&'static str> {
-        Path::new(self).filetype()
-    }
-}
-
-impl FileType for PathBuf {
-    fn filetype(&self) -> Option<&'static str> {
-        self.as_path().filetype()
-    }
-}
-
-impl FileType for &'_ Path {
-    fn filetype(&self) -> Option<&'static str> {
-        self.extension()
-            .and_then(|ext| EXTENSIONS.get(ext.to_str()?).copied())
-            .or_else(|| FILENAMES.get(self.to_str()?).copied())
-            .or_else(|| FILENAMES.get(self.file_name()?.to_str()?).copied())
-            .or_else(|| {
-                let (patterns, langs) = &*PATTERNS;
-
-                langs
-                    .get(patterns.matches(self.to_str()?).iter().min()?)
-                    .copied()
-            })
-    }
-}
-
-pub trait PassFileType {
-    fn filetype(&self, pa: &Pass) -> Option<&'static str>;
-}
-
-impl PassFileType for RwData<Buffer> {
-    fn filetype(&self, pa: &Pass) -> Option<&'static str> {
-        self.read(pa).filetype()
-    }
-}
-
-impl PassFileType for Handle<Buffer> {
-    fn filetype(&self, pa: &Pass) -> Option<&'static str> {
-        self.read(pa).filetype()
+        MAPPED.lock().unwrap().insert(self.buffer_id(), filetype);
     }
 }
 

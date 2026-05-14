@@ -16,14 +16,14 @@ use duat_core::{
     Ns, cmd,
     context::{self, Handle, Location, Record},
     data::{Pass, RwData},
-    hook::{self, MsgLogged, OnMouseEvent, WidgetClosed, WidgetSwitched},
+    hook::{self, MsgLogged, OnMouseEvent, WidgetSwitched},
     mode::{self, MouseButton, TwoPointsPlace},
     opts::PrintOpts,
     text::{Point, Spawn, Text, TextMut, txt},
-    ui::{DynSpawnSpecs, Orientation, PushSpecs, PushTarget, Side, Widget, Window},
+    ui::{DynSpawnSpecs, Orientation, PushSpecs, PushTarget, Side, Widget},
 };
 
-use crate::widgets::{Info, logbook};
+use crate::widgets::Info;
 
 #[derive(Default)]
 struct GlobalLogs {
@@ -107,9 +107,9 @@ pub fn logbook_setup() {
             let Some(TwoPointsPlace::Within(points)) = event.points else {
                 return;
             };
-            
+
             let logs = LOGS.read(pa);
-            
+
             let (Ok(i) | Err(i)) = logs
                 .location_ranges
                 .binary_search_by(|(end, _)| end.cmp(&points.real));
@@ -205,9 +205,7 @@ pub struct LogBookOpts {
 impl LogBookOpts {
     /// Push a [`LogBook`] around the given [`PushTarget`]
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<LogBook> {
-        let log_book = LogBook {
-            close_on_unfocus: self.close_on_unfocus,
-        };
+        let log_book = LogBook { close_on_unfocus: self.close_on_unfocus };
 
         let specs = match self.side {
             Side::Right | Side::Left => PushSpecs {
@@ -272,4 +270,3 @@ fn default_fmt(rec: Record) -> Option<Text> {
 
     Some(builder.build())
 }
-

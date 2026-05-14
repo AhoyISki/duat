@@ -327,7 +327,7 @@ impl InnerTags {
                     let (sb, stag) = starts.remove(i);
 
                     if b > sb {
-                        added_tags |= self.insert_raw((b, tag), Some((sb, stag)), false);
+                        added_tags |= self.insert_raw((sb, stag), Some((b, tag)), false);
                     }
                 }
                 RawTag::Spacer(_) | SpawnedWidget(..) => {

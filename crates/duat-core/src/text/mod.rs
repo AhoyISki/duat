@@ -405,6 +405,7 @@ impl Text {
         let change = Change::str_insert(&added_str, point);
         self.apply_change(0, change, false);
 
+        self.0.buf.increment_version();
         self.0.tags.insert_tags(point, &text.0.tags);
     }
 

@@ -15,7 +15,7 @@ use duat_core::{
     opts::PrintOpts,
     text::{Point, Strs, TextParts},
 };
-use duat_filetype::{FileType, PassFileType};
+use duat_filetype::FileType;
 use tree_sitter::{
     InputEdit, Node, ParseOptions, ParseState, Parser as TsParser, Point as TsPoint, QueryCapture,
     QueryCursor, QueryMatch, QueryProperty, Range as TsRange, StreamingIterator, TextProvider,
@@ -33,7 +33,7 @@ pub(crate) fn add_parser_hook() {
         printed_lines: Vec<Range<usize>>,
         is_queued: bool,
     ) -> bool {
-        if let Some(filetype) = handle.filetype(pa)
+        if let Some(filetype) = handle.read(pa).filetype()
             && let Some((parser, buf)) = PARSERS.write(pa, handle)
             && parser.lang_parts.0 == filetype
         {
@@ -100,20 +100,16 @@ pub(crate) fn add_parser_hook() {
             let mut parser = TsParser::new();
             parser.set_language(lang_parts.1).unwrap();
 
-            PARSERS.register(
-                pa,
-                handle,
-                Parser {
-                    parser,
-                    trees: Trees::new([Ranges::new(0..len_bytes)]),
-                    lang_parts,
-                    forms: forms_from_lang_parts(lang_parts),
-                    injections: Vec::new(),
-                    ranges_to_inject: Ranges::new(0..len_bytes),
-                    is_parsing: false,
-                    ns: Ns::new(),
-                },
-            );
+            PARSERS.register(pa, handle, Parser {
+                parser,
+                trees: Trees::new([Ranges::new(0..len_bytes)]),
+                lang_parts,
+                forms: forms_from_lang_parts(lang_parts),
+                injections: Vec::new(),
+                ranges_to_inject: Ranges::new(0..len_bytes),
+                is_parsing: false,
+                ns: Ns::new(),
+            });
 
             async_parse(pa, handle, printed_lines.clone(), false);
         }

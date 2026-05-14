@@ -360,7 +360,7 @@ fn setup(opts: &mut Opts) {
     hook::add::<ModeSwitched>(|pa, switch| {
         if switch.new.is::<Normal>()
             && let buffer = context::current_buffer(pa)
-            && let Some("rust" | "markdown" | "html") = buffer.filetype(pa)
+            && let Some("rust" | "markdown" | "html") = buffer.read(pa).filetype()
         {
             _ = buffer.save(pa);
         }
@@ -379,7 +379,7 @@ fn setup(opts: &mut Opts) {
     hook::add::<KeyTyped>(|pa, key_event| {
         let buffer = context::current_buffer(pa);
 
-        if let Some("rust") = buffer.filetype(pa)
+        if let Some("rust") = buffer.read(pa).filetype()
             && let event!('}' | ')' | ']') = key_event
         {
             _ = buffer.save(pa);

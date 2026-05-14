@@ -639,6 +639,8 @@ impl Completions {
                     let _ = prev.close(pa);
                 }
             } else {
+                master_handle.widget().declare_unwritten();
+                master_handle.area().declare_unwritten();
                 drop(start_fn);
             }
 
@@ -676,6 +678,8 @@ impl Completions {
 
             main_replacement
         } else {
+            master_handle.widget().declare_unwritten();
+            master_handle.area().declare_unwritten();
             drop(start_fn);
             comp.text = Text::default();
             comp.sidebar = Text::default();

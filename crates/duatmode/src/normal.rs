@@ -15,7 +15,7 @@ use duat_core::{
     text::{Strs, txt},
     ui::Widget,
 };
-use duat_filetype::{AutoPrefix, PassFileType};
+use duat_filetype::{AutoPrefix, FileType};
 use duat_jump_list::{BufferJumps, JumpListId};
 
 use crate::{
@@ -319,8 +319,8 @@ impl Mode for Normal {
             });
 
             if key_event.modifiers == KeyMod::NONE {
-                if let Some(buffer) = widget.get_as()
-                    && let Some(filetype) = buffer.filetype(pa)
+                if let Some(buffer) = widget.get_as::<Buffer>()
+                    && let Some(filetype) = buffer.read(pa).filetype()
                 {
                     buffer.edit_all(pa, |mut s| {
                         if s.add_comment(filetype) {
@@ -347,8 +347,8 @@ impl Mode for Normal {
             });
 
             if key_event.modifiers == KeyMod::NONE {
-                if let Some(buffer) = widget.get_as()
-                    && let Some(filetype) = buffer.filetype(pa)
+                if let Some(buffer) = widget.get_as::<Buffer>()
+                    && let Some(filetype) = buffer.read(pa).filetype()
                 {
                     buffer.edit_all(pa, |mut s| {
                         if s.add_comment(filetype) {

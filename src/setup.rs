@@ -278,7 +278,7 @@ fn enable_buffer_hooks(opts: &Opts) {
             let path = buf.path();
             buf.text_mut().new_moment();
 
-            if let Some("gitcommit") = path.filetype() {
+            if let Some("gitcommit") = buf.filetype() {
                 cache::delete(path);
                 return;
             }

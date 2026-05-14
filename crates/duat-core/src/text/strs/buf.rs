@@ -77,14 +77,8 @@ impl StrsBuf {
             change.added_end().line() - start.line(),
         ];
 
-        if crate::utils::catch_panic(|| {
-            self.line_ranges
-                .transform(start_rec, old_len, new_len, &self.gapbuf);
-        })
-        .is_none()
-        {
-            crate::debug!("{start_rec:?}, {old_len:?}, {new_len:?}, {change:#?}, {self:#?}");
-        };
+        self.line_ranges
+            .transform(start_rec, old_len, new_len, &self.gapbuf);
     }
 
     /// Increment the version of the `StrsBuf` by 1

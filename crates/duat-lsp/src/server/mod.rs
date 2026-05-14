@@ -4,14 +4,10 @@ use std::{
 };
 
 use duat_core::{
-    Ns,
-    context::Handle,
-    data::Pass,
-    hook::{self, ConfigUnloaded},
-    storage::{
+    Ns, buffer::Buffer, context::Handle, data::Pass, hook::{self, ConfigUnloaded}, storage::{
         self,
         bincode::{Decode, Encode},
-    },
+    }
 };
 use duat_filetype::FileType;
 use jsonrpc_lite::Id;
@@ -147,14 +143,16 @@ pub fn on_servers_list(func: impl FnOnce(&[Server])) {
     func(&SERVERS.lock().unwrap());
 }
 
-pub fn get_servers_for(path: &Path) -> Option<Vec<Server>> {
-    let filetype = path.filetype()?;
+pub fn get_servers_for(buf: &Buffer) -> Option<Vec<Server>> {
+    let filetype = buf.filetype()?;
+    let path = buf.path();
+    
     let (config, user_provided) = config::get_for(filetype)?;
 
     let mut servers = SERVERS.lock().unwrap();
 
     let servers = config.into_iter().filter_map(|(server_name, config)| {
-        let rootdir = config.rootdir_for(path);
+        let rootdir = config.rootdir_for(&path);
 
         if let Some(server) = servers
             .iter()
@@ -202,7 +200,7 @@ pub fn get_servers_for(path: &Path) -> Option<Vec<Server>> {
                 Err(_) => return None,
             };
 
-            let roots = Arc::new(Mutex::new(vec![config.rootdir_for(path)]));
+            let roots = Arc::new(Mutex::new(vec![config.rootdir_for(&path)]));
             let server = Server {
                 config: Arc::new(config),
                 init_parts: Arc::new(OnceLock::new()),

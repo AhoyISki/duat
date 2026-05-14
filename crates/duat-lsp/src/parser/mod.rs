@@ -12,7 +12,7 @@ use duat_core::{
     storage,
     text::TextMut,
 };
-use duat_filetype::PassFileType;
+use duat_filetype::FileType;
 use lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, DocumentFormattingParams, FormattingOptions, OneOf,
@@ -181,12 +181,12 @@ pub fn setup_hooks() {
     });
 
     hook::add::<BufferOpened>(|pa, buffer| {
-        if let Some(filetype) = buffer.filetype(pa) {
-            let path = buffer.read(pa).path();
-
-            let Some(servers) = server::get_servers_for(&path) else {
+        if let Some(filetype) = buffer.read(pa).filetype() {
+            let Some(servers) = server::get_servers_for(buffer.read(pa)) else {
                 return;
             };
+            
+            let path = buffer.read(pa).path();
 
             let Some(uri) = path_to_uri(&path) else {
                 context::warn!("File path is not valid UTF8, won't connect to language servers");
@@ -209,8 +209,8 @@ pub fn setup_hooks() {
                 });
             }
 
-			let version = text.version().strs;
-			
+            let version = text.version().strs;
+
             let (parser, buf) = PARSERS.register(pa, buffer, Parser {
                 uri,
                 servers: servers.clone(),

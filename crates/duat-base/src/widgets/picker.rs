@@ -7,7 +7,7 @@
 use std::{any::Any, ops::Range};
 
 use duat_core::{
-    context,
+    context::{self, Handle},
     data::{Pass, RwData},
     text::{Point, Text, TextMut},
     ui::{Coord, StaticSpawnSpecs, Widget},
@@ -21,7 +21,7 @@ use duat_term::Frame;
 pub struct Picker {
     maps: Vec<(Range<usize>, Box<dyn Any + Send>)>,
     text: Text,
-    current: usize,
+    buffer: Handle,
 }
 
 impl Picker {
@@ -60,7 +60,11 @@ impl Picker {
             )
         }));
 
-        let picker = Picker { maps, text: builder.build(), current: 0 };
+        let picker = Picker {
+            maps,
+            text: builder.build(),
+            buffer: context::current_buffer(pa),
+        };
 
         let handle = window.spawn(pa, picker, specs);
 
@@ -76,18 +80,16 @@ impl Picker {
             area.set_frame(frame);
         }
     }
-
-    /// Scroll the `Picker`'s entries.
-    pub fn scroll(pa: &mut Pass, by: i32) {}
 }
 
 impl Widget for Picker {
     fn text<'p>(widget: &'p RwData<Self>, pa: &'p Pass) -> &'p Text {
-        &widget.read(pa).text
+        widget.read(pa).buffer.text(pa)
     }
 
     fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
-        widget.write(pa).text.as_mut()
+        let (_, text) = widget.write_then(pa, |pkr| pkr.buffer.rw_text());
+        text
     }
 }
 
@@ -101,11 +103,14 @@ pub struct BufferPlace<S: AsRef<str>> {
 }
 
 impl<S: AsRef<str>> BufferPlace<S> {
-    /// Creates a `BufferPlace<String>` from this `BufferPlace`.
+    /// Creates a `BufferPlace<String>` from this `BufferPlace`. 
     pub fn to_string_location(&self) -> BufferPlace<String> {
         BufferPlace {
             path: self.path.as_ref().to_string(),
             point: self.point,
         }
     }
+}
+
+enum PreviewMode {
 }

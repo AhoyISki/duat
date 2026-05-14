@@ -47,7 +47,7 @@ hook::add::<BufferOpened>(|pa: &mut Pass, handle: &Handle<Buffer>| {
     let mut other_buffers = context::buffers(pa);
     other_buffers.retain(|other| other != handle);
 
-    if other_buffers.iter().all(|other| other.filetype(pa) != Some(filetype)) {
+    if other_buffers.iter().all(|other| other.read(pa).filetype() != Some(filetype)) {
         context::info!("Opened the first buffer of filetype [a]{filetype}");
         context::info!("The buffer is called [a]{}", buf.name());
     }

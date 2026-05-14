@@ -1330,3 +1330,4 @@ enum Callback<H: Hookable> {
     FnMut(Box<dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>)>),
     FnOnce(Option<Box<dyn FnOnce(&mut Pass, <H as Hookable>::Input<'_>)>>),
 }
+

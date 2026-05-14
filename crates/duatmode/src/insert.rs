@@ -2,15 +2,9 @@ use std::sync::{Mutex, atomic::Ordering};
 
 use duat_base::{BaseBuffer, widgets::Completions};
 use duat_core::{
-    Ns,
-    context::{self, Handle},
-    data::Pass,
-    hook::{self, BufferSwitched, ModeSwitched},
-    mode::{self, KeyEvent, KeyMod, Mode, SelectionMut, alt, ctrl, event, shift},
-    text::Mask,
-    ui::Widget,
+    Ns, buffer::Buffer, context::{self, Handle}, data::Pass, hook::{self, BufferSwitched, ModeSwitched}, mode::{self, KeyEvent, KeyMod, Mode, SelectionMut, alt, ctrl, event, shift}, text::Mask, ui::Widget
 };
-use duat_filetype::{AutoPrefix, PassFileType};
+use duat_filetype::{AutoPrefix, FileType};
 
 use crate::{Normal, opts::INSERT_TABS, set_anchor_if_needed};
 
@@ -227,8 +221,8 @@ impl Mode for Insert {
                     insert_str(&mut s, '\n', 1, &mut insert_events)
                 });
                 if opts.indent_chars.contains(&'\n') {
-                    if let Some(buffer) = widget.get_as()
-                        && let Some(filetype) = buffer.filetype(pa)
+                    if let Some(buffer) = widget.get_as::<Buffer>()
+                        && let Some(filetype) = buffer.read(pa).filetype()
                     {
                         buffer.edit_all(pa, |mut s| {
                             if s.add_comment(filetype) {
