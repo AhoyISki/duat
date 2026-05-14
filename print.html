@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-60616fce.js";
+            window.path_to_searchindex_js = "searchindex-b45fa158.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-74f781a9.js"></script>
@@ -1467,7 +1467,7 @@ fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;ModeSwitched&gt;(|pa, switch| {
         if switch.new.is::&lt;Normal&gt;()
             &amp;&amp; let buffer = context::current_buffer(pa)
-            &amp;&amp; let Some("rust" | "markdown" | "html") = buffer.filetype(pa)
+            &amp;&amp; let Some("rust" | "markdown" | "html") = buffer.read(pa).filetype()
         {
             _ = buffer.save(pa);
         }
@@ -1482,7 +1482,7 @@ fn setup(opts: &amp;mut Opts) {
     hook::add::&lt;KeyTyped&gt;(|pa, key_event| {
         let buffer = context::current_buffer(pa);
 
-        if let Some("rust") = buffer.filetype(pa)
+        if let Some("rust") = buffer.read(pa).filetype()
             &amp;&amp; let event!('}' | ')' | ']') = key_event
         {
             _ = buffer.save(pa);
@@ -1546,7 +1546,7 @@ hook::add::&lt;BufferOpened&gt;(|pa: &amp;mut Pass, handle: &amp;Handle&lt;Buffe
     let mut other_buffers = context::buffers(pa);
     other_buffers.retain(|other| other != handle);
 
-    if other_buffers.iter().all(|other| other.filetype(pa) != Some(filetype)) {
+    if other_buffers.iter().all(|other| other.read(pa).filetype() != Some(filetype)) {
         context::info!("Opened the first buffer of filetype [a]{filetype}");
         context::info!("The buffer is called [a]{}", buf.name());
     }
