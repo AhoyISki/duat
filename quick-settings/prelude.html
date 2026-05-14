@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-df94dfdd.js";
+            window.path_to_searchindex_js = "../searchindex-992a84d6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -308,6 +308,8 @@ fn setup(opts: &amp;mut Opts) {
     opts.duatmode.indent_on_capital_i = true;
     // Makes the 'f' and 't' keys set the search pattern.
     opts.duatmode.f_and_t_set_search = true;
+    // Makes `&lt;a-j&gt;` automatically remove indentation.
+    opts.duatmode.remove_joined_line_indent = true;
     // Bracket pairs to be considered by keys like 'm' and the 'u' object.
     opts.duatmode.set_brackets([["(", ")"], ["{", "}"], ["[", "]"]]);
 
