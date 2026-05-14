@@ -294,38 +294,51 @@ impl InnerTags {
     /// Insert another [`InnerTags`] into this one
     pub fn insert_tags(&mut self, p: Point, other: &InnerTags) {
         let mut starts = Vec::new();
+        let mut added_tags = false;
+        let mut added_meta_tags = false;
 
         for (_, (b, tag)) in other.list.iter_fwd(..) {
             let b = b as usize + p.byte();
             match tag {
-                PushForm(..) | StartConceal(_) | PushMask(..) => starts.push((b, tag)),
+                PushForm(..) | StartConceal(_) | PushMask(..) | RawTag::StartToggle(..) => {
+                    starts.push((b, tag))
+                }
                 PopForm(..) | EndConceal(_) | PopMask(..) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, stag) = starts.remove(i);
                     if b > sb {
-                        self.insert_raw((sb, stag), Some((b, tag)), false);
+                        added_tags |= self.insert_raw((sb, stag), Some((b, tag)), false);
                     }
                 }
-                ConcealUntil(_) => unreachable!(),
                 RawTag::Inlay(_, mut idx) | RawTag::Overlay(_, mut idx) => {
                     let (ghost, _) = other.ghosts[idx as usize].as_ref().unwrap();
                     idx = reflist_pos(&self.ghosts, ghost) as u32;
                     reflist_insert(&mut self.ghosts, ghost.clone(), idx as usize);
 
-                    self.insert_raw((b, tag), None, false);
+                    added_tags |= self.insert_raw((b, tag), None, false);
+                    added_meta_tags = added_tags;
                 }
-                RawTag::StartToggle(_, mut idx) => {
+                RawTag::EndToggle(_, mut idx) => {
                     let (toggle, _) = other.toggles[idx as usize].as_ref().unwrap();
                     idx = reflist_pos(&self.toggles, toggle) as u32;
                     reflist_insert(&mut self.toggles, toggle.clone(), idx as usize);
 
-                    self.insert_raw((b, tag), None, false);
+                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
+                    let (sb, stag) = starts.remove(i);
+
+                    if b > sb {
+                        added_tags |= self.insert_raw((b, tag), Some((sb, stag)), false);
+                    }
                 }
-                RawTag::Spacer(_) | SpawnedWidget(..) | RawTag::EndToggle(..) => {
-                    _ = self.insert_raw((b, tag), None, false)
+                RawTag::Spacer(_) | SpawnedWidget(..) => {
+                    added_tags |= self.insert_raw((b, tag), None, false)
                 }
+                ConcealUntil(_) => unreachable!(),
             };
         }
+
+        self.tags_version += added_tags as u64;
+        self.meta_tags_version += added_meta_tags as u64;
     }
 
     /// Extends this [`InnerTags`] with another one

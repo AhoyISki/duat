@@ -827,6 +827,8 @@ pub(crate) fn on_each_sel<'p>(
             Some(next_i.get_mut()),
         );
     }
+
+    text.selections_mut().increment_version();
 }
 
 /// Reinsert edited [`Selections`].

@@ -40,15 +40,10 @@ impl StrsBuf {
             string.len() <= u32::MAX as usize,
             "For now, you can't have a Text larger than u32::MAX"
         );
-        let buf = GapBuffer::from(string.into_bytes());
 
-        let slices = unsafe {
-            let (s0, s1) = buf.as_slices();
-            [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
-        };
-
-        let line_ranges = LineRanges::new(slices);
-        Self { gapbuf: buf, line_ranges, version: 0 }
+        let gapbuf = GapBuffer::from(string.into_bytes());
+        let line_ranges = LineRanges::new(&gapbuf);
+        Self { gapbuf, line_ranges, version: 0 }
     }
 
     ////////// Modification functions
@@ -82,15 +77,12 @@ impl StrsBuf {
             change.added_end().line() - start.line(),
         ];
 
-        let array = unsafe {
-            let (s0, s1) = self.gapbuf.as_slices();
-            [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
-        };
-
         if crate::utils::catch_panic(|| {
-        self.line_ranges
-            .transform(start_rec, old_len, new_len, array);
-        }).is_none() {
+            self.line_ranges
+                .transform(start_rec, old_len, new_len, &self.gapbuf);
+        })
+        .is_none()
+        {
             crate::debug!("{start_rec:?}, {old_len:?}, {new_len:?}, {change:#?}, {self:#?}");
         };
     }

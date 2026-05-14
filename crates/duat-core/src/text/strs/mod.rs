@@ -80,15 +80,11 @@ impl Strs {
         if formed.start == 0 {
             Point::default()
         } else {
-            let slices = unsafe {
-                let (s0, s1) = formed.buf.gapbuf.as_slices();
-                [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
-            };
             formed
                 .buf
                 .line_ranges
-                .point_by_key(formed.start as usize, |[b, _]| b, slices)
-                .unwrap_or_else(|| formed.buf.line_ranges.max(slices))
+                .point_by_key(formed.start as usize, |[b, _]| b, &formed.buf.gapbuf)
+                .unwrap_or_else(|| formed.buf.line_ranges.max(&formed.buf.gapbuf))
         }
     }
 
@@ -98,20 +94,15 @@ impl Strs {
     pub fn end_point(&self) -> Point {
         let formed = FormedStrs::new(self);
 
-        let slices = unsafe {
-            let (s0, s1) = formed.buf.gapbuf.as_slices();
-            [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
-        };
-
         let byte = formed.start as usize + formed.len as usize;
         if byte == formed.buf.gapbuf.len() {
-            formed.buf.line_ranges.max(slices)
+            formed.buf.line_ranges.max(&formed.buf.gapbuf)
         } else {
             formed
                 .buf
                 .line_ranges
-                .point_by_key(byte, |[b, _]| b, slices)
-                .unwrap_or_else(|| formed.buf.line_ranges.max(slices))
+                .point_by_key(byte, |[b, _]| b, &formed.buf.gapbuf)
+                .unwrap_or_else(|| formed.buf.line_ranges.max(&formed.buf.gapbuf))
         }
     }
 
@@ -173,14 +164,10 @@ impl Strs {
         } else if byte == 0 {
             Point::default()
         } else {
-            let slices = unsafe {
-                let (s0, s1) = formed.buf.gapbuf.as_slices();
-                [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
-            };
             formed
                 .buf
                 .line_ranges
-                .point_by_key(byte + formed.start as usize, |[b, _]| b, slices)
+                .point_by_key(byte + formed.start as usize, |[b, _]| b, &formed.buf.gapbuf)
                 .unwrap()
         }
     }
@@ -206,21 +193,16 @@ impl Strs {
         if char == end_point.char() {
             end_point
         } else {
-            let slices = unsafe {
-                let (s0, s1) = formed.buf.gapbuf.as_slices();
-                [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
-            };
-
             let start = formed
                 .buf
                 .line_ranges
-                .point_by_key(formed.start as usize, |[b, _]| b, slices)
+                .point_by_key(formed.start as usize, |[b, _]| b, &formed.buf.gapbuf)
                 .unwrap();
 
             formed
                 .buf
                 .line_ranges
-                .point_by_key(start.char() + char, |[_, s]| s, slices)
+                .point_by_key(start.char() + char, |[_, s]| s, &formed.buf.gapbuf)
                 .unwrap()
         }
     }

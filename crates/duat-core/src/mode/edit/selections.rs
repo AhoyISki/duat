@@ -44,6 +44,7 @@ pub struct Selections {
     buf: GapBuffer<Selection>,
     main_i: usize,
     shift: Mutex<Shift>,
+    version: u64,
 }
 
 impl Selections {
@@ -53,6 +54,7 @@ impl Selections {
             buf: gap_buffer![main],
             main_i: 0,
             shift: Mutex::default(),
+            version: 0,
         }
     }
 
@@ -62,6 +64,7 @@ impl Selections {
             buf: GapBuffer::new(),
             main_i: 0,
             shift: Mutex::new(Shift { from: 0, by: [0; 3] }),
+            version: 0,
         }
     }
 
@@ -103,6 +106,7 @@ impl Selections {
                 selection.shift_by(shift.by);
             }
             self.buf = gap_buffer![selection];
+            self.increment_version();
         }
         self.main_i = 0;
     }
@@ -415,7 +419,18 @@ impl Selections {
         if self.buf.is_empty() {
             self.main_i = 0;
             self.buf = gap_buffer![Selection::default()];
+            self.increment_version();
         }
+    }
+
+    /// The current version of the `Selections`.
+    pub(crate) fn version(&self) -> u64 {
+        self.version
+    }
+
+    /// Increments the version of the `Selections`.
+    pub(crate) fn increment_version(&mut self) {
+        self.version += 1;
     }
 }
 
@@ -425,6 +440,7 @@ impl Clone for Selections {
             buf: self.buf.clone(),
             main_i: self.main_i,
             shift: Mutex::new(*self.shift.lock().unwrap()),
+            version: self.version,
         }
     }
 }

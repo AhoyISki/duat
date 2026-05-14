@@ -589,6 +589,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         ));
 
         crate::mode::reinsert_selections(selections.into_iter().flatten(), &mut text, None);
+        text.selections_mut().increment_version();
 
         ret
     }

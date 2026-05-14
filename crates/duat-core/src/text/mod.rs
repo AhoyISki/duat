@@ -419,8 +419,9 @@ impl Text {
         let added_str = text.to_string();
         let point = self.point_at_byte(b);
         let change = Change::str_insert(&added_str, point);
-        self.apply_change(0, change, true);
 
+        self.apply_change(0, change, true);
+        self.0.buf.increment_version();
         self.0.tags.insert_tags(point, &text.0.tags);
     }
 
@@ -690,6 +691,7 @@ impl Text {
             strs: self.0.buf.version(),
             tags,
             meta_tags,
+            selections: self.0.selections.version(),
         }
     }
 
@@ -1060,6 +1062,7 @@ impl<'t> TextParts<'t> {
             strs: self.strs.version(),
             tags,
             meta_tags,
+            selections: self.selections.version(),
         }
     }
 }
@@ -1093,6 +1096,8 @@ pub struct TextVersion {
     /// `Tag`s, as well as any transformation of the text, will incur
     /// a version increment.
     pub meta_tags: u64,
+    /// The version of the [`Selections`]
+    pub selections: u64,
 }
 
 impl TextVersion {
@@ -1185,7 +1190,7 @@ mod id {
 
     /// An identifier for `Text`, used for checking if things need
     /// reprinting.
-    #[derive(Clone, Copy, PartialEq, Eq)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct TextId(u64);
 
     impl TextId {

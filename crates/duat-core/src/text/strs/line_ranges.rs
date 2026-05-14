@@ -9,6 +9,8 @@
 //!
 //! [`Text`]: super::Text
 //! [`InnerTags`]: super::InnerTags
+use gap_buf::GapBuffer;
+
 use crate::text::{
     Point,
     shift_list::{Shift, ShiftList, Shiftable},
@@ -23,7 +25,9 @@ pub struct LineRanges(Option<ShiftList<[u32; 2]>>);
 
 impl LineRanges {
     /// Creates a new `LineRanges`.
-    pub fn new([s0, s1]: [&str; 2]) -> Self {
+    pub fn new(gapbuf: &GapBuffer<u8>) -> Self {
+        let [s0, s1] = strs(gapbuf);
+        
         if s0.len() + s1.len() >= 500 {
             Self(Some({
                 let [mut b, mut s, mut l] = [0; 3];
@@ -53,11 +57,13 @@ impl LineRanges {
         start: [usize; 3],
         old_len: [usize; 3],
         new_len: [usize; 3],
-        [s0, s1]: [&str; 2],
+        gapbuf: &GapBuffer<u8>,
     ) {
+        let [s0, s1] = strs(gapbuf);
+
         let Some(line_ranges) = self.0.as_mut() else {
             if s0.len() + s1.len() >= 500 {
-                *self = Self::new([s0, s1]);
+                *self = Self::new(gapbuf);
             }
             return;
         };
@@ -87,7 +93,9 @@ impl LineRanges {
     }
 
     /// The maximum [`Point`].
-    pub fn max(&self, [s0, s1]: [&str; 2]) -> Point {
+    pub fn max(&self, gapbuf: &GapBuffer<u8>) -> Point {
+        let [s0, s1] = strs(gapbuf);
+
         match self.0.as_ref() {
             Some(line_ranges) => {
                 let [byte, char] = line_ranges.max();
@@ -106,9 +114,10 @@ impl LineRanges {
         &self,
         key: usize,
         by: fn([u32; 2]) -> u32,
-        [s0, s1]: [&str; 2],
+        gapbuf: &GapBuffer<u8>,
     ) -> Option<Point> {
         let key = key as u32;
+        let [s0, s1] = strs(gapbuf);
 
         let ([mut b, mut s, mut l], [s0, s1]) = if let Some(lines) = self.0.as_ref() {
             match lines.find_by_key(key, by) {
@@ -282,5 +291,13 @@ impl bincode::Encode for LineRanges {
             }
             None => bincode::Encode::encode(&false, encoder),
         }
+    }
+}
+
+fn strs(gapbuf: &GapBuffer<u8>) -> [&str; 2] {
+    // SAFETY: From str they came, to str they shall return.
+    unsafe {
+        let (s0, s1) = gapbuf.as_slices();
+        [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
     }
 }
