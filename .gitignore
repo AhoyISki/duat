@@ -3,3 +3,6 @@ README.j2
 .cargo/
 .mod*
 book/book/
+
+# for `direnv` users
+.envrc
