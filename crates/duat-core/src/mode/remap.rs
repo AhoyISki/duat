@@ -690,7 +690,10 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
                         keys
                     }
                     MapsTo::Function(function) => {
-                        function.lock().unwrap()(pa);
+                        let mut function = function.lock().unwrap();
+                        crate::utils::catch_panic(|| function(pa));
+                        drop(function);
+
                         let mapped_bindings = &mut bdw.write(pa).mapped_bindings;
                         mapped_bindings
                             .get_mut(&ty)
