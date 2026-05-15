@@ -23,7 +23,7 @@ pub fn info_setup() {
         ScrollDown | ScrollUp => {
             let (info, area) = event.handle.write_with_area(pa);
             let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
-            area.scroll_ver(&info.text, scroll, info.print_opts());
+            area.scroll_ver(&info.text, scroll as f32, info.print_opts());
         }
         _ => {}
     });

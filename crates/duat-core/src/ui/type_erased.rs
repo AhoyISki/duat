@@ -423,10 +423,13 @@ impl RwArea {
 
     /// Scrolls the [`Text`] veritcally by an amount
     ///
-    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
-    /// to scroll beyond the last line, up until reaching the
-    /// `scrolloff.y` value.
-    pub fn scroll_ver(&self, pa: &mut Pass, text: &Text, dist: i32, opts: PrintOpts) {
+    /// If [`PrintOpts::allow_overscroll`] is set, then the [`Text`]
+    /// will be allowed to scroll beyond the last line, up until
+    /// reaching the `scrolloff.y` value.
+    ///
+    /// NOTE: `f32::MAX as usize != usize::MAX`, so use a very large
+    /// number, like a billion, instead of `f32::MAX`.
+    pub fn scroll_ver(&self, pa: &mut Pass, text: &Text, dist: f32, opts: PrintOpts) {
         self.0.write(pa).scroll_ver(text, dist, opts)
     }
 
@@ -434,21 +437,15 @@ impl RwArea {
     /// [`TwoPoints`] is within the [`ScrollOff`] range
     ///
     /// There are two other scrolling methods for [`Area`]:
-    /// [`scroll_ver`] and [`scroll_to_points`]. The difference
-    /// between this and [`scroll_to_points`] is that this method
+    /// [`scroll_ver`] and [`scroll_to`]. The difference
+    /// between this and [`scroll_to`] is that this method
     /// doesn't do anything if the [`TwoPoints`] is already on screen.
     ///
     /// [`ScrollOff`]: crate::opts::ScrollOff
     /// [`scroll_ver`]: Area::scroll_ver
-    /// [`scroll_to_points`]: Area::scroll_to_points
-    pub fn scroll_around_points(
-        &self,
-        pa: &mut Pass,
-        text: &Text,
-        points: TwoPoints,
-        opts: PrintOpts,
-    ) {
-        self.0.write(pa).scroll_around_points(text, points, opts)
+    /// [`scroll_to`]: Area::scroll_to
+    pub fn scroll_around(&self, pa: &mut Pass, text: &Text, points: TwoPoints, opts: PrintOpts) {
+        self.0.write(pa).scroll_around(text, points, opts)
     }
 
     /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
@@ -457,13 +454,24 @@ impl RwArea {
     /// the same as setting the starting points to the
     /// [`Text::visual_line_start`] of these [`TwoPoints`].
     ///
-    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
-    /// to scroll beyond the last line, up until reaching the
-    /// `scrolloff.y` value.
+    /// If [`PrintOpts::allow_overscroll`] is set, then the [`Text`]
+    /// will be allowed to scroll beyond the last line, up until
+    /// reaching the `scrolloff.y` value.
+    ///
+    /// The `dist` value here is the distance from the top of the
+    /// screen that `points` should be. It should only be a non
+    /// negative value.
     ///
     /// [line wrapping]: crate::opts::PrintOpts::wrap_lines
-    pub fn scroll_to_points(&self, pa: &mut Pass, text: &Text, points: TwoPoints, opts: PrintOpts) {
-        self.0.write(pa).scroll_to_points(text, points, opts)
+    pub fn scroll_to(
+        &self,
+        pa: &mut Pass,
+        text: &Text,
+        points: TwoPoints,
+        dist: f32,
+        opts: PrintOpts,
+    ) {
+        self.0.write(pa).scroll_to(text, points, dist, opts)
     }
 
     /// Scrolls the [`Area`] to the given [`TwoPoints`]
@@ -717,10 +725,13 @@ impl Area {
 
     /// Scrolls the [`Text`] veritcally by an amount
     ///
-    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
-    /// to scroll beyond the last line, up until reaching the
-    /// `scrolloff.y` value.
-    pub fn scroll_ver(&mut self, text: &Text, dist: i32, opts: PrintOpts) {
+    /// If [`PrintOpts::allow_overscroll`] is set, then the [`Text`]
+    /// will be allowed to scroll beyond the last line, up until
+    /// reaching the `scrolloff.y` value.
+    ///
+    /// NOTE: `f32::MAX as usize != usize::MAX`, so use a very large
+    /// number, like a billion, instead of `f32::MAX`.
+    pub fn scroll_ver(&mut self, text: &Text, dist: f32, opts: PrintOpts) {
         (self.fns.scroll_ver)(self, text, dist, opts);
     }
 
@@ -728,15 +739,15 @@ impl Area {
     /// [`TwoPoints`] is within the [`ScrollOff`] range
     ///
     /// There are two other scrolling methods for `Area`:
-    /// [`scroll_ver`] and [`scroll_to_points`]. The difference
-    /// between this and [`scroll_to_points`] is that this method
+    /// [`scroll_ver`] and [`scroll_to`]. The difference
+    /// between this and [`scroll_to`] is that this method
     /// doesn't do anything if the [`TwoPoints`] is already on screen.
     ///
     /// [`ScrollOff`]: crate::opts::ScrollOff
     /// [`scroll_ver`]: Area::scroll_ver
-    /// [`scroll_to_points`]: Area::scroll_to_points
-    pub fn scroll_around_points(&mut self, text: &Text, points: TwoPoints, opts: PrintOpts) {
-        (self.fns.scroll_around_points)(self, text, points, opts);
+    /// [`scroll_to`]: Area::scroll_to
+    pub fn scroll_around(&mut self, text: &Text, points: TwoPoints, opts: PrintOpts) {
+        (self.fns.scroll_around)(self, text, points, opts);
     }
 
     /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
@@ -745,13 +756,17 @@ impl Area {
     /// the same as setting the starting points to the
     /// [`Text::visual_line_start`] of these [`TwoPoints`].
     ///
-    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
-    /// to scroll beyond the last line, up until reaching the
-    /// `scrolloff.y` value.
+    /// If [`PrintOpts::allow_overscroll`] is set, then the [`Text`]
+    /// will be allowed to scroll beyond the last line, up until
+    /// reaching the `scrolloff.y` value.
+    ///
+    /// The `dist` value here is the distance from the top of the
+    /// screen that `points` should be. It should only be a non
+    /// negative value.
     ///
     /// [line wrapping]: crate::opts::PrintOpts::wrap_lines
-    pub fn scroll_to_points(&mut self, text: &Text, points: TwoPoints, opts: PrintOpts) {
-        (self.fns.scroll_to_points)(self, text, points, opts);
+    pub fn scroll_to(&mut self, text: &Text, points: TwoPoints, dist: f32, opts: PrintOpts) {
+        (self.fns.scroll_to)(self, text, points, dist, opts);
     }
 
     /// Scrolls the `Area` to the given [`TwoPoints`]
@@ -881,9 +896,9 @@ struct AreaFunctions {
     get_printed_lines: fn(&Area, &Text, PrintOpts) -> Option<Vec<PrintedLine>>,
     move_ver: fn(&Area, i32, &Text, Point, Option<usize>, PrintOpts) -> VPoint,
     move_ver_wrapped: fn(&Area, i32, &Text, Point, Option<usize>, PrintOpts) -> VPoint,
-    scroll_ver: fn(&Area, &Text, i32, PrintOpts),
-    scroll_around_points: fn(&Area, &Text, TwoPoints, PrintOpts),
-    scroll_to_points: fn(&Area, &Text, TwoPoints, PrintOpts),
+    scroll_ver: fn(&Area, &Text, f32, PrintOpts),
+    scroll_around: fn(&Area, &Text, TwoPoints, PrintOpts),
+    scroll_to: fn(&Area, &Text, TwoPoints, f32, PrintOpts),
     start_points: fn(&Area, &Text, PrintOpts) -> TwoPoints,
     end_points: fn(&Area, &Text, PrintOpts) -> TwoPoints,
     has_changed: fn(&Area) -> bool,
@@ -996,13 +1011,13 @@ impl AreaFunctions {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
                 area.scroll_ver(UiPass::new(), text, dist, opts)
             },
-            scroll_around_points: |area, text, dist, opts| {
+            scroll_around: |area, text, dist, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.scroll_around_points(UiPass::new(), text, dist, opts)
+                area.scroll_around(UiPass::new(), text, dist, opts)
             },
-            scroll_to_points: |area, text, dist, opts| {
+            scroll_to: |area, text, points, dist, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.scroll_to_points(UiPass::new(), text, dist, opts)
+                area.scroll_to(UiPass::new(), text, points, dist, opts)
             },
             start_points: |area, text, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();

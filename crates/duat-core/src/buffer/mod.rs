@@ -82,12 +82,12 @@ pub(crate) fn add_buffer_hooks() {
         MouseEventKind::ScrollDown => {
             let opts = event.handle.opts(pa);
             let (widget, area) = event.handle.write_with_area(pa);
-            area.scroll_ver(widget.text(), 3, opts);
+            area.scroll_ver(widget.text(), 3.0, opts);
         }
         MouseEventKind::ScrollUp => {
             let opts = event.handle.opts(pa);
             let (widget, area) = event.handle.write_with_area(pa);
-            area.scroll_ver(widget.text(), -3, opts);
+            area.scroll_ver(widget.text(), -3.0, opts);
         }
         MouseEventKind::ScrollLeft => {}
         MouseEventKind::ScrollRight => {}
@@ -431,7 +431,7 @@ impl Buffer {
         let (buf, area) = buffer.write_with_area(pa);
 
         if let Some(main) = buf.text().get_main_sel() {
-            area.scroll_around_points(
+            area.scroll_around(
                 buf.text(),
                 main.cursor().to_two_points_after(),
                 buf.print_opts(),

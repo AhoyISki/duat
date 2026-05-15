@@ -136,18 +136,20 @@ impl PrintInfo {
         self.prev_coords = coords;
     }
 
-    pub(super) fn scroll_to_points(
+    pub(super) fn scroll_to(
         &mut self,
         points: TwoPoints,
+        dist: usize,
         coords: Coords,
         text: &Text,
         opts: PrintOpts,
     ) {
         let cap = opts.wrap_width(coords.width()).unwrap_or(coords.width());
+        let points = text.points_after(points).unwrap_or(points);
 
         let line_start = rev_print_iter(text, points, cap, opts)
             .filter_map(|(place, item)| place.wrap.then_some(item.points()))
-            .next()
+            .nth(dist)
             .unwrap_or_default();
 
         let max_line_start = max_s_points(text, opts, coords.height(), cap);
@@ -157,6 +159,8 @@ impl PrintInfo {
         } else {
             self.s_points = Some(max_line_start);
         }
+
+        self.prev_coords = coords;
     }
 
     /// Scrolls down or up until the gap between the main cursor and

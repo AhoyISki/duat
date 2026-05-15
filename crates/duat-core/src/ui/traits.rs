@@ -394,23 +394,26 @@ pub trait RawArea: Sized + PartialEq + 'static {
 
     /// Scrolls the [`Text`] veritcally by an amount.
     ///
-    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
-    /// to scroll beyond the last line, up until reaching the
-    /// `scrolloff.y` value.
-    fn scroll_ver(&self, _: UiPass, text: &Text, dist: i32, opts: PrintOpts);
+    /// If [`PrintOpts::allow_overscroll`] is set, then the [`Text`]
+    /// will be allowed to scroll beyond the last line, up until
+    /// reaching the `scrolloff.y` value.
+    ///
+    /// NOTE: `f32::MAX as usize != usize::MAX`, so use a very large
+    /// number, like a billion, instead of `f32::MAX`.
+    fn scroll_ver(&self, _: UiPass, text: &Text, dist: f32, opts: PrintOpts);
 
     /// Scrolls the [`Text`] on all four directions until the given
     /// [`TwoPoints`] is within the [`ScrollOff`] range.
     ///
     /// There are two other scrolling methods for `RawArea`:
-    /// [`scroll_ver`] and [`scroll_to_points`]. The difference
-    /// between this and [`scroll_to_points`] is that this method
-    /// doesn't do anything if the [`TwoPoints`] is already on screen.
+    /// [`scroll_ver`] and [`scroll_to`]. The difference between this
+    /// and [`scroll_to`] is that this method doesn't do anything if
+    /// the [`TwoPoints`] is already on screen.
     ///
     /// [`ScrollOff`]: crate::opts::ScrollOff
     /// [`scroll_ver`]: RawArea::scroll_ver
-    /// [`scroll_to_points`]: RawArea::scroll_to_points
-    fn scroll_around_points(&self, _: UiPass, text: &Text, points: TwoPoints, opts: PrintOpts);
+    /// [`scroll_to`]: RawArea::scroll_to
+    fn scroll_around(&self, _: UiPass, text: &Text, points: TwoPoints, opts: PrintOpts);
 
     /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`].
     ///
@@ -418,12 +421,16 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// the same as setting the starting points to the
     /// [`Text::visual_line_start`] of these [`TwoPoints`].
     ///
-    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
-    /// to scroll beyond the last line, up until reaching the
-    /// `scrolloff.y` value.
+    /// If [`PrintOpts::allow_overscroll`] is set, then the [`Text`]
+    /// will be allowed to scroll beyond the last line, up until
+    /// reaching the `scrolloff.y` value.
     ///
-    /// [line wrapping]: crate::opts::PrintOpts::wrap_lines.
-    fn scroll_to_points(&self, _: UiPass, text: &Text, points: TwoPoints, opts: PrintOpts);
+    /// The `dist` value here is the distance from the top of the
+    /// screen that `points` should be. It should only be a non
+    /// negative value.
+    ///
+    /// [line wrapping]: crate::opts::PrintOpts::wrap_lines
+    fn scroll_to(&self, _: UiPass, text: &Text, points: TwoPoints, dist: f32, opts: PrintOpts);
 
     /// The start points that should be printed
     fn start_points(&self, _: UiPass, text: &Text, opts: PrintOpts) -> TwoPoints;

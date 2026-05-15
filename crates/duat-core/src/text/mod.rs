@@ -634,6 +634,17 @@ impl Text {
         &mut self.0.selections
     }
 
+    /// Populates the [`Selections`] within.
+    ///
+    /// If there were [`Selection`]s before, do nothing. Otherwise,
+    /// add a main selection on [`Point::default()`].
+    pub fn populate_selections(&mut self) {
+        if !self.ends_with('\n') {
+            self.apply_change(0, Change::str_insert("\n", self.end_point()), true);
+        }
+        self.0.selections.populate();
+    }
+
     /// Gets the main [`Selection`], if there is one.
     ///
     /// If you want a method that doesn't return an [`Option`] (for
@@ -1006,6 +1017,14 @@ impl<'t> TextMut<'t> {
 
     pub(crate) fn mv_selections_mut(self) -> &'t mut Selections {
         &mut self.text.0.selections
+    }
+
+    /// Populates the [`Selections`] within.
+    ///
+    /// If there were [`Selection`]s before, do nothing. Otherwise,
+    /// add a main selection on [`Point::default()`].
+    pub fn populate_selections(&mut self) {
+        self.text.populate_selections();
     }
 }
 

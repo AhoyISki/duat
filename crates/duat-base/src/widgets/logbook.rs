@@ -58,7 +58,7 @@ pub fn logbook_setup() {
         if let Some(logbook) = context::handle_of::<LogBook>(pa) {
             let popts = logbook.read(pa).print_opts();
             let (text, area) = pa.write_many((logbook.rw_text(), logbook.area()));
-            area.scroll_ver(&text, i32::MAX, popts);
+            area.scroll_ver(&text, 1_000_000_000.0, popts);
         }
     });
 
@@ -79,7 +79,7 @@ pub fn logbook_setup() {
             let popts = event.handle.read(pa).print_opts();
             let (text, area) = pa.write_many((event.handle.rw_text(), event.handle.area()));
             let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
-            area.scroll_ver(&text, scroll, popts);
+            area.scroll_ver(&text, scroll as f32, popts);
         }
         Moved => {
             let Some(TwoPointsPlace::Within(points)) = event.points else {

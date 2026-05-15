@@ -70,13 +70,13 @@ pub fn linenumbers_setup() {
                 let opts = buffer.opts(pa);
                 let (buf, area) = buffer.write_with_area(pa);
 
-                area.scroll_ver(buf.text(), 3, opts);
+                area.scroll_ver(buf.text(), 3.0, opts);
             }
             MouseEventKind::ScrollUp => {
                 let opts = buffer.opts(pa);
                 let (buf, area) = buffer.write_with_area(pa);
 
-                area.scroll_ver(buf.text(), -3, opts);
+                area.scroll_ver(buf.text(), -3.0, opts);
             }
             _ => {}
         }

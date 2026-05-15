@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use duat_base::{
     BaseBuffer,
-    hooks::{CompletionFinished, CompletionSelected},
+    hooks::{CompletionSelected, CompletionFocused},
     widgets::Completions,
 };
 use duat_core::{
@@ -26,7 +26,7 @@ use crate::{Encoding, parser::PARSERS, path_to_uri, server::Server};
 
 pub fn setup_hooks() {
     
-    hook::add::<CompletionSelected>(|_, entry| {
+    hook::add::<CompletionFocused>(|_, entry| {
         let Some(lsp_entry) = entry.get_for::<LspCompletions>() else {
             return;
         };
@@ -83,7 +83,7 @@ pub fn setup_hooks() {
         });
     });
 
-    hook::add::<CompletionFinished>(|pa, entry| {
+    hook::add::<CompletionSelected>(|pa, entry| {
         let buffer = context::current_buffer(pa);
         let popts = buffer.opts(pa);
 

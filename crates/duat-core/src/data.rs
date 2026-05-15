@@ -263,27 +263,35 @@ impl<T> RwData<T> {
         &'p self,
         pa: &'p mut Pass,
         tup_fn: impl FnOnce(&'p T) -> Tup,
-    ) -> (&'p mut T, Tup::Return) {
+    ) -> Tup::Return {
         let tup = tup_fn(self.read(pa));
-        if tup
-            .state_ptrs()
-            .into_iter()
-            .any(|ptr| ptr == CurStatePtr(&self.cur_state))
-        {
-            panic!("Tried writing to the same data multiple times at the same time");
-        }
 
         /// SAFETY: The ptrs are already verifiably not pointing to
         /// the data of self.
         static PASS: Pass = unsafe { Pass::new() };
 
-        let tup_ret = unsafe { (&raw const PASS as *mut Pass).as_mut() }
+        unsafe { (&raw const PASS as *mut Pass).as_mut() }
             .unwrap()
-            .write_many(tup);
+            .write_many(tup)
+    }
 
-        let value = self.write(unsafe { (&raw const PASS as *mut Pass).as_mut() }.unwrap());
+    /// Like [`RwData::write_then`], but may return [`None`].
+    pub fn write_then_try<'p, Tup: WriteableTuple<'p, impl std::any::Any>>(
+        &'p self,
+        pa: &'p mut Pass,
+        tup_fn: impl FnOnce(&'p T) -> Option<Tup>,
+    ) -> Option<Tup::Return> {
+        let tup = tup_fn(self.read(pa))?;
 
-        (value, tup_ret)
+        /// SAFETY: The ptrs are already verifiably not pointing to
+        /// the data of self.
+        static PASS: Pass = unsafe { Pass::new() };
+
+        Some(
+            unsafe { (&raw const PASS as *mut Pass).as_mut() }
+                .unwrap()
+                .write_many(tup),
+        )
     }
 
     /// Takes the value within, replacing it with the default.

@@ -70,7 +70,7 @@
 //! implementors allow for splitting selections, selecting everything
 //! within a range, and many more such things in the future.
 //!
-//! - There are also two [`hooks`]:
+//! - There are also six [`hooks`]:
 //!   - [`SearchUpdated`] for when an `IncSearch` is updated.
 //!   - [`SearchPerformed`] for when an `IncSearch` is finished.
 //!
@@ -170,6 +170,7 @@ impl DuatBase {
         widgets::promptline_setup();
         widgets::whichkey_setup();
         widgets::completions_setup();
+        widgets::picker_setup();
 
         snippets::add_snippet_hook();
 
@@ -412,9 +413,11 @@ pub mod hooks {
     //!
     //! [`hook`]: duat_core::hook
     //! [`IncSearch`]: crate::modes::IncSearch
+    use std::{any::Any, marker::PhantomData};
+
     use duat_core::{data::Pass, hook::Hookable};
 
-    use crate::widgets::CompletionEntry;
+    use crate::widgets::{CompletionEntry, PickerPreview};
 
     /// [`Hookable`]: Triggers when a [search] is updated.
     ///
@@ -470,9 +473,9 @@ pub mod hooks {
     ///
     /// [`P::Entry`]: crate::widgets::CompletionsProvider::Entry
     /// [`CompletionsProvider`]: crate::widgets::CompletionsProvider
-    pub struct CompletionSelected(pub(crate) CompletionEntry);
+    pub struct CompletionFocused(pub(crate) CompletionEntry);
 
-    impl Hookable for CompletionSelected {
+    impl Hookable for CompletionFocused {
         type Input<'h> = &'h CompletionEntry;
 
         fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
@@ -494,13 +497,36 @@ pub mod hooks {
     ///
     /// [`P::Entry`]: crate::widgets::CompletionsProvider::Entry
     /// [`CompletionsProvider`]: crate::widgets::CompletionsProvider
-    pub struct CompletionFinished(pub(crate) CompletionEntry);
+    pub struct CompletionSelected(pub(crate) CompletionEntry);
 
-    impl Hookable for CompletionFinished {
+    impl Hookable for CompletionSelected {
         type Input<'h> = &'h CompletionEntry;
 
         fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
             &self.0
+        }
+    }
+
+    /// [`Hookable`]: Triggers when a [`Picker`] entry is focused.
+    ///
+    /// # Arguments
+    ///
+    /// - The entry in question.
+    /// - A [`PickerPreview`], which lets you set what [`Text`] should
+    ///   be previewed on the side panel.
+    ///
+    /// [`Picker`]: crate::widgets::Picker
+    /// [`Text`]: duat_core::text::Text
+    pub struct PickerEntryFocused<T>(
+        pub(crate) (Box<dyn Any + Send>, PickerPreview, PhantomData<T>),
+    );
+
+    impl<T: 'static> Hookable for PickerEntryFocused<T> {
+        type Input<'h> = (&'h T, &'h PickerPreview);
+
+        fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+            let entry = self.0.0.downcast_ref().unwrap();
+            (entry, &mut self.0.1)
         }
     }
 }

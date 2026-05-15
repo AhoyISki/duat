@@ -38,7 +38,7 @@ pub use crate::widgets::completions::{
     words::WordCompletions,
 };
 use crate::{
-    hooks::{CompletionFinished, CompletionSelected},
+    hooks::{CompletionSelected, CompletionFocused},
     widgets::Info,
 };
 
@@ -129,7 +129,7 @@ pub fn completions_setup() {
                 if let event!(KeyCode::Char(..)) = key_event
                     && let Some((_, entry)) = completions.write(pa).current_entry.take()
                 {
-                    hook::trigger(pa, CompletionFinished(entry));
+                    hook::trigger(pa, CompletionSelected(entry));
                 }
             }
         })
@@ -647,7 +647,7 @@ impl Completions {
             if scroll != 0
                 && let Some((main_idx, entry)) = completions.write(pa).current_entry.take()
             {
-                let result = hook::trigger(pa, CompletionSelected(entry));
+                let result = hook::trigger(pa, CompletionFocused(entry));
                 completions.write(pa).current_entry = Some((main_idx, result.0));
             }
 

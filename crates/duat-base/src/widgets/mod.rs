@@ -27,6 +27,7 @@ pub(crate) use self::{
     linenumbers::linenumbers_setup,
     logbook::logbook_setup,
     notifications::notifications_setup,
+    picker::picker_setup,
     promptline::promptline_setup,
     whichkey::whichkey_setup,
 };
@@ -40,10 +41,10 @@ pub use self::{
     linenumbers::{LineNumbers, LineNumbersOpts},
     logbook::{LogBook, LogBookOpts},
     notifications::{Notifications, NotificationsOpts},
+    picker::{FilePlace, Picker, PickerPreview},
     promptline::{PromptLine, PromptLineBuilder},
     statusline::{State, StatusLine, StatusLineFmt, status},
     whichkey::WhichKey,
-    picker::{Picker, BufferPlace},
 };
 
 mod completions;

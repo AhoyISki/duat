@@ -186,6 +186,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
 
             let cur_win = context::current_win_index(pa);
             let cur_win_len = context::windows().len(pa);
+            let windows_changed = cur_win != last_win || cur_win_len != last_win_len;
 
             // When exiting Duat, this will return `None`.
             let Some(window) = windows_nodes.get(cur_win) else {
@@ -195,7 +196,12 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
             let mut printed_at_least_one = false;
 
             for node in window {
-                let windows_changed = cur_win != last_win || cur_win_len != last_win_len;
+                if force || windows_changed || node.needs_update(pa) {
+                    node.update(pa);
+                }
+            }
+
+            for node in window {
                 if force || windows_changed || node.needs_update(pa) {
                     node.print(pa, last_win);
                     printed_at_least_one = true;

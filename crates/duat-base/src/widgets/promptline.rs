@@ -49,7 +49,7 @@ pub fn promptline_setup() {
             }
 
             if let Some(main) = pl.text.selections().get_main() {
-                area.scroll_around_points(
+                area.scroll_around(
                     &pl.text,
                     main.cursor().to_two_points_after(),
                     pl.print_opts(),

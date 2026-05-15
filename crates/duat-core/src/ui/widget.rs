@@ -45,7 +45,7 @@ use crate::{
     context::Handle,
     data::{Pass, RwData},
     form,
-    hook::{self, BufferClosed, OnMouseEvent, WidgetClosed},
+    hook::{self, BufferClosed, FocusedUpdated, OnMouseEvent, WidgetClosed},
     mode::{ToggleEvent, TwoPointsPlace},
     opts::PrintOpts,
     session::UiMouseEvent,
@@ -109,6 +109,7 @@ pub trait Widget: Send + 'static {
 #[derive(Clone)]
 pub(crate) struct Node {
     handle: Handle<dyn Widget>,
+    update: Arc<dyn Fn(&mut Pass) + Send + Sync>,
     print: Arc<dyn Fn(&mut Pass) + Send + Sync>,
     on_mouse_event: Arc<dyn Fn(&mut Pass, UiMouseEvent) + Send + Sync>,
     on_close: fn(&mut Pass, &Handle<dyn Widget>),
@@ -131,6 +132,16 @@ impl Node {
     pub(crate) fn from_handle<W: Widget>(handle: Handle<W>) -> Self {
         Self {
             handle: handle.to_dyn(),
+            update: if let Some(buffer) = handle.get_as::<Buffer>() {
+                Arc::new(move |pa| Buffer::update(pa, &buffer))
+            } else {
+                let handle = handle.clone();
+                Arc::new(move |pa| {
+                    if handle == *crate::context::current_widget(pa) {
+                        hook::trigger(pa, FocusedUpdated(handle.clone()));
+                    }
+                })
+            },
             print: if let Some(buffer) = handle.get_as::<Buffer>() {
                 let handle = handle.clone();
 
@@ -147,6 +158,10 @@ impl Node {
             } else {
                 let handle = handle.clone();
                 Arc::new(move |pa| {
+                    if handle == *crate::context::current_widget(pa) {
+                        hook::trigger(pa, FocusedUpdated(handle.clone()));
+                    }
+
                     handle.area.print(
                         pa,
                         handle.text(pa),
@@ -265,6 +280,13 @@ impl Node {
     }
 
     ////////// Eventful functions
+
+    /// Updates the [`Widget`].
+    ///
+    /// Mostly happens only to focused widgets.
+    pub(crate) fn update(&self, pa: &mut Pass) {
+        (self.update)(pa)
+    }
 
     /// Updates and prints this [`Node`]
     pub(crate) fn print(&self, pa: &mut Pass, win: usize) {

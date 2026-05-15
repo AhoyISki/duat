@@ -239,8 +239,17 @@ impl<W: 'static> Handle<W> {
         &'p self,
         pa: &'p mut Pass,
         tup_fn: impl FnOnce(&'p W) -> Tup,
-    ) -> (&'p mut W, Tup::Return) {
+    ) -> Tup::Return {
         self.widget.write_then(pa, tup_fn)
+    }
+
+    /// Like [`Handle::write_then`], but may return [`None`].
+    pub fn write_then_try<'p, Tup: WriteableTuple<'p, impl std::any::Any>>(
+        &'p self,
+        pa: &'p mut Pass,
+        tup_fn: impl FnOnce(&'p W) -> Option<Tup>,
+    ) -> Option<Tup::Return> {
+        self.widget.write_then_try(pa, tup_fn)
     }
 }
 
@@ -658,12 +667,13 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     /// Scrolls the [`Text`] veritcally by an amount.
     ///
-    /// If [`PrintOpts.allow_overscroll`] is set, then the [`Text`]
+    /// If [`PrintOpts::allow_overscroll`] is set, then the [`Text`]
     /// will be allowed to scroll beyond the last line, up until
     /// reaching the `scrolloff.y` value.
     ///
-    /// [`PrintOpts.allow_overscroll`]: crate::opts::PrintOpts::allow_overscroll
-    pub fn scroll_ver(&self, pa: &mut Pass, dist: i32) {
+    /// NOTE: `f32::MAX as usize != usize::MAX`, so use a very large
+    /// number, like a billion, instead of `f32::MAX`.
+    pub fn scroll_ver(&self, pa: &mut Pass, dist: f32) {
         let popts = self.widget.read(pa).print_opts();
         let (text, area) = self.text_and_area(pa);
         area.scroll_ver(&text, dist, popts);
@@ -672,13 +682,13 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`].
     ///
-    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
-    /// to scroll beyond the last line, up until reaching the
-    /// `scrolloff.y` value.
-    pub fn scroll_to_points(&self, pa: &mut Pass, points: TwoPoints) {
+    /// If [`PrintOpts::allow_overscroll`] is set, then the [`Text`]
+    /// will be allowed to scroll beyond the last line, up until
+    /// reaching the `scrolloff.y` value.
+    pub fn scroll_to(&self, pa: &mut Pass, points: TwoPoints, dist: f32) {
         let popts = self.widget.read(pa).print_opts();
         let (text, area) = self.text_and_area(pa);
-        area.scroll_to_points(&text, points, popts);
+        area.scroll_to(&text, points, dist, popts);
         self.widget.declare_written();
     }
 

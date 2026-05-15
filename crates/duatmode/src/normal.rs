@@ -399,8 +399,8 @@ impl Mode for Normal {
                 set_anchor_if_needed(key_event.modifiers.contains(KeyMod::SHIFT), &mut s);
                 s.move_ver_wrapped(-(param as i32));
             }),
-            alt!(Down) => widget.scroll_ver(pa, param as i32),
-            alt!(Up) => widget.scroll_ver(pa, -(param as i32)),
+            alt!(Down) => widget.scroll_ver(pa, param as f32),
+            alt!(Up) => widget.scroll_ver(pa, -(param as f32)),
             event!(Char('l' | 'L') | Right) | shift!(Right) => {
                 widget.edit_all(pa, |mut s| {
                     let set_anchor =

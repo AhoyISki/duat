@@ -315,11 +315,13 @@ impl RawArea for Area {
         Ok(ui::Coord::new(max_x.max(width) as f32, max_y as f32))
     }
 
-    fn scroll_ver(&self, _: UiPass, text: &Text, by: i32, opts: PrintOpts) {
+    fn scroll_ver(&self, _: UiPass, text: &Text, by: f32, opts: PrintOpts) {
+        let by = by as i32;
         if by == 0 {
             return;
         }
 
+        self.layouts.update(self.id);
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
@@ -336,12 +338,13 @@ impl RawArea for Area {
 
     ////////// Printing
 
-    fn scroll_around_points(&self, _: UiPass, text: &Text, points: TwoPoints, opts: PrintOpts) {
+    fn scroll_around(&self, _: UiPass, text: &Text, points: TwoPoints, opts: PrintOpts) {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
         };
 
+        self.layouts.update(self.id);
         if coords.width() == 0 || coords.height() == 0 {
             return;
         }
@@ -351,7 +354,12 @@ impl RawArea for Area {
         self.layouts.set_info_of(self.id, info);
     }
 
-    fn scroll_to_points(&self, _: UiPass, text: &Text, points: TwoPoints, opts: PrintOpts) {
+    fn scroll_to(&self, _: UiPass, text: &Text, points: TwoPoints, dist: f32, opts: PrintOpts) {
+        if dist < 0.0 {
+            context::warn!("Tried scrolling to a [a]negative[] distance from the top {dist}");
+        }
+
+        self.layouts.update(self.id);
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
@@ -362,7 +370,7 @@ impl RawArea for Area {
         }
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
-        info.scroll_to_points(points, coords, text, opts);
+        info.scroll_to(points, dist as usize, coords, text, opts);
         self.layouts.set_info_of(self.id, info);
     }
 

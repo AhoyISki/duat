@@ -21,11 +21,11 @@ pub fn whichkey_setup() {
             ScrollDown | ScrollUp => {
                 let (wk, area) = event.handle.write_with_area(pa);
                 let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
-                area.scroll_ver(&wk.0, scroll, wk.print_opts());
+                area.scroll_ver(&wk.0, scroll as f32, wk.print_opts());
 
                 let whichkey_desc = wk.1.clone().unwrap();
                 let (wkd, area) = whichkey_desc.write_with_area(pa);
-                area.scroll_ver(&wkd.0, scroll, wkd.print_opts());
+                area.scroll_ver(&wkd.0, scroll as f32, wkd.print_opts());
             }
             _ => {}
         }
@@ -36,16 +36,12 @@ pub fn whichkey_setup() {
         match event.kind {
             ScrollDown | ScrollUp => {
                 let (wkd, area) = event.handle.write_with_area(pa);
-                let scroll = if let MouseEventKind::ScrollDown = event.kind {
-                    3
-                } else {
-                    -3
-                };
-                area.scroll_ver(&wkd.0, scroll, wkd.print_opts());
+                let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
+                area.scroll_ver(&wkd.0, scroll as f32, wkd.print_opts());
 
                 let whichkey = wkd.1.clone().unwrap();
                 let (wk, area) = whichkey.write_with_area(pa);
-                area.scroll_ver(&wk.0, scroll, wk.print_opts());
+                area.scroll_ver(&wk.0, scroll as f32, wk.print_opts());
             }
             _ => {}
         }

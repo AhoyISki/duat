@@ -64,7 +64,7 @@ impl Snippets {
                     let taken_range =
                         change.taken_range().start.byte()..change.taken_range().end.byte();
 
-                    while let Some(range) = ranges.next_if(|r| taken_range.start > r.end) {
+                    while let Some(range) = ranges.next_if(|r| taken_range.start >= r.end) {
                         range.start = range.start.saturating_add_signed(shift);
                         range.end = range.end.saturating_add_signed(shift);
                     }
