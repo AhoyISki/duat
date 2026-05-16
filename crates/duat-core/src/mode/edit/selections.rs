@@ -39,12 +39,49 @@ use crate::{
 /// [`Handle`]: crate::context::Handle
 /// [`edit_`]: crate::context::Handle::edit_all
 /// [`Text`]: crate::text::Text
-#[derive(bincode::Decode, bincode::Encode)]
 pub struct Selections {
     buf: GapBuffer<Selection>,
     main_i: usize,
     shift: Mutex<Shift>,
     version: u64,
+}
+
+impl bincode::Encode for Selections {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        bincode::Encode::encode(&self.buf, encoder)?;
+        bincode::Encode::encode(&self.main_i, encoder)?;
+        bincode::Encode::encode(&self.shift, encoder)?;
+        Ok(())
+    }
+}
+
+impl<Context> bincode::Decode<Context> for Selections {
+    fn decode<D: bincode::de::Decoder<Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            buf: bincode::Decode::decode(decoder)?,
+            main_i: bincode::Decode::decode(decoder)?,
+            shift: bincode::Decode::decode(decoder)?,
+            version: 0,
+        })
+    }
+}
+
+impl<'de, Context> bincode::BorrowDecode<'de, Context> for Selections {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de, Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            buf: bincode::BorrowDecode::borrow_decode(decoder)?,
+            main_i: bincode::BorrowDecode::borrow_decode(decoder)?,
+            shift: bincode::BorrowDecode::borrow_decode(decoder)?,
+            version: 0,
+        })
+    }
 }
 
 impl Selections {
