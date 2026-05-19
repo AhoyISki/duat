@@ -375,10 +375,10 @@ fn print_style(w: &mut impl Write, style: ContentStyle) {
         (Dim, b"2"),
         (Italic, b"3"),
         (Underlined, b"4"),
-        (DoubleUnderlined, b"4;2"),
-        (Undercurled, b"4;3"),
-        (Underdotted, b"4;4"),
-        (Underdashed, b"4;5"),
+        (DoubleUnderlined, b"4:2"),
+        (Undercurled, b"4:3"),
+        (Underdotted, b"4:4"),
+        (Underdashed, b"4:5"),
         (Reverse, b"7"),
     ];
     color_values!(U8, "", "");
