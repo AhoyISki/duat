@@ -531,13 +531,20 @@ impl<W: Widget + ?Sized> Handle<W> {
         self.text(pa).selections()
     }
 
-    /// A mutable reference to the [`Selections`] of the [`Widget`]'s
-    /// [`Text`].
-    ///
-    /// This is the same as calling
-    /// `handle.write(pa).selections_mut()`.
-    pub fn selections_mut<'p>(&'p self, pa: &'p mut Pass) -> &'p mut Selections {
-        self.text_mut(pa).mv_selections_mut()
+    pub fn remove_extra_selections<'p>(&'p self, pa: &'p mut Pass) {
+        self.text_mut(pa).remove_extra_selections();
+    }
+
+    pub fn rotate_main_selection<'p>(&'p self, pa: &'p mut Pass, amount: i32) {
+        self.text_mut(pa).rotate_main_selection(amount);
+    }
+
+    pub fn set_main_selection<'p>(&'p self, pa: &'p mut Pass, n: usize) {
+        self.text_mut(pa).set_main_selection(n);
+    }
+
+    pub fn replace_selections<'p>(&'p self, pa: &'p mut Pass, saved: Selections) {
+        self.text_mut(pa).replace_selections(saved);
     }
 
     /// Returns a read-write handle (similar to [`RwData`]) for this

@@ -119,7 +119,7 @@ pub fn logbook_setup() {
             {
                 let buffer = context::buffer_from_path(pa, Path::new(location.file())).unwrap();
                 mode::reset_to(pa, &buffer);
-                buffer.selections_mut(pa).remove_extras();
+                buffer.remove_extra_selections(pa);
                 buffer.edit_main(pa, |mut s| {
                     s.move_to_coords(location.line() - 1, location.column() - 1);
                 });

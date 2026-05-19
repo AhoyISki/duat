@@ -51,7 +51,7 @@ pub fn linenumbers_setup() {
             MouseEventKind::Down(MouseButton::Left) => {
                 let line = line(pa, &buffer);
 
-                buffer.selections_mut(pa).remove_extras();
+                buffer.remove_extra_selections(pa);
                 buffer.edit_main(pa, |mut s| {
                     s.unset_anchor();
                     s.move_to_coords(line, 0)
@@ -60,7 +60,7 @@ pub fn linenumbers_setup() {
             MouseEventKind::Drag(MouseButton::Left) => {
                 let line = line(pa, &buffer);
 
-                buffer.selections_mut(pa).remove_extras();
+                buffer.remove_extra_selections(pa);
                 buffer.edit_main(pa, |mut s| {
                     s.set_anchor_if_needed();
                     s.move_to_coords(line, 0)
