@@ -1618,8 +1618,11 @@ pub(crate) fn add_default() {
 
             [
                 ("default", default),
-                ("accent", Form::new().with(c.winter_blue).bold()),
-                ("default.error", Form::new().with(c.samurai_red)),
+                ("accent", Form::new().with(c.spring_violet1).bold()),
+                (
+                    "default.error",
+                    Form::new().with(c.samurai_red).undercurled(),
+                ),
                 ("accent.error", Form::new().with(c.autumn_red).bold()),
                 ("default.warn", Form::new().with(c.ronin_yellow)),
                 ("accent.warn", Form::new().with(c.autumn_yellow).bold()),
@@ -1656,11 +1659,11 @@ pub(crate) fn add_default() {
                 ("coord", Form::new().with(c.surimi_orange)),
                 ("separator", Form::mimic("punctuation.delimiter")),
                 ("mode", Form::new().with(c.spring_green)),
-                ("key", Form::new().with(c.sumi_ink1)),
+                ("key", Form::new().with(c.carp_yellow)),
                 ("key.special", Form::new().with(c.sumi_ink2)),
                 (
                     "terminal.border",
-                    Form::new().with(c.sumi_ink3).on(c.sumi_ink3),
+                    Form::new().with(c.katana_gray).on(c.sumi_ink3),
                 ),
                 (
                     "terminal.frame",
@@ -1682,10 +1685,10 @@ pub(crate) fn add_default() {
                     Form::new().with(c.wave_aqua5).on(c.sumi_ink3).bold(),
                 ),
                 ("log_book.location", Form::new().with(c.fuji_gray)),
-                ("default.Completions", default.on(c.sumi_ink3)),
+                ("default.Completions", default.on(c.wave_blue2)),
                 (
                     "selected.Completions",
-                    Form::new().with(c.sumi_ink3).on(c.wave_blue1),
+                    Form::new().with(c.fuji_white).on(c.wave_blue1).bold(),
                 ),
                 ("default.WhichKey", default.with(c.fuji_white)),
                 // For duatmode
