@@ -55,7 +55,19 @@ It will then ask whether your config should depend on the git version of Duat:
 Do you want to depend on the git version of duat? [y/N]
 ```
 
-Answer `y` to both when developing against the local repo. Duat will pull the git sources and compile your config against them — this takes a minute on the first run.
+If you want to check out the latest features (unstable), answer `y` to this question. If not, Duat will ask the following:
+
+```
+What about a local version of Duat? [y/N]
+```
+
+If you want to contribute to Duat by modifying the code base, answer `y` to this question. This will then prompt the following query:
+
+```
+Write the path to the directory containing the Cargo.toml:
+```
+
+You should then write the (absolute or relative) path to the directory containing Duat's `Cargo.toml`, i.e., the place where you executed the initial `git clone https://github.com/ahoyiski/duat`.
 
 **Running the tests:**
 
@@ -71,16 +83,16 @@ The repository is a Cargo workspace. Each crate has a focused responsibility:
 
 | Crate | Purpose |
 |---|---|
-| `duat-core` | Core editor primitives (text, buffers, modes, hooks, UI traits) |
+| `duat-core` | Core editor primitives (text, buffers, hooks, UI traits) |
 | `duat-base` | Built-in base plugins shipped with the editor |
 | `duat-term` | Terminal UI implementation |
-| `duat-filetype` | File type detection |
-| `duat-treesitter` | Syntax highlighting via Tree-sitter |
-| `duat-lsp` | Language Server Protocol client |
-| `duat-match-pairs` | Bracket and pair matching |
-| `duat-jump-list` | Jump list navigation |
-| `duatmode` | Mode system |
-| `duat-txt-macro` | Text macros |
+| `duat-filetype` | File type detection and autocommenting |
+| `duat-treesitter` | Tree-sitter integration |
+| `duat-lsp` | LSP integration (experimental) |
+| `duat-match-pairs` | Highlighting bracket pairs |
+| `duat-jump-list` | Jumping via `<a-u>` and `<a-U>` |
+| `duatmode` | The default duat controls via a `Normal` and `Insert` modes |
+| `duat-txt-macro` | The `txt!` proc-macro |
 
 A short description of how the crates relate to each other is in [crates/README.md](crates/README.md).
 
@@ -103,9 +115,8 @@ A short description of how the crates relate to each other is in [crates/README.
 1. Fork the repository and create a branch from `master`.
 2. Make your changes.
 3. Run `cargo fmt` and `cargo clippy --workspace`; fix any issues.
-4. Ensure `cargo test` passes locally.
-5. Open a PR against `master`. CI will run the full test suite automatically.
-6. Write a clear description of what the PR does and link any related issues (`Fixes #123`).
+4. Open a PR against `master`. CI will run the full test suite automatically.
+5. Write a clear description of what the PR does and link any related issues (`Fixes #123`).
 
 ---
 
@@ -131,22 +142,6 @@ mdbook serve book/
 ```
 
 The book is built and deployed to GitHub Pages automatically on every push to `master`.
-
----
-
-## Troubleshooting
-
-### Config fails to compile after pulling new changes
-
-When working against a local build (`cargo run`), your config at `~/.config/duat` is compiled separately and linked against the version of Duat it was last updated for. After pulling changes to the repo, the compiled config may be out of sync with the new binary, causing schema or API mismatches.
-
-Run the following to recompile your config against the current local build:
-
-```sh
-cargo run -- --update --reload
-```
-
-This updates and reloads your config using the same version of Duat you are running locally, making the schemas compatible again.
 
 ## License
 
