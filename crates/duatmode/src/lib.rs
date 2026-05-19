@@ -479,13 +479,15 @@ mod insert;
 mod normal;
 mod one_key;
 
-use duat_base::hooks::SearchPerformed;
+use duat_base::{hooks::SearchPerformed, widgets::Picker};
 use duat_core::{
     context::Handle,
     data::Pass,
-    form, hook,
+    form,
+    hook::{self, WidgetSwitched},
     mode::{self, KeyEvent, SelectionMut, alt, event},
     opts::PrintOpts,
+    txt,
     ui::Widget,
     utils::Memoized,
 };

@@ -3,6 +3,7 @@ use std::sync::{LazyLock, Mutex, atomic::Ordering};
 use duat_base::{
     BaseBuffer,
     modes::{ExtendFwd, ExtendRev, IncSearch, PipeSelections, RunCommands, SearchFwd, SearchRev},
+    widgets::Picker,
 };
 use duat_core::{
     Ns,
@@ -190,9 +191,12 @@ impl Mode for Normal {
             event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
             alt!('o' | 'O') => txt!("Add new line {below}"),
             event!('.') => txt!("Repeats the last [mode]Insert[] command"),
-            event!('r') => (txt!("Replace range"), match _ {
-                event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
-            }),
+            event!('r') => (
+                txt!("Replace range"),
+                match _ {
+                    event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
+                }
+            ),
             event!('`') => txt!("Lowercase the selection"),
             event!('~') => txt!("Uppercase the selection"),
             alt!('`') => txt!("Swap case of selection"),
@@ -1198,8 +1202,18 @@ impl Mode for Normal {
 
             ////////// Jumping around
             ctrl!('o') if let Some(buffer) = widget.get_as() => jump_list::jump_by(pa, &buffer, -1),
+            event!(Tab) if Picker::is_open(pa) => {
+                if Picker::is_on_preview(pa) {
+                    Picker::unfocus_preview(pa);
+                } else {
+                    Picker::focus_preview(pa);
+                }
+            }
             ctrl!('i') | event!(Tab) if let Some(buffer) = widget.get_as() => {
                 jump_list::jump_by(pa, &buffer, 1)
+            }
+            shift!(Enter) | event!(Enter) if Picker::is_open(pa) && !Picker::is_on_preview(pa) => {
+                Picker::select_current(pa, key_event.modifiers.contains(KeyMod::SHIFT));
             }
 
             ////////// Other mode changing keys

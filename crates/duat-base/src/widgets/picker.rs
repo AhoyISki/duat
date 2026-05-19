@@ -18,12 +18,14 @@ use duat_core::{
 };
 use duat_term::Frame;
 
-use crate::hooks::PickerEntryFocused;
+use crate::hooks::{PickerEntryFocused, PickerEntrySelected};
 
 /// Setup for the [`Picker`] widget.
 pub(crate) fn picker_setup() {
-    hook::add::<WidgetSwitched>(|pa, (old, _)| {
-        if old.widget().is::<Picker>() || old.widget().is::<PickerPreview>() {
+    hook::add::<WidgetSwitched>(|pa, (old, new)| {
+        if (old.widget().is::<Picker>() && !new.widget().is::<Preview>())
+            || (old.widget().is::<Preview>() && !new.widget().is::<Picker>())
+        {
             _ = old.close(pa);
         }
     });
@@ -158,7 +160,9 @@ impl Picker {
                     .0
                     .0
                 },
-                selected_fn: |pa, item| {},
+                selected_fn: |pa, item| {
+                    _ = hook::trigger(pa, PickerEntrySelected::<FilePlace>((item, PhantomData)))
+                },
             },
             PushSpecs {
                 side: Side::Left,
@@ -191,6 +195,12 @@ impl Picker {
         };
 
         _ = picker.close(pa);
+        let current = picker.read(pa).preview.read(pa).current;
+        let pkr = picker.write(pa);
+
+        let (_, entry) = pkr.maps.remove(current);
+        (pkr.selected_fn)(pa, entry);
+
         let pv = picker.write_then(pa, |pkr| &pkr.preview);
         match pv.modes.remove(pv.current) {
             Some(PreviewMode::BufferMirror(buffer, range)) => {
@@ -222,13 +232,36 @@ impl Picker {
         }
     }
 
-    pub fn focus_preview(pa: &mut Pass) {}
+    /// Focus on the [`Picker`]'s preview pane.
+    pub fn focus_preview(pa: &mut Pass) {
+        let Some(preview) = context::handle_of::<Preview>(pa) else {
+            context::warn!(
+                "Tried going to the [a]Picker[]'s preview, but there was no Picker open"
+            );
+            return;
+        };
 
-    pub fn unfocus_preview(pa: &mut Pass) {}
+        mode::reset_to(pa, &preview);
+    }
+
+    /// Focus from the [`Picker`]'s prevew pane, back to the `Picker`.
+    pub fn unfocus_preview(pa: &mut Pass) {
+        let Some(picker) = context::handle_of::<Picker>(pa) else {
+            context::warn!("Tried returning to [a]Picker[], but there was no Picker open");
+            return;
+        };
+
+        mode::reset_to(pa, &picker);
+    }
 
     /// Wether there is a `Picker` open right now.
     pub fn is_open(pa: &Pass) -> bool {
         context::handle_of::<Picker>(pa).is_some()
+    }
+
+    /// Wether Duat is currently focused on the preview.
+    pub fn is_on_preview(pa: &Pass) -> bool {
+        context::current_widget(pa).widget().is::<Preview>()
     }
 }
 
@@ -261,6 +294,17 @@ pub struct FilePlace {
 impl FilePlace {
     /// Returns a new `FilePlace`.
     pub fn new(path: PathBuf, range: Range<usize>) -> Self {
+        let path = if let Some(path) = path.to_str()
+            && let Ok(path) = duat_core::utils::expand_path(&path)
+        {
+            let path = PathBuf::from(path.to_string());
+            path.canonicalize().unwrap_or(path)
+        } else {
+            path.canonicalize().unwrap_or(path)
+        };
+
+        context::debug!("{path:?}");
+
         Self { path, range }
     }
 }

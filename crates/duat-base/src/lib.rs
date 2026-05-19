@@ -526,7 +526,26 @@ pub mod hooks {
 
         fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
             let entry = self.0.0.downcast_ref().unwrap();
-            (entry, &mut self.0.1)
+            (entry, &self.0.1)
+        }
+    }
+
+    /// [`Hookable`]: Triggers when a [`Picker`] entry is selected.
+    ///
+    /// # Arguments
+    ///
+    /// - The entry in question.
+    ///
+    /// [`Picker`]: crate::widgets::Picker
+    /// [`Text`]: duat_core::text::Text
+    pub struct PickerEntrySelected<T>(pub(crate) (Box<dyn Any + Send>, PhantomData<T>));
+
+    impl<T: 'static> Hookable for PickerEntrySelected<T> {
+        type Input<'h> = &'h T;
+
+        fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+            let entry = self.0.0.downcast_ref().unwrap();
+            entry
         }
     }
 }

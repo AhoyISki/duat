@@ -121,9 +121,8 @@ impl Buffer {
         let (text, path) = match path_kind {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
                 let canon_path = path.canonicalize();
-                if let Ok(path) = &canon_path
-                    && let Ok(buffer) = std::fs::read_to_string(path)
-                {
+                if let Ok(path) = &canon_path {
+                    let buffer = std::fs::read_to_string(path).unwrap_or_default();
                     let selections = {
                         let selection = cache::load(path).unwrap_or_default();
                         Selections::new(selection)
