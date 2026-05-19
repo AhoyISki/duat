@@ -205,14 +205,14 @@ impl Picker {
         match pv.modes.remove(pv.current) {
             Some(PreviewMode::BufferMirror(buffer, range)) => {
                 mode::reset_to(pa, &buffer);
-                buffer.selections_mut(pa).remove_extras();
+                buffer.remove_extra_selections(pa);
                 buffer.edit_main(pa, |mut s| s.move_to(range.clone()));
             }
             Some(PreviewMode::BufferPreview(path, mut text, range)) => {
                 if let Some(buffer) = context::buffer_from_path(pa, &path) {
                     buffer.text_mut(pa).replace_range(.., text.to_string());
                     mode::reset_to(pa, &buffer);
-                    buffer.selections_mut(pa).remove_extras();
+                    buffer.remove_extra_selections(pa);
                     buffer.edit_main(pa, |mut s| s.move_to(range.clone()));
                 } else {
                     duat_core::try_or_log_err! {
@@ -223,7 +223,7 @@ impl Picker {
                     let call = if on_new_window { "open" } else { "edit" };
                     if cmd::call_notify(pa, format!("{call} {}", path.to_string_lossy())).is_ok() {
                         let buffer = context::current_buffer(pa);
-                        buffer.selections_mut(pa).remove_extras();
+                        buffer.remove_extra_selections(pa);
                         buffer.edit_main(pa, |mut s| s.move_to(range.clone()));
                     }
                 }

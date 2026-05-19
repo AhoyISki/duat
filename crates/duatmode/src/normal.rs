@@ -753,8 +753,8 @@ impl Mode for Normal {
             alt!(';') => widget.edit_all(pa, |mut s| s.swap_ends()),
             event!(';') => widget.edit_all(pa, |mut s| _ = s.unset_anchor()),
             alt!(':') => widget.edit_all(pa, |mut s| _ = s.set_cursor_on_end()),
-            event!(')') => widget.selections_mut(pa).rotate_main(1),
-            event!('(') => widget.selections_mut(pa).rotate_main(-1),
+            event!(')') => widget.rotate_main_selection(pa, 1),
+            event!('(') => widget.rotate_main_selection(pa, -1),
             // TODO: Implement parameter
             alt!(')') => {
                 if widget.selections(pa).len() == 1 {
@@ -1032,7 +1032,7 @@ impl Mode for Normal {
             }
 
             ////////// SelectionMut creation and destruction
-            event!(',') => widget.selections_mut(pa).remove_extras(),
+            event!(',') => widget.remove_extra_selections(pa),
             event!('C') | alt!('C') => {
                 fn cols_eq(lhs: (VPoint, Option<VPoint>), rhs: (VPoint, Option<VPoint>)) -> bool {
                     lhs.0.visual_col() == rhs.0.visual_col()
@@ -1071,9 +1071,7 @@ impl Mode for Normal {
                     s.destroy();
                 });
 
-                widget
-                    .selections_mut(pa)
-                    .set_main(nth + (key_event.modifiers == KeyMod::NONE) as usize);
+                widget.set_main_selection(pa, nth + (key_event.modifiers == KeyMod::NONE) as usize);
             }
 
             ////////// Search keys
@@ -1220,7 +1218,7 @@ impl Mode for Normal {
             event!(':') => mode::set(pa, RunCommands::new()),
             event!('|') => mode::set(pa, PipeSelections::new()),
             event!('g') if param_was_set => {
-                widget.selections_mut(pa).remove_extras();
+                widget.remove_extra_selections(pa);
                 widget.edit_main(pa, |mut s| {
                     s.unset_anchor();
                     s.move_to_coords(param - 1, 0);
@@ -1232,7 +1230,7 @@ impl Mode for Normal {
             }
             event!('g') => self.one_key = Some(OneKey::GoTo(SelType::Normal)),
             event!('G') if param_was_set => {
-                widget.selections_mut(pa).remove_extras();
+                widget.remove_extra_selections(pa);
                 widget.edit_main(pa, |mut s| {
                     s.set_anchor_if_needed();
                     s.move_to_coords(param - 1, 0)

@@ -89,7 +89,7 @@ impl Jump {
     pub fn apply(&self, pa: &mut Pass, buffer: &Handle) {
         match self {
             Jump::Single(selection) => {
-                buffer.write(pa).selections_mut().remove_extras();
+                buffer.write(pa).remove_extra_selections();
                 buffer.edit_main(pa, |mut s| {
                     let start = s.text().point_at_byte(selection.start);
                     let end = s.text().point_at_byte(selection.end);
@@ -97,7 +97,7 @@ impl Jump {
                 });
             }
             Jump::Multiple(selections, main) => {
-                buffer.write(pa).selections_mut().remove_extras();
+                buffer.write(pa).remove_extra_selections();
 
                 buffer.edit_main(pa, |mut s| {
                     let mut is_first = true;
@@ -112,7 +112,7 @@ impl Jump {
                         is_first = false;
                     }
                 });
-                buffer.write(pa).selections_mut().set_main(*main);
+                buffer.write(pa).set_main_selection(*main);
             }
         }
     }

@@ -628,9 +628,37 @@ impl Text {
         &self.0.selections
     }
 
+    /// Removes all but the main [`Selection`].
+    pub fn remove_extra_selections(&mut self) {
+        self.0.selections.remove_extras();
+    }
+
+    /// Rotates the main [`Selection`] by `amount`.
+    pub fn rotate_main_selection(&mut self, amount: i32) {
+        self.0.selections.rotate_main(amount);
+    }
+
+    /// Sets the main [`Selection`] to index `n`.
+    pub fn set_main_selection(&mut self, n: usize) {
+        self.0.selections.set_main(n);
+    }
+
+    /// Replaces the current [`Selections`] with `saved`.
+    pub fn replace_selections(&mut self, mut saved: Selections) {
+        if saved.is_empty() {
+            return;
+        }
+        saved.correct_all(&self.0.buf);
+        if !self.ends_with('\n') {
+            self.apply_change(0, Change::str_insert("\n", self.end_point()), true);
+        }
+        self.0.selections = saved;
+        self.0.selections.increment_version();
+    }
+
     /// A mut reference to this `Text`'s [`Selections`] if they
     /// exist.
-    pub fn selections_mut(&mut self) -> &mut Selections {
+    pub(crate) fn selections_mut(&mut self) -> &mut Selections {
         &mut self.0.selections
     }
 
@@ -1009,9 +1037,29 @@ impl<'t> TextMut<'t> {
 
     ////////// Selections functions
 
+    /// Removes all but the main [`Selection`].
+    pub fn remove_extra_selections(&mut self) {
+        self.text.remove_extra_selections();
+    }
+
+    /// Rotates the main [`Selection`] by `amount`.
+    pub fn rotate_main_selection(&mut self, amount: i32) {
+        self.text.rotate_main_selection(amount);
+    }
+
+    /// Sets the main [`Selection`] to index `n`.
+    pub fn set_main_selection(&mut self, n: usize) {
+        self.text.set_main_selection(n);
+    }
+
+    /// Replaces the current [`Selections`] with `saved`.
+    pub fn replace_selections(&mut self, saved: Selections) {
+        self.text.replace_selections(saved);
+    }
+
     /// A mut reference to this `Text`'s [`Selections`] if they
     /// exist.
-    pub fn selections_mut(&mut self) -> &mut Selections {
+    pub(crate) fn selections_mut(&mut self) -> &mut Selections {
         &mut self.text.0.selections
     }
 

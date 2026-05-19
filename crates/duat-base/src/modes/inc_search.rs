@@ -99,7 +99,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
                 self.widget
                     .area()
                     .set_print_info(pa, orig_print_info.clone());
-                *self.widget.selections_mut(pa) = orig_selections.clone();
+                self.widget.replace_selections(pa, orig_selections.clone());
 
                 let ast = regex_syntax::ast::parse::Parser::new()
                     .parse(&text.to_string_no_last_nl())
@@ -142,7 +142,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
             self.widget
                 .area()
                 .set_print_info(pa, orig_print_info.clone());
-            *self.widget.selections_mut(pa) = orig_selections.clone();
+            self.widget.replace_selections(pa, orig_selections.clone());
         } else {
             let pat = text.to_string_no_last_nl();
             if let Err(err) = regex_syntax::parse(&pat) {

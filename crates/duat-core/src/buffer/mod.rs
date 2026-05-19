@@ -52,7 +52,7 @@ pub(crate) fn add_buffer_hooks() {
             };
 
             if let Some(point) = point {
-                event.handle.selections_mut(pa).remove_extras();
+                event.handle.remove_extra_selections(pa);
                 event.handle.edit_main(pa, |mut s| {
                     s.unset_anchor();
                     s.move_to(point)
@@ -70,7 +70,7 @@ pub(crate) fn add_buffer_hooks() {
             };
 
             if let Some(point) = point {
-                event.handle.selections_mut(pa).remove_extras();
+                event.handle.remove_extra_selections(pa);
                 event.handle.edit_main(pa, |mut s| {
                     s.set_anchor_if_needed();
                     s.move_to(point);
@@ -382,9 +382,20 @@ impl Buffer {
         self.text.selections()
     }
 
-    /// A mutable reference to the [`Selections`].
-    pub fn selections_mut(&mut self) -> &mut Selections {
-        self.text.selections_mut()
+    pub fn remove_extra_selections(&mut self) {
+        self.text.remove_extra_selections();
+    }
+
+    pub fn rotate_main_selection(&mut self, amount: i32) {
+        self.text.rotate_main_selection(amount);
+    }
+
+    pub fn set_main_selection(&mut self, n: usize) {
+        self.text.set_main_selection(n);
+    }
+
+    pub fn replace_selections(&mut self, saved: Selections) {
+        self.text.replace_selections(saved);
     }
 
     /// Whether o not the [`Buffer`] exists or not.

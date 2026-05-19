@@ -315,7 +315,7 @@ pub(crate) fn jump_snippets(buffer: &Handle, pa: &mut Pass, mut by: i32) -> bool
             .clone()
             .into_iter();
 
-        buffer.selections_mut(pa).remove_extras();
+        buffer.remove_extra_selections(pa);
         buffer.edit_main(pa, |mut s| {
             if let Some(range) = ranges.next() {
                 s.move_to(range);
