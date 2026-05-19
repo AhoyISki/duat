@@ -1618,8 +1618,11 @@ pub(crate) fn add_default() {
 
             [
                 ("default", default),
-                ("accent", Form::new().with(c.winter_blue).bold()),
-                ("default.error", Form::new().with(c.samurai_red)),
+                ("accent", Form::new().with(c.spring_violet1).bold()),
+                (
+                    "default.error",
+                    Form::new().with(c.samurai_red).undercurled(),
+                ),
                 ("accent.error", Form::new().with(c.autumn_red).bold()),
                 ("default.warn", Form::new().with(c.ronin_yellow)),
                 ("accent.warn", Form::new().with(c.autumn_yellow).bold()),
