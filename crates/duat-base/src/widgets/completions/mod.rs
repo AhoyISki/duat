@@ -263,7 +263,7 @@ impl CompletionsBuilder {
     ///
     /// [`Selection`]: duat_core::mode::Selection
     pub fn open(self, pa: &mut Pass) {
-        let handle = context::current_widget(pa).clone();
+        let handle = context::current_widget(pa);
         // Do both removals, because the previous Completions need to be
         // removed immediately.
         handle.text_mut(pa).remove_tags(*NS, ..);
@@ -422,7 +422,7 @@ impl Completions {
 
     /// Closes the `Completions` list
     pub fn close(pa: &mut Pass) {
-        let handle = context::current_widget(pa).clone();
+        let handle = context::current_widget(pa);
         handle.text_mut(pa).remove_tags(*NS, ..);
     }
 

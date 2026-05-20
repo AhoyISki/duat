@@ -137,7 +137,7 @@ impl Node {
             } else {
                 let handle = handle.clone();
                 Arc::new(move |pa| {
-                    if handle == *crate::context::current_widget(pa) {
+                    if handle == crate::context::current_widget(pa) {
                         hook::trigger(pa, FocusedUpdated(handle.clone()));
                     }
                 })
@@ -158,7 +158,7 @@ impl Node {
             } else {
                 let handle = handle.clone();
                 Arc::new(move |pa| {
-                    if handle == *crate::context::current_widget(pa) {
+                    if handle == crate::context::current_widget(pa) {
                         hook::trigger(pa, FocusedUpdated(handle.clone()));
                     }
 

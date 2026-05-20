@@ -178,8 +178,8 @@ mod global {
     /// [`Widget`], not just a [`Buffer`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn current_widget(pa: &Pass) -> &Handle<dyn Widget> {
-        windows().current_widget(pa).read(pa).handle()
+    pub fn current_widget(pa: &Pass) -> Handle<dyn Widget> {
+        windows().current_widget(pa).read(pa).handle().clone()
     }
 
     ////////// Other getters

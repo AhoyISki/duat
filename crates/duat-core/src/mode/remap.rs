@@ -1023,7 +1023,7 @@ enum DescriptionType<'a> {
 }
 
 fn remove_alias_and(pa: &mut Pass, f: impl FnOnce(TextMut, usize)) {
-    let widget = context::current_widget(pa).clone();
+    let widget = context::current_widget(pa);
     let mut text = widget.text_mut(pa);
     if let Some(main) = text.get_main_sel() {
         let byte = main.cursor().byte();
