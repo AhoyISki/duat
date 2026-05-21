@@ -185,7 +185,7 @@ pub fn completions_setup() {
 /// A completion entry.
 ///
 /// This came from some [`CompletionsProvider`], and is used on the
-/// [`CompletionSelected`] and [`CompletionFinished`] hooks.
+/// [`CompletionSelected`] and [`CompletionFocused`] hooks.
 pub struct CompletionEntry {
     /// The index on the list where this item came from.
     pub index: usize,

@@ -656,12 +656,6 @@ impl Text {
         self.0.selections.increment_version();
     }
 
-    /// A mut reference to this `Text`'s [`Selections`] if they
-    /// exist.
-    pub(crate) fn selections_mut(&mut self) -> &mut Selections {
-        &mut self.0.selections
-    }
-
     /// Populates the [`Selections`] within.
     ///
     /// If there were [`Selection`]s before, do nothing. Otherwise,
@@ -1060,10 +1054,6 @@ impl<'t> TextMut<'t> {
     /// A mut reference to this `Text`'s [`Selections`] if they
     /// exist.
     pub(crate) fn selections_mut(&mut self) -> &mut Selections {
-        &mut self.text.0.selections
-    }
-
-    pub(crate) fn mv_selections_mut(self) -> &'t mut Selections {
         &mut self.text.0.selections
     }
 

@@ -4,24 +4,9 @@
 //! utility of duat. It adds the two following traits:
 //!
 //! - [`FileType`]: This trait grants the [`filetype`] method, which
-//!   lets you access the filetype directly. Its implementors are the
-//!   [`Buffer`] widget, [`String`] and [`&str`] and [`PathBuf`] and
-//!   [`Path`].
-//! - [`PassFileType`]: This trait also has a
-//!   [`filetype`](PassFileType::filetype) method, but it requires a
-//!   [`Pass`], bypassing the need to, for example, [`read`] a
-//!   [`Handle<Buffer>`]. Its implementors are [`RwData<Buffer>`],
-//!   [`Handle<Buffer>`].
+//!   lets you access the filetype directly. It's implemented for [`Buffer`].
 //!
 //! [`filetype`]: FileType::filetype
-//! [`Buffer`]: duat_core::buffer::Buffer
-//! [`&str`]: str
-//! [`Pass`]: duat_core::data::Pass
-//! [`read`]: duat_core::context::Handle::read
-//! [`Handle<Buffer>`]: duat_core::context::Handle
-//! [`RwData<Buffer>`]: duat_core::data::RwData
-//! [hook]: duat_core::hook
-//! [`prelude`]: https://docs.rs/duat/latest/duat/prelude
 //! [`Plugin`]: https://docs.rs/crates/duat/latest/struct.Plugin.html
 use std::{
     collections::{HashMap, HashSet},
@@ -39,7 +24,7 @@ static MAPPED: LazyLock<Mutex<HashMap<BufferId, &str>>> = LazyLock::new(Mutex::d
 
 pub trait FileType {
     fn filetype(&self) -> Option<&'static str>;
-  
+
     fn set_filetype(&self, filetype: impl ToString);
 }
 
@@ -49,21 +34,21 @@ impl FileType for Buffer {
         if let Some(filetype) = mapped.get(&self.buffer_id()) {
             Some(filetype)
         } else {
-      let path = self.path_set()?;
-          path.extension()
-              .and_then(|ext| EXTENSIONS.get(ext.to_str()?).copied())
-              .or_else(|| FILENAMES.get(path.to_str()?).copied())
-              .or_else(|| FILENAMES.get(path.file_name()?.to_str()?).copied())
-              .or_else(|| {
-                  let (patterns, langs) = &*PATTERNS;
-  
-                  langs
-                      .get(patterns.matches(path.to_str()?).iter().min()?)
-                      .copied()
-              })
+            let path = self.path_set()?;
+            path.extension()
+                .and_then(|ext| EXTENSIONS.get(ext.to_str()?).copied())
+                .or_else(|| FILENAMES.get(path.to_str()?).copied())
+                .or_else(|| FILENAMES.get(path.file_name()?.to_str()?).copied())
+                .or_else(|| {
+                    let (patterns, langs) = &*PATTERNS;
+
+                    langs
+                        .get(patterns.matches(path.to_str()?).iter().min()?)
+                        .copied()
+                })
         }
     }
-  
+
     fn set_filetype(&self, filetype: impl ToString) {
         let filetype = filetype.to_string();
         let mut static_strs = STATIC_STRS.lock().unwrap();

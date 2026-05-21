@@ -126,6 +126,7 @@ use crate::{
 /// # }
 /// ```
 ///
+/// [`Selection`]: crate::mode::Selection
 /// [`Mode`]: crate::mode::Mode
 /// [`&mut Pass`]: Pass
 /// [`PromptLine`]: https://docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
@@ -534,21 +535,21 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// Removes all [`Selection`]s that aren't the main one.
     ///
     /// [`Selection`]: crate::mode::Selection
-    pub fn remove_extra_selections<'p>(&'p self, pa: &'p mut Pass) {
+    pub fn remove_extra_selections(&self, pa: &mut Pass) {
         self.text_mut(pa).remove_extra_selections();
     }
 
     /// Rotates the index of the main [`Selection`].
     ///
     /// [`Selection`]: crate::mode::Selection
-    pub fn rotate_main_selection<'p>(&'p self, pa: &'p mut Pass, amount: i32) {
+    pub fn rotate_main_selection(&self, pa: &mut Pass, amount: i32) {
         self.text_mut(pa).rotate_main_selection(amount);
     }
 
     /// Sets the index of the main [`Selection`].
     ///
     /// [`Selection`]: crate::mode::Selection
-    pub fn set_main_selection<'p>(&'p self, pa: &'p mut Pass, n: usize) {
+    pub fn set_main_selection(&self, pa: &mut Pass, n: usize) {
         self.text_mut(pa).set_main_selection(n);
     }
 
@@ -557,7 +558,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// This will also correct all wrong [`Selection`]s.
     ///
     /// [`Selection`]: crate::mode::Selection
-    pub fn replace_selections<'p>(&'p self, pa: &'p mut Pass, saved: Selections) {
+    pub fn replace_selections(&self, pa: &mut Pass, saved: Selections) {
         self.text_mut(pa).replace_selections(saved);
     }
 
@@ -610,6 +611,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// [`Selections`], so if there are no [`Selection`]s, it will
     /// create one at [`Point::default`].
     ///
+    /// [`Selection`]: crate::mode::Selection
     /// [destroyed]: SelectionMut::destroy
     /// [`edit_main`]: Self::edit_main
     /// [`edit_all`]: Self::edit_all
@@ -661,6 +663,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// `Selections`, so if there are no `Selection`s, it will
     /// create one at [`Point::default`].
     ///
+    /// [`Selection`]: crate::mode::Selection
     /// [destroyed]: SelectionMut::destroy
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_last`]: Self::edit_last
@@ -684,6 +687,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// `Selections`, so if there are no `Selection`s, it will
     /// create one at [`Point::default`].
     ///
+    /// [`Selection`]: crate::mode::Selection
     /// [destroyed]: SelectionMut::destroy
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_main`]: Self::edit_main

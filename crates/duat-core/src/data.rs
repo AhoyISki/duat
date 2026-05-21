@@ -204,7 +204,7 @@ impl<T> RwData<T> {
     ///         let Some(mywidget) = context::handle_of::<MyWidget>(pa) else {
     ///             return;
     ///         };
-    ///         let (wid, buf) = mywidget.write_then(pa, |wid| &wid.buf);
+    ///         let buf = mywidget.write_then(pa, |wid| &wid.buf);
     ///         // Updating the widget and reading/writing from the Buffer at the same time.
     ///         // ...
     ///     });
@@ -236,7 +236,7 @@ impl<T> RwData<T> {
     ///         let Some(mywidget) = context::handle_of::<MyWidget>(pa) else {
     ///             return;
     ///         };
-    ///         let (wid, (b1, b2)) = mywidget.write_then(pa, |wid| (&wid.buf1, &wid.buf2));
+    ///         let (b1, b2) = mywidget.write_then(pa, |wid| (&wid.buf1, &wid.buf2));
     ///         // ...
     ///     });
     /// }

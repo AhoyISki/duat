@@ -382,18 +382,32 @@ impl Buffer {
         self.text.selections()
     }
 
+    /// Removes all [`Selection`]s that aren't the main one.
+    ///
+    /// [`Selection`]: crate::mode::Selection
     pub fn remove_extra_selections(&mut self) {
         self.text.remove_extra_selections();
     }
 
+    /// Rotates the index of the main [`Selection`].
+    ///
+    /// [`Selection`]: crate::mode::Selection
     pub fn rotate_main_selection(&mut self, amount: i32) {
         self.text.rotate_main_selection(amount);
     }
 
+    /// Sets the index of the main [`Selection`].
+    ///
+    /// [`Selection`]: crate::mode::Selection
     pub fn set_main_selection(&mut self, n: usize) {
         self.text.set_main_selection(n);
     }
 
+    /// Replace the [`Selections`] with a previously saved version.
+    ///
+    /// This will also correct all wrong [`Selection`]s.
+    ///
+    /// [`Selection`]: crate::mode::Selection
     pub fn replace_selections(&mut self, saved: Selections) {
         self.text.replace_selections(saved);
     }
@@ -935,7 +949,7 @@ impl<T: 'static> PerBuffer<T> {
     /// `Buffer`.
     ///
     /// For now, the two types that can be used as [`BufferPass`]es
-    /// are the [`Buffer`] itself and a [`SelectionMut<Buffer>`].
+    /// are the [`Buffer`] itself and a [`SelectionMut`].
     /// These types are allowed to do this because they are
     /// impossible to acquire without first borrowing from an
     /// [`RwData<Buffer>`], either directly or through a [`Handle`]
@@ -964,6 +978,7 @@ impl<T: 'static> PerBuffer<T> {
     ///
     /// [registered]: Self::register
     /// [unregistered]: Self::unregister
+    /// [`SelectionMut`]: crate::mode::SelectionMut
     pub fn get<'b>(&'b self, buffer_pass: &'b impl BufferPass) -> Option<&'b T> {
         static PASS: Pass = unsafe { Pass::new() };
         let list = self.0.read(&PASS);
@@ -978,7 +993,7 @@ impl<T: 'static> PerBuffer<T> {
     /// `Buffer`.
     ///
     /// For now, the two types that can be used as [`BufferPass`]es
-    /// are the [`Buffer`] itself and a [`SelectionMut<Buffer>`].
+    /// are the [`Buffer`] itself and a [`SelectionMut`].
     /// These types are allowed to do this because they are
     /// impossible to acquire without first borrowing from an
     /// [`RwData<Buffer>`], either directly or through a
@@ -996,6 +1011,7 @@ impl<T: 'static> PerBuffer<T> {
     ///
     /// [registered]: Self::register
     /// [unregistered]: Self::unregister
+    /// [`SelectionMut`]: crate::mode::SelectionMut
     pub fn get_mut<'b>(&'b self, buffer: &'b mut impl BufferPass) -> Option<&'b mut T> {
         static PASS: Pass = unsafe { Pass::new() };
         let list = self

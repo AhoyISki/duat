@@ -624,6 +624,8 @@ impl<'p, 't> SelectionMut<'p, 't> {
     }
 
     /// The [`Text`] of the [`Widget`].
+    ///
+    /// [`Widget`]: crate::ui::Widget
     pub fn text(&self) -> &Text {
         self.text
     }

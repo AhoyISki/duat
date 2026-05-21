@@ -464,7 +464,7 @@ pub mod hooks {
     /// This happens while you're pressing a key like tab to scroll
     /// through the completion options. For when you actually pick the
     /// completion item, or if the completions close without you
-    /// selecting anything, check out [`CompletionFinished`].
+    /// selecting anything, check out [`CompletionSelected`].
     ///
     /// # Arguments
     ///
@@ -488,7 +488,7 @@ pub mod hooks {
     /// This happens when you type a character and a completion entry
     /// is selected. If you want to do something while pressing a key
     /// like tab in order to scroll through the completions, check out
-    /// [`CompletionSelected`].
+    /// [`CompletionFocused`].
     ///
     /// # Arguments
     ///
