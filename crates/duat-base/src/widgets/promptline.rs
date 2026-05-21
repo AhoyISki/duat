@@ -47,14 +47,6 @@ pub fn promptline_setup() {
                 area.set_width(width + pl.print_opts().scrolloff.x as f32)
                     .unwrap();
             }
-
-            if let Some(main) = pl.text.selections().get_main() {
-                area.scroll_around(
-                    &pl.text,
-                    main.cursor().to_two_points_after(),
-                    pl.print_opts(),
-                );
-            }
         })
         .grouped(hook_ns);
     })

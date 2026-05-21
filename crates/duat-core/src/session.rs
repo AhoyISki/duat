@@ -20,7 +20,7 @@ use crate::{
     context::{self, cache},
     data::Pass,
     hook::{
-        self, BufferClosed, ConfigLoaded, ConfigUnloaded, FocusedOnDuat, OnMouseEvent,
+        self, BufferClosed, ConfigLoaded, ConfigUnloaded, FocusedOnDuat, KeyTyped, OnMouseEvent,
         UnfocusedFromDuat,
     },
     mode::{self, Selection, Selections},
@@ -80,6 +80,20 @@ pub fn start(setup: fn() -> (Ui, BufferOpts)) -> std::io::Result<()> {
             event.handle.text_mut(pa).remove_tags(Ns::for_toggle(), ..);
         })
         .lateness(0);
+
+        hook::add::<KeyTyped>(|pa, _| {
+            let widget = context::current_widget(pa);
+            // Skip Buffers, since they are scrolled afterwards anyways.
+            if !widget.widget().is::<Buffer>() {
+                let popts = widget.read(pa).print_opts();
+                let (text, area) = widget.write_text_and_area(pa);
+
+                if let Some(main) = text.get_main_sel() {
+                    area.scroll_around(&text, main.cursor().to_two_points_after(), popts);
+                }
+            }
+        })
+        .lateness(usize::MAX);
 
         crate::buffer::add_buffer_hooks();
         crate::storage::set_structs(structs);

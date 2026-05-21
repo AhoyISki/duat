@@ -531,20 +531,57 @@ impl<W: Widget + ?Sized> Handle<W> {
         self.text(pa).selections()
     }
 
+    /// Removes all [`Selection`]s that aren't the main one.
+    ///
+    /// [`Selection`]: crate::mode::Selection
     pub fn remove_extra_selections<'p>(&'p self, pa: &'p mut Pass) {
         self.text_mut(pa).remove_extra_selections();
     }
 
+    /// Rotates the index of the main [`Selection`].
+    ///
+    /// [`Selection`]: crate::mode::Selection
     pub fn rotate_main_selection<'p>(&'p self, pa: &'p mut Pass, amount: i32) {
         self.text_mut(pa).rotate_main_selection(amount);
     }
 
+    /// Sets the index of the main [`Selection`].
+    ///
+    /// [`Selection`]: crate::mode::Selection
     pub fn set_main_selection<'p>(&'p self, pa: &'p mut Pass, n: usize) {
         self.text_mut(pa).set_main_selection(n);
     }
 
+    /// Replace the [`Selections`] with a previously saved version.
+    ///
+    /// This will also correct all wrong [`Selection`]s.
+    ///
+    /// [`Selection`]: crate::mode::Selection
     pub fn replace_selections<'p>(&'p self, pa: &'p mut Pass, saved: Selections) {
         self.text_mut(pa).replace_selections(saved);
+    }
+
+    /// Writes to the [`Text`] and [`Area`] at the same time.
+    ///
+    /// This function is especially useful if you have a `Handle<dyn Widget>`,
+    /// since you can't [write] to it directly.
+    ///
+    /// A lot of the time, you will also need the [`PrintOpts`] of the widget.
+    /// To get all three things, you can do the following.
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
+    ///
+    /// # fn test(handle: &Handle<dyn Widget>, pa: &mut Pass) {
+    /// let popts = handle.read(pa).print_opts();
+    /// let (mut text, area) = handle.write_text_and_area(pa);
+    /// # }
+    /// ```
+    ///
+    /// [write]: RwData::write
+    pub fn write_text_and_area<'p>(&'p self, pa: &'p mut Pass) -> (TextMut<'p>, &'p mut Area) {
+        pa.write_many((self.rw_text(), &self.area))
     }
 
     /// Returns a read-write handle (similar to [`RwData`]) for this
