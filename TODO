@@ -33,10 +33,8 @@ FOR NEXT UPDATE:
 
 KNOWN BUGS:
  HIGH PRIORITY:
-  [ ] Get rid of Text::selections_mut.
-  [ ] Modification of Text in BufferUpdated hook should be disallowed.
-  [ ] Indentation is inefficient.
-  [ ] Some strange slowdowns on Buffer switching and reindentation.
+  [x] Get rid of Text::selections_mut.
+  [ ] Indentation is inefficient because tree-sitter query results aren't cached.
  LOW PRIORITY:
   [ ] Selections struct that holds a reference to the Bytes.
     [ ] Also make the Bytes-less version inaccessible.
@@ -45,6 +43,10 @@ KNOWN BUGS:
   [ ] Overlays can't remove previous Forms early.
   [ ] Sometimes the Completions randomly don't open right away on prompt line.
   [ ] Diagnostics randomly triggers an integer overflow probably.
+
+POSSIBLE NOW:
+[ ] Turn the History into a tree.
+[ ] Expose duatmode keys as functions.
 
 FUTURE UPDATES:
 [ ] Add registers possibly.
@@ -59,11 +61,10 @@ FUTURE UPDATES:
 [ ] An Align Tag?
 [ ] Get started on a Vim mode.
 [ ] Create a fun lil' spinner.
-[ ] Turn the History into a tree.
 [ ] Remove requirement of Clone on Modes.
 [ ] Coordinates based tagging.
 [ ] Use track_caller on TextBuilder.
-[ ] Anonymous Forms, which index based on hashing the Form itself.
+[ ] Anonymous Forms, with index based on hashing the Form itself.
 [ ] Keep information of PushSpecs and SpawnSpecs on the Handles.
 [ ] Initial installation configuration menu.
 [ ] Print only changed lines.
@@ -84,7 +85,6 @@ FUTURE UPDATES:
 [ ] ghosts 👻 on doc comments for tests.
 [ ] mouse drag binding to resize widgets.
 [ ] adaptive widget size.
-[ ] transition the ranges system to 4 lists.
 [ ] Least common denominator for showing paths.
 [ ] An updater function that returns true if a certain hook was triggered.
 [ ] No wrapping Tag.
