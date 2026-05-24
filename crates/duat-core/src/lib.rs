@@ -24,7 +24,10 @@ compile_error!("This crate does not support 32-bit systems.");
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
 
-pub use self::{namespace::Ns, ranges::Ranges};
+pub use self::{
+    namespace::{Ns, NsStack},
+    ranges::Ranges,
+};
 
 pub mod buffer;
 pub mod cmd;
@@ -43,7 +46,11 @@ pub mod utils;
 
 mod namespace {
     //! A namespace for Duat operations.
-
+    //!
+    //! This module also defines the [`NsStack`] struct, which
+    //! can be used in order to have a supply of [`Ns`]s that are
+    //! unique, and can be "returned back", in order to have
+    //! granular but temporary namespacing.
     use std::{
         collections::HashMap,
         ops::Range,
@@ -196,6 +203,78 @@ mod namespace {
         ) -> Result<(), bincode::error::EncodeError> {
             self.0.encode(encoder)
         }
+    }
+
+    /// A stack of reusable [`Ns`]s.
+    ///
+    /// You should use this if you want granular, single use namespacing.
+    /// This is because namespaces are backed by [`u32`]s, which
+    /// have a limit of 4.294.967.295 different elements.
+    ///
+    /// And while this limit is very unlikely to be reached in
+    /// any significant amount of time, it's nonetheless still
+    /// possible.
+    pub struct NsStack(Mutex<Vec<StackedNs>>);
+
+    impl NsStack {
+        /// Returns a new `NsStack`.
+        ///
+        /// Note that this is a `const` function, so you can
+        /// place this on a `static` variable directly. You also
+        /// don't need to wrap this in a [`Mutex`], since it already
+        /// comes with one.
+        pub const fn new() -> Self {
+            Self(Mutex::new(Vec::new()))
+        }
+
+        /// Gets a [`Ns`] that is "unused".
+        ///
+        /// Wether or not the `Ns` is actually unused is up to your
+        /// interpretation. If you use this struct correctly, this `Ns`
+        /// will either be a previously used `Ns` that was [given back], or
+        /// it will be a new `Ns`.
+        ///
+        /// [given back]: Self::give
+        pub fn take(&self) -> Ns {
+            let mut list = self.0.lock().unwrap();
+            if let Some((sns, ns)) = list.iter_mut().find_map(|sns| match *sns {
+                StackedNs::Taken(_) => None,
+                StackedNs::Available(ns) => Some((sns, ns)),
+            }) {
+                *sns = StackedNs::Taken(ns);
+                ns
+            } else {
+                let ns = Ns::new();
+                list.push(StackedNs::Taken(ns));
+                ns
+            }
+        }
+
+        /// Give back a [`Ns`] to this stack.
+        ///
+        /// By doing this, you are declaring that you're "done" using
+        /// this `Ns`, and it can be used for other purposes.
+        ///
+        /// Of course, it is completely possible to call this method
+        /// while still making use of this `Ns`, but that would kind of
+        /// betray the purpose of using a `NsStack` in the first place.
+        pub fn give(&self, ns: Ns) {
+            let mut list = self.0.lock().unwrap();
+            if let Some(sns) = list.iter_mut().find(|sns| {
+                let (StackedNs::Taken(other_ns) | StackedNs::Available(other_ns)) = **sns;
+                other_ns == ns
+            }) {
+                *sns = StackedNs::Available(ns);
+            } else {
+                list.push(StackedNs::Available(ns));
+            }
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum StackedNs {
+        Taken(Ns),
+        Available(Ns),
     }
 }
 

@@ -9,13 +9,14 @@
 //!
 //! [`Buffer`]: duat_core::buffer::Buffer
 use std::{
+    cell::LazyCell,
     iter::Peekable,
     ops::Range,
     sync::{LazyLock, Mutex},
 };
 
 use duat_core::{
-    Ns,
+    Ns, NsStack,
     buffer::Buffer,
     context::{self, Handle},
     data::{Pass, RwData},
@@ -39,7 +40,6 @@ pub struct Gutter {
     text: Text,
     entries: Vec<GutterEntry>,
     opts: GutterOpts,
-    ns: Ns,
 }
 
 /// Initial setup for the [`Gutter`].
@@ -169,7 +169,7 @@ fn update(pa: &mut Pass, buffer: &Handle) {
 
     while let Some((entry, _)) = entries.peek() {
         let lnum = buf.text().point_at_byte(entry.range.end).line();
-        insert_gutter_entries(&mut entries, gtr.ns, lnum, &gtr.opts, buf, area);
+        insert_gutter_entries(&mut entries, lnum, &gtr.opts, buf, area);
     }
 
     if updated {
@@ -205,13 +205,17 @@ impl Gutter {
             let mut kind = None;
             let range = text.line(line.number).byte_range();
 
-            let (Ok(idx) | Err(idx)) = self
-                .entries
-                .binary_search_by(|entry| entry.range.end.cmp(&range.start));
+            let (Ok(idx) | Err(idx)) = self.entries.binary_search_by(|entry| {
+                entry
+                    .range
+                    .end
+                    .cmp(&range.start)
+                    .then(entry.range.start.cmp(&range.start))
+            });
 
             let mut iter = self.entries[idx..].iter();
             while let Some(entry) = iter.next()
-                && entry.range.start < range.end
+                && text.point_at_byte(entry.range.start).line() == line.number
             {
                 kind = Some(match kind {
                     Some(kind) => entry.kind.min(kind),
@@ -247,61 +251,42 @@ impl Gutter {
             return;
         }
 
-        let sh = |value: &mut usize, shift: i32| {
-            *value = value.saturating_add_signed(shift as isize);
-        };
-
-        let mut iter = self.entries.iter_mut().enumerate();
-        let mut shift = 0;
         let mut to_remove = Vec::new();
 
+        // Yes, unfortunately this does have quadratic complexity.
+        // The reason why this is necessary is because only the ends of
+        // ranges are ordered. so only those could be updated with O(n)
+        // complexity.
+        //
+        // Since the ordering of the starts is essentially random, they
+        // have to be checked one by one for each Change.
         for change in moment.iter() {
-            let mut is_contained = |i: usize, range: &mut Range<usize>| {
+            for (i, entry) in self.entries.iter_mut().enumerate() {
                 let change_range = change.taken_range();
                 let change_range = change_range.start.byte()..change_range.end.byte();
 
-                if change_range.contains(&range.start) || change_range.contains(&range.end) {
-                    // For removal of tags.
-                    sh(&mut range.end, change.shift()[0]);
+                if change_range.contains(&entry.range.start)
+                    || change_range.contains(&entry.range.end)
+                {
                     to_remove.push(i);
-                    true
                 } else {
-                    false
+                    for byte in [&mut entry.range.start, &mut entry.range.end] {
+                        if change_range.start < *byte {
+                            *byte = byte.saturating_add_signed(change.shift()[0] as isize);
+                        }
+                    }
                 }
-            };
-
-            if let Some((_, entry)) = iter.find_map(|(i, entry)| {
-                sh(&mut entry.range.start, shift);
-                sh(&mut entry.range.end, shift);
-
-                (!is_contained(i, &mut entry.range) && entry.range.end > change.start().byte())
-                    .then_some((i, entry))
-            }) {
-                let start_shift =
-                    change.shift()[0] * (entry.range.start > change.start().byte()) as i32;
-
-                sh(&mut entry.range.start, start_shift);
-                sh(&mut entry.range.end, change.shift()[0]);
             }
-            shift += change.shift()[0];
-        }
 
-        for (_, entry) in iter {
-            sh(&mut entry.range.start, shift);
-            sh(&mut entry.range.end, shift);
-        }
+            let mut parts = buf.text_parts();
 
-        let mut parts = buf.text_parts();
-
-        for idx in to_remove.into_iter().rev() {
-            let entry = self.entries.remove(idx);
-
-            let lnum = parts.strs.point_at_byte(entry.range.end).line();
-            let line_range = parts.strs.line(lnum).byte_range();
-
-            parts
-                .tags
-                .remove(self.ns, line_range.end - 1..=line_range.end);
+            for idx in to_remove.drain(..).rev() {
+                let entry = self.entries.remove(idx);
+                if let Some((_, ns)) = entry.place {
+                    parts.tags.remove(ns, ..);
+                    NS_STACK.give(ns);
+                }
+            }
         }
     }
 }
@@ -425,12 +410,7 @@ impl GutterOpts {
 
         handle.push_outer_widget(
             pa,
-            Gutter {
-                text,
-                entries: Vec::new(),
-                opts: self,
-                ns: Ns::new(),
-            },
+            Gutter { text, entries: Vec::new(), opts: self },
             PushSpecs {
                 side: Side::Left,
                 width: Some(1.0),
@@ -499,14 +479,13 @@ pub struct GutterEntry {
     msg: Text,
     kind: EntryKind,
     id: GutterEntryId,
-    place: Option<BufferPlace>,
+    place: Option<(BufferPlace, Ns)>,
     ns: Ns,
 }
 
 /// Inserts multiple [`GutterEntry`]s that are in the same line.
 fn insert_gutter_entries<'g>(
     iter: &mut Peekable<impl Iterator<Item = (&'g mut GutterEntry, Option<Movement>)>>,
-    ns: Ns,
     lnum: usize,
     opts: &GutterOpts,
     buf: &mut Buffer,
@@ -561,23 +540,31 @@ fn insert_gutter_entries<'g>(
     // entries should be displayed, so do nothing.
     if entries
         .iter()
-        .all(|(entry, _, place)| entry.place == *place)
+        .all(|(entry, _, place)| entry.place.map(|(place, _)| place) == *place)
     {
         return;
     }
 
     let mut parts = buf.text_parts();
     let line_range = parts.strs.line(lnum).byte_range();
-    // Pick as much range as possible, in order to account for the
-    // possibility of the RightUnder Tag having moved because of changes.
-    parts.tags.remove(ns, line_range.start + 1..=start_of_next);
 
+    let inlay_ns = LazyCell::new(|| NS_STACK.take());
+    let overlay_ns = LazyCell::new(|| NS_STACK.take());
     let mut inlays = Vec::new();
     let mut overlays = Vec::new();
 
     for (entry, _, place) in entries {
-        entry.place = place;
-        let Some(place) = entry.place else {
+        if let Some((_, ns)) = entry.place {
+            parts.tags.remove(ns, ..);
+            NS_STACK.give(ns);
+        }
+
+        entry.place = place.map(|place| match place {
+            BufferPlace::EndOfLine(_) => (place, *overlay_ns),
+            BufferPlace::RightUnder(_) => (place, *inlay_ns),
+            BufferPlace::Spawned => todo!(),
+        });
+        let Some((place, _)) = entry.place else {
             continue;
         };
 
@@ -589,11 +576,13 @@ fn insert_gutter_entries<'g>(
     }
 
     if !inlays.is_empty() {
-        parts.tags.insert(ns, line_range.end, make_inlay(inlays));
+        parts
+            .tags
+            .insert(*inlay_ns, line_range.end, make_inlay(inlays));
     }
     if !overlays.is_empty() {
         let pos = line_range.end - 1;
-        parts.tags.insert(ns, pos, make_overlay(overlays));
+        parts.tags.insert(*overlay_ns, pos, make_overlay(overlays));
     }
 }
 
@@ -752,8 +741,10 @@ pub(crate) fn remove_gutter_entries(handle: &Handle, pa: &mut Pass, ns: Ns) {
             .map(|entry| {
                 let lnum = buf.text().point_at_byte(entry.range.end).line();
                 let line_range = buf.text().line(lnum).byte_range();
-                buf.text_mut()
-                    .remove_tags(gtr.ns, line_range.end - 1..=line_range.end);
+                if let Some((_, ns)) = entry.place {
+                    buf.text_mut().remove_tags(ns, ..);
+                    NS_STACK.give(ns);
+                }
                 line_range
             }),
     );
@@ -810,9 +801,12 @@ pub(crate) fn add_hint(
 
     gtr.apply_changes(buf);
 
-    let (Ok(idx) | Err(idx)) = gtr
-        .entries
-        .binary_search_by(|e| e.range.end.cmp(&entry.range.end));
+    let (Ok(idx) | Err(idx)) = gtr.entries.binary_search_by(|e| {
+        e.range
+            .end
+            .cmp(&entry.range.end)
+            .then(e.range.start.cmp(&entry.range.start))
+    });
     gtr.entries.insert(idx, entry);
 
     id
@@ -856,9 +850,12 @@ pub(crate) fn add_warning(
 
     gtr.apply_changes(buf);
 
-    let (Ok(idx) | Err(idx)) = gtr
-        .entries
-        .binary_search_by(|e| e.range.end.cmp(&entry.range.end));
+    let (Ok(idx) | Err(idx)) = gtr.entries.binary_search_by(|e| {
+        e.range
+            .end
+            .cmp(&entry.range.end)
+            .then(e.range.start.cmp(&entry.range.start))
+    });
     gtr.entries.insert(idx, entry);
 
     id
@@ -903,9 +900,12 @@ pub(crate) fn add_error(
     let (gtr, buf) = pa.write_many((&gutter, handle));
     gtr.apply_changes(buf);
 
-    let (Ok(idx) | Err(idx)) = gtr
-        .entries
-        .binary_search_by(|e| e.range.end.cmp(&entry.range.end));
+    let (Ok(idx) | Err(idx)) = gtr.entries.binary_search_by(|e| {
+        e.range
+            .end
+            .cmp(&entry.range.end)
+            .then(e.range.start.cmp(&entry.range.start))
+    });
     gtr.entries.insert(idx, entry);
 
     id
@@ -970,6 +970,7 @@ impl GutterEntryId {
 }
 
 const SPACES: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
+static NS_STACK: NsStack = NsStack::new();
 static MOMENT_NS: LazyLock<Ns> = Ns::new_lazy();
 static ID_RELATIONS: Mutex<Vec<Vec<GutterEntryId>>> = Mutex::new(Vec::new());
 static EXTANT_IDS: Mutex<Vec<GutterEntryId>> = Mutex::new(Vec::new());

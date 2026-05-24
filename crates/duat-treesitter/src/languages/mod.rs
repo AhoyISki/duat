@@ -21,7 +21,7 @@ type Compilation = (JoinHandle<Option<ExitStatus>>, Vec<Handle>);
 
 mod list;
 
-pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
+pub fn get_language(filetype: &str, handle: Option<&Handle>) -> Option<Language> {
     static LIBRARIES: Mutex<Vec<Library>> = Mutex::new(Vec::new());
 
     if FAILED_COPILATION.lock().unwrap().contains(filetype) {
@@ -75,7 +75,9 @@ pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
         if let Entry::Occupied(mut child) = compilations.entry(filetype.to_string()) {
             let (join_handle, handles) = child.get_mut();
             if !join_handle.is_finished() {
-                if !handles.contains(handle) {
+                if let Some(handle) = handle
+                    && !handles.contains(handle)
+                {
                     handles.push(handle.clone());
                 }
                 return None;
@@ -131,7 +133,10 @@ pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
                 }
             });
 
-            compilations.insert(filetype.to_string(), (join_handle, vec![handle.clone()]));
+            compilations.insert(
+                filetype.to_string(),
+                (join_handle, handle.map(Handle::clone).into_iter().collect()),
+            );
 
             None
         }

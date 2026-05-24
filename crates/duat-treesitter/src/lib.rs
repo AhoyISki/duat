@@ -37,7 +37,7 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     form::{self, Form},
-    text::{Builder, Text, txt},
+    text::{Builder, Text, TextMut, txt},
     ui::Widget,
 };
 use tree_sitter::{Language, Node, Query};
@@ -49,6 +49,14 @@ mod cursor;
 mod languages;
 mod parser;
 mod tree;
+
+#[track_caller]
+pub fn highlight_as(text: TextMut, language: &str) {
+    if let Some(language) = languages::get_language(language, None) {
+    } else {
+        context::warn!("[a]{language}[] is not on the list of accepted languages");
+    }
+}
 
 /// The [tree-sitter] plugin for Duat
 ///
@@ -182,7 +190,7 @@ fn lang_parts_of(lang: &str, handle: &Handle) -> Option<LangParts<'static>> {
     } else if FAILED_PARTS.lock().unwrap().contains(lang) {
         None
     } else {
-        let language: &'static Language = Box::leak(Box::new(get_language(lang, handle)?));
+        let language: &'static Language = Box::leak(Box::new(get_language(lang, Some(handle))?));
 
         let get_queries = || -> Result<_, QueryFromPathError> {
             let highlights = query_from_path(lang, "highlights", language)?;
