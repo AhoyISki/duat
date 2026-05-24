@@ -22,6 +22,21 @@ mod prefixes;
 static STATIC_STRS: LazyLock<Mutex<HashSet<&str>>> = LazyLock::new(Mutex::default);
 static MAPPED: LazyLock<Mutex<HashMap<BufferId, &str>>> = LazyLock::new(Mutex::default);
 
+/// Get the filetype from a filename
+pub fn from_filename(path: &std::path::Path) -> Option<&'static str> {
+    path.extension()
+        .and_then(|ext| EXTENSIONS.get(ext.to_str()?).copied())
+        .or_else(|| FILENAMES.get(path.to_str()?).copied())
+        .or_else(|| FILENAMES.get(path.file_name()?.to_str()?).copied())
+        .or_else(|| {
+            let (patterns, langs) = &*PATTERNS;
+
+            langs
+                .get(patterns.matches(path.to_str()?).iter().min()?)
+                .copied()
+        })
+}
+
 pub trait FileType {
     fn filetype(&self) -> Option<&'static str>;
 
