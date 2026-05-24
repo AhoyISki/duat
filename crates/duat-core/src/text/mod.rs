@@ -160,8 +160,6 @@ impl Text {
 
     /// Creates a `Text` from a [`String`].
     pub(crate) fn from_parts(mut buf: StrsBuf, mut selections: Selections) -> Self {
-        let tags = InnerTags::new(buf.len());
-
         let selections = if selections.iter().any(|(sel, _)| {
             [Some(sel.cursor()), sel.anchor()]
                 .into_iter()
@@ -177,6 +175,8 @@ impl Text {
         if !selections.is_empty() && !buf.ends_with('\n') {
             buf.apply_change(Change::str_insert("\n", buf.end_point()));
         }
+
+        let tags = InnerTags::new(buf.len());
 
         Self(Box::new(InnerText {
             buf,
