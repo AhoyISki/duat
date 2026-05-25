@@ -27,6 +27,15 @@ pub(crate) fn picker_setup() {
             || (old.widget().is::<Preview>() && !new.widget().is::<Picker>())
         {
             _ = old.close(pa);
+        } else if let Some(preview) = old.get_as::<Preview>()
+            && let pv = preview.read(pa)
+            && let Some(PreviewMode::BufferPreview(.., Some(filetype))) = &pv.modes[pv.current]
+        {
+            let filetype = *filetype;
+            let mut text = preview.text_mut(pa);
+
+            text.clear_tags();
+            duat_treesitter::highlight_as(text, .., filetype);
         }
     });
 
@@ -70,6 +79,23 @@ pub(crate) fn picker_setup() {
         let pkr = picker.write(pa);
         pkr.maps.insert(idx, (range, item));
     });
+
+    hook::add::<FocusedUpdated<Preview>>(|pa, preview| {
+        let pv = preview.read(pa);
+
+        if let Some(PreviewMode::BufferPreview(.., Some(filetype))) = &pv.modes[pv.current] {
+            let filetype = *filetype;
+            let popts = preview.opts(pa);
+            let (mut text, area) = preview.write_text_and_area(pa);
+
+            let start = area.start_points(&text, popts);
+            let end = area.end_points(&text, popts);
+
+            text.clear_tags();
+            duat_treesitter::highlight_as(text, start.real..end.real, filetype);
+        }
+    })
+    .lateness(usize::MAX);
 
     hook::add::<PickerEntryFocused<FilePlace>>(|pa, (place, preview)| {
         preview.set_place(pa, place.clone());
@@ -208,7 +234,7 @@ impl Picker {
                 buffer.remove_extra_selections(pa);
                 buffer.edit_main(pa, |mut s| s.move_to(range.clone()));
             }
-            Some(PreviewMode::BufferPreview(path, mut text, range)) => {
+            Some(PreviewMode::BufferPreview(path, mut text, range, _)) => {
                 if let Some(buffer) = context::buffer_from_path(pa, &path) {
                     buffer.text_mut(pa).replace_range(.., text.to_string());
                     mode::reset_to(pa, &buffer);
@@ -303,8 +329,6 @@ impl FilePlace {
             path.canonicalize().unwrap_or(path)
         };
 
-        context::debug!("{path:?}");
-
         Self { path, range }
     }
 }
@@ -338,10 +362,20 @@ impl PickerPreview {
                 Err(err) => panic!("{err}"),
             };
 
+            let mut text = Text::from(content);
+
+            let filetype = if let Some(filetype) = duat_filetype::from_filename(&place.path) {
+                duat_treesitter::highlight_as(text.as_mut(), .., filetype);
+                Some(filetype)
+            } else {
+                None
+            };
+
             PreviewMode::BufferPreview(
                 PathBuf::from(&place.path),
-                Text::from(content),
+                text,
                 place.range.clone(),
+                filetype,
             )
         };
 
@@ -370,7 +404,7 @@ impl Widget for Preview {
         let pv = widget.read(pa);
         match pv.modes[pv.current].as_ref() {
             Some(PreviewMode::BufferMirror(buffer, _)) => buffer.text(pa),
-            Some(PreviewMode::BufferPreview(_, text, _)) => text,
+            Some(PreviewMode::BufferPreview(_, text, ..)) => text,
             Some(PreviewMode::Text(text, _)) => text,
             None => &pv.empty,
         }
@@ -379,7 +413,7 @@ impl Widget for Preview {
     fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
         let pv = widget.write(pa);
         match &mut pv.modes[pv.current].as_mut() {
-            Some(PreviewMode::BufferPreview(_, text, _) | PreviewMode::Text(text, _)) => {
+            Some(PreviewMode::BufferPreview(_, text, ..) | PreviewMode::Text(text, _)) => {
                 // SAFETY: Doing this to circumvent current borrow checking
                 // limitations.
                 let ptr = text as *mut Text;
@@ -407,7 +441,7 @@ impl Widget for Preview {
 
 pub enum PreviewMode {
     BufferMirror(Handle, Range<usize>),
-    BufferPreview(PathBuf, Text, Range<usize>),
+    BufferPreview(PathBuf, Text, Range<usize>, Option<&'static str>),
     Text(Text, Range<usize>),
 }
 
@@ -416,7 +450,7 @@ impl PreviewMode {
     pub fn range(&self) -> Range<usize> {
         match self {
             Self::BufferMirror(_, points) => points.clone(),
-            Self::BufferPreview(.., points) => points.clone(),
+            Self::BufferPreview(.., points, _) => points.clone(),
             Self::Text(_, points) => points.clone(),
         }
     }

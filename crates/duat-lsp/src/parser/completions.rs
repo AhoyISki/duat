@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use duat_base::{
     BaseBuffer,
-    hooks::{CompletionSelected, CompletionFocused},
+    hooks::{CompletionFocused, CompletionSelected},
     widgets::Completions,
 };
 use duat_core::{
@@ -25,7 +25,6 @@ use lsp_types::{
 use crate::{Encoding, parser::PARSERS, path_to_uri, server::Server};
 
 pub fn setup_hooks() {
-    
     hook::add::<CompletionFocused>(|_, entry| {
         let Some(lsp_entry) = entry.get_for::<LspCompletions>() else {
             return;
@@ -209,7 +208,7 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
         } else {
             Text::new()
         };
-        
+
         let description = if description != details
             && let Some(description) = description
             && description != &entry.label
@@ -322,7 +321,11 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
             match doc {
                 Documentation::String(string) => Some(Text::from(string.clone())),
                 Documentation::MarkupContent(markup_content) => {
-                    Some(Text::from(markup_content.value.clone()))
+                    let mut text = Text::from(markup_content.value.clone());
+
+                    duat_treesitter::highlight_as(text.as_mut(), .., "markdown");
+
+                    Some(text)
                 }
             }
         } else {

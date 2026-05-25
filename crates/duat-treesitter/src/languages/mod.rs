@@ -7,20 +7,29 @@ use std::{
     thread::JoinHandle,
 };
 
-use duat_core::context::{self, Handle};
+use duat_core::{
+    context::{self, Handle},
+    hook,
+};
 use indoc::formatdoc;
 use libloading::Library;
 use tree_sitter::Language;
 
+use crate::TsLanguageCompiled;
+
 use self::list::LANGUAGE_OPTIONS;
 
-static FAILED_COPILATION: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
-static COMPILATIONS: LazyLock<Mutex<HashMap<String, Compilation>>> = LazyLock::new(Mutex::default);
+static FAILED_COPILATION: LazyLock<Mutex<HashSet<&str>>> = LazyLock::new(Mutex::default);
+static COMPILATIONS: LazyLock<Mutex<HashMap<&str, Compilation>>> = LazyLock::new(Mutex::default);
 
 type Compilation = (JoinHandle<Option<ExitStatus>>, Vec<Handle>);
 
 mod list;
 
+// Here `None` means there is no language setup for the filetype,
+// or something went wrong `Some(None)` means it exists, but hasn't
+// been compiled, and `Some(Some())` means it exists and has been
+// compiled.
 pub fn get_language(filetype: &str, handle: Option<&Handle>) -> Option<Language> {
     static LIBRARIES: Mutex<Vec<Library>> = Mutex::new(Vec::new());
 
@@ -29,7 +38,14 @@ pub fn get_language(filetype: &str, handle: Option<&Handle>) -> Option<Language>
     }
 
     let parsers_dir = get_parsers_dir()?;
-    let options = LANGUAGE_OPTIONS.get(filetype)?;
+    let Some((filetype, options)) = LANGUAGE_OPTIONS.get_key_value(filetype) else {
+        // If the handle is None, it means this is manual Text parsing,
+        // which means a warning is warranted for a non existant language.
+        if handle.is_none() {
+            context::warn!("The filetype [a]{filetype}[] has no tree-sitter parser");
+        }
+        return None;
+    };
 
     let lib_dir = parsers_dir.join("lib");
 
@@ -63,16 +79,13 @@ pub fn get_language(filetype: &str, handle: Option<&Handle>) -> Option<Language>
     } else if let Ok(true) = fs::exists(&crate_dir) {
         let fail = || {
             context::error!("Failed to compile tree-sitter language for {filetype}");
-            FAILED_COPILATION
-                .lock()
-                .unwrap()
-                .insert(filetype.to_string());
+            FAILED_COPILATION.lock().unwrap().insert(filetype);
             None
         };
 
         let mut compilations = COMPILATIONS.lock().unwrap();
 
-        if let Entry::Occupied(mut child) = compilations.entry(filetype.to_string()) {
+        if let Entry::Occupied(mut child) = compilations.entry(filetype) {
             let (join_handle, handles) = child.get_mut();
             if !join_handle.is_finished() {
                 if let Some(handle) = handle
@@ -117,16 +130,18 @@ pub fn get_language(filetype: &str, handle: Option<&Handle>) -> Option<Language>
                 .arg(&manifest_path);
 
             let join_handle = std::thread::spawn({
-                let filetype = filetype.to_string();
                 move || {
                     let out = cargo.output().ok()?;
 
                     if out.status.success() {
-                        let children = COMPILATIONS.lock().unwrap();
-                        let (_, handles) = children.get(&filetype).unwrap();
-                        for handle in handles {
+                        let mut children = COMPILATIONS.lock().unwrap();
+                        let (_, handles) = children.get_mut(filetype).unwrap();
+                        for handle in std::mem::take(&mut *handles) {
                             handle.request_update();
                         }
+                        context::queue(|pa| {
+                            hook::trigger(pa, TsLanguageCompiled(filetype));
+                        });
                     }
 
                     Some(out.status)
@@ -134,7 +149,7 @@ pub fn get_language(filetype: &str, handle: Option<&Handle>) -> Option<Language>
             });
 
             compilations.insert(
-                filetype.to_string(),
+                filetype,
                 (join_handle, handle.map(Handle::clone).into_iter().collect()),
             );
 

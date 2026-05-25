@@ -13,7 +13,7 @@ use duat_core::{
     form::{self, FormId},
     hook::{self, BufferUpdated},
     opts::PrintOpts,
-    text::{Point, Strs, TextParts},
+    text::{Point, Strs, Text, TextParts},
 };
 use duat_filetype::FileType;
 use tree_sitter::{
@@ -46,9 +46,8 @@ pub(crate) fn add_parser_hook() {
             let visible_ranges = get_visible_ranges(&printed_lines);
             let moment = buf.moment_for(parser.ns);
             let ranges_to_update = buf.ranges_to_update_for(parser.ns);
-            let mut parts = buf.text_parts();
 
-            parser.apply_changes(&moment, &ranges_to_update, parts.strs);
+            parser.apply_changes(&moment, &ranges_to_update, buf.text());
 
             // In this case, the previously sent printed_lines may be outdated and
             // the TsParsers have been reset, so get new ones.
@@ -58,11 +57,10 @@ pub(crate) fn add_parser_hook() {
             }
 
             if !parser.parse(
-                &mut parts,
-                &ranges_to_update,
+                buf.text(),
+                Some(&ranges_to_update),
                 &visible_ranges,
                 Some(Instant::now()),
-                handle,
             ) {
                 let handle = handle.clone();
                 let printed_lines = printed_lines.clone();
@@ -70,6 +68,8 @@ pub(crate) fn add_parser_hook() {
             } else {
                 parser.is_parsing = false;
             }
+
+            let mut parts = buf.text_parts();
 
             for range in ranges_to_update.select_from(printed_lines.iter().cloned()) {
                 let range = range.start..range.end + 1;
@@ -94,22 +94,26 @@ pub(crate) fn add_parser_hook() {
             return;
         };
 
-        if let Some(lang_parts) = lang_parts_of(filetype, handle) {
+        if let Some(lang_parts) = lang_parts_of(filetype, Some(handle)) {
             let len_bytes = handle.text(pa).len();
 
             let mut parser = TsParser::new();
             parser.set_language(lang_parts.1).unwrap();
 
-            PARSERS.register(pa, handle, Parser {
-                parser,
-                trees: Trees::new([Ranges::new(0..len_bytes)]),
-                lang_parts,
-                forms: forms_from_lang_parts(lang_parts),
-                injections: Vec::new(),
-                ranges_to_inject: Ranges::new(0..len_bytes),
-                is_parsing: false,
-                ns: Ns::new(),
-            });
+            PARSERS.register(
+                pa,
+                handle,
+                Parser {
+                    parser,
+                    trees: Trees::new([Ranges::new(0..len_bytes)]),
+                    lang_parts,
+                    forms: forms_from_lang_parts(lang_parts),
+                    injections: Vec::new(),
+                    ranges_to_inject: Ranges::new(0..len_bytes),
+                    is_parsing: false,
+                    ns: Ns::new(),
+                },
+            );
 
             async_parse(pa, handle, printed_lines.clone(), false);
         }
@@ -137,11 +141,10 @@ impl Parser {
 
     fn parse(
         &mut self,
-        parts: &mut TextParts,
-        ranges_to_update: &RangesToUpdate,
+        text: &Text,
+        ranges_to_update: Option<&RangesToUpdate>,
         visible_ranges: &[Range<usize>],
         start: Option<Instant>,
-        handle: &Handle,
     ) -> bool {
         // To parse something, in case there are no visible ranges.
         let visible_ranges = if visible_ranges.is_empty() {
@@ -155,7 +158,7 @@ impl Parser {
 
         for range in visible_ranges.iter() {
             let Some(parsed_a_tree) =
-                self.parse_trees(range.clone(), parts, ranges_to_update, start)
+                self.parse_trees(range.clone(), text, ranges_to_update, start)
             else {
                 return false;
             };
@@ -164,7 +167,7 @@ impl Parser {
         }
 
         if parsed_at_least_one_region {
-            self.ranges_to_inject.add(0..parts.strs.len());
+            self.ranges_to_inject.add(0..text.len());
         }
 
         let ranges_to_inject = visible_ranges
@@ -179,14 +182,14 @@ impl Parser {
             });
 
         for range in ranges_to_inject {
-            self.inject(range, parts, ranges_to_update, handle);
+            self.inject(range, text, ranges_to_update);
             if must_yield(start) {
                 return false;
             }
         }
 
         for injection in self.injections.iter_mut() {
-            if !injection.parse(parts, ranges_to_update, visible_ranges, start, handle) {
+            if !injection.parse(text, ranges_to_update, visible_ranges, start) {
                 return false;
             }
         }
@@ -197,8 +200,8 @@ impl Parser {
     fn parse_trees(
         &mut self,
         range: Range<usize>,
-        parts: &mut TextParts,
-        ranges_to_update: &RangesToUpdate,
+        text: &Text,
+        ranges_to_update: Option<&RangesToUpdate>,
         start: Option<Instant>,
     ) -> Option<bool> {
         let mut callback = |_: &ParseState| match must_yield(start) {
@@ -209,8 +212,8 @@ impl Parser {
         let ts_range = |range: Range<usize>| TsRange {
             start_byte: range.start,
             end_byte: range.end,
-            start_point: ts_point(parts.strs.point_at_byte(range.start), parts.strs),
-            end_point: ts_point(parts.strs.point_at_byte(range.end), parts.strs),
+            start_point: ts_point(text.point_at_byte(range.start), text),
+            end_point: ts_point(text.point_at_byte(range.end), text),
         };
 
         let mut parsed_at_least_one_region = false;
@@ -231,7 +234,7 @@ impl Parser {
             }
 
             let Some(new_ts_tree) = self.parser.parse_with_options(
-                &mut parser_fn(parts.strs),
+                &mut parser_fn(text),
                 tree.ts_tree.as_ref(),
                 Some(ParseOptions::new().progress_callback(&mut callback)),
             ) else {
@@ -240,15 +243,19 @@ impl Parser {
             };
 
             if let Some(ts_tree) = tree.ts_tree.as_mut() {
-                ranges_to_update.add_ranges(
-                    ts_tree
-                        .changed_ranges(&new_ts_tree)
-                        .map(|r| r.start_byte..r.end_byte),
-                );
+                if let Some(ranges_to_update) = ranges_to_update {
+                    ranges_to_update.add_ranges(
+                        ts_tree
+                            .changed_ranges(&new_ts_tree)
+                            .map(|r| r.start_byte..r.end_byte),
+                    );
+                }
 
                 *ts_tree = new_ts_tree;
             } else {
-                ranges_to_update.add_ranges(tree.region.iter());
+                if let Some(ranges_to_update) = ranges_to_update {
+                    ranges_to_update.add_ranges(tree.region.iter());
+                }
                 tree.ts_tree = Some(new_ts_tree);
             }
 
@@ -263,7 +270,7 @@ impl Parser {
         Some(parsed_at_least_one_region)
     }
 
-    fn highlight(&self, range: Range<usize>, parts: &mut TextParts) {
+    pub(crate) fn highlight(&self, range: Range<usize>, parts: &mut TextParts) {
         let buf = TsBuf(parts.strs);
 
         let ns = ts_ns();
@@ -302,9 +309,8 @@ impl Parser {
     fn inject(
         &mut self,
         range: Range<usize>,
-        parts: &mut TextParts,
-        ranges_to_update: &RangesToUpdate,
-        handle: &Handle,
+        text: &Text,
+        ranges_to_update: Option<&RangesToUpdate>,
     ) {
         let range = self
             .injections
@@ -318,7 +324,7 @@ impl Parser {
                 range.start.min(inj_range.start)..range.end.max(inj_range.end)
             });
 
-        let buf = TsBuf(parts.strs);
+        let buf = TsBuf(text);
         let (.., Queries { injections, .. }) = self.lang_parts;
 
         let cn = injections.capture_names();
@@ -335,7 +341,7 @@ impl Parser {
                         .captures
                         .iter()
                         .find(|cap| cn[cap.index as usize] == "injection.language")?;
-                    Some(parts.strs[cap.node.byte_range()].to_string())
+                    Some(text[cap.node.byte_range()].to_string())
                 })
         };
 
@@ -364,7 +370,7 @@ impl Parser {
                     continue;
                 };
 
-                let Some(mut lang_parts) = lang_parts_of(&filetype, handle) else {
+                let Some(mut lang_parts) = lang_parts_of(&filetype, None) else {
                     defered_ranges.push(cap_range);
                     continue;
                 };
@@ -384,7 +390,9 @@ impl Parser {
                     .iter_mut()
                     .find(|injection| injection.lang_parts.0 == lang_parts.0)
                 {
-                    if injection.trees.add_region(Ranges::new(cap_range.clone())) {
+                    if injection.trees.add_region(Ranges::new(cap_range.clone()))
+                        && let Some(ranges_to_update) = ranges_to_update
+                    {
                         ranges_to_update.add_ranges([cap_range.clone()]);
                     }
                 } else {
@@ -395,13 +403,15 @@ impl Parser {
                         trees: Trees::new([Ranges::new(cap_range.clone())]),
                         lang_parts,
                         forms: forms_from_lang_parts(lang_parts),
-                        ranges_to_inject: Ranges::new(0..parts.strs.len()),
+                        ranges_to_inject: Ranges::new(0..text.len()),
                         injections: Vec::new(),
                         is_parsing: false,
                         ns: self.ns,
                     });
 
-                    ranges_to_update.add_ranges([cap_range.clone()]);
+                    if let Some(ranges_to_update) = ranges_to_update {
+                        ranges_to_update.add_ranges([cap_range.clone()]);
+                    }
                 };
 
                 observed_injections.push((lang_parts.0, cap_range.clone()));
@@ -421,7 +431,9 @@ impl Parser {
                     .next()
                     .is_none()
                 {
-                    ranges_to_update.add_ranges(tree.region.iter());
+                    if let Some(ranges_to_update) = ranges_to_update {
+                        ranges_to_update.add_ranges(tree.region.iter());
+                    }
                     to_remove.push((i, range));
                 }
             }
@@ -755,13 +767,33 @@ pub(crate) fn sync_parse<'p>(
 
     let moment = buf.moment_for(parser.ns);
     let ranges_to_update = buf.ranges_to_update_for(parser.ns);
-    let mut parts = buf.text_parts();
 
-    parser.apply_changes(&moment, &ranges_to_update, parts.strs);
-
-    parser.parse(&mut parts, &ranges_to_update, &visible_ranges, None, handle);
+    parser.apply_changes(&moment, &ranges_to_update, buf.text());
+    parser.parse(buf.text(), Some(&ranges_to_update), &visible_ranges, None);
 
     Some((parser, buf))
+}
+
+pub(crate) fn parse_text(lang: &str, text: &Text, range: Range<usize>) -> Option<Parser> {
+    let lang_parts = lang_parts_of(lang, None)?;
+
+    let mut parser = TsParser::new();
+    parser.set_language(lang_parts.1).unwrap();
+
+    let mut parser = Parser {
+        parser,
+        trees: Trees::new([Ranges::new(0..text.len())]),
+        lang_parts,
+        forms: forms_from_lang_parts(lang_parts),
+        injections: Vec::new(),
+        ranges_to_inject: Ranges::new(0..text.len()),
+        is_parsing: false,
+        ns: Ns::new(),
+    };
+
+    parser.parse(text, None, &[range], None);
+
+    Some(parser)
 }
 
 /// The Key for tree-sitter

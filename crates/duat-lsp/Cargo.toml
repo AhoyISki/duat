@@ -14,6 +14,7 @@ publish = false
 duat-base.workspace = true
 duat-core.workspace = true
 duat-filetype.workspace = true
+duat-treesitter.workspace = true
 
 gap-buf = "0.6.1"
 globset = { version = "0.4.18", default-features = false }

@@ -14,9 +14,10 @@ categories = ["command-line-utilities", "text-editors", "config"]
 missing_docs = "warn"
 
 [dependencies]
-duat-core.workspace = true 
+duat-core.workspace = true
 duat-term.workspace = true
 duat-filetype.workspace = true
+duat-treesitter.workspace = true
 
 format-like = "0.7.0"
 regex-syntax = "0.8.8"

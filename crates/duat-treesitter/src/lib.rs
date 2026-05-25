@@ -27,7 +27,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    ops::RangeBounds,
+    ops::{Range, RangeBounds},
     path::{Path, PathBuf},
     sync::{LazyLock, Mutex},
 };
@@ -37,24 +37,62 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     form::{self, Form},
-    text::{Builder, Text, TextMut, txt},
+    hook::Hookable,
+    text::{Builder, Text, TextMut, TextRange, txt},
     ui::Widget,
 };
 use tree_sitter::{Language, Node, Query};
 
-use crate::languages::get_language;
 pub use crate::parser::Parser;
+use crate::{languages::get_language, parser::parse_text};
 
 mod cursor;
 mod languages;
 mod parser;
 mod tree;
 
+/// Highlights a range in a [`Text`] as a certain filetype.
+///
+/// Returns `true` if highlighting succeeded.
+///
+/// If this returns `fail`, it could be for a variety of purposes.
+/// It could be the case that the language doesn't exist, or that its
+/// parser hasn't been setup. However, the most likely reason for this
+/// to happen is because the parser hasn't been compiled yet.
+///
+/// If that is the case, you can make use of the [`TsLanguageCompiled`]
+/// hook in order to trigger things when the compilation is done.
 #[track_caller]
-pub fn highlight_as(text: TextMut, language: &str) {
-    if let Some(language) = languages::get_language(language, None) {
+pub fn highlight_as(text: TextMut, range: impl TextRange, lang: &str) -> bool {
+    let range = range.to_range(text.len());
+    if let Some(parser) = parse_text(lang, &text, 0..text.len()) {
+        parser.highlight(range, &mut text.parts());
+        true
     } else {
-        context::warn!("[a]{language}[] is not on the list of accepted languages");
+        false
+    }
+}
+
+/// [`Hookable`]: Triggers when a tree-sitter language is compiled.
+///
+/// If parsing is atempted with a language that hasn't been compiled
+/// yet, `duat-treesitter` will start compiling that language in
+/// a separate thread. Then, if the compilation is successful, it
+/// will queue this `hook` for execution.
+///
+/// From that point on, trying to parse with that language will
+/// always succeed.
+///
+/// # Arguments
+///
+/// - The filetype of the compiled language, as `&'static str`.
+pub struct TsLanguageCompiled(pub(crate) &'static str);
+
+impl Hookable for TsLanguageCompiled {
+    type Input<'h> = &'static str;
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        self.0
     }
 }
 
@@ -179,7 +217,7 @@ struct Queries<'a> {
 }
 
 #[track_caller]
-fn lang_parts_of(lang: &str, handle: &Handle) -> Option<LangParts<'static>> {
+fn lang_parts_of(lang: &str, handle: Option<&Handle>) -> Option<LangParts<'static>> {
     static MAPS: LazyLock<Mutex<HashMap<&str, LangParts<'static>>>> = LazyLock::new(Mutex::default);
     static FAILED_PARTS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
 
@@ -190,7 +228,7 @@ fn lang_parts_of(lang: &str, handle: &Handle) -> Option<LangParts<'static>> {
     } else if FAILED_PARTS.lock().unwrap().contains(lang) {
         None
     } else {
-        let language: &'static Language = Box::leak(Box::new(get_language(lang, Some(handle))?));
+        let language: &'static Language = Box::leak(Box::new(get_language(lang, handle)?));
 
         let get_queries = || -> Result<_, QueryFromPathError> {
             let highlights = query_from_path(lang, "highlights", language)?;

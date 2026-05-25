@@ -375,6 +375,7 @@ dependencies = [
  "duat-core",
  "duat-filetype",
  "duat-term",
+ "duat-treesitter",
  "format-like",
  "regex-syntax",
 ]
@@ -421,6 +422,7 @@ dependencies = [
  "duat-base",
  "duat-core",
  "duat-filetype",
+ "duat-treesitter",
  "gap-buf 0.6.1",
  "globset",
  "jsonrpc-lite",
