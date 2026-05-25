@@ -452,7 +452,7 @@ impl Text {
     /// Writes the contents of this `Text` to a [writer].
     ///
     /// [writer]: std::io::Write
-    pub fn save_on(&mut self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
+    pub fn save_on(&self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
         let [s0, s1] = self.0.buf.slices(..);
         Ok(writer.write(s0)? + writer.write(s1)?)
     }

@@ -29,10 +29,16 @@ pub(crate) fn picker_setup() {
             _ = old.close(pa);
         } else if let Some(preview) = old.get_as::<Preview>()
             && let pv = preview.read(pa)
-            && let Some(PreviewMode::BufferPreview(.., Some(filetype))) = &pv.modes[pv.current]
+            && let Some(PreviewMode::BufferPreview(path, .., Some(filetype))) =
+                &pv.modes[pv.current]
         {
-            let filetype = *filetype;
+            let (path, filetype) = (path.clone(), *filetype);
             let mut text = preview.text_mut(pa);
+
+            duat_core::try_or_log_err! {
+                let file = std::fs::OpenOptions::new().write(true).create(true).open(&path)?;
+                text.save_on(file)?;
+            }
 
             text.clear_tags();
             duat_treesitter::highlight_as(text, .., filetype);
@@ -234,7 +240,7 @@ impl Picker {
                 buffer.remove_extra_selections(pa);
                 buffer.edit_main(pa, |mut s| s.move_to(range.clone()));
             }
-            Some(PreviewMode::BufferPreview(path, mut text, range, _)) => {
+            Some(PreviewMode::BufferPreview(path, text, range, _)) => {
                 if let Some(buffer) = context::buffer_from_path(pa, &path) {
                     buffer.text_mut(pa).replace_range(.., text.to_string());
                     mode::reset_to(pa, &buffer);

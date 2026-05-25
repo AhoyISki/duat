@@ -6,7 +6,7 @@ use std::{
 use duat_base::BaseBuffer;
 use duat_core::{
     buffer::Buffer,
-    context,
+    cmd, context,
     data::Pass,
     form::{self, Form},
     mode::{self, KeyEvent, Mode, User, event},
@@ -14,8 +14,10 @@ use duat_core::{
     txt,
 };
 use lsp_types::{
-    HoverParams, Position, ServerCapabilities, TextDocumentIdentifier, TextDocumentPositionParams,
-    Uri, WorkDoneProgressParams, request::HoverRequest,
+    GotoDefinitionParams, GotoDefinitionResponse, HoverParams, OneOf, Position, ServerCapabilities,
+    TextDocumentIdentifier, TextDocumentPositionParams, TypeDefinitionProviderCapability, Uri,
+    WorkDoneProgressParams,
+    request::{GotoDefinition, GotoTypeDefinition, HoverRequest},
 };
 
 pub use crate::parser::{LspBuffer, LspCompletions};
@@ -59,6 +61,8 @@ impl Mode for Lsp {
         mode::bindings!(match _ {
             event!('h') => txt!("Show hover info"),
             event!('f') => txt!("Format the buffer"),
+            event!('d') => txt!("Go to definition"),
+            event!('y') => txt!("Go to type definition"),
         })
     }
 
@@ -96,6 +100,63 @@ impl Mode for Lsp {
                 }
 
                 buffer.hover_gutter_entries_on(pa, buffer.selections(pa).main().cursor())
+            }
+            event!('d') if let Some(servers) = server::get_servers_for(buffer.read(pa)) => {
+                if let Some((server, capabilities)) = servers.iter().find_map(|server| {
+                    Some(server).zip(server.capabilities()).filter(|(_, cap)| {
+                        matches!(
+                            &cap.definition_provider,
+                            Some(OneOf::Left(true) | OneOf::Right(..))
+                        )
+                    })
+                }) {
+                    let encoding = Encoding::new(capabilities);
+                    let buf = buffer.read(pa);
+                    let uri = path_to_uri(&buf.path()).unwrap();
+
+                    server.send_request::<GotoDefinition>(
+                        GotoDefinitionParams {
+                            partial_result_params: lsp_types::PartialResultParams::default(),
+                            text_document_position_params: TextDocumentPositionParams {
+                                text_document: TextDocumentIdentifier { uri },
+                                position: encoding
+                                    .pos_from_point(buf.text(), buf.text().main_sel().cursor()),
+                            },
+                            work_done_progress_params: WorkDoneProgressParams::default(),
+                        },
+                        move |pa, result| goto_definitions(result, pa, encoding),
+                    );
+                }
+            }
+            event!('y') if let Some(servers) = server::get_servers_for(buffer.read(pa)) => {
+                if let Some((server, capabilities)) = servers.iter().find_map(|server| {
+                    Some(server).zip(server.capabilities()).filter(|(_, cap)| {
+                        matches!(
+                            &cap.type_definition_provider,
+                            Some(
+                                TypeDefinitionProviderCapability::Simple(true)
+                                    | TypeDefinitionProviderCapability::Options(..)
+                            )
+                        )
+                    })
+                }) {
+                    let encoding = Encoding::new(capabilities);
+                    let buf = buffer.read(pa);
+                    let uri = path_to_uri(&buf.path()).unwrap();
+
+                    server.send_request::<GotoTypeDefinition>(
+                        GotoDefinitionParams {
+                            partial_result_params: lsp_types::PartialResultParams::default(),
+                            text_document_position_params: TextDocumentPositionParams {
+                                text_document: TextDocumentIdentifier { uri },
+                                position: encoding
+                                    .pos_from_point(buf.text(), buf.text().main_sel().cursor()),
+                            },
+                            work_done_progress_params: WorkDoneProgressParams::default(),
+                        },
+                        move |pa, result| goto_definitions(result, pa, encoding),
+                    );
+                }
             }
             _ => {}
         }
@@ -257,3 +318,39 @@ impl Encoding {
         }
     }
 }
+
+fn goto_definitions(locations: Option<GotoDefinitionResponse>, pa: &mut Pass, encoding: Encoding) {
+    let Some(locations) = locations else {
+        return;
+    };
+
+    let locations = match locations {
+        GotoDefinitionResponse::Scalar(l) => GotoDefinitionResponse::Scalar(l),
+        GotoDefinitionResponse::Array(mut ls) if ls.len() == 1 => {
+            GotoDefinitionResponse::Scalar(ls.remove(0))
+        }
+        GotoDefinitionResponse::Array(ls) => GotoDefinitionResponse::Array(ls),
+        GotoDefinitionResponse::Link(ls) => GotoDefinitionResponse::Link(ls),
+    };
+
+    match locations {
+        GotoDefinitionResponse::Scalar(location) => {
+            let path = uri_to_path(location.uri);
+            let call = format!("open {}", path.to_string_lossy());
+
+            if cmd::call_notify(pa, call).is_ok() {
+                let buffer = context::current_buffer(pa);
+
+                let start = encoding.byte_from_pos(buffer.text(pa), location.range.start);
+                let end = encoding.byte_from_pos(buffer.text(pa), location.range.end);
+
+                if let (Some(start), Some(end)) = (start, end) {
+                    buffer.edit_main(pa, |mut s| s.move_to(start..end));
+                }
+            };
+        }
+        GotoDefinitionResponse::Array(locations) => {}
+        GotoDefinitionResponse::Link(links) => {}
+    };
+}
+
