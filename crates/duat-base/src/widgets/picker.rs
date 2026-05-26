@@ -123,6 +123,8 @@ pub struct Picker {
 impl Picker {
     /// Spawn a new picker for jumping to [`Buffer`] locations.
     ///
+    /// If the list is empty, does nothing.
+    ///
     /// [`Buffer`]: duat_core::buffer::Buffer
     #[track_caller]
     pub fn spawn_jumps(pa: &mut Pass, list: impl IntoIterator<Item = (Text, FilePlace)>) {
@@ -145,7 +147,6 @@ impl Picker {
         let mut iter = list.into_iter();
 
         let Some(first_place) = iter.next() else {
-            context::warn!("Tried spawning a [a]Picker[] with [a]0[] entries");
             return;
         };
 
@@ -307,7 +308,10 @@ impl Widget for Picker {
     }
 
     fn print_opts(&self) -> PrintOpts {
-        PrintOpts::default_for_input()
+        PrintOpts {
+            wrap_lines: true,
+            ..PrintOpts::default_for_input()
+        }
     }
 }
 

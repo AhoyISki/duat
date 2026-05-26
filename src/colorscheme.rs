@@ -357,7 +357,7 @@ pub(crate) fn add_default() {
                 ("linenum.main", Form::new().with(c.yellow)),
                 ("linenum.wrapped", Form::new().with(c.teal)),
                 // Various forms for the StatusLine parts.
-                ("file", Form::new().with(c.yellow)),
+                ("buffer", Form::new().with(c.yellow)),
                 ("selections", Form::new().with(c.blue)),
                 ("coord", Form::new().with(c.peach)),
                 ("separator", Form::mimic("punctuation.delimiter")),
@@ -406,7 +406,7 @@ pub(crate) fn add_default() {
                 ("param", Form::new().with(c.lavender)),
                 ("param.flag", Form::new().on(c.base).with(c.pink)),
                 ("snippet", Form::new().with(c.base).on(c.yellow)),
-                // Tree sitter/LSP Forms
+                // AST token forms
                 ("variable", Form::new().with(c.text)),
                 ("variable.builtin", Form::new().with(c.peach)),
                 ("variable.member", Form::new().with(c.lavender)),
@@ -484,6 +484,8 @@ pub(crate) fn add_default() {
                     (magenta, "#bb9af7"),
                     (purple, "#9d7cd8"),
                     (text, "#c0caf5"),
+                    // Additional LSP forms
+                    // 
                     (fg_dark, "#a9b1d6"),
                     (dark5, "#737aa2"),
                     (comment, "#565f89"),
@@ -564,7 +566,7 @@ pub(crate) fn add_default() {
                 // duat-base forms
                 ("linenum.main", Form::new().with(c.yellow)),
                 ("linenum.wrapped", Form::new().with(c.teal)),
-                ("file", Form::new().with(c.yellow)),
+                ("buffer", Form::new().with(c.yellow)),
                 ("selections", Form::new().with(c.blue)),
                 ("coord", Form::new().with(c.orange)),
                 ("separator", Form::mimic("punctuation.delimiter")),
@@ -602,7 +604,7 @@ pub(crate) fn add_default() {
                 ("param", Form::new().with(c.purple)),
                 ("param.flag", Form::new().with(c.cyan)),
                 ("snippet", Form::new().with(c.bg).on(c.yellow)),
-                // Tree sitter/LSP Forms
+                // AST token forms
                 ("variable", Form::new().with(c.text)),
                 ("variable.builtin", Form::new().with(c.orange)),
                 ("variable.member", Form::new().with(c.green1)),
@@ -680,6 +682,8 @@ pub(crate) fn add_default() {
                     (string_color, "#a5d6ff"),
                     (number_color, "#79c0ff"),
                     (keyword_color, "#ff7b72"),
+                    // Additional LSP forms
+                    // 
                 ]
             ),
             (
@@ -741,7 +745,7 @@ pub(crate) fn add_default() {
                 // duat-base forms
                 ("linenum.main", Form::new().with(c.yellow)),
                 ("linenum.wrapped", Form::new().with(c.teal)),
-                ("file", Form::new().with(c.yellow)),
+                ("buffer", Form::new().with(c.yellow)),
                 ("selections", Form::new().with(c.blue)),
                 ("coord", Form::new().with(c.orange)),
                 ("separator", Form::mimic("punctuation.delimiter")),
@@ -779,7 +783,7 @@ pub(crate) fn add_default() {
                 ("param", Form::new().with(c.purple)),
                 ("param.flag", Form::new().with(c.teal)),
                 ("snippet", Form::new().with(c.bg).on(c.yellow)),
-                // Tree sitter/LSP Forms
+                // AST token forms
                 ("variable", Form::new().with(c.text)),
                 ("variable.builtin", Form::new().with(c.orange)),
                 ("variable.member", Form::new().with(c.blue)),
@@ -857,6 +861,8 @@ pub(crate) fn add_default() {
                 (orange, "#F78C6C"),
                 (yellow, "#ecc48d"),
                 (sand, "#ffcb8b"),
+                // Additional LSP forms
+                // 
                 (green, "#c5e478"),
                 (teal, "#7fdbca"),
                 (aqua, "#baebe2"),
@@ -905,7 +911,7 @@ pub(crate) fn add_default() {
                 // duat-base forms
                 ("linenum.main", Form::new().with(c.yellow)),
                 ("linenum.wrapped", Form::new().with(c.teal)),
-                ("file", Form::new().with(c.yellow)),
+                ("buffer", Form::new().with(c.yellow)),
                 ("selections", Form::new().with(c.blue)),
                 ("coord", Form::new().with(c.orange)),
                 ("separator", Form::mimic("punctuation.delimiter")),
@@ -946,7 +952,7 @@ pub(crate) fn add_default() {
                 ("param", Form::new().with(c.purple)),
                 ("param.flag", Form::new().with(c.teal)),
                 ("snippet", Form::new().with(c.bg).on(c.yellow)),
-                // Tree sitter/LSP Forms
+                // AST token forms
                 ("variable", Form::new().with(c.text)),
                 ("variable.builtin", Form::new().with(c.teal)),
                 ("variable.member", Form::new().with(c.aqua)),
@@ -1024,6 +1030,8 @@ pub(crate) fn add_default() {
                     (purple, "#bd93f9"),
                     (red, "#ff5555"),
                     (yellow, "#f1fa8c"),
+                    // Additional LSP forms
+                    // 
                 ]
             ),
             (
@@ -1087,7 +1095,7 @@ pub(crate) fn add_default() {
                 // duat-base forms
                 ("linenum.main", Form::new().with(c.current_line)),
                 ("linenum.wrapped", Form::new().with(c.cyan)),
-                ("file", Form::new().with(c.yellow)),
+                ("buffer", Form::new().with(c.yellow)),
                 ("selections", Form::new().with(c.purple)),
                 ("coord", Form::new().with(c.orange)),
                 ("separator", Form::mimic("punctuation.delimiter")),
@@ -1125,7 +1133,7 @@ pub(crate) fn add_default() {
                 ("param", Form::new().with(c.purple)),
                 ("param.flag", Form::new().with(c.pink)),
                 ("snippet", Form::new().with(c.bg).on(c.yellow)),
-                // Tree sitter/LSP Forms
+                // AST token forms
                 ("variable", Form::new().with(c.fg)),
                 ("variable.builtin", Form::new().with(c.orange)),
                 ("variable.member", Form::new().with(c.fg)),
@@ -1203,6 +1211,8 @@ pub(crate) fn add_default() {
                 (nord10, "#5e81ac"),
                 // Aurora
                 (nord11, "#bf616a"),
+                // Additional LSP forms
+                // 
                 (nord12, "#d08770"),
                 (nord13, "#ebcb8b"),
                 (nord14, "#a3be8c"),
@@ -1245,7 +1255,7 @@ pub(crate) fn add_default() {
                 ("toggle.click", Form::new().on(c.nord2)),
                 ("linenum.main", Form::new().with(c.nord13)),
                 ("linenum.wrapped", Form::new().with(c.nord7)),
-                ("file", Form::new().with(c.nord13)),
+                ("buffer", Form::new().with(c.nord13)),
                 ("selections", Form::new().with(c.nord9)),
                 ("coord", Form::new().with(c.nord12)),
                 ("separator", Form::mimic("punctuation.delimiter")),
@@ -1289,7 +1299,7 @@ pub(crate) fn add_default() {
                 ("param", Form::new().with(c.nord15)),
                 ("param.flag", Form::new().with(c.nord8)),
                 ("snippet", Form::new().with(c.nord0).on(c.nord15)),
-                // Tree sitter/LSP Forms
+                // AST token forms
                 ("variable", Form::new().with(c.nord4)),
                 ("variable.builtin", Form::new().with(c.nord12)),
                 ("variable.member", Form::new().with(c.nord4)),
@@ -1367,6 +1377,8 @@ pub(crate) fn add_default() {
                     (string, "#B8CC52"),
                     (regexp, "#95E6CB"),
                     (markup, "#F07178"),
+                    // Additional LSP forms
+                    // 
                     (keyword, "#FF7733"),
                     (special, "#E6B673"),
                     (func, "#FFB454"),
@@ -1462,7 +1474,7 @@ pub(crate) fn add_default() {
                 // duat-base forms
                 ("linenum.main", Form::new().with(c.operator)),
                 ("linenum.wrapped", Form::new().with(c.tag)),
-                ("file", Form::new().with(c.operator)),
+                ("buffer", Form::new().with(c.operator)),
                 ("selections", Form::new().with(c.tag)),
                 ("coord", Form::new().with(c.accent)),
                 ("separator", Form::mimic("punctuation.delimiter")),
@@ -1492,10 +1504,7 @@ pub(crate) fn add_default() {
                     default.on(c.panel).interpolate(default, 50),
                 ),
                 ("default.Completions", default.on(c.panel)),
-                (
-                    "selected.Completions",
-                    Form::new().with(c.bg).on(c.fg_idle),
-                ),
+                ("selected.Completions", Form::new().with(c.bg).on(c.fg_idle)),
                 ("default.WhichKey", default.with(c.fg)),
                 // For duatmode
                 ("cursor.main.Insert", Form::new().with(c.bg).on(c.constant)),
@@ -1503,7 +1512,7 @@ pub(crate) fn add_default() {
                 ("param", Form::new().with(c.constant)),
                 ("param.flag", Form::new().with(c.tag)),
                 ("snippet", Form::new().with(c.bg).on(c.operator)),
-                // Tree sitter/LSP Forms
+                // AST token forms
                 ("variable", Form::new().with(c.fg)),
                 ("variable.builtin", Form::new().with(c.accent)),
                 ("variable.member", Form::new().with(c.fg)),
@@ -1581,6 +1590,8 @@ pub(crate) fn add_default() {
                 (winter_yellow, "#49443C"),
                 (winter_red, "#43242B"),
                 (winter_blue, "#252535"),
+                // Additional LSP forms
+                // 
                 (autumn_green, "#76946A"),
                 (autumn_red, "#C34043"),
                 (autumn_yellow, "#DCA561"),
@@ -1659,7 +1670,7 @@ pub(crate) fn add_default() {
                 // duat-base forms
                 ("linenum.main", Form::new().with(c.surimi_orange).bold()),
                 ("linenum.wrapped", Form::new().with(c.sumi_ink4)),
-                ("file", Form::new().with(c.boat_yellow1)),
+                ("buffer", Form::new().with(c.boat_yellow1)),
                 ("selections", Form::new().with(c.sumi_ink5)),
                 (
                     "selection.main.indent",
@@ -1720,7 +1731,7 @@ pub(crate) fn add_default() {
                 ("param", Form::new().with(c.oni_violet2)),
                 ("param.flag", Form::new().with(c.oni_violet2)),
                 ("snippet", Form::new().with(c.sumi_ink3).on(c.boat_yellow1)),
-                // Tree sitter/LSP Forms
+                // AST token forms
                 ("variable", Form::new().with(c.fuji_white)),
                 ("variable.builtin", Form::new().with(c.surimi_orange)),
                 ("variable.member", Form::new().with(c.fuji_white)),

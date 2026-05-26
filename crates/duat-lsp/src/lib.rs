@@ -1,23 +1,25 @@
 use std::{
+    cell::LazyCell,
+    collections::HashMap,
     ops::ControlFlow,
     path::{Path, PathBuf},
 };
 
-use duat_base::BaseBuffer;
+use duat_base::{BaseBuffer, widgets::FilePlace};
 use duat_core::{
     buffer::Buffer,
     cmd, context,
     data::Pass,
     form::{self, Form},
     mode::{self, KeyEvent, Mode, User, event},
-    text::{Point, Strs},
+    text::{Point, Strs, Text},
     txt,
 };
 use lsp_types::{
-    GotoDefinitionParams, GotoDefinitionResponse, HoverParams, OneOf, Position, ServerCapabilities,
-    TextDocumentIdentifier, TextDocumentPositionParams, TypeDefinitionProviderCapability, Uri,
-    WorkDoneProgressParams,
-    request::{GotoDefinition, GotoTypeDefinition, HoverRequest},
+    GotoDefinitionParams, GotoDefinitionResponse, HoverParams, OneOf, Position, ReferenceContext,
+    ReferenceParams, ServerCapabilities, TextDocumentIdentifier, TextDocumentPositionParams,
+    TypeDefinitionProviderCapability, Uri, WorkDoneProgressParams,
+    request::{GotoDefinition, GotoTypeDefinition, HoverRequest, References},
 };
 
 pub use crate::parser::{LspBuffer, LspCompletions};
@@ -44,8 +46,11 @@ impl DuatLsp {
         form::set_weak("lsp.tt.warn", Form::mimic("accent.warn"));
         form::set_weak("lsp.tt.error", Form::mimic("accent.error"));
 
-        form::set_weak("completion.lsp.detail", Form::of("comment"));
-        form::set_weak("completion.lsp.kind", Form::of("function"));
+        form::set_weak("completion.lsp.detail", Form::mimic("comment"));
+        form::set_weak("completion.lsp.kind", Form::mimic("function"));
+
+        form::set_weak("picker.lsp.buffer", Form::mimic("buffer"));
+        form::set_weak("picker.lsp.line", Form::mimic("comment"));
 
         parser::setup_hooks();
 
@@ -63,6 +68,7 @@ impl Mode for Lsp {
             event!('f') => txt!("Format the buffer"),
             event!('d') => txt!("Go to definition"),
             event!('y') => txt!("Go to type definition"),
+            event!('r') => txt!("Go to references"),
         })
     }
 
@@ -158,6 +164,46 @@ impl Mode for Lsp {
                     );
                 }
             }
+            event!('r') if let Some(servers) = server::get_servers_for(buffer.read(pa)) => {
+                if let Some((server, capabilities)) = servers.iter().find_map(|server| {
+                    Some(server).zip(server.capabilities()).filter(|(_, cap)| {
+                        matches!(
+                            &cap.references_provider,
+                            Some(OneOf::Left(true) | OneOf::Right(..))
+                        )
+                    })
+                }) {
+                    let encoding = Encoding::new(capabilities);
+                    let buf = buffer.read(pa);
+                    let uri = path_to_uri(&buf.path()).unwrap();
+
+                    server.send_request::<References>(
+                        ReferenceParams {
+                            partial_result_params: lsp_types::PartialResultParams::default(),
+                            text_document_position: TextDocumentPositionParams {
+                                text_document: TextDocumentIdentifier { uri },
+                                position: encoding
+                                    .pos_from_point(buf.text(), buf.text().main_sel().cursor()),
+                            },
+                            work_done_progress_params: WorkDoneProgressParams::default(),
+                            context: ReferenceContext { include_declaration: true },
+                        },
+                        move |pa, result| {
+                            let Some(result) = result else {
+                                return;
+                            };
+
+                            spawn_picker(
+                                pa,
+                                encoding,
+                                result
+                                    .into_iter()
+                                    .map(|location| (location.uri, location.range)),
+                            );
+                        },
+                    );
+                }
+            }
             _ => {}
         }
         mode::reset::<Buffer>(pa);
@@ -241,7 +287,6 @@ impl Encoding {
     }
 
     /// Returns a codepoint index from a [`Position`].
-    #[track_caller]
     fn byte_from_pos(&self, strs: &Strs, pos: Position) -> Option<usize> {
         match self {
             Encoding::Utf8 => {
@@ -260,6 +305,40 @@ impl Encoding {
                     .try_fold(line.start_point().byte(), |byte, char| {
                         if codepoints == pos.character {
                             ControlFlow::Break(byte)
+                        } else {
+                            codepoints += if char as u32 > 0xffff { 2 } else { 1 };
+                            ControlFlow::Continue(byte + char.len_utf8())
+                        }
+                    })
+                    .break_value()
+            }
+        }
+    }
+
+    /// Returns a codepoint index from a [`Position`] in an `&str`
+    fn byte_from_pos_str<'s>(&self, str: &'s str, pos: Position) -> Option<(&'s str, usize)> {
+        let mut byte = 0;
+        let line = str
+            .split_inclusive('\n')
+            .enumerate()
+            .find_map(|(i, line)| {
+                if i as u32 == pos.line {
+                    Some(line)
+                } else {
+                    byte += line.len();
+                    None
+                }
+            })?;
+
+        match self {
+            Encoding::Utf8 => (line.len() >= pos.character as usize)
+                .then_some((line, byte + pos.character as usize)),
+            Encoding::Utf16 => {
+                let mut codepoints = 0;
+                line.chars()
+                    .try_fold(byte, |byte, char| {
+                        if codepoints == pos.character {
+                            ControlFlow::Break((line, byte))
                         } else {
                             codepoints += if char as u32 > 0xffff { 2 } else { 1 };
                             ControlFlow::Continue(byte + char.len_utf8())
@@ -336,9 +415,8 @@ fn goto_definitions(locations: Option<GotoDefinitionResponse>, pa: &mut Pass, en
     match locations {
         GotoDefinitionResponse::Scalar(location) => {
             let path = uri_to_path(location.uri);
-            let call = format!("open {}", path.to_string_lossy());
 
-            if cmd::call_notify(pa, call).is_ok() {
+            if cmd::call(pa, format!("open {}", path.to_string_lossy())).is_ok() {
                 let buffer = context::current_buffer(pa);
 
                 let start = encoding.byte_from_pos(buffer.text(pa), location.range.start);
@@ -349,8 +427,52 @@ fn goto_definitions(locations: Option<GotoDefinitionResponse>, pa: &mut Pass, en
                 }
             };
         }
-        GotoDefinitionResponse::Array(locations) => {}
-        GotoDefinitionResponse::Link(links) => {}
+        GotoDefinitionResponse::Array(locations) => {
+            spawn_picker(
+                pa,
+                encoding,
+                locations
+                    .into_iter()
+                    .map(|location| (location.uri, location.range)),
+            );
+        }
+        GotoDefinitionResponse::Link(links) => {
+            spawn_picker(
+                pa,
+                encoding,
+                links
+                    .into_iter()
+                    .map(|link| (link.target_uri, link.target_selection_range)),
+            );
+        }
     };
 }
 
+fn spawn_picker(
+    pa: &mut Pass,
+    encoding: Encoding,
+    iter: impl IntoIterator<Item = (Uri, lsp_types::Range)>,
+) {
+    let mut map = LazyCell::new(HashMap::new);
+
+    let jumps = iter.into_iter().filter_map(|(uri, range)| {
+        let path = uri_to_path(uri);
+        let file = map
+            .entry(path.clone())
+            .or_insert_with_key(|path| std::fs::read_to_string(path))
+            .as_deref()
+            .ok()?;
+
+        let (line, start) = encoding.byte_from_pos_str(file, range.start)?;
+        let (_, end) = encoding.byte_from_pos_str(file, range.end)?;
+
+        let line = line.trim_end();
+
+        Some((
+            txt!("[picker.lsp.line]{line}: [picker.lsp.buffer]{path}"),
+            FilePlace::new(path, start..end),
+        ))
+    });
+
+    duat_base::widgets::Picker::spawn_jumps(pa, jumps);
+}
