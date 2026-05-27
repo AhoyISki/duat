@@ -1,7 +1,7 @@
 FOR NEXT UPDATE:
 [ ] More duat-lsp features:
   [x] Diagnostics.
-  [ ] Goto locations.
+  [x] Goto locations.
   [x] Autocompletions.
   [x] Formatting.
   [x] Caching.

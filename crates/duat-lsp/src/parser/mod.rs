@@ -26,7 +26,7 @@ use lsp_types::{
 };
 
 use crate::{
-    Encoding,
+    Encoding, apply_edit,
     parser::semantic_tokens::BufferTokens,
     path_to_uri,
     server::{self, Server, on_servers_list},
@@ -77,7 +77,7 @@ impl LspBuffer for Handle {
             return;
         };
 
-        let server = if let Some(server_name) = server_name {
+        let (server, encoding) = if let Some(server_name) = server_name {
             if let Some(server) = parser
                 .servers
                 .iter()
@@ -85,7 +85,7 @@ impl LspBuffer for Handle {
                 && let Some(capabilities) = server.capabilities()
                 && can_format(capabilities)
             {
-                server
+                (server, Encoding::new(capabilities))
             } else {
                 context::warn!("Server [a]{server_name}[] is not capable of formatting");
                 return;
@@ -96,7 +96,7 @@ impl LspBuffer for Handle {
             .find_map(|server| server.capabilities().zip(Some(server)))
             && can_format(capabilities)
         {
-            server
+            (server, Encoding::new(capabilities))
         } else {
             context::warn!(
                 "{} has no LSP servers capable of formatting",
@@ -133,7 +133,7 @@ impl LspBuffer for Handle {
 
                 let mut text = buf.text_mut();
                 for edit in edits.into_iter().rev() {
-                    apply_edit(&mut text, edit);
+                    apply_edit(&mut text, edit, encoding);
                 }
             },
         );
@@ -185,7 +185,7 @@ pub fn setup_hooks() {
             let Some(servers) = server::get_servers_for(buffer.read(pa)) else {
                 return;
             };
-            
+
             let path = buffer.read(pa).path();
 
             let Some(uri) = path_to_uri(&path) else {
@@ -211,11 +211,15 @@ pub fn setup_hooks() {
 
             let version = text.version().strs;
 
-            let (parser, buf) = PARSERS.register(pa, buffer, Parser {
-                uri,
-                servers: servers.clone(),
-                tokens: BufferTokens::default(),
-            });
+            let (parser, buf) = PARSERS.register(
+                pa,
+                buffer,
+                Parser {
+                    uri,
+                    servers: servers.clone(),
+                    tokens: BufferTokens::default(),
+                },
+            );
 
             for server in &servers {
                 server.send_semantic_tokens_request(buffer, version, parser);
@@ -313,9 +317,3 @@ pub fn setup_hooks() {
     });
 }
 
-fn apply_edit(text: &mut TextMut, edit: TextEdit) {
-    let range = edit.range;
-    let start = text.point_at_coords(range.start.line as usize, range.start.character as usize);
-    let end = text.point_at_coords(range.end.line as usize, range.end.character as usize);
-    text.replace_range(start..end, edit.new_text);
-}

@@ -78,6 +78,17 @@ impl Server {
         self.bridge.send_request::<R>(params, callback)
     }
 
+    /// Sends a request alongside its parameters.
+    ///
+    /// This request will be handled immediately, as opposed to
+    /// queued for execution with a [`Pass`].
+    pub fn send_sync_request<R: Request + 'static>(
+        &self,
+        params: R::Params,
+    ) -> R::Result {
+        self.bridge.send_sync_request::<R>(params)
+    }
+
     /// Sends a request alognside its parameters and a custom id.
     pub fn send_request_with_id<R: Request + 'static>(
         &self,

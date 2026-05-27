@@ -5,24 +5,34 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use duat_base::{BaseBuffer, widgets::FilePlace};
+use duat_base::{
+    BaseBuffer,
+    modes::{Prompt, PromptMode},
+    widgets::FilePlace,
+};
 use duat_core::{
     buffer::Buffer,
     cmd, context,
     data::Pass,
     form::{self, Form},
     mode::{self, KeyEvent, Mode, User, event},
-    text::{Point, Strs, Text},
+    text::{Point, RegexHaystack, Strs, Text, TextMut},
     txt,
+    ui::{RwArea, Widget},
 };
 use lsp_types::{
-    GotoDefinitionParams, GotoDefinitionResponse, HoverParams, OneOf, Position, ReferenceContext,
-    ReferenceParams, ServerCapabilities, TextDocumentIdentifier, TextDocumentPositionParams,
-    TypeDefinitionProviderCapability, Uri, WorkDoneProgressParams,
-    request::{GotoDefinition, GotoTypeDefinition, HoverRequest, References},
+    DocumentChangeOperation, DocumentChanges, GotoDefinitionParams, GotoDefinitionResponse,
+    HoverParams, OneOf, OptionalVersionedTextDocumentIdentifier, Position, PrepareRenameResponse,
+    ReferenceContext, ReferenceParams, RenameOptions, RenameParams, ResourceOp, ServerCapabilities,
+    TextDocumentEdit, TextDocumentIdentifier, TextDocumentPositionParams, TextEdit,
+    TypeDefinitionProviderCapability, Uri, WorkDoneProgressParams, WorkspaceEdit,
+    request::{
+        GotoDefinition, GotoTypeDefinition, HoverRequest, PrepareRenameRequest, References, Rename,
+    },
 };
 
 pub use crate::parser::{LspBuffer, LspCompletions};
+use crate::server::Server;
 
 mod config;
 mod parser;
@@ -69,15 +79,42 @@ impl Mode for Lsp {
             event!('d') => txt!("Go to definition"),
             event!('y') => txt!("Go to type definition"),
             event!('r') => txt!("Go to references"),
+            event!('R') => txt!("Rename symbol"),
         })
     }
 
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent) {
         let buffer = context::current_buffer(pa);
 
+        let Some(servers) = server::get_servers_for(buffer.read(pa)) else {
+            return;
+        };
+
+        let buf = buffer.read(pa);
+        let uri = path_to_uri(&buf.path()).unwrap();
+
+        macro_rules! get {
+            ($get_field:expr, $pattern:pat) => {{
+                let pred: for<'a> fn(&'a ServerCapabilities) -> &'a Option<_> = $get_field;
+                servers.iter().find_map(|server| {
+                    Some(server)
+                        .zip(server.capabilities())
+                        .and_then(|(server, cap)| {
+                            if let Some(field) = pred(cap).as_ref()
+                                && matches!(field, $pattern)
+                            {
+                                Some((server, Encoding::new(cap), cap, field))
+                            } else {
+                                None
+                            }
+                        })
+                })
+            }};
+        }
+
         match key_event {
             event!('f') => buffer.lsp_format(pa, None),
-            event!('h') if let Some(servers) = server::get_servers_for(buffer.read(pa)) => {
+            event!('h') => {
                 for server in servers {
                     let Some(capabilities) = server.capabilities() else {
                         continue;
@@ -87,16 +124,9 @@ impl Mode for Lsp {
                         continue;
                     }
 
-                    let buf = buffer.read(pa);
-                    let uri = path_to_uri(&buf.path()).unwrap();
-
                     server.send_request::<HoverRequest>(
                         HoverParams {
-                            text_document_position_params: TextDocumentPositionParams {
-                                text_document: TextDocumentIdentifier { uri },
-                                position: encoding
-                                    .pos_from_point(buf.text(), buf.text().main_sel().cursor()),
-                            },
+                            text_document_position_params: doc_pos(buf, uri.clone(), encoding),
                             work_done_progress_params: WorkDoneProgressParams::default(),
                         },
                         |_, result| {
@@ -107,101 +137,124 @@ impl Mode for Lsp {
 
                 buffer.hover_gutter_entries_on(pa, buffer.selections(pa).main().cursor())
             }
-            event!('d') if let Some(servers) = server::get_servers_for(buffer.read(pa)) => {
-                if let Some((server, capabilities)) = servers.iter().find_map(|server| {
-                    Some(server).zip(server.capabilities()).filter(|(_, cap)| {
-                        matches!(
-                            &cap.definition_provider,
-                            Some(OneOf::Left(true) | OneOf::Right(..))
-                        )
-                    })
-                }) {
-                    let encoding = Encoding::new(capabilities);
-                    let buf = buffer.read(pa);
-                    let uri = path_to_uri(&buf.path()).unwrap();
-
-                    server.send_request::<GotoDefinition>(
-                        GotoDefinitionParams {
-                            partial_result_params: lsp_types::PartialResultParams::default(),
-                            text_document_position_params: TextDocumentPositionParams {
-                                text_document: TextDocumentIdentifier { uri },
-                                position: encoding
-                                    .pos_from_point(buf.text(), buf.text().main_sel().cursor()),
-                            },
-                            work_done_progress_params: WorkDoneProgressParams::default(),
-                        },
-                        move |pa, result| goto_definitions(result, pa, encoding),
-                    );
-                }
+            event!('d')
+                if let Some((server, encoding, ..)) = get!(
+                    |cap| &cap.definition_provider,
+                    OneOf::Left(true) | OneOf::Right(..)
+                ) =>
+            {
+                server.send_request::<GotoDefinition>(
+                    GotoDefinitionParams {
+                        partial_result_params: lsp_types::PartialResultParams::default(),
+                        text_document_position_params: doc_pos(buf, uri, encoding),
+                        work_done_progress_params: WorkDoneProgressParams::default(),
+                    },
+                    move |pa, result| goto_definitions(result, pa, encoding),
+                );
             }
-            event!('y') if let Some(servers) = server::get_servers_for(buffer.read(pa)) => {
-                if let Some((server, capabilities)) = servers.iter().find_map(|server| {
-                    Some(server).zip(server.capabilities()).filter(|(_, cap)| {
-                        matches!(
-                            &cap.type_definition_provider,
-                            Some(
-                                TypeDefinitionProviderCapability::Simple(true)
-                                    | TypeDefinitionProviderCapability::Options(..)
-                            )
-                        )
-                    })
-                }) {
-                    let encoding = Encoding::new(capabilities);
-                    let buf = buffer.read(pa);
-                    let uri = path_to_uri(&buf.path()).unwrap();
-
-                    server.send_request::<GotoTypeDefinition>(
-                        GotoDefinitionParams {
-                            partial_result_params: lsp_types::PartialResultParams::default(),
-                            text_document_position_params: TextDocumentPositionParams {
-                                text_document: TextDocumentIdentifier { uri },
-                                position: encoding
-                                    .pos_from_point(buf.text(), buf.text().main_sel().cursor()),
-                            },
-                            work_done_progress_params: WorkDoneProgressParams::default(),
-                        },
-                        move |pa, result| goto_definitions(result, pa, encoding),
-                    );
-                }
+            event!('y')
+                if let Some((server, encoding, ..)) = get!(
+                    |cap| &cap.type_definition_provider,
+                    TypeDefinitionProviderCapability::Simple(true)
+                        | TypeDefinitionProviderCapability::Options(..)
+                ) =>
+            {
+                server.send_request::<GotoTypeDefinition>(
+                    GotoDefinitionParams {
+                        partial_result_params: lsp_types::PartialResultParams::default(),
+                        text_document_position_params: doc_pos(buf, uri, encoding),
+                        work_done_progress_params: WorkDoneProgressParams::default(),
+                    },
+                    move |pa, result| goto_definitions(result, pa, encoding),
+                );
             }
-            event!('r') if let Some(servers) = server::get_servers_for(buffer.read(pa)) => {
-                if let Some((server, capabilities)) = servers.iter().find_map(|server| {
-                    Some(server).zip(server.capabilities()).filter(|(_, cap)| {
-                        matches!(
-                            &cap.references_provider,
-                            Some(OneOf::Left(true) | OneOf::Right(..))
-                        )
-                    })
-                }) {
-                    let encoding = Encoding::new(capabilities);
-                    let buf = buffer.read(pa);
-                    let uri = path_to_uri(&buf.path()).unwrap();
+            event!('r')
+                if let Some((server, encoding, ..)) = get!(
+                    |cap| &cap.references_provider,
+                    OneOf::Left(true) | OneOf::Right(..)
+                ) =>
+            {
+                server.send_request::<References>(
+                    ReferenceParams {
+                        partial_result_params: lsp_types::PartialResultParams::default(),
+                        text_document_position: doc_pos(buf, uri, encoding),
+                        work_done_progress_params: WorkDoneProgressParams::default(),
+                        context: ReferenceContext { include_declaration: true },
+                    },
+                    move |pa, result| {
+                        let Some(result) = result else {
+                            return;
+                        };
 
-                    server.send_request::<References>(
-                        ReferenceParams {
-                            partial_result_params: lsp_types::PartialResultParams::default(),
-                            text_document_position: TextDocumentPositionParams {
-                                text_document: TextDocumentIdentifier { uri },
-                                position: encoding
-                                    .pos_from_point(buf.text(), buf.text().main_sel().cursor()),
-                            },
-                            work_done_progress_params: WorkDoneProgressParams::default(),
-                            context: ReferenceContext { include_declaration: true },
-                        },
-                        move |pa, result| {
-                            let Some(result) = result else {
-                                return;
-                            };
+                        spawn_picker(
+                            pa,
+                            encoding,
+                            result
+                                .into_iter()
+                                .map(|location| (location.uri, location.range)),
+                        );
+                    },
+                );
+            }
+            event!('R')
+                if let Some((server, encoding, _, opts)) = get!(
+                    |cap| &cap.rename_provider,
+                    OneOf::Left(true) | OneOf::Right(..)
+                ) =>
+            {
+                let popts = buf.print_opts();
+                let regex = format!("{}*\\z", popts.word_chars_regex());
+                let doc_pos = doc_pos(buf, uri, encoding);
 
-                            spawn_picker(
-                                pa,
+                let default_symbol = || {
+                    let text = buf.text();
+                    let main = text.main_sel().cursor().byte();
+                    let bef = text.search(&regex).range(..main).next_back().unwrap();
+                    let aft = text.search(&regex).range(main..).next().unwrap();
+
+                    text[bef.start..aft.end].to_string()
+                };
+
+                let placeholder = if let OneOf::Right(RenameOptions {
+                    prepare_provider: Some(true),
+                    ..
+                }) = opts
+                {
+                    let result = server.send_sync_request::<PrepareRenameRequest>(doc_pos.clone());
+
+                    match result {
+                        Some(PrepareRenameResponse::Range(range))
+                            if let (Some(start), Some(end)) = (
+                                encoding.byte_from_pos(buf.text(), range.start),
+                                encoding.byte_from_pos(buf.text(), range.end),
+                            ) =>
+                        {
+                            buf.text()[start..end].to_string()
+                        }
+                        Some(PrepareRenameResponse::RangeWithPlaceholder {
+                            placeholder, ..
+                        }) => placeholder,
+                        Some(PrepareRenameResponse::DefaultBehavior { .. }) => default_symbol(),
+                        _ => String::new(),
+                    }
+                } else {
+                    default_symbol()
+                };
+
+                if !placeholder.is_empty() {
+                    mode::set(
+                        pa,
+                        Prompt::new_with(
+                            RenameSymbol {
+                                doc_pos,
+                                regex,
+                                server: server.clone(),
                                 encoding,
-                                result
-                                    .into_iter()
-                                    .map(|location| (location.uri, location.range)),
-                            );
-                        },
+                            },
+                            placeholder,
+                        ),
                     );
+                    return;
                 }
             }
             _ => {}
@@ -475,4 +528,168 @@ fn spawn_picker(
     });
 
     duat_base::widgets::Picker::spawn_jumps(pa, jumps);
+}
+
+fn doc_pos(buf: &Buffer, uri: Uri, encoding: Encoding) -> TextDocumentPositionParams {
+    TextDocumentPositionParams {
+        text_document: TextDocumentIdentifier { uri },
+        position: encoding.pos_from_point(buf.text(), buf.text().main_sel().cursor()),
+    }
+}
+
+struct RenameSymbol {
+    server: Server,
+    doc_pos: TextDocumentPositionParams,
+    regex: String,
+    encoding: Encoding,
+}
+
+impl PromptMode for RenameSymbol {
+    fn update(&mut self, _: &mut Pass, text: Text, _: &RwArea) -> Text {
+        text
+    }
+
+    fn prompt(&self) -> Text {
+        txt!("[prompt]rename-symbol")
+    }
+
+    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &RwArea) {
+        let mut new_name = text.to_string();
+        new_name.truncate(new_name.trim_end().len());
+
+        if new_name.is_empty() {
+            context::error!("Name can't be empty");
+        } else {
+            let encoding = self.encoding;
+            self.server.send_request::<Rename>(
+                RenameParams {
+                    new_name,
+                    text_document_position: self.doc_pos.clone(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                },
+                move |pa, result| {
+                    if let Some(result) = result {
+                        handle_workspace_edit(pa, result, encoding);
+                    }
+                },
+            )
+        }
+    }
+}
+
+fn handle_workspace_edit(pa: &mut Pass, edit: WorkspaceEdit, encoding: Encoding) {
+    context::debug!("{edit:#?}");
+    let mut edits = if let Some(changes) = edit.document_changes {
+        match changes {
+            DocumentChanges::Edits(edits) => edits
+                .into_iter()
+                .map(|edit| {
+                    let path = uri_to_path(edit.text_document.uri.clone());
+                    let buffer = context::buffer_from_path(pa, &path);
+                    (buffer, path, edit)
+                })
+                .collect(),
+            DocumentChanges::Operations(ops) => {
+                let mut edits = Vec::new();
+
+                for op in ops {
+                    match op {
+                        DocumentChangeOperation::Op(ResourceOp::Create(create)) => {}
+                        DocumentChangeOperation::Op(ResourceOp::Rename(rename)) => {}
+                        DocumentChangeOperation::Op(ResourceOp::Delete(delete)) => {}
+                        DocumentChangeOperation::Edit(edit) => {
+                            let path = uri_to_path(edit.text_document.uri.clone());
+                            let buffer = context::buffer_from_path(pa, &path);
+                            edits.push((buffer, path, edit));
+                        }
+                    }
+                }
+
+                edits
+            }
+        }
+    } else if let Some(edits) = edit.changes {
+        edits
+            .into_iter()
+            .map(|(uri, edits)| {
+                let path = uri_to_path(uri.clone());
+                let buffer = context::buffer_from_path(pa, &path);
+                (
+                    buffer,
+                    path,
+                    TextDocumentEdit {
+                        text_document: OptionalVersionedTextDocumentIdentifier {
+                            uri,
+                            version: None,
+                        },
+                        edits: edits.into_iter().map(OneOf::Left).collect(),
+                    },
+                )
+            })
+            .collect()
+    } else {
+        return;
+    };
+
+    // Place the buffer changes last, so if any external changes
+    // fail to take place, the buffers won't be modified.
+    edits.sort_by_key(|(buffer, ..)| buffer.is_some());
+
+    for (buffer, path, mut edit) in edits {
+        if let Some(buffer) = buffer {
+            edit.edits.sort_by_key(|lhs| match lhs {
+                OneOf::Left(edit) => edit.range.start,
+                OneOf::Right(annotated_edit) => annotated_edit.text_edit.range.start,
+            });
+
+            let mut text = buffer.text_mut(pa);
+            for edit in edit.edits.into_iter().rev() {
+                apply_edit(
+                    &mut text,
+                    match edit {
+                        OneOf::Left(edit) => edit,
+                        OneOf::Right(annotated_edit) => annotated_edit.text_edit,
+                    },
+                    encoding,
+                );
+            }
+
+            _ = buffer.save(pa);
+        } else {
+            let mut file = match std::fs::read_to_string(&path) {
+                Ok(file) => file,
+                Err(err) => {
+                    context::error!("Couldn't read [buffer]{path}[]: {err}");
+                    return;
+                }
+            };
+
+            for edit in edit.edits.into_iter().rev() {
+                let edit = match edit {
+                    OneOf::Left(edit) => edit,
+                    OneOf::Right(annotated_edit) => annotated_edit.text_edit,
+                };
+
+                let start = encoding.byte_from_pos_str(&file, edit.range.start);
+                let end = encoding.byte_from_pos_str(&file, edit.range.end);
+
+                if let (Some((_, start)), Some((_, end))) = (start, end) {
+                    file.replace_range(start..end, &edit.new_text);
+                }
+            }
+
+            if let Err(err) = std::fs::write(&path, file) {
+                context::error!("Couldn't write [buffer]{path}[]: {err}");
+            }
+        }
+    }
+}
+
+fn apply_edit(text: &mut TextMut, edit: TextEdit, encoding: Encoding) {
+    let range = edit.range;
+    let start = encoding.byte_from_pos(text, range.start);
+    let end = encoding.byte_from_pos(text, range.end);
+    if let (Some(start), Some(end)) = (start, end) {
+        text.replace_range(start..end, edit.new_text);
+    }
 }

@@ -139,6 +139,51 @@ impl ServerBridge {
         self.send_request_with_id::<R>(method_id(R::METHOD).unwrap(), params, callback);
     }
 
+    /// Sends a request alongside its parameters.
+    ///
+    /// This request will be handled immediately, as opposed to
+    /// queued for execution with a [`Pass`].
+    pub fn send_sync_request<R: Request + 'static>(&self, params: R::Params) -> R::Result {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let id = method_id(R::METHOD).unwrap();
+
+        let message = Box::new({
+            let id = id.clone();
+            move || {
+                let params = serde_json::to_value(params).map_err(|err| {
+                    std::io::Error::other(format!("Failed to parse parameters: {err}"))
+                })?;
+
+                Ok(JsonRpc::request_with_params(id, R::METHOD, params))
+            }
+        });
+
+        if let Some(backlog) = self.initialize_backlog.lock().unwrap().as_mut() {
+            backlog.push(message);
+        } else {
+            self.server_tx.send(message).unwrap();
+        }
+
+        let mut callbacks = self.callbacks.lock().unwrap_or_else(|err| err.into_inner());
+
+        let callback = move |result: Value| {
+            tx.send(serde_json::from_value(result).unwrap())
+                .ok()
+                .unwrap();
+        };
+
+        if callbacks
+            .insert(id, Callback::Immediate(Box::new(callback)))
+            .is_some()
+        {
+            self.cancel::<R>()
+        }
+
+        drop(callbacks);
+
+        rx.recv().unwrap()
+    }
+
     /// Sends a request alognside its parameters and a custom id.
     pub fn send_request_with_id<R: Request + 'static>(
         &self,
@@ -171,7 +216,10 @@ impl ServerBridge {
             callback(pa, serde_json::from_value(result).unwrap())
         };
 
-        if callbacks.insert(id, Box::new(callback)).is_some() {
+        if callbacks
+            .insert(id, Callback::Queued(Box::new(callback)))
+            .is_some()
+        {
             self.cancel::<R>()
         }
     }
@@ -367,7 +415,12 @@ fn stdout_loop(server_bridge: ServerBridge, stdout: &mut impl BufRead) -> std::i
                                 .remove(&id)
                         {
                             let value = content.get_result().unwrap().clone();
-                            context::queue(move |pa| callback(pa, value));
+                            match callback {
+                                Callback::Queued(func) => context::queue(move |pa| func(pa, value)),
+                                Callback::Immediate(func) => {
+                                    func(value)
+                                }
+                            };
                         }
                     }
                     JsonRpc::Error(err) if err.error.code != -32601 => {
@@ -454,4 +507,9 @@ fn method_id(method_name: &str) -> Option<Id> {
 }
 
 type JsonRpcFn = Box<dyn FnOnce() -> std::io::Result<JsonRpc> + Send>;
-type Callbacks = Arc<Mutex<HashMap<Id, Box<dyn FnOnce(&mut Pass, Value) + Send + 'static>>>>;
+type Callbacks = Arc<Mutex<HashMap<Id, Callback>>>;
+
+enum Callback {
+    Queued(Box<dyn FnOnce(&mut Pass, Value) + Send + 'static>),
+    Immediate(Box<dyn FnOnce(Value) + Send + 'static>),
+}
