@@ -12,7 +12,8 @@ use duat_base::{
 };
 use duat_core::{
     buffer::Buffer,
-    cmd, context,
+    cmd,
+    context,
     data::Pass,
     form::{self, Form},
     mode::{self, KeyEvent, Mode, User, event},
@@ -22,13 +23,11 @@ use duat_core::{
 };
 use lsp_types::{
     DocumentChangeOperation, DocumentChanges, GotoDefinitionParams, GotoDefinitionResponse,
-    HoverParams, OneOf, OptionalVersionedTextDocumentIdentifier, Position, PrepareRenameResponse,
-    ReferenceContext, ReferenceParams, RenameOptions, RenameParams, ResourceOp, ServerCapabilities,
-    TextDocumentEdit, TextDocumentIdentifier, TextDocumentPositionParams, TextEdit,
-    TypeDefinitionProviderCapability, Uri, WorkDoneProgressParams, WorkspaceEdit,
-    request::{
-        GotoDefinition, GotoTypeDefinition, HoverRequest, PrepareRenameRequest, References, Rename,
-    },
+    HoverParams, OneOf, OptionalVersionedTextDocumentIdentifier, Position, ReferenceContext,
+    ReferenceParams, RenameParams, ResourceOp, ServerCapabilities, TextDocumentEdit,
+    TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, TypeDefinitionProviderCapability,
+    Uri, WorkDoneProgressParams, WorkspaceEdit,
+    request::{GotoDefinition, GotoTypeDefinition, HoverRequest, References, Rename},
 };
 
 pub use crate::parser::{LspBuffer, LspCompletions};
@@ -197,48 +196,25 @@ impl Mode for Lsp {
                 );
             }
             event!('R')
-                if let Some((server, encoding, _, opts)) = get!(
+                if let Some((server, encoding, ..)) = get!(
                     |cap| &cap.rename_provider,
                     OneOf::Left(true) | OneOf::Right(..)
                 ) =>
             {
                 let popts = buf.print_opts();
-                let regex = format!("{}*\\z", popts.word_chars_regex());
                 let doc_pos = doc_pos(buf, uri, encoding);
 
-                let default_symbol = || {
+                let placeholder = {
                     let text = buf.text();
                     let main = text.main_sel().cursor().byte();
-                    let bef = text.search(&regex).range(..main).next_back().unwrap();
-                    let aft = text.search(&regex).range(main..).next().unwrap();
+
+                    let bef_regex = format!("{}*\\z", popts.word_chars_regex());
+                    let bef = text.search(bef_regex).range(..main).next_back().unwrap();
+
+                    let aft_regex = format!("\\A{}*", popts.word_chars_regex());
+                    let aft = text.search(aft_regex).range(main..).next().unwrap();
 
                     text[bef.start..aft.end].to_string()
-                };
-
-                let placeholder = if let OneOf::Right(RenameOptions {
-                    prepare_provider: Some(true),
-                    ..
-                }) = opts
-                {
-                    let result = server.send_sync_request::<PrepareRenameRequest>(doc_pos.clone());
-
-                    match result {
-                        Some(PrepareRenameResponse::Range(range))
-                            if let (Some(start), Some(end)) = (
-                                encoding.byte_from_pos(buf.text(), range.start),
-                                encoding.byte_from_pos(buf.text(), range.end),
-                            ) =>
-                        {
-                            buf.text()[start..end].to_string()
-                        }
-                        Some(PrepareRenameResponse::RangeWithPlaceholder {
-                            placeholder, ..
-                        }) => placeholder,
-                        Some(PrepareRenameResponse::DefaultBehavior { .. }) => default_symbol(),
-                        _ => String::new(),
-                    }
-                } else {
-                    default_symbol()
                 };
 
                 if !placeholder.is_empty() {
@@ -247,7 +223,7 @@ impl Mode for Lsp {
                         Prompt::new_with(
                             RenameSymbol {
                                 doc_pos,
-                                regex,
+                                chars_regex: popts.word_chars_regex(),
                                 server: server.clone(),
                                 encoding,
                             },
@@ -540,7 +516,7 @@ fn doc_pos(buf: &Buffer, uri: Uri, encoding: Encoding) -> TextDocumentPositionPa
 struct RenameSymbol {
     server: Server,
     doc_pos: TextDocumentPositionParams,
-    regex: String,
+    chars_regex: &'static str,
     encoding: Encoding,
 }
 
@@ -584,19 +560,60 @@ fn handle_workspace_edit(
 ) -> Result<(), Text> {
     duat_core::debug!("{edit:#?}");
 
-    let mut edits = if let Some(changes) = edit.document_changes {
-        match changes {
-            DocumentChanges::Edits(edits) => edits
-                .into_iter()
-                .map(|edit| {
-                    let path = uri_to_path(edit.text_document.uri.clone());
-                    let buffer = context::buffer_from_path(pa, &path);
-                    (buffer, path, edit)
-                })
-                .collect(),
-            DocumentChanges::Operations(ops) => {
-                let mut edits = Vec::new();
+    let apply_edit = |pa: &mut Pass, mut edit: TextDocumentEdit| {
+        let path = uri_to_path(edit.text_document.uri.clone());
+        let buffer = context::buffer_from_path(pa, &path);
 
+        if let Some(buffer) = buffer {
+            edit.edits.sort_by_key(|lhs| match lhs {
+                OneOf::Left(edit) => edit.range.start,
+                OneOf::Right(annotated_edit) => annotated_edit.text_edit.range.start,
+            });
+
+            let mut text = buffer.text_mut(pa);
+            for edit in edit.edits.into_iter().rev() {
+                apply_edit(
+                    &mut text,
+                    match edit {
+                        OneOf::Left(edit) => edit,
+                        OneOf::Right(annotated_edit) => annotated_edit.text_edit,
+                    },
+                    encoding,
+                );
+            }
+
+            _ = buffer.save(pa);
+        } else {
+            let mut file = std::fs::read_to_string(&path)?;
+
+            for edit in edit.edits.into_iter().rev() {
+                let edit = match edit {
+                    OneOf::Left(edit) => edit,
+                    OneOf::Right(annotated_edit) => annotated_edit.text_edit,
+                };
+
+                let start = encoding.byte_from_pos_str(&file, edit.range.start);
+                let end = encoding.byte_from_pos_str(&file, edit.range.end);
+
+                if let (Some((_, start)), Some((_, end))) = (start, end) {
+                    file.replace_range(start..end, &edit.new_text);
+                }
+            }
+
+            std::fs::write(&path, file)?;
+        }
+
+        Result::<(), Text>::Ok(())
+    };
+
+    if let Some(changes) = edit.document_changes {
+        match changes {
+            DocumentChanges::Edits(edits) => {
+                for edit in edits {
+                    apply_edit(pa, edit)?;
+                }
+            }
+            DocumentChanges::Operations(ops) => {
                 for op in ops {
                     match op {
                         DocumentChangeOperation::Op(ResourceOp::Create(create)) => {
@@ -653,83 +670,24 @@ fn handle_workspace_edit(
                             }
                         }
                         DocumentChangeOperation::Edit(edit) => {
-                            let path = uri_to_path(edit.text_document.uri.clone());
-                            let buffer = context::buffer_from_path(pa, &path);
-                            edits.push((buffer, path, edit));
+                            apply_edit(pa, edit);
                         }
                     }
                 }
-
-                edits
             }
         }
     } else if let Some(edits) = edit.changes {
-        edits
-            .into_iter()
-            .map(|(uri, edits)| {
-                let path = uri_to_path(uri.clone());
-                let buffer = context::buffer_from_path(pa, &path);
-                (
-                    buffer,
-                    path,
-                    TextDocumentEdit {
-                        text_document: OptionalVersionedTextDocumentIdentifier {
-                            uri,
-                            version: None,
-                        },
-                        edits: edits.into_iter().map(OneOf::Left).collect(),
-                    },
-                )
-            })
-            .collect()
+        for (uri, edits) in edits {
+            let edit = TextDocumentEdit {
+                text_document: OptionalVersionedTextDocumentIdentifier { uri, version: None },
+                edits: edits.into_iter().map(OneOf::Left).collect(),
+            };
+
+            apply_edit(pa, edit);
+        }
     } else {
         return Ok(());
     };
-
-    // Place the buffer changes last, so if any external changes
-    // fail to take place, the buffers won't be modified.
-    edits.sort_by_key(|(buffer, ..)| buffer.is_some());
-
-    for (buffer, path, mut edit) in edits {
-        if let Some(buffer) = buffer {
-            edit.edits.sort_by_key(|lhs| match lhs {
-                OneOf::Left(edit) => edit.range.start,
-                OneOf::Right(annotated_edit) => annotated_edit.text_edit.range.start,
-            });
-
-            let mut text = buffer.text_mut(pa);
-            for edit in edit.edits.into_iter().rev() {
-                apply_edit(
-                    &mut text,
-                    match edit {
-                        OneOf::Left(edit) => edit,
-                        OneOf::Right(annotated_edit) => annotated_edit.text_edit,
-                    },
-                    encoding,
-                );
-            }
-
-            _ = buffer.save(pa);
-        } else {
-            let mut file = std::fs::read_to_string(&path)?;
-
-            for edit in edit.edits.into_iter().rev() {
-                let edit = match edit {
-                    OneOf::Left(edit) => edit,
-                    OneOf::Right(annotated_edit) => annotated_edit.text_edit,
-                };
-
-                let start = encoding.byte_from_pos_str(&file, edit.range.start);
-                let end = encoding.byte_from_pos_str(&file, edit.range.end);
-
-                if let (Some((_, start)), Some((_, end))) = (start, end) {
-                    file.replace_range(start..end, &edit.new_text);
-                }
-            }
-
-            std::fs::write(&path, file)?;
-        }
-    }
 
     Ok(())
 }

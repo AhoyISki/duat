@@ -145,18 +145,13 @@ pub fn get_initialize_params(path: &Path, config: &LanguageServerConfig) -> Init
                     failure_handling: Some(FailureHandlingKind::Abort),
                     normalizes_line_endings: Some(false),
                     change_annotation_support: Some(
-                        ChangeAnnotationWorkspaceEditClientCapabilities {
-                            groups_on_label: Some(true),
-                        },
+                        ChangeAnnotationWorkspaceEditClientCapabilities { groups_on_label: None },
                     ),
                 }),
                 did_change_configuration: Some(DynamicRegistrationClientCapabilities {
                     dynamic_registration: Some(true),
                 }),
-                did_change_watched_files: Some(DidChangeWatchedFilesClientCapabilities {
-                    dynamic_registration: Some(true),
-                    relative_pattern_support: Some(true),
-                }),
+                did_change_watched_files: None,
                 symbol: Some(WorkspaceSymbolClientCapabilities {
                     dynamic_registration: Some(false),
                     symbol_kind: Some(symbol_kind.clone()),
@@ -174,15 +169,7 @@ pub fn get_initialize_params(path: &Path, config: &LanguageServerConfig) -> Init
                 code_lens: Some(lsp_types::CodeLensWorkspaceClientCapabilities {
                     refresh_support: Some(true),
                 }),
-                file_operations: Some(lsp_types::WorkspaceFileOperationsClientCapabilities {
-                    dynamic_registration: Some(false),
-                    did_create: Some(true),
-                    will_create: Some(true),
-                    did_rename: Some(true),
-                    will_rename: Some(true),
-                    did_delete: Some(true),
-                    will_delete: Some(true),
-                }),
+                file_operations: None,
                 inline_value: Some(InlineValueWorkspaceClientCapabilities {
                     refresh_support: Some(true),
                 }),
@@ -196,7 +183,7 @@ pub fn get_initialize_params(path: &Path, config: &LanguageServerConfig) -> Init
             text_document: Some(TextDocumentClientCapabilities {
                 synchronization: Some(TextDocumentSyncClientCapabilities {
                     dynamic_registration: Some(false),
-                    will_save: Some(true),
+                    will_save: Some(false),
                     will_save_wait_until: Some(false),
                     did_save: Some(true),
                 }),
@@ -325,11 +312,9 @@ pub fn get_initialize_params(path: &Path, config: &LanguageServerConfig) -> Init
                 color_provider: Some(no_dynamic_registration),
                 rename: Some(RenameClientCapabilities {
                     dynamic_registration: Some(false),
-                    prepare_support: Some(true),
-                    prepare_support_default_behavior: Some(
-                        PrepareSupportDefaultBehavior::IDENTIFIER,
-                    ),
-                    honors_change_annotations: Some(false),
+                    prepare_support: Some(false),
+                    prepare_support_default_behavior: None,
+                    honors_change_annotations: None,
                 }),
                 publish_diagnostics: Some(PublishDiagnosticsClientCapabilities {
                     related_information: Some(true),
@@ -465,12 +450,10 @@ pub fn get_initialize_params(path: &Path, config: &LanguageServerConfig) -> Init
         }]),
         client_info: Some(ClientInfo {
             name: "duat".to_string(),
-            version: Some("0.9.0".to_string()),
+            version: Some("0.10.0".to_string()),
         }),
         locale: None,
-        work_done_progress_params: WorkDoneProgressParams {
-            work_done_token: Some(NumberOrString::Number(0)),
-        },
+        work_done_progress_params: WorkDoneProgressParams { work_done_token: None },
     }
 }
 
