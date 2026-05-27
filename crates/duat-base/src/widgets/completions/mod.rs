@@ -19,17 +19,10 @@ use std::{
 };
 
 use duat_core::{
-    Ns,
-    cmd::{
+    Ns, buffer::Buffer, cmd::{
         CfgOrScratch, ColorSchemeArg, Existing, OtherBuffer, Parameter, ReloadOptions,
         ValidFilePath,
-    },
-    context::{self, Handle},
-    data::{Pass, RwData},
-    hook::{self, BufferUpdated, KeySent, OnMouseEvent, WidgetOpened, WidgetSwitched},
-    mode::{KeyCode, MouseEventKind, event},
-    text::{Point, Spawn, Text, TextMut, txt},
-    ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
+    }, context::{self, Handle}, data::{Pass, RwData}, hook::{self, BufferUpdated, KeySent, OnMouseEvent, WidgetOpened, WidgetSwitched}, mode::{KeyCode, MouseEventKind, event}, text::{Point, Spawn, Text, TextMut, txt}, ui::{Area, DynSpawnSpecs, Orientation, Side, Widget}
 };
 use duat_term::Frame;
 
@@ -62,7 +55,7 @@ pub fn completions_setup() {
         builder.with_provider(paths::PathCompletions::new(true, true))
     });
 
-    Completions::set_for_parameter::<Handle>(50, |pa, builder| {
+    Completions::set_for_parameter::<Handle<Buffer>>(50, |pa, builder| {
         let mut list: Vec<String> = context::windows()
             .buffers(pa)
             .into_iter()

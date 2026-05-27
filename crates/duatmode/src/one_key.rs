@@ -28,7 +28,7 @@ impl OneKey {
         &self,
         pa: &mut Pass,
         event: KeyEvent,
-        handle: &Handle<dyn Widget>,
+        handle: &Handle,
     ) -> (SelType, bool) {
         let just_char = just_char(event);
 
@@ -82,7 +82,7 @@ impl OneKey {
 
 fn match_goto(
     pa: &mut Pass,
-    handle: &Handle<dyn Widget>,
+    handle: &Handle,
     key_event: KeyEvent,
     mut sel_type: SelType,
 ) -> SelType {
@@ -139,7 +139,7 @@ fn match_goto(
 
 fn match_find_until(
     pa: &mut Pass,
-    handle: &Handle<dyn Widget>,
+    handle: &Handle,
     char: char,
     nth: usize,
     is_t: bool,
@@ -182,7 +182,7 @@ fn match_find_until(
 
 fn match_bounds(
     pa: &mut Pass,
-    handle: &Handle<dyn Widget>,
+    handle: &Handle,
     event: KeyEvent,
     nth: usize,
     is_inside: bool,

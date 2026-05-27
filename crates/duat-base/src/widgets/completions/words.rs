@@ -19,7 +19,7 @@ use std::{
 
 use duat_core::{
     Ns,
-    buffer::Change,
+    buffer::{Buffer, Change},
     context::Handle,
     data::Pass,
     hook::{self, BufferOpened, BufferUpdated},
@@ -150,7 +150,7 @@ pub(super) fn track_words() {
     hook::add::<BufferUpdated>(move |pa, buffer| update_counts(pa, buffer, ns));
 }
 
-fn update_counts(pa: &mut Pass, buffer: &Handle, ns: Ns) {
+fn update_counts(pa: &mut Pass, buffer: &Handle<Buffer>, ns: Ns) {
     fn to_str<'a>(str: &'a str) -> impl Fn(Range<usize>) -> (Range<usize>, &'a str) {
         |range| (range.clone(), &str[range])
     }

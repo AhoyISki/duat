@@ -5,7 +5,8 @@ FOR NEXT UPDATE:
   [x] Autocompletions.
   [x] Formatting.
   [x] Caching.
-  [ ] Rename.
+  [x] Rename.
+  [ ] Actions.
 [x] Snippet support.
 [ ] More work on the Gutter.
   [x] Diferentiate hovering, cursoring, related and default display.
@@ -30,6 +31,7 @@ FOR NEXT UPDATE:
   [x] Better search functionality.
 [x] Remove Widget argument from Modes.
 [x] Widget::text and Widget::text_mut have been amplified immensely.
+[x] Picker implementation.
 
 KNOWN BUGS:
  HIGH PRIORITY:

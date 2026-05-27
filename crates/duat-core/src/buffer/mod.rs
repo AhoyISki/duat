@@ -30,7 +30,7 @@ pub use crate::buffer::{
 use crate::{
     context::{self, Handle, cache},
     data::{Pass, RwData, WriteableTuple},
-    hook::{self, BufferSaved, BufferUpdated, OnMouseEvent},
+    hook::{self, BufferRenamed, BufferSaved, BufferUpdated, OnMouseEvent},
     mode::{Selections, TwoPointsPlace},
     opts::PrintOpts,
     text::{Point, Strs, StrsBuf, Text, TextMut, TextParts, TextVersion, txt},
@@ -484,7 +484,7 @@ impl Widget for Buffer {
     }
 }
 
-impl Handle {
+impl Handle<Buffer> {
     /// Writes the buffer to the current [`PathBuf`], if one was set.
     pub fn save(&self, pa: &mut Pass) -> Result<(), Text> {
         self.save_quit(pa, false)
@@ -526,6 +526,26 @@ impl Handle {
             Ok(())
         } else {
             Err(txt!("No buffer was set"))
+        }
+    }
+
+    /// Sets the [`Path`] of this [`Buffer`].
+    ///
+    /// Will also trigger the [`BufferRenamed`] hook.
+    pub fn set_path(&self, pa: &mut Pass, path: &Path) {
+        let buf = self.write(pa);
+        let new_pk = if std::fs::exists(path).ok() == Some(true) {
+            PathKind::SetExists(path.into())
+        } else {
+            PathKind::SetAbsent(path.into())
+        };
+
+        if let PathKind::SetExists(path) | PathKind::SetAbsent(path) =
+            std::mem::replace(&mut buf.path, new_pk)
+        {
+            hook::trigger(pa, BufferRenamed((self.clone(), Some(path))));
+        } else {
+            hook::trigger(pa, BufferRenamed((self.clone(), None)));
         }
     }
 
@@ -918,7 +938,7 @@ impl<T: 'static> PerBuffer<T> {
     pub fn register<'p>(
         &'p self,
         pa: &'p mut Pass,
-        buffer: &'p Handle,
+        buffer: &'p Handle<Buffer>,
         new_value: T,
     ) -> (&'p mut T, &'p mut Buffer) {
         let (list, buf) = pa.write_many((&*self.0, buffer));
@@ -937,7 +957,7 @@ impl<T: 'static> PerBuffer<T> {
     ///
     /// [`BufferClosed`]: crate::hook::BufferClosed
     /// [registered]: Self::register
-    pub fn unregister(&self, pa: &mut Pass, buffer: &Handle) -> Option<T> {
+    pub fn unregister(&self, pa: &mut Pass, buffer: &Handle<Buffer>) -> Option<T> {
         let buf_id = buffer.read(pa).buffer_id();
         self.0.write(pa).remove(&buf_id)
     }
@@ -1030,7 +1050,7 @@ impl<T: 'static> PerBuffer<T> {
     pub fn write<'p>(
         &'p self,
         pa: &'p mut Pass,
-        buffer: &'p Handle,
+        buffer: &'p Handle<Buffer>,
     ) -> Option<(&'p mut T, &'p mut Buffer)> {
         let (list, buffer) = pa.write_many((&*self.0, buffer));
         Some((list.get_mut(&buffer.buffer_id())?, buffer))
@@ -1051,7 +1071,7 @@ impl<T: 'static> PerBuffer<T> {
     pub fn write_with<'p, Tup: WriteableTuple<'p, impl std::any::Any>>(
         &'p self,
         pa: &'p mut Pass,
-        buffer: &'p Handle,
+        buffer: &'p Handle<Buffer>,
         tup: Tup,
     ) -> Option<(&'p mut T, &'p mut Buffer, Tup::Return)> {
         let (list, buffer, ret) = pa.try_write_many((&*self.0, buffer, tup))?;
@@ -1070,7 +1090,7 @@ impl<T: 'static> PerBuffer<T> {
     pub fn write_many<'p, const N: usize>(
         &'p self,
         pa: &'p mut Pass,
-        buffers: [&'p Handle; N],
+        buffers: [&'p Handle<Buffer>; N],
     ) -> Option<[(&'p mut T, &'p mut Buffer); N]> {
         let (list, buffers) = pa.try_write_many((&*self.0, buffers))?;
         let buf_ids = buffers.each_ref().map(|buf| buf.buffer_id());
@@ -1098,7 +1118,7 @@ impl<T: 'static> PerBuffer<T> {
     pub fn write_many_with<'p, const N: usize, Tup: WriteableTuple<'p, impl std::any::Any>>(
         &'p self,
         pa: &'p mut Pass,
-        buffers: [&'p Handle; N],
+        buffers: [&'p Handle<Buffer>; N],
         tup: Tup,
     ) -> Option<([(&'p mut T, &'p mut Buffer); N], Tup::Return)> {
         let (list, buffers, ret) = pa.try_write_many((&*self.0, buffers, tup))?;

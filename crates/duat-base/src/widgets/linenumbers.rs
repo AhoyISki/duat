@@ -36,7 +36,7 @@ pub fn linenumbers_setup() {
     .lateness(usize::MAX);
 
     hook::add::<OnMouseEvent<LineNumbers>>(|pa, event| {
-        let line = |pa, handle: &Handle| {
+        let line = |pa, handle: &Handle<Buffer>| {
             let lines = handle.printed_line_numbers(pa);
             event
                 .points
@@ -123,12 +123,12 @@ impl LineNumbers {
     }
 
     /// The minimum width that would be needed to show the last line.
-    fn calculate_width(&self, pa: &Pass, buffer: &Handle) -> f32 {
+    fn calculate_width(&self, pa: &Pass, buffer: &Handle<Buffer>) -> f32 {
         let len = buffer.read(pa).text().end_point().line();
         len.ilog10() as f32
     }
 
-    fn form_text(&self, pa: &Pass, buffer: &Handle) -> Text {
+    fn form_text(&self, pa: &Pass, buffer: &Handle<Buffer>) -> Text {
         let (main_line_num, printed_line_numbers) = {
             let printed_line_numbers = buffer.printed_line_numbers(pa);
             let buf = buffer.read(pa);
@@ -246,7 +246,7 @@ impl LineNumbersOpts {
     /// The [`Widget`] will be pushed on the "outside". That is, if
     /// there are other widgets pushed on the buffer, this one will be
     /// placed around them.
-    pub fn push_on(self, pa: &mut Pass, buffer: &Handle) -> Handle<LineNumbers> {
+    pub fn push_on(self, pa: &mut Pass, buffer: &Handle<Buffer>) -> Handle<LineNumbers> {
         let mut linenumbers = LineNumbers {
             text: Text::default(),
             relative: self.relative,

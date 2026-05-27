@@ -4,10 +4,15 @@ use std::{
 };
 
 use duat_core::{
-    Ns, buffer::Buffer, context::Handle, data::Pass, hook::{self, ConfigUnloaded}, storage::{
+    Ns,
+    buffer::Buffer,
+    context::Handle,
+    data::Pass,
+    hook::{self, ConfigUnloaded},
+    storage::{
         self,
         bincode::{Decode, Encode},
-    }
+    },
 };
 use duat_filetype::FileType;
 use jsonrpc_lite::Id;
@@ -82,10 +87,7 @@ impl Server {
     ///
     /// This request will be handled immediately, as opposed to
     /// queued for execution with a [`Pass`].
-    pub fn send_sync_request<R: Request + 'static>(
-        &self,
-        params: R::Params,
-    ) -> R::Result {
+    pub fn send_sync_request<R: Request + 'static>(&self, params: R::Params) -> R::Result {
         self.bridge.send_sync_request::<R>(params)
     }
 
@@ -101,7 +103,12 @@ impl Server {
 
     /// Send a request to refresh the semantic tokens of a given
     /// [`Handle`].
-    pub fn send_semantic_tokens_request(&self, handle: &Handle, version: u64, parser: &Parser) {
+    pub fn send_semantic_tokens_request(
+        &self,
+        handle: &Handle<Buffer>,
+        version: u64,
+        parser: &Parser,
+    ) {
         self.bridge
             .send_semantic_tokens_request(handle, version, parser);
     }
@@ -157,7 +164,7 @@ pub fn on_servers_list(func: impl FnOnce(&[Server])) {
 pub fn get_servers_for(buf: &Buffer) -> Option<Vec<Server>> {
     let filetype = buf.filetype()?;
     let path = buf.path();
-    
+
     let (config, user_provided) = config::get_for(filetype)?;
 
     let mut servers = SERVERS.lock().unwrap();

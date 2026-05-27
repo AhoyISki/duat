@@ -11,7 +11,7 @@ use std::{
 };
 
 use crate::{
-    buffer::Change,
+    buffer::{Buffer, Change},
     context,
     data::{HandleFns, Pass, RwData, RwText, WriteableTuple},
     mode::{ModSelection, SelectionMut, Selections},
@@ -146,10 +146,10 @@ use crate::{
 /// [`alt!`]: crate::mode::alt
 /// [`ctrl!`]: crate::mode::ctrl
 /// [`shift!`]: crate::mode::shift
-pub struct Handle<W: ?Sized = crate::buffer::Buffer> {
+pub struct Handle<W: ?Sized = dyn Widget> {
     widget: RwData<W>,
     pub(crate) area: RwArea,
-    related: RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>>,
+    related: RwData<Vec<(Handle, WidgetRelation)>>,
     is_closed: Arc<AtomicBool>,
     pub(crate) update_requested: Arc<AtomicBool>,
     spawn_id: Option<SpawnId>,
@@ -162,7 +162,7 @@ impl<W: Widget> Handle<W> {
     pub(crate) fn new(
         widget: RwData<W>,
         area: RwArea,
-        main: Option<Handle<dyn Widget>>,
+        main: Option<Handle>,
         is_closed: Arc<AtomicBool>,
         spawn_id: Option<SpawnId>,
     ) -> Self {
@@ -363,7 +363,7 @@ impl<W: 'static + ?Sized> Handle<W> {
     /// on the master's [`Text`].
     ///
     /// [spawned]: crate::text::Spawn
-    pub fn master(&self, pa: &Pass) -> Option<Handle<dyn Widget>> {
+    pub fn master(&self, pa: &Pass) -> Option<Handle> {
         self.related.read(pa).iter().find_map(|(handle, relation)| {
             (*relation == WidgetRelation::Main).then_some(handle.clone())
         })
@@ -378,7 +378,7 @@ impl<W: 'static + ?Sized> Handle<W> {
     /// on the master's [`Text`].
     ///
     /// [spawned]: crate::text::Spawn
-    pub fn master_buffer(&self, pa: &Pass) -> Option<Handle> {
+    pub fn master_buffer(&self, pa: &Pass) -> Option<Handle<Buffer>> {
         self.related.read(pa).iter().find_map(|(handle, relation)| {
             handle
                 .get_as()
@@ -447,7 +447,7 @@ impl<W: 'static + ?Sized> Handle<W> {
     }
 
     /// Raw access to the related widgets.
-    pub(crate) fn related(&self) -> &RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>> {
+    pub(crate) fn related(&self) -> &RwData<Vec<(Handle, WidgetRelation)>> {
         &self.related
     }
 
@@ -564,17 +564,17 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     /// Writes to the [`Text`] and [`Area`] at the same time.
     ///
-    /// This function is especially useful if you have a `Handle<dyn Widget>`,
-    /// since you can't [write] to it directly.
+    /// This function is especially useful if you have a `Handle<dyn
+    /// Widget>`, since you can't [write] to it directly.
     ///
-    /// A lot of the time, you will also need the [`PrintOpts`] of the widget.
-    /// To get all three things, you can do the following.
+    /// A lot of the time, you will also need the [`PrintOpts`] of the
+    /// widget. To get all three things, you can do the following.
     ///
     /// ```rust
     /// # duat_core::doc_duat!(duat);
     /// use duat::prelude::*;
     ///
-    /// # fn test(handle: &Handle<dyn Widget>, pa: &mut Pass) {
+    /// # fn test(handle: &Handle, pa: &mut Pass) {
     /// let popts = handle.read(pa).print_opts();
     /// let (mut text, area) = handle.write_text_and_area(pa);
     /// # }
@@ -974,8 +974,8 @@ impl<W: Widget> Handle<W> {
         })
     }
 
-    /// Transforms this [`Handle`] into a [`Handle<dyn Widget>`].
-    pub fn to_dyn(&self) -> Handle<dyn Widget> {
+    /// Transforms this [`Handle`] into a [`Handle`].
+    pub fn to_dyn(&self) -> Handle {
         Handle {
             widget: self.widget.to_dyn_widget(),
             area: self.area.clone(),

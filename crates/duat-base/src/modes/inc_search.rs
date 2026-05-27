@@ -52,7 +52,7 @@ pub struct IncSearch<I: IncSearcher> {
     inc: I,
     orig: Option<(duat_core::mode::Selections, PrintInfo)>,
     prev: String,
-    widget: Handle<dyn Widget>,
+    widget: Handle,
 }
 
 impl<I: IncSearcher> Clone for IncSearch<I> {
@@ -70,7 +70,7 @@ impl<I: IncSearcher> IncSearch<I> {
     /// Returns a [`Prompt`] with `IncSearch<I>` as its
     /// [`PromptMode`], for a specific [`Widget`].
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(inc: I, widget: Handle<dyn Widget>) -> Prompt {
+    pub fn new(inc: I, widget: Handle) -> Prompt {
         Prompt::new(Self {
             inc,
             orig: None,
@@ -169,7 +169,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
         txt!("{}", self.inc.prompt())
     }
 
-    fn return_handle(&self) -> Option<Handle<dyn Widget>> {
+    fn return_handle(&self) -> Option<Handle> {
         Some(self.widget.clone())
     }
 }
@@ -196,7 +196,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 /// struct SearchAround;
 ///
 /// impl IncSearcher for SearchAround {
-///     fn search(&mut self, pa: &mut Pass, pat: &str, buffer: &Handle<dyn Widget>) {
+///     fn search(&mut self, pa: &mut Pass, pat: &str, buffer: &Handle) {
 ///         buffer.edit_all(pa, |mut s| {
 ///             s.set_cursor_on_end();
 ///             let Some(e_range) = s.search(pat).from_cursor().next() else {
@@ -226,7 +226,7 @@ pub trait IncSearcher: Clone + Send + 'static {
     ///
     /// Using this `pat` inside any searching method is guaranteed not
     /// to panic.
-    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle<dyn Widget>);
+    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle);
 
     /// What prompt to show in the [`PromptLine`].
     ///
@@ -241,7 +241,7 @@ pub trait IncSearcher: Clone + Send + 'static {
 pub struct SearchFwd;
 
 impl IncSearcher for SearchFwd {
-    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle<dyn Widget>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle) {
         widget.edit_all(pa, |mut s| {
             if let Some(range) = {
                 s.search(pat).from_cursor_excl().next().or_else(|| {
@@ -266,7 +266,7 @@ impl IncSearcher for SearchFwd {
 pub struct SearchRev;
 
 impl IncSearcher for SearchRev {
-    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle<dyn Widget>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle) {
         widget.edit_all(pa, |mut s| {
             if let Some(range) = {
                 s.search(pat).to_cursor().next_back().or_else(|| {
@@ -291,7 +291,7 @@ impl IncSearcher for SearchRev {
 pub struct ExtendFwd;
 
 impl IncSearcher for ExtendFwd {
-    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle<dyn Widget>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle) {
         widget.edit_all(pa, |mut s| {
             if let Some(range) = {
                 s.search(pat).from_cursor_excl().next().or_else(|| {
@@ -317,7 +317,7 @@ impl IncSearcher for ExtendFwd {
 pub struct ExtendRev;
 
 impl IncSearcher for ExtendRev {
-    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle<dyn Widget>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, widget: &Handle) {
         widget.edit_all(pa, |mut s| {
             if let Some(range) = {
                 s.search(pat).to_cursor().next_back().or_else(|| {

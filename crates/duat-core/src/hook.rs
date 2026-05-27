@@ -32,10 +32,11 @@
 //! own:
 //!
 //! - [`BufferOpened`] is an alias for [`WidgetOpened<Buffer>`].
-//! - [`BufferSaved`] triggers after the [`Buffer`] is written.
 //! - [`BufferClosed`] triggers when you close/unload a buffer.
+//! - [`BufferSaved`] triggers after the [`Buffer`] is written.
 //! - [`BufferUpdated`] triggers whenever a buffer changes.
 //! - [`BufferSwitched`] triggers when switching the active buffer.
+//! - [`BufferRenamed`] triggers when a buffer is renamed.
 //! - [`ConfigLoaded`] triggers after loading the config crate.
 //! - [`ConfigUnloaded`] triggers after unloading the config crate.
 //! - [`FocusedOnDuat`] triggers when Duat gains focus.
@@ -176,6 +177,7 @@ use std::{
     any::{Any, TypeId},
     cell::RefCell,
     collections::HashMap,
+    path::{Path, PathBuf},
     sync::Mutex,
 };
 
@@ -411,6 +413,200 @@ mod global {
     }
 }
 
+/// [`Hookable`]: Triggers after loading a [`Buffer`].
+///
+/// # Arguments
+///
+/// - The `Buffer`'s [`Handle`].
+pub type BufferOpened = WidgetOpened<Buffer>;
+
+/// [`Hookable`]: Triggers before unloading a [`Buffer`].
+///
+/// # Arguments
+///
+/// - The `Buffer`'s [`Handle`].
+/// - A `bool` indicating if it is being closed. If `true`, it's being
+///   closed, otherwise, it's being unloaded for a config reload.
+pub struct BufferClosed(pub(crate) (Handle<Buffer>, bool));
+
+impl Hookable for BufferClosed {
+    type Input<'h> = (&'h Handle<Buffer>, bool);
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        (&self.0.0, self.0.1)
+    }
+}
+
+impl PartialEq<Handle<Buffer>> for BufferClosed {
+    fn eq(&self, other: &Handle<Buffer>) -> bool {
+        self.0.0 == *other
+    }
+}
+
+/// [`Hookable`]: Triggers after [`Handle::save`] or [`Handle::save_to`].
+///
+/// Only triggers if the buffer was actually updated.
+///
+/// # Arguments
+///
+/// - The [`Handle`] of said [`Buffer`].
+/// - Wether the `Buffer` will be closed (happens when calling the
+///   `wq` or `waq` commands).
+pub struct BufferSaved(pub(crate) (Handle<Buffer>, bool));
+
+impl Hookable for BufferSaved {
+    type Input<'h> = (&'h Handle<Buffer>, bool);
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        (&self.0.0, self.0.1)
+    }
+}
+
+impl PartialEq<Handle<Buffer>> for BufferSaved {
+    fn eq(&self, other: &Handle<Buffer>) -> bool {
+        self.0.0 == *other
+    }
+}
+
+/// [`Hookable`]: Triggers when a [`Buffer`] updates.
+///
+/// This is triggered after a batch of writing calls to the `Buffer`,
+/// once per frame. This can happen after typing a key, calling a
+/// command, triggering hooks, or any other action with access to a
+/// [`Pass`], which could be used to write to the `Buffer`.
+///
+/// Think of this is as a "last pass" on the `Buffer`, right before
+/// printing, where it can be adjusted given the modifications to it,
+/// like [`Change`]s and such.
+///
+/// As an example, here's a hook that will highlight every non ascii
+/// character:
+///
+/// ```rust
+/// # duat_core::doc_duat!(duat);
+/// use duat::{
+///     prelude::*,
+///     text::{Strs, Tags},
+/// };
+///
+/// fn setup() {
+///     let ns = Ns::new();
+///     let tag = form::id_of!("non_ascii_char").to_tag(50);
+///
+///     let hl_non_ascii = move |tags: &mut Tags, strs: &Strs, range: Range<Point>| {
+///         for (b, char) in strs[range.clone()].char_indices() {
+///             let b = b + range.start.byte();
+///             if !char.is_ascii() {
+///                 tags.insert(ns, b..b + char.len_utf8(), tag);
+///             }
+///         }
+///     };
+///
+///     hook::add::<BufferOpened>(move |pa, buffer| {
+///         let _ = buffer.read(pa).moment_for(ns);
+///
+///         let mut parts = buffer.text_parts(pa);
+///         let range = Point::default()..parts.strs.end_point();
+///         hl_non_ascii(&mut parts.tags, parts.strs, range);
+///     });
+///
+///     hook::add::<BufferUpdated>(move |pa, buffer| {
+///         let moment = buffer.read(pa).moment_for(ns);
+///
+///         let mut parts = buffer.text_parts(pa);
+///         for change in moment.iter() {
+///             parts.tags.remove(ns, change.added_range());
+///             hl_non_ascii(&mut parts.tags, parts.strs, change.added_range())
+///         }
+///     });
+/// }
+/// ```
+///
+/// You can see here that I called [`Buffer::moment_for`]. This
+/// function will give, for a given [namespace], a list of all
+/// [`Change`]s that have taken place since the last call of that
+/// function with the same namespace. This is very useful for tracking
+/// alterations to the `Buffer` and acting on them accordingly.
+///
+/// In this case, I'm just taking the added range of changes and
+/// adding tags to every non ascii character in them.
+///
+/// Note that the `moment_for` function will work anywhere (that you
+/// have a [`Pass`], this is just a common situation where you'd use
+/// it.
+///
+/// # Arguments
+///
+/// - The [`Buffer`]'s [`Handle`].
+///
+/// [`Area`]: crate::ui::Area
+/// [`Buffer`]: crate::buffer::Buffer
+/// [`PrintOpts`]: crate::opts::PrintOpts
+/// [`Change`]: crate::buffer::Change
+/// [`SelectionMut`]: crate::mode::SelectionMut
+/// [`Tag`]: crate::text::Tag
+/// [`Strs`]: crate::text::Strs
+/// [`Tags`]: crate::text::Tags
+/// [`Selections`]: crate::mode::Selections
+/// [`Text`]: crate::text::Text
+/// [`Text::parts`]: crate::text::Text::parts
+/// [`Text::replace_range`]: crate::text::Text::replace_range
+/// [namespace]: crate::Ns
+pub struct BufferUpdated(pub(crate) Handle<Buffer>);
+
+impl Hookable for BufferUpdated {
+    type Input<'h> = &'h Handle<Buffer>;
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        &self.0
+    }
+}
+
+impl PartialEq<Handle<Buffer>> for BufferUpdated {
+    fn eq(&self, other: &Handle<Buffer>) -> bool {
+        self.0 == *other
+    }
+}
+
+/// [`Hookable`]: Triggers whenever the active [`Buffer`] changes.
+///
+/// # Arguments
+///
+/// - The former `Buffer`'s [`Handle`].
+/// - The current `Buffer`'s [`Handle`].
+///
+/// [`Buffer`]: crate::buffer::Buffer
+pub struct BufferSwitched(pub(crate) (Handle<Buffer>, Handle<Buffer>));
+
+impl Hookable for BufferSwitched {
+    type Input<'h> = (&'h Handle<Buffer>, &'h Handle<Buffer>);
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        (&self.0.0, &self.0.1)
+    }
+}
+
+/// [`Hookable`]: Triggers whenever a [`Buffer`] is renamed.
+///
+/// This will happen when you call [`Handle::<Buffer>::set_path`].
+///
+/// # Arguments
+///
+/// - The `Buffer` that was renamed.
+/// - The former name of said `Buffer`, if it had one.
+///
+/// [`Handle::<Buffer>::set_path`]: Handle::set_path
+/// [`Handle::<Buffer>::save_to`]: Handle::save_to
+pub struct BufferRenamed(pub(crate) (Handle<Buffer>, Option<PathBuf>));
+
+impl Hookable for BufferRenamed {
+    type Input<'h> = (&'h Handle<Buffer>, Option<&'h Path>);
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        (&self.0.0, self.0.1.as_deref())
+    }
+}
+
 /// [`Hookable`]: Triggers when a [`Widget`] is created.
 ///
 /// # Arguments
@@ -508,12 +704,12 @@ impl<W: 'static> Hookable for WidgetClosed<W> {
 ///
 /// # Arguments
 ///
-/// - The former `Widget`'s [`Handle<dyn Widget>`].
-/// - The current `Widget`'s `Handle<dyn widget>`.
-pub struct WidgetSwitched(pub(crate) (Handle<dyn Widget>, Handle<dyn Widget>));
+/// - The former `Widget`'s [`Handle`].
+/// - The current `Widget`'s `Handle<dyn Widget>`.
+pub struct WidgetSwitched(pub(crate) (Handle, Handle));
 
 impl Hookable for WidgetSwitched {
-    type Input<'h> = (&'h Handle<dyn Widget>, &'h Handle<dyn Widget>);
+    type Input<'h> = (&'h Handle, &'h Handle);
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         (&self.0.0, &self.0.1)
@@ -619,179 +815,6 @@ impl Hookable for WindowOpened {
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &mut self.0
-    }
-}
-
-/// [`Hookable`]: Triggers after loading a [`Buffer`].
-///
-/// # Arguments
-///
-/// - The `Buffer`'s [`Handle`].
-pub type BufferOpened = WidgetOpened<Buffer>;
-
-/// [`Hookable`]: Triggers before unloading a [`Buffer`].
-///
-/// # Arguments
-///
-/// - The `Buffer`'s [`Handle`].
-/// - A `bool` indicating if it is being closed. If `true`, it's being
-///   closed, otherwise, it's being unloaded for a config reload.
-pub struct BufferClosed(pub(crate) (Handle, bool));
-
-impl Hookable for BufferClosed {
-    type Input<'h> = (&'h Handle, bool);
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        (&self.0.0, self.0.1)
-    }
-}
-
-impl PartialEq<Handle> for BufferClosed {
-    fn eq(&self, other: &Handle) -> bool {
-        self.0.0 == *other
-    }
-}
-
-/// [`Hookable`]: Triggers when a [`Buffer`] updates.
-///
-/// This is triggered after a batch of writing calls to the `Buffer`,
-/// once per frame. This can happen after typing a key, calling a
-/// command, triggering hooks, or any other action with access to a
-/// [`Pass`], which could be used to write to the `Buffer`.
-///
-/// Think of this is as a "last pass" on the `Buffer`, right before
-/// printing, where it can be adjusted given the modifications to it,
-/// like [`Change`]s and such.
-///
-/// As an example, here's a hook that will highlight every non ascii
-/// character:
-///
-/// ```rust
-/// # duat_core::doc_duat!(duat);
-/// use duat::{
-///     prelude::*,
-///     text::{Strs, Tags},
-/// };
-///
-/// fn setup() {
-///     let ns = Ns::new();
-///     let tag = form::id_of!("non_ascii_char").to_tag(50);
-///
-///     let hl_non_ascii = move |tags: &mut Tags, strs: &Strs, range: Range<Point>| {
-///         for (b, char) in strs[range.clone()].char_indices() {
-///             let b = b + range.start.byte();
-///             if !char.is_ascii() {
-///                 tags.insert(ns, b..b + char.len_utf8(), tag);
-///             }
-///         }
-///     };
-///
-///     hook::add::<BufferOpened>(move |pa, buffer| {
-///         let _ = buffer.read(pa).moment_for(ns);
-///
-///         let mut parts = buffer.text_parts(pa);
-///         let range = Point::default()..parts.strs.end_point();
-///         hl_non_ascii(&mut parts.tags, parts.strs, range);
-///     });
-///
-///     hook::add::<BufferUpdated>(move |pa, buffer| {
-///         let moment = buffer.read(pa).moment_for(ns);
-///
-///         let mut parts = buffer.text_parts(pa);
-///         for change in moment.iter() {
-///             parts.tags.remove(ns, change.added_range());
-///             hl_non_ascii(&mut parts.tags, parts.strs, change.added_range())
-///         }
-///     });
-/// }
-/// ```
-///
-/// You can see here that I called [`Buffer::moment_for`]. This
-/// function will give, for a given [namespace], a list of all
-/// [`Change`]s that have taken place since the last call of that
-/// function with the same namespace. This is very useful for tracking
-/// alterations to the `Buffer` and acting on them accordingly.
-///
-/// In this case, I'm just taking the added range of changes and
-/// adding tags to every non ascii character in them.
-///
-/// Note that the `moment_for` function will work anywhere (that you
-/// have a [`Pass`], this is just a common situation where you'd use
-/// it.
-///
-/// # Arguments
-///
-/// - The [`Buffer`]'s [`Handle`].
-///
-/// [`Area`]: crate::ui::Area
-/// [`Buffer`]: crate::buffer::Buffer
-/// [`PrintOpts`]: crate::opts::PrintOpts
-/// [`Change`]: crate::buffer::Change
-/// [`SelectionMut`]: crate::mode::SelectionMut
-/// [`Tag`]: crate::text::Tag
-/// [`Strs`]: crate::text::Strs
-/// [`Tags`]: crate::text::Tags
-/// [`Selections`]: crate::mode::Selections
-/// [`Text`]: crate::text::Text
-/// [`Text::parts`]: crate::text::Text::parts
-/// [`Text::replace_range`]: crate::text::Text::replace_range
-/// [namespace]: crate::Ns
-pub struct BufferUpdated(pub(crate) Handle);
-
-impl Hookable for BufferUpdated {
-    type Input<'h> = &'h Handle;
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        &self.0
-    }
-}
-
-impl PartialEq<Handle> for BufferUpdated {
-    fn eq(&self, other: &Handle) -> bool {
-        self.0 == *other
-    }
-}
-
-/// [`Hookable`]: Triggers whenever the active [`Buffer`] changes.
-///
-/// # Arguments
-///
-/// - The former `Buffer`'s [`Handle`]
-/// - The current `Buffer`'s [`Handle`]
-///
-/// [`Buffer`]: crate::buffer::Buffer
-pub struct BufferSwitched(pub(crate) (Handle, Handle));
-
-impl Hookable for BufferSwitched {
-    type Input<'h> = (&'h Handle, &'h Handle);
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        (&self.0.0, &self.0.1)
-    }
-}
-
-/// [`Hookable`]: Triggers after [`Handle::save`] or [`Handle::save_to`].
-///
-/// Only triggers if the buffer was actually updated.
-///
-/// # Arguments
-///
-/// - The [`Handle`] of said [`Buffer`].
-/// - Wether the `Buffer` will be closed (happens when calling the
-///   `wq` or `waq` commands).
-pub struct BufferSaved(pub(crate) (Handle, bool));
-
-impl Hookable for BufferSaved {
-    type Input<'h> = (&'h Handle, bool);
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        (&self.0.0, self.0.1)
-    }
-}
-
-impl PartialEq<Handle> for BufferSaved {
-    fn eq(&self, other: &Handle) -> bool {
-        self.0.0 == *other
     }
 }
 
@@ -1330,4 +1353,3 @@ enum Callback<H: Hookable> {
     FnMut(Box<dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>)>),
     FnOnce(Option<Box<dyn FnOnce(&mut Pass, <H as Hookable>::Input<'_>)>>),
 }
-

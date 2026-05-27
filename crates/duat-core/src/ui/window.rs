@@ -39,7 +39,7 @@ struct InnerWindows {
     layout: Box<Mutex<dyn Layout>>,
     list: Vec<Window>,
     new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
-    cur_buffer: RwData<Handle>,
+    cur_buffer: RwData<Handle<Buffer>>,
     cur_node: RwData<Node>,
     cur_win: usize,
     buffer_history: BufferHistory,
@@ -114,7 +114,7 @@ impl Windows {
         pa: &mut Pass,
         (target, specs): (&RwArea, DynSpawnSpecs),
         widget: W,
-        callback: impl FnOnce(&mut Pass, Handle<dyn Widget>),
+        callback: impl FnOnce(&mut Pass, Handle),
     ) -> Option<Handle<W>> {
         let (win, cluster_master, master) =
             self.inner
@@ -180,7 +180,7 @@ impl Windows {
         (id, specs): (SpawnId, DynSpawnSpecs),
         widget: W,
         win: usize,
-        master: Handle<dyn Widget>,
+        master: Handle,
         is_closed: Arc<AtomicBool>,
     ) -> Handle<W> {
         let widget = RwData::new(widget);
@@ -510,7 +510,7 @@ impl Windows {
 
                 Node::from_handle(handle)
             }
-            // The Handle in question is already in its own window, so no need
+            // The Handle<Buffer> in question is already in its own window, so no need
             // to move it to another one.
             Ok((.., handle)) => Node::from_handle(handle),
             Err(_) => self.new_window(pa, Buffer::new(pk.clone(), default_buffer_opts)),
@@ -593,11 +593,15 @@ impl Windows {
     ) -> Result<usize, Text> {
         self.entries(pa)
             .find_map(|(win, node)| (node.handle() == handle).then_some(win))
-            .ok_or_else(|| txt!("The Handle was already closed"))
+            .ok_or_else(|| txt!("The Handle<Buffer> was already closed"))
     }
 
     /// An entry for a buffer with the given name.
-    pub(crate) fn buffer_entry(&self, pa: &Pass, pk: PathKind) -> Result<(usize, Handle), Text> {
+    pub(crate) fn buffer_entry(
+        &self,
+        pa: &Pass,
+        pk: PathKind,
+    ) -> Result<(usize, Handle<Buffer>), Text> {
         self.entries(pa)
             .find_map(|(win, node)| {
                 (node.read_as(pa).filter(|f: &&Buffer| f.path_kind() == pk))
@@ -607,7 +611,11 @@ impl Windows {
     }
 
     /// An entry for a buffer with the given name.
-    pub(crate) fn named_buffer_entry(&self, pa: &Pass, name: &str) -> Option<(usize, Handle)> {
+    pub(crate) fn named_buffer_entry(
+        &self,
+        pa: &Pass,
+        name: &str,
+    ) -> Option<(usize, Handle<Buffer>)> {
         self.entries(pa).find_map(|(win, node)| {
             (node.read_as(pa).filter(|f: &&Buffer| f.name() == name))
                 .and_then(|_| node.try_downcast().map(|handle| (win, handle)))
@@ -615,7 +623,11 @@ impl Windows {
     }
 
     /// An entry for a buffer with the given name.
-    pub(crate) fn path_buffer_entry(&self, pa: &Pass, path: &Path) -> Option<(usize, Handle)> {
+    pub(crate) fn path_buffer_entry(
+        &self,
+        pa: &Pass,
+        path: &Path,
+    ) -> Option<(usize, Handle<Buffer>)> {
         self.entries(pa).find_map(|(win, node)| {
             (node
                 .read_as(pa)
@@ -756,7 +768,7 @@ impl Windows {
     ///
     /// Calling this repeatedly will switch you through the [`Buffer`]
     /// switch history.
-    pub fn last_switched_buffer(&self, pa: &mut Pass) -> Result<Handle, Text> {
+    pub fn last_switched_buffer(&self, pa: &mut Pass) -> Result<Handle<Buffer>, Text> {
         let current = self.inner.read(pa).cur_buffer.read(pa).clone();
         if let Some(handle) = self.inner.write(pa).buffer_history.last(current) {
             mode::reset_to(pa, &handle);
@@ -794,7 +806,7 @@ impl Windows {
     }
 
     /// Returns an [`Iterator`] over the [`Handle`]s of Duat.
-    pub fn handles<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = Handle<dyn Widget>> + 'a {
+    pub fn handles<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = Handle> + 'a {
         self.inner
             .read(pa)
             .list
@@ -813,7 +825,7 @@ impl Windows {
     }
 
     /// Iterates over all [`Handle<Buffer>`]s in Duat.
-    pub fn buffers(&self, pa: &Pass) -> Vec<Handle> {
+    pub fn buffers(&self, pa: &Pass) -> Vec<Handle<Buffer>> {
         self.inner
             .read(pa)
             .list
@@ -828,7 +840,7 @@ impl Windows {
     }
 
     /// The [`RwData`] that points to the currently active [`Buffer`].
-    pub(crate) fn current_buffer<'a>(&'a self, pa: &'a Pass) -> &'a RwData<Handle> {
+    pub(crate) fn current_buffer<'a>(&'a self, pa: &'a Pass) -> &'a RwData<Handle<Buffer>> {
         &self.inner.read(pa).cur_buffer
     }
 
@@ -1199,7 +1211,7 @@ impl Window {
     ///
     /// If you just want an iterator over the [`Buffer`]s, then check
     /// out [`Window::buffers`].
-    pub fn handles<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = &'a Handle<dyn Widget>> {
+    pub fn handles<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = &'a Handle> {
         self.nodes(pa).map(|node| node.handle())
     }
 
@@ -1214,9 +1226,9 @@ impl Window {
     /// [`Window::handles`].
     ///
     /// [command]: crate::cmd
-    pub fn buffers(&self, pa: &Pass) -> Vec<Handle> {
+    pub fn buffers(&self, pa: &Pass) -> Vec<Handle<Buffer>> {
         let inner = self.0.read(pa);
-        let mut buffers: Vec<Handle> = inner
+        let mut buffers: Vec<Handle<Buffer>> = inner
             .nodes
             .iter()
             .filter_map(|node| node.try_downcast())
@@ -1275,13 +1287,13 @@ impl Window {
 #[derive(Default)]
 struct BufferHistory {
     current_i: usize,
-    list: Vec<Handle>,
-    last: Option<Handle>,
+    list: Vec<Handle<Buffer>>,
+    last: Option<Handle<Buffer>>,
 }
 
 impl BufferHistory {
     /// Returns the previous [`Handle`], if there is one
-    fn jump_by(&mut self, current: Handle, by: i32) -> Option<Handle> {
+    fn jump_by(&mut self, current: Handle<Buffer>, by: i32) -> Option<Handle<Buffer>> {
         let new_i = self
             .current_i
             .saturating_add_signed(by as isize)
@@ -1297,7 +1309,7 @@ impl BufferHistory {
     ///
     /// Repeatedly calling this function will return the same two
     /// [`Handle`]s.
-    fn last(&mut self, current: Handle) -> Option<Handle> {
+    fn last(&mut self, current: Handle<Buffer>) -> Option<Handle<Buffer>> {
         if let Some(last) = self.last.as_mut() {
             Some(std::mem::replace(last, current))
         } else if let Some(last) = self.list.get(self.current_i.checked_sub(1)?) {
@@ -1310,7 +1322,7 @@ impl BufferHistory {
 
     /// Inserts a new entry, but only if it is different from both of
     /// the surrounding entries
-    fn insert(&mut self, current: Handle, handle: Handle) {
+    fn insert(&mut self, current: Handle<Buffer>, handle: Handle<Buffer>) {
         if self
             .current_i
             .checked_sub(1)
@@ -1328,7 +1340,7 @@ impl BufferHistory {
 
     /// Clears all instances of a given [`Handle`], signaling that it
     /// has been closed
-    fn remove(&mut self, handle: &Handle) {
+    fn remove(&mut self, handle: &Handle<Buffer>) {
         let mut i = 0;
         self.list.retain(|other| {
             if other == handle {

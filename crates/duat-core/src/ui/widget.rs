@@ -108,11 +108,11 @@ pub trait Widget: Send + 'static {
 /// Elements related to the [`Widget`]s
 #[derive(Clone)]
 pub(crate) struct Node {
-    handle: Handle<dyn Widget>,
+    handle: Handle,
     update: Arc<dyn Fn(&mut Pass) + Send + Sync>,
     print: Arc<dyn Fn(&mut Pass) + Send + Sync>,
     on_mouse_event: Arc<dyn Fn(&mut Pass, UiMouseEvent) + Send + Sync>,
-    on_close: fn(&mut Pass, &Handle<dyn Widget>),
+    on_close: fn(&mut Pass, &Handle),
     last_printed: RwData<Option<(TextVersion, TextId)>>,
 }
 
@@ -121,7 +121,7 @@ impl Node {
     pub(crate) fn new<W: Widget>(
         widget: RwData<W>,
         area: RwArea,
-        master: Option<Handle<dyn Widget>>,
+        master: Option<Handle>,
         is_closed: Arc<AtomicBool>,
         spawn_id: Option<SpawnId>,
     ) -> Self {
@@ -249,7 +249,7 @@ impl Node {
     }
 
     /// The "parts" of this [`Node`]
-    pub(crate) fn handle(&self) -> &Handle<dyn Widget> {
+    pub(crate) fn handle(&self) -> &Handle {
         &self.handle
     }
 

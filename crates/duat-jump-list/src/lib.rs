@@ -19,7 +19,7 @@ use duat_core::{
     buffer::{Buffer, PerBuffer},
     context::Handle,
     data::Pass,
-    hook::{self, BufferOpened, BufferClosed},
+    hook::{self, BufferClosed, BufferOpened},
 };
 use gap_buf::GapBuffer;
 
@@ -86,7 +86,7 @@ impl Jump {
     /// Applies the `Jump` to the [`Selections`] of a [`Buffer`]
     ///
     /// [`Selections`]: duat_core::mode::Selections
-    pub fn apply(&self, pa: &mut Pass, buffer: &Handle) {
+    pub fn apply(&self, pa: &mut Pass, buffer: &Handle<Buffer>) {
         match self {
             Jump::Single(selection) => {
                 buffer.write(pa).remove_extra_selections();
@@ -257,7 +257,7 @@ pub trait BufferJumps {
     fn record_or_get_current_jump(&self, pa: &mut Pass, jump_list_id: JumpListId) -> JumpId;
 }
 
-impl BufferJumps for Handle {
+impl BufferJumps for Handle<Buffer> {
     fn record_jump(
         &self,
         pa: &mut Pass,
@@ -433,7 +433,7 @@ impl BufferJumps for Handle {
 }
 
 fn get_jump(
-    buffer: &Handle,
+    buffer: &Handle<Buffer>,
     pa: &mut Pass,
     jump_list_id: JumpListId,
     id: JumpId,

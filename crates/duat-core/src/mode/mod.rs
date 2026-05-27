@@ -502,7 +502,7 @@ pub struct MouseEvent<'h, W: ?Sized = dyn Widget> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ToggleEvent<'h> {
     /// The [`Handle`] where the event took place.
-    pub handle: &'h Handle<dyn Widget>,
+    pub handle: &'h Handle,
     /// The position on the [`Text`] where the mouse was.
     ///
     /// [`Text`]: crate::text::Text

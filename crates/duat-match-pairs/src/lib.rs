@@ -88,6 +88,7 @@ use std::{
 
 use duat_core::{
     Ns,
+    buffer::Buffer,
     context::Handle,
     data::Pass,
     form,
@@ -214,7 +215,7 @@ struct MatchPairsRef<'mp> {
 }
 
 impl MatchPairsRef<'_> {
-    fn update(self, pa: &mut Pass, handle: &Handle, range: Range<Point>) {
+    fn update(self, pa: &mut Pass, handle: &Handle<Buffer>, range: Range<Point>) {
         fn ends(str: &[u8]) -> impl Fn(&[&[u8]; 2]) -> bool {
             move |delims| delims.contains(&str)
         }

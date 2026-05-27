@@ -207,9 +207,10 @@ mod namespace {
 
     /// A stack of reusable [`Ns`]s.
     ///
-    /// You should use this if you want granular, single use namespacing.
-    /// This is because namespaces are backed by [`u32`]s, which
-    /// have a limit of 4.294.967.295 different elements.
+    /// You should use this if you want granular, single use
+    /// namespacing. This is because namespaces are backed by
+    /// [`u32`]s, which have a limit of 4.294.967.295 different
+    /// elements.
     ///
     /// And while this limit is very unlikely to be reached in
     /// any significant amount of time, it's nonetheless still
@@ -230,9 +231,9 @@ mod namespace {
         /// Gets a [`Ns`] that is "unused".
         ///
         /// Wether or not the `Ns` is actually unused is up to your
-        /// interpretation. If you use this struct correctly, this `Ns`
-        /// will either be a previously used `Ns` that was [given back], or
-        /// it will be a new `Ns`.
+        /// interpretation. If you use this struct correctly, this
+        /// `Ns` will either be a previously used `Ns` that
+        /// was [given back], or it will be a new `Ns`.
         ///
         /// [given back]: Self::give
         pub fn take(&self) -> Ns {
@@ -256,8 +257,9 @@ mod namespace {
         /// this `Ns`, and it can be used for other purposes.
         ///
         /// Of course, it is completely possible to call this method
-        /// while still making use of this `Ns`, but that would kind of
-        /// betray the purpose of using a `NsStack` in the first place.
+        /// while still making use of this `Ns`, but that would kind
+        /// of betray the purpose of using a `NsStack` in the
+        /// first place.
         pub fn give(&self, ns: Ns) {
             let mut list = self.0.lock().unwrap();
             if let Some(sns) = list.iter_mut().find(|sns| {
@@ -268,6 +270,12 @@ mod namespace {
             } else {
                 list.push(StackedNs::Available(ns));
             }
+        }
+    }
+
+    impl Default for NsStack {
+        fn default() -> Self {
+            Self::new()
         }
     }
 

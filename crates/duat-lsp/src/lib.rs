@@ -569,7 +569,7 @@ impl PromptMode for RenameSymbol {
                 },
                 move |pa, result| {
                     if let Some(result) = result {
-                        handle_workspace_edit(pa, result, encoding);
+                        duat_core::try_or_log_err! { handle_workspace_edit(pa, result, encoding)? };
                     }
                 },
             )
@@ -577,8 +577,13 @@ impl PromptMode for RenameSymbol {
     }
 }
 
-fn handle_workspace_edit(pa: &mut Pass, edit: WorkspaceEdit, encoding: Encoding) {
-    context::debug!("{edit:#?}");
+fn handle_workspace_edit(
+    pa: &mut Pass,
+    edit: WorkspaceEdit,
+    encoding: Encoding,
+) -> Result<(), Text> {
+    duat_core::debug!("{edit:#?}");
+
     let mut edits = if let Some(changes) = edit.document_changes {
         match changes {
             DocumentChanges::Edits(edits) => edits
@@ -594,9 +599,59 @@ fn handle_workspace_edit(pa: &mut Pass, edit: WorkspaceEdit, encoding: Encoding)
 
                 for op in ops {
                     match op {
-                        DocumentChangeOperation::Op(ResourceOp::Create(create)) => {}
-                        DocumentChangeOperation::Op(ResourceOp::Rename(rename)) => {}
-                        DocumentChangeOperation::Op(ResourceOp::Delete(delete)) => {}
+                        DocumentChangeOperation::Op(ResourceOp::Create(create)) => {
+                            let path = uri_to_path(create.uri);
+                            if let Some(opts) = create.options
+                                && opts.overwrite != Some(true)
+                                && let Some(true) = opts.ignore_if_exists
+                            {
+                                if std::fs::exists(&path)? {
+                                    context::error!("Path already exists: [buffer]{path}");
+                                } else {
+                                    std::fs::write(&path, "")?;
+                                }
+                            } else {
+                                std::fs::write(&path, "")?;
+                            }
+                        }
+                        DocumentChangeOperation::Op(ResourceOp::Rename(rename)) => {
+                            let old_path = uri_to_path(rename.old_uri);
+                            let new_path = uri_to_path(rename.new_uri);
+                            if let Some(opts) = rename.options
+                                && opts.overwrite != Some(true)
+                                && let Some(true) = opts.ignore_if_exists
+                            {
+                                if std::fs::exists(&new_path)? {
+                                    return Err(txt!("Path already exists: [buffer]{new_path}"));
+                                } else {
+                                    std::fs::rename(&old_path, &new_path)?;
+                                }
+                            } else {
+                                std::fs::rename(&old_path, &new_path)?;
+                            }
+
+                            if let Some(buffer) = context::buffer_from_path(pa, &old_path) {
+                                buffer.set_path(pa, &new_path);
+                            }
+                        }
+                        DocumentChangeOperation::Op(ResourceOp::Delete(delete)) => {
+                            let path = uri_to_path(delete.uri);
+                            if path.is_dir() {
+                                if let Some(opts) = delete.options {
+                                    if opts.recursive == Some(false)
+                                        && std::fs::read_dir(&path)?.next().is_none()
+                                    {
+                                        return Err(txt!("Directory is not empty: [buffer]{path}"));
+                                    } else if std::fs::exists(&path)? {
+                                        std::fs::remove_dir_all(path)?;
+                                    }
+                                } else {
+                                    std::fs::remove_dir_all(path)?;
+                                }
+                            } else if std::fs::exists(&path)? {
+                                std::fs::remove_file(path)?;
+                            }
+                        }
                         DocumentChangeOperation::Edit(edit) => {
                             let path = uri_to_path(edit.text_document.uri.clone());
                             let buffer = context::buffer_from_path(pa, &path);
@@ -628,7 +683,7 @@ fn handle_workspace_edit(pa: &mut Pass, edit: WorkspaceEdit, encoding: Encoding)
             })
             .collect()
     } else {
-        return;
+        return Ok(());
     };
 
     // Place the buffer changes last, so if any external changes
@@ -656,13 +711,7 @@ fn handle_workspace_edit(pa: &mut Pass, edit: WorkspaceEdit, encoding: Encoding)
 
             _ = buffer.save(pa);
         } else {
-            let mut file = match std::fs::read_to_string(&path) {
-                Ok(file) => file,
-                Err(err) => {
-                    context::error!("Couldn't read [buffer]{path}[]: {err}");
-                    return;
-                }
-            };
+            let mut file = std::fs::read_to_string(&path)?;
 
             for edit in edit.edits.into_iter().rev() {
                 let edit = match edit {
@@ -678,11 +727,11 @@ fn handle_workspace_edit(pa: &mut Pass, edit: WorkspaceEdit, encoding: Encoding)
                 }
             }
 
-            if let Err(err) = std::fs::write(&path, file) {
-                context::error!("Couldn't write [buffer]{path}[]: {err}");
-            }
+            std::fs::write(&path, file)?;
         }
     }
+
+    Ok(())
 }
 
 fn apply_edit(text: &mut TextMut, edit: TextEdit, encoding: Encoding) {

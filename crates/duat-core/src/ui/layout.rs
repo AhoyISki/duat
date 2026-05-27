@@ -17,7 +17,7 @@
 //! pub struct Spiraled;
 //!
 //! impl Layout for Spiraled {
-//!     fn new_buffer(&mut self, pa: &Pass, windows: &[Window]) -> (Handle, PushSpecs) {
+//!     fn new_buffer(&mut self, pa: &Pass, windows: &[Window]) -> (Handle<Buffer>, PushSpecs) {
 //!         let cur_win = context::current_win_index(pa);
 //!         let buffers = windows[cur_win].buffers(pa);
 //!         let last = buffers.iter().last().unwrap().clone();
@@ -39,9 +39,7 @@
 //! [`Buffer`]: crate::buffer::Buffer
 use super::PushSpecs;
 use crate::{
-    context::{self, Handle},
-    data::Pass,
-    ui::{Side, Window},
+    buffer::Buffer, context::{self, Handle}, data::Pass, ui::{Side, Window}
 };
 
 /// A form of organizing opened [`Buffer`]s
@@ -64,7 +62,7 @@ pub trait Layout: Send {
     /// [`Ok(Handle<Buffer>, PushSpecs)`]: Handle
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    fn new_buffer(&mut self, pa: &Pass, windows: &[Window]) -> (Handle, PushSpecs);
+    fn new_buffer(&mut self, pa: &Pass, windows: &[Window]) -> (Handle<Buffer>, PushSpecs);
 }
 
 /// [`Layout`]: One [`Buffer`] on the left, others on the right
@@ -77,7 +75,7 @@ pub trait Layout: Send {
 pub struct MasterOnLeft;
 
 impl Layout for MasterOnLeft {
-    fn new_buffer(&mut self, pa: &Pass, windows: &[Window]) -> (Handle, PushSpecs) {
+    fn new_buffer(&mut self, pa: &Pass, windows: &[Window]) -> (Handle<Buffer>, PushSpecs) {
         let cur_win = context::current_win_index(pa);
         let last = windows[cur_win].buffers(pa).last().unwrap().clone();
         if windows[cur_win].buffers(pa).len() == 1 {

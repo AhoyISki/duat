@@ -18,6 +18,7 @@
 use std::sync::{Arc, LazyLock, mpsc};
 
 use duat_core::{
+    buffer::Buffer,
     context::{self, DynBuffer, Handle},
     data::{Pass, RwData},
     hook::{self, BufferClosed, BufferUpdated},
@@ -325,7 +326,7 @@ impl Default for StatusLineFmt {
 
 #[derive(Clone)]
 enum BufferHandle {
-    Fixed(Handle),
+    Fixed(Handle<Buffer>),
     Dynamic(DynBuffer),
 }
 
@@ -334,6 +335,6 @@ enum StatusLineEvent {
     Closed(Handle<StatusLine>),
 }
 
-type TextFn = Box<dyn Fn(&Pass, &Handle) -> Text + Send>;
-type BuilderFn = Box<dyn Fn(&Pass, Builder, &Handle) -> Text + Send>;
+type TextFn = Box<dyn Fn(&Pass, &Handle<Buffer>) -> Text + Send>;
+type BuilderFn = Box<dyn Fn(&Pass, Builder, &Handle<Buffer>) -> Text + Send>;
 type CheckerFn = Arc<dyn Fn() -> bool + Send + Sync>;

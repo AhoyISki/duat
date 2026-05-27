@@ -10,15 +10,14 @@ use duat_core::{
     data::Pass,
     hook::{self, BufferClosed, BufferOpened, BufferSaved, BufferUpdated, ConfigUnloaded},
     storage,
-    text::TextMut,
 };
 use duat_filetype::FileType;
 use lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, DocumentFormattingParams, FormattingOptions, OneOf,
     ServerCapabilities, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentSyncCapability, TextDocumentSyncSaveOptions, TextEdit, Uri,
-    VersionedTextDocumentIdentifier, WorkDoneProgressParams,
+    TextDocumentSyncCapability, TextDocumentSyncSaveOptions, Uri, VersionedTextDocumentIdentifier,
+    WorkDoneProgressParams,
     notification::{
         DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
     },
@@ -51,7 +50,7 @@ pub trait LspBuffer {
     fn lsp_format(&self, pa: &mut Pass, server_name: Option<&str>);
 }
 
-impl LspBuffer for Handle {
+impl LspBuffer for Handle<Buffer> {
     fn lsp_format(&self, pa: &mut Pass, server_name: Option<&str>) {
         fn can_format(capabilities: &ServerCapabilities) -> bool {
             if let Some(provider) = capabilities.document_formatting_provider.as_ref()
@@ -155,7 +154,7 @@ impl Parser {
     /// for it.
     pub fn write_for<'p>(
         pa: &'p mut Pass,
-        buffer: &'p Handle,
+        buffer: &'p Handle<Buffer>,
     ) -> Option<(&'p mut Parser, &'p mut Buffer)> {
         PARSERS.write(pa, buffer)
     }
@@ -211,15 +210,11 @@ pub fn setup_hooks() {
 
             let version = text.version().strs;
 
-            let (parser, buf) = PARSERS.register(
-                pa,
-                buffer,
-                Parser {
-                    uri,
-                    servers: servers.clone(),
-                    tokens: BufferTokens::default(),
-                },
-            );
+            let (parser, buf) = PARSERS.register(pa, buffer, Parser {
+                uri,
+                servers: servers.clone(),
+                tokens: BufferTokens::default(),
+            });
 
             for server in &servers {
                 server.send_semantic_tokens_request(buffer, version, parser);
@@ -316,4 +311,3 @@ pub fn setup_hooks() {
         }
     });
 }
-

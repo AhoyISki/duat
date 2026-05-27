@@ -761,7 +761,7 @@ impl DuatMode {
 
 fn edit_or_destroy_all(
     pa: &mut Pass,
-    handle: &Handle<dyn Widget>,
+    handle: &Handle,
     failed_at_least_once: &mut bool,
     mut f: impl FnMut(&mut SelectionMut) -> Option<()> + Clone,
 ) {
@@ -1142,7 +1142,7 @@ fn escaped_str(str: impl ToString) -> String {
 
 static SEARCH: Mutex<String> = Mutex::new(String::new());
 
-fn indents(pa: &mut Pass, widget: &Handle<dyn Widget>) -> (std::vec::IntoIter<usize>, bool) {
+fn indents(pa: &mut Pass, widget: &Handle) -> (std::vec::IntoIter<usize>, bool) {
     fn prev_non_empty_line(s: &mut SelectionMut) -> Option<usize> {
         let line_start = s.text().point_at_coords(s.cursor().line(), 0);
 

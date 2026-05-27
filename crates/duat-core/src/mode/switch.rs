@@ -29,7 +29,7 @@ static DEFERRED: LazyLock<RwData<Vec<Box<dyn FnOnce(&mut Pass) + Send>>>> =
     LazyLock::new(RwData::default);
 
 type KeyFn = fn(&mut Pass, KeyEvent);
-type ResetFn = Box<dyn FnMut(&mut Pass, Handle<dyn Widget>) + Send>;
+type ResetFn = Box<dyn FnMut(&mut Pass, Handle) + Send>;
 
 /// Sets the new default mode.
 ///
@@ -43,7 +43,7 @@ type ResetFn = Box<dyn FnMut(&mut Pass, Handle<dyn Widget>) + Send>;
 ///
 /// [`mode::reset`]: reset
 /// [`Buffer`]: crate::buffer::Buffer
-pub fn set_default<M: Mode>(mut mode_fn: impl FnMut(Handle<dyn Widget>) -> M + Send + 'static) {
+pub fn set_default<M: Mode>(mut mode_fn: impl FnMut(Handle) -> M + Send + 'static) {
     *SET_DEFAULT.lock().unwrap() = Some(Box::new(move |pa, widget| {
         widget.set_as_active(pa);
         set(pa, mode_fn(widget))

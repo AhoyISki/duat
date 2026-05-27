@@ -29,7 +29,7 @@ static PARSERS: PerBuffer<Parser> = PerBuffer::new();
 pub(crate) fn add_parser_hook() {
     fn async_parse(
         pa: &mut Pass,
-        handle: &Handle,
+        handle: &Handle<Buffer>,
         printed_lines: Vec<Range<usize>>,
         is_queued: bool,
     ) -> bool {
@@ -100,20 +100,16 @@ pub(crate) fn add_parser_hook() {
             let mut parser = TsParser::new();
             parser.set_language(lang_parts.1).unwrap();
 
-            PARSERS.register(
-                pa,
-                handle,
-                Parser {
-                    parser,
-                    trees: Trees::new([Ranges::new(0..len_bytes)]),
-                    lang_parts,
-                    forms: forms_from_lang_parts(lang_parts),
-                    injections: Vec::new(),
-                    ranges_to_inject: Ranges::new(0..len_bytes),
-                    is_parsing: false,
-                    ns: Ns::new(),
-                },
-            );
+            PARSERS.register(pa, handle, Parser {
+                parser,
+                trees: Trees::new([Ranges::new(0..len_bytes)]),
+                lang_parts,
+                forms: forms_from_lang_parts(lang_parts),
+                injections: Vec::new(),
+                ranges_to_inject: Ranges::new(0..len_bytes),
+                is_parsing: false,
+                ns: Ns::new(),
+            });
 
             async_parse(pa, handle, printed_lines.clone(), false);
         }
@@ -759,7 +755,7 @@ impl Parser {
 /// Does a forced parsing of the handle
 pub(crate) fn sync_parse<'p>(
     pa: &'p mut Pass,
-    handle: &'p Handle,
+    handle: &'p Handle<Buffer>,
 ) -> Option<(&'p Parser, &'p Buffer)> {
     let printed_lines = handle.printed_line_ranges(pa);
     let visible_ranges = get_visible_ranges(&printed_lines);

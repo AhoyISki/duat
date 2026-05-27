@@ -67,7 +67,7 @@ pub fn gutter_setup() {
     hook::add::<KeyTyped>(|_, _| CURRENT.lock().unwrap().mouse_coord = None);
 }
 
-fn update(pa: &mut Pass, buffer: &Handle) {
+fn update(pa: &mut Pass, buffer: &Handle<Buffer>) {
     let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
         return;
     };
@@ -190,7 +190,7 @@ impl Gutter {
         GutterOpts::default()
     }
 
-    fn form_text(&self, pa: &Pass, buffer: &Handle) -> Text {
+    fn form_text(&self, pa: &Pass, buffer: &Handle<Buffer>) -> Text {
         let printed_line_numbers = buffer.printed_line_numbers(pa);
         let text = buffer.text(pa);
 
@@ -405,7 +405,7 @@ impl GutterOpts {
     /// placed around them.
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
-    pub fn push_on(self, pa: &mut Pass, handle: &Handle) -> Handle<Gutter> {
+    pub fn push_on(self, pa: &mut Pass, handle: &Handle<Buffer>) -> Handle<Gutter> {
         let text = Text::from(" \n".repeat(handle.text(pa).end_point().line()));
 
         handle.push_outer_widget(
@@ -726,7 +726,7 @@ pub enum GutterDisplay {
 /////////// Buffer functions related to Gutters.
 
 #[track_caller]
-pub(crate) fn remove_gutter_entries(handle: &Handle, pa: &mut Pass, ns: Ns) {
+pub(crate) fn remove_gutter_entries(handle: &Handle<Buffer>, pa: &mut Pass, ns: Ns) {
     let Some((gutter, _)) = handle.get_related::<Gutter>(pa).first().cloned() else {
         panic!("Tried to remove Gutter entries on Buffer with no Gutter");
     };
@@ -765,7 +765,7 @@ pub(crate) fn remove_gutter_entries(handle: &Handle, pa: &mut Pass, ns: Ns) {
 }
 
 pub(crate) fn add_hint(
-    handle: &Handle,
+    handle: &Handle<Buffer>,
     pa: &mut Pass,
     ns: Ns,
     range: impl TextRange,
@@ -814,7 +814,7 @@ pub(crate) fn add_hint(
 
 #[track_caller]
 pub(crate) fn add_warning(
-    handle: &Handle,
+    handle: &Handle<Buffer>,
     pa: &mut Pass,
     ns: Ns,
     range: impl TextRange,
@@ -863,7 +863,7 @@ pub(crate) fn add_warning(
 
 #[track_caller]
 pub(crate) fn add_error(
-    handle: &Handle,
+    handle: &Handle<Buffer>,
     pa: &mut Pass,
     ns: Ns,
     range: impl TextRange,
@@ -911,11 +911,11 @@ pub(crate) fn add_error(
     id
 }
 
-pub(crate) fn has_gutter(handle: &Handle, pa: &Pass) -> bool {
+pub(crate) fn has_gutter(handle: &Handle<Buffer>, pa: &Pass) -> bool {
     !handle.get_related::<Gutter>(pa).is_empty()
 }
 
-pub(crate) fn hover_gutter_entries_on(handle: &Handle, pa: &Pass, point: Point) {
+pub(crate) fn hover_gutter_entries_on(handle: &Handle<Buffer>, pa: &Pass, point: Point) {
     assert!(
         point <= handle.text(pa).end_point(),
         "{point:?} out of bounds"
@@ -1009,5 +1009,5 @@ fn inlay_column(range: Range<usize>, buf: &Buffer, area: &Area, opts: PrintOpts)
 struct Current {
     related: Vec<GutterEntryId>,
     mouse_coord: Option<Coord>,
-    hovered_point: Option<(Handle, Point)>,
+    hovered_point: Option<(Handle<Buffer>, Point)>,
 }

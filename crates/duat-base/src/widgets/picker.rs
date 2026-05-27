@@ -7,14 +7,7 @@
 use std::{any::Any, marker::PhantomData, ops::Range, path::PathBuf};
 
 use duat_core::{
-    cmd,
-    context::{self, Handle},
-    data::{Pass, RwData},
-    hook::{self, FocusedUpdated, WidgetOpened, WidgetSwitched},
-    mode,
-    opts::PrintOpts,
-    text::{Text, TextMut},
-    ui::{Coord, PushSpecs, Side, StaticSpawnSpecs, Widget},
+    buffer::Buffer, cmd, context::{self, Handle}, data::{Pass, RwData}, hook::{self, FocusedUpdated, WidgetOpened, WidgetSwitched}, mode, opts::PrintOpts, text::{Text, TextMut}, ui::{Coord, PushSpecs, Side, StaticSpawnSpecs, Widget}
 };
 use duat_term::Frame;
 
@@ -450,7 +443,7 @@ impl Widget for Preview {
 }
 
 pub enum PreviewMode {
-    BufferMirror(Handle, Range<usize>),
+    BufferMirror(Handle<Buffer>, Range<usize>),
     BufferPreview(PathBuf, Text, Range<usize>, Option<&'static str>),
     Text(Text, Range<usize>),
 }

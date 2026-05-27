@@ -8,6 +8,7 @@ use std::{
 };
 
 use duat_core::{
+    buffer::Buffer,
     context::{self, Handle},
     hook,
 };
@@ -15,14 +16,13 @@ use indoc::formatdoc;
 use libloading::Library;
 use tree_sitter::Language;
 
-use crate::TsLanguageCompiled;
-
 use self::list::LANGUAGE_OPTIONS;
+use crate::TsLanguageCompiled;
 
 static FAILED_COPILATION: LazyLock<Mutex<HashSet<&str>>> = LazyLock::new(Mutex::default);
 static COMPILATIONS: LazyLock<Mutex<HashMap<&str, Compilation>>> = LazyLock::new(Mutex::default);
 
-type Compilation = (JoinHandle<Option<ExitStatus>>, Vec<Handle>);
+type Compilation = (JoinHandle<Option<ExitStatus>>, Vec<Handle<Buffer>>);
 
 mod list;
 
@@ -30,7 +30,7 @@ mod list;
 // or something went wrong `Some(None)` means it exists, but hasn't
 // been compiled, and `Some(Some())` means it exists and has been
 // compiled.
-pub fn get_language(filetype: &str, handle: Option<&Handle>) -> Option<Language> {
+pub fn get_language(filetype: &str, handle: Option<&Handle<Buffer>>) -> Option<Language> {
     static LIBRARIES: Mutex<Vec<Library>> = Mutex::new(Vec::new());
 
     if FAILED_COPILATION.lock().unwrap().contains(filetype) {
@@ -150,7 +150,7 @@ pub fn get_language(filetype: &str, handle: Option<&Handle>) -> Option<Language>
 
             compilations.insert(
                 filetype,
-                (join_handle, handle.map(Handle::clone).into_iter().collect()),
+                (join_handle, handle.cloned().into_iter().collect()),
             );
 
             None

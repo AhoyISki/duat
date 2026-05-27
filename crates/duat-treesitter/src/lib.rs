@@ -27,7 +27,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    ops::{Range, RangeBounds},
+    ops::RangeBounds,
     path::{Path, PathBuf},
     sync::{LazyLock, Mutex},
 };
@@ -60,8 +60,9 @@ mod tree;
 /// parser hasn't been setup. However, the most likely reason for this
 /// to happen is because the parser hasn't been compiled yet.
 ///
-/// If that is the case, you can make use of the [`TsLanguageCompiled`]
-/// hook in order to trigger things when the compilation is done.
+/// If that is the case, you can make use of the
+/// [`TsLanguageCompiled`] hook in order to trigger things when the
+/// compilation is done.
 #[track_caller]
 pub fn highlight_as(text: TextMut, range: impl TextRange, lang: &str) -> bool {
     let range = range.to_range(text.len());
@@ -217,7 +218,7 @@ struct Queries<'a> {
 }
 
 #[track_caller]
-fn lang_parts_of(lang: &str, handle: Option<&Handle>) -> Option<LangParts<'static>> {
+fn lang_parts_of(lang: &str, handle: Option<&Handle<Buffer>>) -> Option<LangParts<'static>> {
     static MAPS: LazyLock<Mutex<HashMap<&str, LangParts<'static>>>> = LazyLock::new(Mutex::default);
     static FAILED_PARTS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
 
@@ -337,7 +338,7 @@ pub trait TsHandle {
     ) -> Option<Vec<usize>>;
 }
 
-impl TsHandle for Handle {
+impl TsHandle for Handle<Buffer> {
     fn get_ts_parser<'p>(&'p self, pa: &'p mut Pass) -> Option<(&'p Parser, &'p Buffer)> {
         parser::sync_parse(pa, self)
     }

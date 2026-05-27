@@ -217,53 +217,53 @@ implFromFn!(Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7);
 implFromFn!(Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, Arg8);
 
 trait StateArg {
-    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self;
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle<Buffer>) -> &'a Self;
 }
 
 impl StateArg for Buffer {
-    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle<Buffer>) -> &'a Self {
         handle.read(pa)
     }
 }
 
-impl StateArg for Handle {
-    fn get<'a>(_: &'a Pass, handle: &'a Handle) -> &'a Self {
+impl StateArg for Handle<Buffer> {
+    fn get<'a>(_: &'a Pass, handle: &'a Handle<Buffer>) -> &'a Self {
         handle
     }
 }
 
 impl StateArg for Area {
-    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle<Buffer>) -> &'a Self {
         handle.area().read(pa)
     }
 }
 
 impl StateArg for Pass {
-    fn get<'a>(pa: &'a Pass, _: &'a Handle) -> &'a Self {
+    fn get<'a>(pa: &'a Pass, _: &'a Handle<Buffer>) -> &'a Self {
         pa
     }
 }
 
 impl StateArg for Text {
-    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle<Buffer>) -> &'a Self {
         handle.text(pa)
     }
 }
 
 impl StateArg for Selections {
-    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle<Buffer>) -> &'a Self {
         handle.text(pa).selections()
     }
 }
 
 impl StateArg for Selection {
-    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle<Buffer>) -> &'a Self {
         handle.text(pa).main_sel()
     }
 }
 
 impl StateArg for Window {
-    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle<Buffer>) -> &'a Self {
         context::windows()
             .iter(pa)
             .find(|window| window.handles(pa).any(|h| h == handle))
@@ -286,5 +286,5 @@ impl<Args, T> Clone for FnArg<Args, T> {
 
 unsafe impl<Args, T> Send for FnArg<Args, T> {}
 
-type BuilderFn = Box<dyn Fn(&Pass, &mut Builder, &Handle) + Send>;
+type BuilderFn = Box<dyn Fn(&Pass, &mut Builder, &Handle<Buffer>) + Send>;
 type StateFns = (BuilderFn, CheckerFn);

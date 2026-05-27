@@ -4,6 +4,7 @@ use std::{
 };
 
 use duat_core::{
+    buffer::Buffer,
     context::{self, Handle},
     notify::Watcher,
 };
@@ -158,7 +159,12 @@ pub fn handle_notification(bridge: &ServerBridge, notification: jsonrpc_lite::No
 /// Send a request for the semantic tokens to a given server.
 impl ServerBridge {
     /// Sends a semantic token request.
-    pub fn send_semantic_tokens_request(&self, buffer: &Handle, version: u64, parser: &Parser) {
+    pub fn send_semantic_tokens_request(
+        &self,
+        buffer: &Handle<Buffer>,
+        version: u64,
+        parser: &Parser,
+    ) {
         use lsp_types::SemanticTokensServerCapabilities::*;
 
         let server_ns = self.ns();

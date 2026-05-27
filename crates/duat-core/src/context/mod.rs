@@ -33,10 +33,7 @@ mod global {
 
     use super::DynBuffer;
     use crate::{
-        context::{DuatReceiver, DuatSender, Handle},
-        data::{Pass, RwData},
-        session::DuatEvent,
-        ui::{Widget, Window, Windows},
+        buffer::Buffer, context::{DuatReceiver, DuatSender, Handle}, data::{Pass, RwData}, session::DuatEvent, ui::{Widget, Window, Windows}
     };
 
     static WINDOWS: OnceLock<&Windows> = OnceLock::new();
@@ -108,7 +105,7 @@ mod global {
         DUAT_CHANNEL.lock().unwrap().1.take().unwrap()
     }
 
-    ////////// Widget Handle getters
+    ////////// Widget Handle<Buffer> getters
 
     /// Returns a "fixed" [`Handle`] for the currently active
     /// [`Buffer`].
@@ -118,7 +115,7 @@ mod global {
     /// always points to the current Buffer, see [`dynamic_buffer`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn current_buffer(pa: &Pass) -> Handle {
+    pub fn current_buffer(pa: &Pass) -> Handle<Buffer> {
         windows().current_buffer(pa).read(pa).clone()
     }
 
@@ -142,7 +139,7 @@ mod global {
     /// Returns a [`Handle`] for a [`Buffer`] with the given name.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn buffer_from(pa: &Pass, name: impl ToString) -> Option<Handle> {
+    pub fn buffer_from(pa: &Pass, name: impl ToString) -> Option<Handle<Buffer>> {
         let (.., handle) = windows().named_buffer_entry(pa, &name.to_string())?;
         Some(handle)
     }
@@ -150,7 +147,7 @@ mod global {
     /// Returns a [`Handle`] for a [`Buffer`] with the given [`Path`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn buffer_from_path(pa: &Pass, path: &Path) -> Option<Handle> {
+    pub fn buffer_from_path(pa: &Pass, path: &Path) -> Option<Handle<Buffer>> {
         let (.., handle) = windows().path_buffer_entry(pa, path)?;
         Some(handle)
     }
@@ -174,11 +171,11 @@ mod global {
     /// Returns the current active [`Handle`].
     ///
     /// Unlike [`current_buffer`], this function will return a
-    /// [`Handle<dyn Widget>`], which means it could be any
+    /// [`Handle`], which means it could be any
     /// [`Widget`], not just a [`Buffer`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn current_widget(pa: &Pass) -> Handle<dyn Widget> {
+    pub fn current_widget(pa: &Pass) -> Handle {
         windows().current_widget(pa).read(pa).handle().clone()
     }
 
@@ -188,7 +185,7 @@ mod global {
     ///
     /// This struct gives you reading access to every `Window` in
     /// Duat with [`Windows::get`], you also get access to every
-    /// [`Handle<dyn Widget>`], including every `Handle<Buffer>`,
+    /// [`Handle`], including every `Handle<Buffer>`,
     /// through the [`Windows::handles`]  and [`Window::buffers`]
     /// function.
     pub fn windows() -> &'static Windows {
@@ -203,14 +200,14 @@ mod global {
     /// A list of all open [`Buffer`]'s [`Handle`]s.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn buffers(pa: &Pass) -> Vec<Handle> {
+    pub fn buffers(pa: &Pass) -> Vec<Handle<Buffer>> {
         windows().buffers(pa)
     }
 
     /// The current [`Window`].
     ///
     /// You can iterate through all [`Handle<Buffer>`]s and
-    /// `Handle<dyn Widget>` with [`Window::buffers`] and
+    /// `Handle` with [`Window::buffers`] and
     /// [`Window::handles`] respectively.
     ///
     /// If you wish to access other `Window`s, you can use
@@ -353,8 +350,8 @@ impl DuatReceiver {
 /// `Buffer`. It can also detect when that `Buffer` has been changed
 /// or when another `Buffer` becomes the active `Buffer`.
 pub struct DynBuffer {
-    cur_buffer: RwData<Handle>,
-    saved_buffer: RwData<Handle>,
+    cur_buffer: RwData<Handle<Buffer>>,
+    saved_buffer: RwData<Handle<Buffer>>,
 }
 
 impl DynBuffer {
@@ -384,7 +381,7 @@ impl DynBuffer {
     }
 
     /// The [`Handle<Buffer>`] currently being pointed to.
-    pub fn handle(&self) -> &Handle {
+    pub fn handle(&self) -> &Handle<Buffer> {
         // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };

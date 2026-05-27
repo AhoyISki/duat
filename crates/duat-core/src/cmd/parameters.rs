@@ -17,6 +17,7 @@ use std::{
 use crossterm::style::Color;
 
 use crate::{
+    buffer::Buffer,
     context::Handle,
     data::Pass,
     form::{self, FormId},
@@ -468,7 +469,7 @@ impl Parameter for Remainder {
 }
 implDeref!(Remainder, String);
 
-impl Parameter for Handle {
+impl Parameter for Handle<Buffer> {
     fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let buffer_name = args.next()?.value;
         if let Some(handle) = crate::context::windows()
@@ -491,11 +492,11 @@ impl Parameter for Handle {
 /// current
 ///
 /// [`Buffer`]: crate::buffer::Buffer
-pub struct OtherBuffer(pub Handle);
+pub struct OtherBuffer(pub Handle<Buffer>);
 
 impl Parameter for OtherBuffer {
     fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
-        let handle = args.next_as::<Handle>(pa)?;
+        let handle = args.next_as::<Handle<Buffer>>(pa)?;
         let cur_handle = crate::context::current_buffer(pa);
         if cur_handle == handle {
             Err(txt!("Argument can't be the current buffer"))
@@ -508,7 +509,7 @@ impl Parameter for OtherBuffer {
         txt!("[param]buffer")
     }
 }
-implDeref!(OtherBuffer, Handle);
+implDeref!(OtherBuffer, Handle<Buffer>);
 
 /// Command [`Parameter`]: A file that _could_ exist
 ///
@@ -581,7 +582,7 @@ implDeref!(ValidFilePath, PathBuf);
 #[doc(hidden)]
 pub enum PathOrBufferOrCfg {
     Path(PathBuf),
-    Buffer(Handle),
+    Buffer(Handle<Buffer>),
     Cfg,
     CfgManifest,
     Scratch,
@@ -599,7 +600,7 @@ impl Parameter for PathOrBufferOrCfg {
         let _guard = DropGuard;
 
         args.use_completions_for::<CfgOrScratch>();
-        args.use_completions_for::<Handle>();
+        args.use_completions_for::<Handle<Buffer>>();
         args.use_completions_for::<ValidFilePath>();
 
         if let Ok((cfg_or_manifest, form)) = args.next_as_with_form::<CfgOrScratch>(pa) {
@@ -608,7 +609,7 @@ impl Parameter for PathOrBufferOrCfg {
                 CfgOrScratch::Manifest => Ok((Self::CfgManifest, form)),
                 CfgOrScratch::Scratch => Ok((Self::Scratch, form)),
             }
-        } else if let Ok((handle, form)) = args.next_as_with_form::<Handle>(pa) {
+        } else if let Ok((handle, form)) = args.next_as_with_form::<Handle<Buffer>>(pa) {
             Ok((Self::Buffer(handle), form))
         } else {
             let (path, form) = args.next_as_with_form::<ValidFilePath>(pa)?;
@@ -663,7 +664,7 @@ pub enum CfgOrScratch {
     /// Represents `{duat_config}/Cargo.toml`
     Manifest,
     /// Represents a scratch buffer.
-    Scratch
+    Scratch,
 }
 
 impl Parameter for CfgOrScratch {

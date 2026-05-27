@@ -543,7 +543,7 @@ impl std::fmt::Debug for Toggle {
 /// screen.
 pub struct Spawn {
     id: SpawnId,
-    spawn_fn: Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>,
+    spawn_fn: Box<dyn FnOnce(&mut Pass, usize, Handle) + Send>,
     is_closed: Arc<AtomicBool>,
 }
 

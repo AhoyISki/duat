@@ -544,8 +544,7 @@ pub mod hooks {
         type Input<'h> = &'h T;
 
         fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-            let entry = self.0.0.downcast_ref().unwrap();
-            entry
+            self.0.0.downcast_ref().unwrap()
         }
     }
 }
@@ -638,6 +637,8 @@ fn tag_from_ast(ns: Ns, text: &mut Text, ast: &Ast) {
 
 #[doc(hidden)]
 pub mod private_exports {
-    pub use duat_core::{context::Handle, data::Pass, form, text::Builder, ui::PushSpecs};
+    pub use duat_core::{
+        buffer::Buffer, context::Handle, data::Pass, form, text::Builder, ui::PushSpecs,
+    };
     pub use format_like::format_like;
 }

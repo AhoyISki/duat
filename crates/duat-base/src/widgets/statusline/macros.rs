@@ -154,8 +154,7 @@ macro_rules! __status__ {
         #[allow(unused_imports)]
         use $crate::{
             private_exports::{
-                Handle, Pass, PushSpecs, Builder,
-                format_like
+                Handle, Pass, PushSpecs, Builder, Buffer, format_like
             },
             widgets::StatusLineFmt,
         };
@@ -163,7 +162,7 @@ macro_rules! __status__ {
         use $crate::{__parse_form__, __parse_status_part__, __parse_str__};
         use ::std::sync::Arc;
 
-        let text_fn = |_: &Pass, _: &mut Builder, _: &Handle| {};
+        let text_fn = |_: &Pass, _: &mut Builder, _: &Handle<Buffer>| {};
         let checker = || false;
 
         let (text_fn, checker) = format_like!(
@@ -175,7 +174,7 @@ macro_rules! __status__ {
 
         StatusLineFmt::new_with(
             (
-                Box::new(move |pa: &Pass, mut builder: Builder, handle: &Handle| {
+                Box::new(move |pa: &Pass, mut builder: Builder, handle: &Handle<Buffer>| {
                     builder.no_space_after_empty = true;
                     text_fn(pa, &mut builder, &handle);
                     builder.build()
@@ -191,14 +190,14 @@ macro_rules! __status__ {
 macro_rules! __parse_str__ {
     ($statusline:expr, $str:literal) => {{
         use $crate::{
-            private_exports::{Builder, Handle, Pass},
+            private_exports::{Builder, Handle, Pass, Buffer},
             widgets::State,
         };
 
         let (mut appender, checker) = $statusline;
         let (mut ap, _) = State::from($str).fns();
 
-        let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle| {
+        let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<Buffer>| {
             appender(pa, builder, handle);
             ap(pa, builder, handle);
         };
@@ -212,7 +211,7 @@ macro_rules! __parse_str__ {
 macro_rules! __parse_status_part__ {
     ($statusline:expr,"", $part:expr) => {{
         use $crate::{
-            private_exports::{Builder, Handle, Pass},
+            private_exports::{Builder, Handle, Pass, Buffer},
             widgets::State,
         };
 
@@ -222,7 +221,7 @@ macro_rules! __parse_status_part__ {
 
         let checker = move || checker() || ch();
 
-        let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle| {
+        let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<Buffer>| {
             appender(pa, builder, handle);
             ap(pa, builder, handle);
         };
@@ -231,7 +230,7 @@ macro_rules! __parse_status_part__ {
     }};
     ($statusline:expr, $modif:literal, $part:expr) => {{
         use $crate::{
-            private_exports::{Builder, Handle, Pass},
+            private_exports::{Builder, Handle, Pass, Buffer},
             widgets::State,
         };
 
@@ -240,7 +239,7 @@ macro_rules! __parse_status_part__ {
 
         let checker = move || checker() || ch();
 
-        let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle| {
+        let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<Buffer>| {
             appender(pa, builder, handle);
             ap(pa, builder, handle);
         };
@@ -253,10 +252,10 @@ macro_rules! __parse_status_part__ {
 #[doc(hidden)]
 macro_rules! __parse_form__ {
     ($statusline:expr, "",) => {{
-        use $crate::private_exports::{Handle, Pass, form, Builder};
+        use $crate::private_exports::{Handle, Pass, form, Builder, Buffer};
 
         let (appender, checker) = $statusline;
-        let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle| {
+        let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<Buffer>| {
             appender(pa, builder, handle);
             builder.push(form::DEFAULT_ID);
         };
@@ -264,12 +263,12 @@ macro_rules! __parse_form__ {
         (appender, checker)
     }};
     ($statusline:expr, "", $($form:tt)*) => {{
-        use $crate::private_exports::{Handle, Pass, form, Builder};
+        use $crate::private_exports::{Handle, Pass, form, Builder, Buffer};
 
         let (appender, checker) = $statusline;
         let id = form::id_of!(concat!($(stringify!($form)),*));
 
-        let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle| {
+        let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<Buffer>| {
             appender(pa, builder, handle);
             builder.push(id);
         };

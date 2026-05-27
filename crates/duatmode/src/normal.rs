@@ -33,13 +33,13 @@ pub struct Normal {
     sel_type: SelType,
     one_key: Option<OneKey>,
     only_one_action: bool,
-    widget: Handle<dyn Widget>,
+    widget: Handle,
 }
 
 impl Normal {
     /// Returns an instance of the [`Normal`] mode, inspired by
     /// Kakoune
-    pub fn new(widget: Handle<dyn Widget>) -> Self {
+    pub fn new(widget: Handle) -> Self {
         Normal {
             sel_type: SelType::Normal,
             one_key: None,
@@ -55,7 +55,7 @@ impl Normal {
     }
 
     /// The [`Widget`] that this `Mode` is focused on.
-    pub fn widget(&self) -> Handle<dyn Widget> {
+    pub fn widget(&self) -> Handle {
         self.widget.clone()
     }
 }
@@ -191,12 +191,9 @@ impl Mode for Normal {
             event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
             alt!('o' | 'O') => txt!("Add new line {below}"),
             event!('.') => txt!("Repeats the last [mode]Insert[] command"),
-            event!('r') => (
-                txt!("Replace range"),
-                match _ {
-                    event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
-                }
-            ),
+            event!('r') => (txt!("Replace range"), match _ {
+                event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
+            }),
             event!('`') => txt!("Lowercase the selection"),
             event!('~') => txt!("Uppercase the selection"),
             alt!('`') => txt!("Swap case of selection"),
@@ -1318,7 +1315,7 @@ pub(crate) mod jump_list {
 
     use duat_core::{
         Ns,
-        buffer::BufferId,
+        buffer::{Buffer, BufferId},
         context::{self, Handle},
         data::Pass,
         hook::{self, BufferSwitched},
@@ -1348,7 +1345,7 @@ pub(crate) mod jump_list {
     ///
     /// If an equal jump was found at most `eq_lookback` jumps
     /// back, then don't register.
-    pub fn register(pa: &mut Pass, buffer: &Handle, eq_lookback: usize) {
+    pub fn register(pa: &mut Pass, buffer: &Handle<Buffer>, eq_lookback: usize) {
         let mut jl = JUMP_LIST.lock().unwrap();
 
         let jump_id = buffer.record_or_get_current_jump(pa, *JUMPS_ID);
@@ -1370,7 +1367,7 @@ pub(crate) mod jump_list {
 
     /// Jumps by `by` jumps, which can go across [`Buffer`]s and
     /// stuff.
-    pub fn jump_by(pa: &mut Pass, buffer: &Handle, by: i32) {
+    pub fn jump_by(pa: &mut Pass, buffer: &Handle<Buffer>, by: i32) {
         let mut jl = JUMP_LIST.lock().unwrap();
 
         if jl.list.is_empty() || by == 0 {

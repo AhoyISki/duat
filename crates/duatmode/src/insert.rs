@@ -39,12 +39,12 @@ pub fn add_insert_hook() {
 #[derive(Clone)]
 pub struct Insert {
     is_completing: bool,
-    widget: Handle<dyn Widget>,
+    widget: Handle,
 }
 
 impl Insert {
     /// Enters `Insert` [`Mode`] on a specific [`Widget`].
-    pub fn new(widget: Handle<dyn Widget>) -> Self {
+    pub fn new(widget: Handle) -> Self {
         Self { is_completing: false, widget }
     }
 }
@@ -360,7 +360,7 @@ pub enum TabMode {
     VerySmart,
 }
 
-pub(crate) fn repeat_last_insert(pa: &mut Pass, widget: &Handle<dyn Widget>) {
+pub(crate) fn repeat_last_insert(pa: &mut Pass, widget: &Handle) {
     let insert_events = INSERT_EVENTS.lock().unwrap();
 
     for event in insert_events.iter() {

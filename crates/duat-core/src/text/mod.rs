@@ -990,7 +990,7 @@ impl<'t> TextMut<'t> {
         &mut self,
     ) -> Vec<(
         SpawnId,
-        Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>,
+        Box<dyn FnOnce(&mut Pass, usize, Handle) + Send>,
     )> {
         std::mem::take(&mut self.text.0.tags.spawn_fns.0)
     }

@@ -7,7 +7,7 @@ use std::{
 use duat_base::{BaseBuffer, widgets::GutterEntryId};
 use duat_core::{
     Ns,
-    buffer::Moment,
+    buffer::{Buffer, Moment},
     context::{self, Handle},
     data::Pass,
     form,
@@ -304,7 +304,7 @@ pub fn add(
 /// Adds the initial diagnostics for a [`Buffer`]
 ///
 /// [`Buffer`]: duat_core::buffer::Buffer
-pub fn add_initial(pa: &mut Pass, servers: &[Server], buffer: &Handle) {
+pub fn add_initial(pa: &mut Pass, servers: &[Server], buffer: &Handle<Buffer>) {
     let mut diagnostics = DIAGNOSTICS.lock().unwrap();
 
     let Some(uri) = path_to_uri(&buffer.read(pa).path()) else {

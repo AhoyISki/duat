@@ -9,7 +9,7 @@ use std::{ops::Range, sync::LazyLock};
 
 use duat_core::{
     Ns,
-    buffer::{Moment, PerBuffer},
+    buffer::{Buffer, Moment, PerBuffer},
     context::Handle,
     data::Pass,
     form,
@@ -21,15 +21,11 @@ static NS: LazyLock<Ns> = Ns::new_lazy();
 
 pub(crate) fn add_snippet_hook() {
     hook::add::<BufferOpened>(|pa, buffer| {
-        SNIPPETS.register(
-            pa,
-            buffer,
-            Snippets {
-                list: Vec::new(),
-                cur_snippet: 0,
-                cur_jump: 0,
-            },
-        );
+        SNIPPETS.register(pa, buffer, Snippets {
+            list: Vec::new(),
+            cur_snippet: 0,
+            cur_jump: 0,
+        });
     });
 
     hook::add::<BufferUpdated>(|pa, buffer| {
@@ -103,7 +99,11 @@ impl Snippets {
     }
 }
 
-pub(crate) fn add_snippet_jumps(buffer: &Handle, pa: &mut Pass, snippet: Vec<Vec<Range<usize>>>) {
+pub(crate) fn add_snippet_jumps(
+    buffer: &Handle<Buffer>,
+    pa: &mut Pass,
+    snippet: Vec<Vec<Range<usize>>>,
+) {
     let (snippets, buf) = if let Some((snippets, buf)) = SNIPPETS.write(pa, buffer) {
         snippets.apply_changes(buf.moment_for(*NS));
         snippets.list.push(snippet);
@@ -112,15 +112,11 @@ pub(crate) fn add_snippet_jumps(buffer: &Handle, pa: &mut Pass, snippet: Vec<Vec
         (snippets, buf)
     } else {
         buffer.write(pa).moment_for(*NS);
-        SNIPPETS.register(
-            pa,
-            buffer,
-            Snippets {
-                list: vec![snippet],
-                cur_snippet: 0,
-                cur_jump: 0,
-            },
-        )
+        SNIPPETS.register(pa, buffer, Snippets {
+            list: vec![snippet],
+            cur_snippet: 0,
+            cur_jump: 0,
+        })
     };
 
     let snippet_form = form::id_of!("snippet").to_tag(144);
@@ -141,7 +137,7 @@ pub(crate) fn add_snippet_jumps(buffer: &Handle, pa: &mut Pass, snippet: Vec<Vec
 #[track_caller]
 #[allow(clippy::single_range_in_vec_init)]
 pub(crate) fn replace_with_snippet(
-    buffer: &Handle,
+    buffer: &Handle<Buffer>,
     pa: &mut Pass,
     range: Range<usize>,
     mut snippet: String,
@@ -271,7 +267,7 @@ pub(crate) fn replace_with_snippet(
 /// Jumps on the snippets by a given amount.
 ///
 /// Returns `true` if anything happened.
-pub(crate) fn jump_snippets(buffer: &Handle, pa: &mut Pass, mut by: i32) -> bool {
+pub(crate) fn jump_snippets(buffer: &Handle<Buffer>, pa: &mut Pass, mut by: i32) -> bool {
     if let Some((snippets, _)) = SNIPPETS.write(pa, buffer)
         && !snippets.list.is_empty()
     {

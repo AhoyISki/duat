@@ -960,7 +960,7 @@ impl Drop for SpawnCell {
 pub(super) struct SpawnFns(
     pub(super)  Vec<(
         SpawnId,
-        Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>,
+        Box<dyn FnOnce(&mut Pass, usize, Handle) + Send>,
     )>,
 );
 

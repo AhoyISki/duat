@@ -182,7 +182,7 @@ pub fn add_defalt_commands() {
     );
     alias("waq!", "write-all-quit!");
 
-    add("quit", |pa: &mut Pass, buffer: Option<Handle>| {
+    add("quit", |pa: &mut Pass, buffer: Option<Handle<Buffer>>| {
         let buffer = match buffer {
             Some(buffer) => buffer,
             None => context::current_buffer(pa),
@@ -211,7 +211,7 @@ pub fn add_defalt_commands() {
     );
     alias("q", "quit");
 
-    add("quit!", |pa: &mut Pass, buffer: Option<Handle>| {
+    add("quit!", |pa: &mut Pass, buffer: Option<Handle<Buffer>>| {
         let buffer = match buffer {
             Some(buffer) => buffer,
             None => context::current_buffer(pa),
@@ -509,17 +509,20 @@ pub fn add_defalt_commands() {
         )),
     );
 
-    add("swap", |pa: &mut Pass, lhs: Handle, rhs: Option<Handle>| {
-        let rhs = rhs.unwrap_or_else(|| context::current_buffer(pa));
+    add(
+        "swap",
+        |pa: &mut Pass, lhs: Handle<Buffer>, rhs: Option<Handle<Buffer>>| {
+            let rhs = rhs.unwrap_or_else(|| context::current_buffer(pa));
 
-        context::windows().swap(pa, &lhs.to_dyn(), &rhs.to_dyn())?;
+            context::windows().swap(pa, &lhs.to_dyn(), &rhs.to_dyn())?;
 
-        Ok(Some(txt!(
-            "Swapped {} and {}",
-            lhs.read(pa).name(),
-            rhs.read(pa).name()
-        )))
-    })
+            Ok(Some(txt!(
+                "Swapped {} and {}",
+                lhs.read(pa).name(),
+                rhs.read(pa).name()
+            )))
+        },
+    )
     .doc(
         txt!("Swap the positions of two [a]Buffer[]s"),
         Some(txt!(
@@ -574,6 +577,6 @@ pub fn add_defalt_commands() {
     );
 }
 
-pub fn as_buffer_handle((.., node): (usize, &Node)) -> Option<Handle> {
+pub fn as_buffer_handle((.., node): (usize, &Node)) -> Option<Handle<Buffer>> {
     node.try_downcast()
 }
