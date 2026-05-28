@@ -486,7 +486,6 @@ use duat_core::{
     form, hook,
     mode::{self, KeyEvent, SelectionMut, alt, event},
     opts::PrintOpts,
-    ui::Widget,
     utils::Memoized,
 };
 use duat_jump_list::JumpList;

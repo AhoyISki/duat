@@ -7,7 +7,15 @@
 use std::{any::Any, marker::PhantomData, ops::Range, path::PathBuf};
 
 use duat_core::{
-    buffer::Buffer, cmd, context::{self, Handle}, data::{Pass, RwData}, hook::{self, FocusedUpdated, WidgetOpened, WidgetSwitched}, mode, opts::PrintOpts, text::{Text, TextMut}, ui::{Coord, PushSpecs, Side, StaticSpawnSpecs, Widget}
+    buffer::Buffer,
+    cmd,
+    context::{self, Handle},
+    data::{Pass, RwData},
+    hook::{self, FocusedUpdated, WidgetOpened, WidgetSwitched},
+    mode,
+    opts::PrintOpts,
+    text::{Text, TextMut},
+    ui::{Coord, PushSpecs, Side, StaticSpawnSpecs, Widget},
 };
 use duat_term::Frame;
 
@@ -29,7 +37,11 @@ pub(crate) fn picker_setup() {
             let mut text = preview.text_mut(pa);
 
             duat_core::try_or_log_err! {
-                let file = std::fs::OpenOptions::new().write(true).create(true).open(&path)?;
+                let file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .create(true)
+                    .open(&path)?;
                 text.save_on(file)?;
             }
 
@@ -242,7 +254,11 @@ impl Picker {
                     buffer.edit_main(pa, |mut s| s.move_to(range.clone()));
                 } else {
                     duat_core::try_or_log_err! {
-                        let file = std::fs::OpenOptions::new().write(true).create(true).open(&path)?;
+                        let file = std::fs::OpenOptions::new()
+                            .write(true)
+                            .truncate(true)
+                            .create(true)
+                            .open(&path)?;
                         text.save_on(file)?;
                     };
 

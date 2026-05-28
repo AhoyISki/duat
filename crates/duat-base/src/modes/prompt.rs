@@ -40,7 +40,7 @@ use duat_core::{
     hook::{self, ModeSwitched},
     mode::{self, KeyEvent, event, shift},
     text::{Inlay, Text, txt},
-    ui::{RwArea, Widget},
+    ui::RwArea,
 };
 
 use crate::widgets::{CommandsCompletions, Completions, PromptLine};

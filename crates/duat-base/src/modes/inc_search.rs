@@ -15,7 +15,7 @@ use duat_core::{
     data::Pass,
     form, hook,
     text::{Text, txt},
-    ui::{PrintInfo, RwArea, Widget},
+    ui::{PrintInfo, RwArea},
 };
 
 use crate::{
@@ -68,7 +68,7 @@ impl<I: IncSearcher> Clone for IncSearch<I> {
 
 impl<I: IncSearcher> IncSearch<I> {
     /// Returns a [`Prompt`] with `IncSearch<I>` as its
-    /// [`PromptMode`], for a specific [`Widget`].
+    /// [`PromptMode`].
     #[allow(clippy::new_ret_no_self)]
     pub fn new(inc: I, widget: Handle) -> Prompt {
         Prompt::new(Self {

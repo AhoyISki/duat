@@ -2,7 +2,13 @@ use std::sync::{Mutex, atomic::Ordering};
 
 use duat_base::{BaseBuffer, widgets::Completions};
 use duat_core::{
-    Ns, buffer::Buffer, context::{self, Handle}, data::Pass, hook::{self, BufferSwitched, ModeSwitched}, mode::{self, KeyEvent, KeyMod, Mode, SelectionMut, alt, ctrl, event, shift}, text::Mask, ui::Widget
+    Ns,
+    buffer::Buffer,
+    context::{self, Handle},
+    data::Pass,
+    hook::{self, BufferSwitched, ModeSwitched},
+    mode::{self, KeyEvent, KeyMod, Mode, SelectionMut, alt, ctrl, event, shift},
+    text::Mask,
 };
 use duat_filetype::{AutoPrefix, FileType};
 
@@ -44,6 +50,8 @@ pub struct Insert {
 
 impl Insert {
     /// Enters `Insert` [`Mode`] on a specific [`Widget`].
+    ///
+    /// [`Widget`]: duat_core::ui::Widget
     pub fn new(widget: Handle) -> Self {
         Self { is_completing: false, widget }
     }

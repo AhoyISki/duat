@@ -95,7 +95,7 @@ use crate::{
         tags::{FwdTags, InnerTags, RevTags},
         utils::implPartialEq,
     },
-    ui::{SpawnId, Widget},
+    ui::SpawnId,
 };
 pub use crate::{
     text::{
@@ -251,6 +251,7 @@ impl Text {
     /// widget, you can check out [`Text::as_mut_with_strs_mutation`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
+    /// [`Widget::text_mut`]: crate::ui::Widget::text_mut
     pub fn as_mut(&mut self) -> TextMut<'_> {
         TextMut {
             text: self,
@@ -269,6 +270,8 @@ impl Text {
     /// Use this if you want users to be able to change the `Strs` of
     /// your [`Widget`]. Most of the time, you won't want to do that,
     /// so you should use `Text::as_mut` instead.
+    ///
+    /// [`Widget`]: crate::ui::Widget
     pub fn as_mut_with_strs_mutation(&mut self) -> TextMut<'_> {
         TextMut {
             text: self,
@@ -786,6 +789,7 @@ impl std::ops::Deref for Text {
 /// outside.
 ///
 /// [`Buffer`]: crate::buffer::Buffer
+/// [`Widget::text_mut`]: crate::ui::Widget::text_mut
 #[derive(Debug)]
 pub struct TextMut<'t> {
     text: &'t mut Text,
@@ -848,6 +852,8 @@ impl<'t> TextMut<'t> {
     /// This function simply tells you wether or not you are allowed
     /// to call `replace_range`. If you aren't allowed, calling that
     /// function will result in a warning sent to the logs.
+    ///
+    /// [`Widget::text_mut`]: crate::ui::Widget::text_mut
     pub fn can_replace_range(&self) -> bool {
         self.allow_mutation
     }
@@ -988,10 +994,7 @@ impl<'t> TextMut<'t> {
     /// [`Widget`]: crate::ui::Widget
     pub(crate) fn get_widget_spawns(
         &mut self,
-    ) -> Vec<(
-        SpawnId,
-        Box<dyn FnOnce(&mut Pass, usize, Handle) + Send>,
-    )> {
+    ) -> Vec<(SpawnId, Box<dyn FnOnce(&mut Pass, usize, Handle) + Send>)> {
         std::mem::take(&mut self.text.0.tags.spawn_fns.0)
     }
 

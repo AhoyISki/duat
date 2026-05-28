@@ -11,9 +11,9 @@ use duat_base::{
     widgets::FilePlace,
 };
 use duat_core::{
+    Ns,
     buffer::Buffer,
-    cmd,
-    context,
+    cmd, context,
     data::Pass,
     form::{self, Form},
     mode::{self, KeyEvent, Mode, User, event},
@@ -60,6 +60,8 @@ impl DuatLsp {
 
         form::set_weak("picker.lsp.buffer", Form::mimic("buffer"));
         form::set_weak("picker.lsp.line", Form::mimic("comment"));
+
+        form::set_weak("rename.error", Form::mimic("default.error"));
 
         parser::setup_hooks();
 
@@ -521,7 +523,17 @@ struct RenameSymbol {
 }
 
 impl PromptMode for RenameSymbol {
-    fn update(&mut self, _: &mut Pass, text: Text, _: &RwArea) -> Text {
+    fn update(&mut self, _: &mut Pass, mut text: Text, _: &RwArea) -> Text {
+        static NS: std::sync::LazyLock<Ns> = Ns::new_lazy();
+        
+        text.remove_tags(*NS, ..);
+
+        if text.matches_pat(self.chars_regex).unwrap() {
+            text.insert_tag(*NS, .., form::id_of!("rename.info").to_tag(0));
+        } else {
+            text.insert_tag(*NS, .., form::id_of!("rename.error").to_tag(0));
+        }
+
         text
     }
 
@@ -670,7 +682,7 @@ fn handle_workspace_edit(
                             }
                         }
                         DocumentChangeOperation::Edit(edit) => {
-                            apply_edit(pa, edit);
+                            apply_edit(pa, edit)?;
                         }
                     }
                 }
@@ -683,7 +695,7 @@ fn handle_workspace_edit(
                 edits: edits.into_iter().map(OneOf::Left).collect(),
             };
 
-            apply_edit(pa, edit);
+            apply_edit(pa, edit)?;
         }
     } else {
         return Ok(());

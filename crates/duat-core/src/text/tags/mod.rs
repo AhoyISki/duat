@@ -30,7 +30,7 @@ use crate::{
         shift_list::{Shift, ShiftList, Shiftable},
         tags::{bounds::Bounds, extents::NsExtents},
     },
-    ui::{SpawnId, Widget},
+    ui::SpawnId,
     utils::get_range,
 };
 
@@ -958,10 +958,7 @@ impl Drop for SpawnCell {
 }
 
 pub(super) struct SpawnFns(
-    pub(super)  Vec<(
-        SpawnId,
-        Box<dyn FnOnce(&mut Pass, usize, Handle) + Send>,
-    )>,
+    pub(super) Vec<(SpawnId, Box<dyn FnOnce(&mut Pass, usize, Handle) + Send>)>,
 );
 
 /// SAFETY: The function are only ever used when there's access to a

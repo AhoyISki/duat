@@ -87,6 +87,7 @@ impl Server {
     ///
     /// This request will be handled immediately, as opposed to
     /// queued for execution with a [`Pass`].
+    #[allow(unused)]
     pub fn send_sync_request<R: Request + 'static>(&self, params: R::Params) -> R::Result {
         self.bridge.send_sync_request::<R>(params)
     }

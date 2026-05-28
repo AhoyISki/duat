@@ -509,6 +509,7 @@ fn method_id(method_name: &str) -> Option<Id> {
 type JsonRpcFn = Box<dyn FnOnce() -> std::io::Result<JsonRpc> + Send>;
 type Callbacks = Arc<Mutex<HashMap<Id, Callback>>>;
 
+#[allow(unused, clippy::type_complexity)]
 enum Callback {
     Queued(Box<dyn FnOnce(&mut Pass, Value) + Send + 'static>),
     Immediate(Box<dyn FnOnce(Value) + Send + 'static>),

@@ -3,7 +3,6 @@ use duat_core::{
     context::Handle,
     data::Pass,
     text::{Text, txt},
-    ui::Widget,
 };
 
 /// Selects matches from within every selection

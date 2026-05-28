@@ -14,7 +14,6 @@ use duat_core::{
     mode::{self, Bindings, KeyEvent, KeyMod, Mode, VPoint, alt, ctrl, event, shift},
     opts::PrintOpts,
     text::{Strs, txt},
-    ui::Widget,
 };
 use duat_filetype::{AutoPrefix, FileType};
 use duat_jump_list::{BufferJumps, JumpListId};
@@ -55,6 +54,8 @@ impl Normal {
     }
 
     /// The [`Widget`] that this `Mode` is focused on.
+    ///
+    /// [`Widget`]: duat_core::ui::Widget
     pub fn widget(&self) -> Handle {
         self.widget.clone()
     }
