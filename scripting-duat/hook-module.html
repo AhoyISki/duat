@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-b45fa158.js";
+            window.path_to_searchindex_js = "../searchindex-3b2ed81f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-261cd8e4.js"></script>
@@ -201,7 +201,7 @@ fn setup(opts: &amp;mut Opts) {
 
     // Handle is an alias for Handle&lt;Buffer&gt; and is frequently
     // seen in various hooks.
-    hook::add::&lt;BufferOpened&gt;(|pa, buffer: &amp;Handle| {
+    hook::add::&lt;BufferOpened&gt;(|pa, buffer: &amp;Handle&lt;Buffer&gt;| {
         let buf = buffer.write(pa);
         match buf.filetype() {
             Some("rust" | "cpp") =&gt; {
@@ -246,21 +246,21 @@ fn setup(opts: &amp;mut Opts) {
 You do that by implementing the <code>Hookable</code> trait on a type:</p>
 <pre><code class="language-rust">use duat::prelude::*;
 
-struct OnIdle(Handle);
+struct OnIdle(Handle&lt;Buffer&gt;);
 
 impl Hookable for OnIdle {
     // The Input type is the value available when calling `hook::add`
-    type Input&lt;'h&gt; = &amp;'h Handle;
+    type Input&lt;'h&gt; = &amp;'h Handle&lt;Buffer&gt;;
 
     fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
         &amp;self.0
     }
 }</code></pre>
 <p>Then, you decide when to <code>trigger</code> said hook:</p>
-<pre><code class="language-rust"><span class="boring">struct OnIdle(Handle);
+<pre><code class="language-rust"><span class="boring">struct OnIdle(Handle&lt;Buffer&gt;);
 </span><span class="boring">
 </span><span class="boring">impl Hookable for OnIdle {
-</span><span class="boring">    type Input&lt;'h&gt; = &amp;'h Handle;
+</span><span class="boring">    type Input&lt;'h&gt; = &amp;'h Handle&lt;Buffer&gt;;
 </span><span class="boring">
 </span><span class="boring">    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
 </span><span class="boring">        &amp;self.0
@@ -298,10 +298,10 @@ fn setup_hook() {
     });
 }</code></pre>
 <p>Then, the user can just add their own hooks, which will be called accordingly:</p>
-<pre><code class="language-rust"><span class="boring">struct OnIdle(Handle);
+<pre><code class="language-rust"><span class="boring">struct OnIdle(Handle&lt;Buffer&gt;);
 </span><span class="boring">
 </span><span class="boring">impl Hookable for OnIdle {
-</span><span class="boring">    type Input&lt;'h&gt; = &amp;'h Handle;
+</span><span class="boring">    type Input&lt;'h&gt; = &amp;'h Handle&lt;Buffer&gt;;
 </span><span class="boring">
 </span><span class="boring">    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
 </span><span class="boring">        &amp;self.0
