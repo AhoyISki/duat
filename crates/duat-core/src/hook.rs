@@ -12,7 +12,7 @@
 //! use duat::prelude::*;
 //!
 //! fn setup() {
-//!     hook::add::<BufferOpened>(|pa: &mut Pass, handle: &Handle| {
+//!     hook::add::<BufferOpened>(|pa: &mut Pass, handle: &Handle<Buffer>| {
 //!         let buffer = handle.write(pa);
 //!         if let Some("lisp") = buffer.filetype() {
 //!             buffer.opts.wrap_lines = true;

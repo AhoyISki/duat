@@ -218,7 +218,11 @@ struct Queries<'a> {
 }
 
 #[track_caller]
-fn lang_parts_of(lang: &str, handle: Option<&Handle<Buffer>>) -> Option<LangParts<'static>> {
+fn lang_parts_of(
+    lang: &str,
+    handle: Option<&Handle<Buffer>>,
+    is_manual: bool,
+) -> Option<LangParts<'static>> {
     static MAPS: LazyLock<Mutex<HashMap<&str, LangParts<'static>>>> = LazyLock::new(Mutex::default);
     static FAILED_PARTS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
 
@@ -229,7 +233,8 @@ fn lang_parts_of(lang: &str, handle: Option<&Handle<Buffer>>) -> Option<LangPart
     } else if FAILED_PARTS.lock().unwrap().contains(lang) {
         None
     } else {
-        let language: &'static Language = Box::leak(Box::new(get_language(lang, handle)?));
+        let language: &'static Language =
+            Box::leak(Box::new(get_language(lang, handle, is_manual)?));
 
         let get_queries = || -> Result<_, QueryFromPathError> {
             let highlights = query_from_path(lang, "highlights", language)?;

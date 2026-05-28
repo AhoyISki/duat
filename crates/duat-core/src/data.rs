@@ -196,7 +196,7 @@ impl<T> RwData<T> {
     ///
     /// struct MyWidget {
     ///     text: Text,
-    ///     buf: Handle,
+    ///     buf: Handle<Buffer>,
     /// }
     ///
     /// fn add_mywidget_hooks() {
@@ -227,8 +227,8 @@ impl<T> RwData<T> {
     ///
     /// struct MyWidget {
     ///     text: Text,
-    ///     buf1: Handle,
-    ///     buf2: Handle,
+    ///     buf1: Handle<Buffer>,
+    ///     buf2: Handle<Buffer>,
     /// }
     ///
     /// fn add_mywidget_hooks() {
@@ -863,7 +863,7 @@ impl Pass {
     ///
     /// fn setup() {
     ///     let (num1, num2) = (RwData::new(0), RwData::new(0));
-    ///     hook::add::<BufferOpened>(move |pa, handle: &Handle| {
+    ///     hook::add::<BufferOpened>(move |pa, handle: &Handle<Buffer>| {
     ///         let (num1, num2, buf) = pa.write_many((&num1, &num2, handle));
     ///         // Rest of the function writes to all of them at the same time.
     ///     });
@@ -889,7 +889,7 @@ impl Pass {
     ///     let num1 = RwData::new(0);
     ///     // num2 is now a clone of num1
     ///     let num2 = num1.clone();
-    ///     hook::add::<BufferOpened>(move |pa, handle: &Handle| {
+    ///     hook::add::<BufferOpened>(move |pa, handle: &Handle<Buffer>| {
     ///         let (num1, num2, buf) = pa.write_many((&num1, &num2, handle));
     ///         // Rest of the function writes to all of them at the same time.
     ///     });

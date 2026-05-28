@@ -30,7 +30,7 @@ mod list;
 // or something went wrong `Some(None)` means it exists, but hasn't
 // been compiled, and `Some(Some())` means it exists and has been
 // compiled.
-pub fn get_language(filetype: &str, handle: Option<&Handle<Buffer>>) -> Option<Language> {
+pub fn get_language(filetype: &str, handle: Option<&Handle<Buffer>>, is_manual: bool) -> Option<Language> {
     static LIBRARIES: Mutex<Vec<Library>> = Mutex::new(Vec::new());
 
     if FAILED_COPILATION.lock().unwrap().contains(filetype) {
@@ -39,9 +39,7 @@ pub fn get_language(filetype: &str, handle: Option<&Handle<Buffer>>) -> Option<L
 
     let parsers_dir = get_parsers_dir()?;
     let Some((filetype, options)) = LANGUAGE_OPTIONS.get_key_value(filetype) else {
-        // If the handle is None, it means this is manual Text parsing,
-        // which means a warning is warranted for a non existant language.
-        if handle.is_none() {
+        if is_manual {
             context::warn!("The filetype [a]{filetype}[] has no tree-sitter parser");
         }
         return None;
@@ -117,7 +115,7 @@ pub fn get_language(filetype: &str, handle: Option<&Handle<Buffer>>) -> Option<L
                         .arg(manifest_path)
                         .output();
 
-                    get_language(filetype, handle)
+                    get_language(filetype, handle, is_manual)
                 }
                 _ => fail(),
             }
@@ -206,7 +204,7 @@ pub fn get_language(filetype: &str, handle: Option<&Handle<Buffer>>) -> Option<L
         fs::write(manifest_path, cargo_toml).ok()?;
         fs::write(crate_dir.join("src/lib.rs"), lib_rs).ok()?;
 
-        get_language(filetype, handle)
+        get_language(filetype, handle, is_manual)
     }
 }
 

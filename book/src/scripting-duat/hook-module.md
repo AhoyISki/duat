@@ -22,7 +22,7 @@ fn setup(opts: &mut Opts) {
 
     // Handle is an alias for Handle<Buffer> and is frequently
     // seen in various hooks.
-    hook::add::<BufferOpened>(|pa, buffer: &Handle| {
+    hook::add::<BufferOpened>(|pa, buffer: &Handle<Buffer>| {
         let buf = buffer.write(pa);
         match buf.filetype() {
             Some("rust" | "cpp") => {
@@ -72,11 +72,11 @@ You do that by implementing the `Hookable` trait on a type:
 ```rust
 use duat::prelude::*;
 
-struct OnIdle(Handle);
+struct OnIdle(Handle<Buffer>);
 
 impl Hookable for OnIdle {
     // The Input type is the value available when calling `hook::add`
-    type Input<'h> = &'h Handle;
+    type Input<'h> = &'h Handle<Buffer>;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &self.0
@@ -87,10 +87,10 @@ impl Hookable for OnIdle {
 Then, you decide when to `trigger` said hook:
 
 ```rust
-# struct OnIdle(Handle);
+# struct OnIdle(Handle<Buffer>);
 #
 # impl Hookable for OnIdle {
-#     type Input<'h> = &'h Handle;
+#     type Input<'h> = &'h Handle<Buffer>;
 #
 #     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
 #         &self.0
@@ -132,10 +132,10 @@ fn setup_hook() {
 Then, the user can just add their own hooks, which will be called accordingly:
 
 ```rust
-# struct OnIdle(Handle);
+# struct OnIdle(Handle<Buffer>);
 #
 # impl Hookable for OnIdle {
-#     type Input<'h> = &'h Handle;
+#     type Input<'h> = &'h Handle<Buffer>;
 #
 #     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
 #         &self.0

@@ -81,7 +81,7 @@ mod switch;
 ///     mode::set(pa, mode::RunCommands::new_with("frobnificate "));
 /// });
 ///
-/// cmd::add("frobnificate", |pa: &mut Pass, buf: Handle| {
+/// cmd::add("frobnificate", |pa: &mut Pass, buf: Handle<Buffer>| {
 ///     // Do stuff
 ///     Ok(None)
 /// });

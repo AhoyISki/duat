@@ -94,22 +94,26 @@ pub(crate) fn add_parser_hook() {
             return;
         };
 
-        if let Some(lang_parts) = lang_parts_of(filetype, Some(handle)) {
+        if let Some(lang_parts) = lang_parts_of(filetype, Some(handle), false) {
             let len_bytes = handle.text(pa).len();
 
             let mut parser = TsParser::new();
             parser.set_language(lang_parts.1).unwrap();
 
-            PARSERS.register(pa, handle, Parser {
-                parser,
-                trees: Trees::new([Ranges::new(0..len_bytes)]),
-                lang_parts,
-                forms: forms_from_lang_parts(lang_parts),
-                injections: Vec::new(),
-                ranges_to_inject: Ranges::new(0..len_bytes),
-                is_parsing: false,
-                ns: Ns::new(),
-            });
+            PARSERS.register(
+                pa,
+                handle,
+                Parser {
+                    parser,
+                    trees: Trees::new([Ranges::new(0..len_bytes)]),
+                    lang_parts,
+                    forms: forms_from_lang_parts(lang_parts),
+                    injections: Vec::new(),
+                    ranges_to_inject: Ranges::new(0..len_bytes),
+                    is_parsing: false,
+                    ns: Ns::new(),
+                },
+            );
 
             async_parse(pa, handle, printed_lines.clone(), false);
         }
@@ -366,7 +370,7 @@ impl Parser {
                     continue;
                 };
 
-                let Some(mut lang_parts) = lang_parts_of(&filetype, None) else {
+                let Some(mut lang_parts) = lang_parts_of(&filetype, None, false) else {
                     defered_ranges.push(cap_range);
                     continue;
                 };
@@ -771,7 +775,7 @@ pub(crate) fn sync_parse<'p>(
 }
 
 pub(crate) fn parse_text(lang: &str, text: &Text, range: Range<usize>) -> Option<Parser> {
-    let lang_parts = lang_parts_of(lang, None)?;
+    let lang_parts = lang_parts_of(lang, None, true)?;
 
     let mut parser = TsParser::new();
     parser.set_language(lang_parts.1).unwrap();

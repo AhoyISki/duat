@@ -14,8 +14,10 @@ and whenever you borrow it normally, you get non mutable access to said state:
 use duat::prelude::*;
 
 // As a shorthand, you should use `pa` as the variable's name.
-// You don't need to write the types of `pa` and `handle`, they're
-// just here for tutorial reasons.
+// In closures, you don't need* to write the types of `pa` and `handle`,
+// they're just here for tutorial reasons.
+// There are three exceptions here, when calling `map`, `alias` or
+// `cmd::add`, you will need to write either `&mut Pass` or `&mut _`.
 hook::add::<BufferOpened>(|pa: &mut Pass, handle: &Handle<Buffer>| {
     // This function will mutably borrow the `Pass`, preventing other
     // uses of it, thus following Rust's mutability XOR aliasing rule.
@@ -28,7 +30,7 @@ hook::add::<BufferOpened>(|pa: &mut Pass, handle: &Handle<Buffer>| {
     // This function will immutably borrow the `Pass`, which means you
     // can do other immutable borrows, letting you have as many
     // immutable references as you want.
-    // Note that all function available from an immutable borrow are also
+    // Note that all functions available from an immutable borrow are also
     // available with a mutable one.
     let buf: &Buffer = handle.read(pa);
 
@@ -42,7 +44,7 @@ hook::add::<BufferOpened>(|pa: &mut Pass, handle: &Handle<Buffer>| {
     // one (`&Buffer`).
     // buf_mut.opts.scrolloff.y = 5;
 
-    // The context module will have all the types representing duat's state
+    // The context module will have all the types representing duat's state.
     // This function retrieves `Handle`s to all `Buffer`s in duat.
     let mut other_buffers = context::buffers(pa);
     other_buffers.retain(|other| other != handle);
@@ -60,7 +62,7 @@ second one is the immutable borrow, which can coexist with any number of other
 immutable references.
 
 These two borrows govern all of the configuration of duat, and they can only
-bedone on the main thread, given the non `Send` nature of `&Pass` and `&mut
+be done on the main thread, given the non `Send` nature of `&Pass` and `&mut
 Pass`. Additionally, you won't always have a `&mut Pass`. In some APIs, you
 only get access to a `&Pass`, which grants only reading access to global state,
 making for APIs that are harder to mess up.
@@ -76,11 +78,11 @@ making for APIs that are harder to mess up.
 
 Above, you saw a `Handle<Buffer>`. This is a handle to a `Widget` of type
 `Buffer`. You can have a `Handle<W>` for any widget of type `W`, which lets you
-change them, including the `Text` that they display.
+modify them, including the `Text` that they display.
 
 Internally, a `Handle<W>` is backed by two datatypes, an `RwData<W>` and a
-`RwArea`. The `RwData` type is duat's global state primitive, every kind of
-global access will eventually go through an `RwData`.
+`RwArea`. The `RwData` type is duat's global state primitive, most global
+access will eventually go through an `RwData`.
 
 ### The `RwData` type
 
@@ -113,7 +115,6 @@ fn setup(opts: &mut Opts) {
         };
 
         // And one copy for the `StatusLine`.
-        // This is done so the `StatusLine` updates automatically.
         let value = value_clone.clone();
         status!("{name_txt} {value_changed}{value}{Spacer}{main_txt}")
     });
@@ -184,9 +185,8 @@ A `Handle<W: Widget>` is a wrapper over two types:
 This type is responsible for displaying everything on screen, by taking the
 `&Text` out ofevery widget and printing it on their respective `RwArea`s.
 
-The most common `Handle` you will encounter is the `Handle<Buffer>`,
-shorthanded to just `Handle`. You are able to freely modify it whenever you
-have access to an `&mut Pass`:
+The most common `Handle` you will encounter is the `Handle<Buffer>`. You
+are able to freely modify it whenever you have access to a `&mut Pass`:
 
 ```rust
 use duat::prelude::*;
@@ -227,7 +227,7 @@ fn setup(opts: &mut Opts) {
     });
 }
 
-fn cursors_on_screen(pa: &Pass, handle: &Handle) -> Text {
+fn cursors_on_screen(pa: &Pass, handle: &Handle<Buffer>) -> Text {
     /// In order to get the range of the `Text` that is on screen,
     /// you need both the `Buffer` and the `RwArea` at the same time.
     let range = handle.full_printed_range(pa);
@@ -235,6 +235,41 @@ fn cursors_on_screen(pa: &Pass, handle: &Handle) -> Text {
     let total = handle.selections(pa).iter_within(range).count();
 
     txt!("On screen[separator]:[] [coord]{total}")
+}
+```
+
+## Multiple simultaneous writes
+
+One limitation that you might have perceived up to this point is that you can't
+write to two `RwData`-like structures at the same time, since they would both
+need to borrow from the `&mut Pass`, breaking Rust's aliasing XOR mutability
+rule.
+
+There is however, one way to do this, which is through the `Pass:write_many`
+method. This method takes in a group of `RwData`-like structures and gets
+mutable references to _all_ of them at the same time.
+
+```rust
+use duat::prelude::*;
+
+fn test(pa: &mut Pass, arr: [&RwData<u32>; 2], buffer: &Handle<Buffer>) {
+    // You can pass in any tuple (up to 12 elements) or any array
+    // of `RwData`-like structures and this function will give you a
+    // mutable reference to all of them.
+    let ([l0, l1], buf): ([&mut u32; 2], &mut Buffer) = pa.write_many((arr, buffer));
+
+    let trouble = [arr[0], arr[0]];
+    // Note here that I'm writing to the same variable twice.
+    // Instead of returning two mutable references to the same value, this
+    // call will just panic, returning control to Duat and cancelling
+    // whatever you were doing.
+    let [oops0, oops1] = pa.write_many(trouble);
+
+    // If you think this might happen, you can call this instead.
+    let handled = pa.try_write_many(trouble);
+
+    // This function will return `None` in the case of failure.
+    assert!(handled.is_none());
 }
 ```
 
@@ -275,13 +310,72 @@ If required, you can also access the unerased version of the `Area` by calling
 returns `Some(area)` if the area is actually of type `A` (i.e., duat was
 compiled with that `RawArea`'s `RawUi`).
 
+```rust,ignore
+// By default, duat is compiled with the `term-ui` feature, which
+// makes use of `duat-term` to provide a `RawUi` implementation.
+use duat::{prelude::*, term::{Area, Frame}};
+
+fn add_frame(pa: &mut Pass, handle: &Handle<impl Widget>) {
+    if let Some(term_area) = handle.area().write_as::<Area>(pa) {
+        // For now, adding a frame to a floating widget is not a
+        // `RawUi` agnostic feature, so we have to check if we're
+        // making use of `duat-term`.
+        let frame = Frame {
+            above: true,
+            below: true,
+            left: true,
+            right: true,
+            ..Default::default()
+        };
+
+        term_area.set_frame(frame);
+    }
+}
+```
+
+### Writing to the `RwArea` and `Text` at once
+
+Sometimes, you may want to write to the `Text` and the `Area` at the same time.
+It's not possible to do this normally, since you'd have to call `Handle::text_mut`
+and `RwArea::write` at the same time, and both methods require a `&mut Pass`.
+
+The solution for that is a method called `Handle::write_text_and_area`, which
+takes a `&mut Pass` and returns the `TextMut` and `&mut Area`, letting you edit
+them at the same time.
+
+```rust
+use duat::prelude::*;
+
+// Note: `Handle` is an abbreviation for `Handle<dyn Widget>`.
+fn test(pa: &mut Pass, handle: &Handle) {
+    let popts = handle.opts(pa);
+    let (mut text, area) = handle.write_text_and_area(pa);
+    // Doing operations with both the `TextMut` and `&mut Area`.
+}
+```
+
+If you want to do more complex writes, i.e. writing to more objects than just
+the `Text` and `RwArea`, you can call `Handle::rw_text`. This will give you
+a `RwText`, which when passed as an argument of a `Pass::write_many`, will
+give you a `TextMut`.
+
+```rust
+use duat::prelude::*;
+
+fn test(pa: &mut Pass, buffer: &Handle<Buffer>, widget: &Handle) {
+    let (buf, mut text) = pa.write_many((buffer, widget.rw_text()));
+    // Doing operations with both the `&mut Buffer` and `TextMut`.
+}
+```
+
 ### `DataMap` and `MutDataMap`
 
 On the earlier example which shows wether a value has changed, you might have
 thought that the code looked a little awkward, since we had to put two objects
 on the `StatusLine` just to get it to update properly.
 
-Well, there is actually an existing solution to that, which can be achieved by calling the `RwData::map` function:
+Well, there is actually an existing solution to that, which can be achieved
+by calling the `RwData::map` function:
 
 ```rust
 use duat::prelude::*;
@@ -328,38 +422,60 @@ value, and is created through `RwData::map_mut`.
 ### `BulkDataWriter` for parallelism
 
 One problem with all of the previously mentioned types is that, in order to
-write to them, you _need_ to have a `&mut Pass` with you. Since this type can
-only be accessed from the main thread, you _cannot_ update values from other
-threads.
+write to them, you _need_ to have a `&mut Pass` with you. And since this type
+can only be accessed from the main thread, you _cannot_ update values from
+other threads.
 
-This type does not change that fact, however, it lets you "push" updating
-functions via the `BulkDataWriter::mutate` method. This method, which
-doesn'ttake a `Pass`, will send an `impl FnOnce` function to update the inner
-value,and the next time someone tries to call `BulkDataWriter::write`, which
-does takea `Pass`, that function will be called and will update the value
-before returning the `&mut T.
+One workaround for this is to call `context::queue`, which takes in a
+`impl FnOnce(&mut Pass)`, and runs that on the main thread asynchronously.
+However, doing that will only update the value _after_ the current program
+loop iteration is finished:
 
-This makes it possible to update a value from another thread:
+```text
+|           main thread          |          other          |
+|                                |                         |
+|--------------------------------|-------------------------|
+|     Handling current event,    |   Won't update right    |
+|     using `&mut Pass`.         |   away, sends a function|
+|                                |   to update later       |
+|     \\ Data is written without |                         |
+|     \\ receiving the updates   |   context::queue(|pa| { |
+|     data.write(pa);            |       data.write(pa);   |
+|                                |   });                   |
+|     Handling `context::queue`, |                         |
+|     which updates `data`.      |                         |
+|--------------------------------|-------------------------|
+```
+
+In this case, Duat would have to wait until the `context::queue` is handled
+until it actually updates the `data`. For most things, this is fine, but if
+you want to update things right away, then `BulkDataWriter` is what you're
+looking for.
+
+This type also doesn't write right away, however, it lets you "push"
+updating functions via the `BulkDataWriter::mutate` method. This method,
+which doesn't take a `Pass`, will send an `impl FnOnce` function to update
+the inner value, and the next time someone tries to call
+`BulkDataWriter::write`, which does take a `Pass`, that function will be
+called and will update the value before returning the `&mut T.
+
+This makes it possible to update a value from another thread in a more
+responsive way:
 
 ```rust
 use duat::{data::BulkDataWriter, prelude::*};
 use std::{sync::atomic::{AtomicBool, Ordering}, time::Duration};
 
-// You will mostly want this type to be a static variable
+// You will almost always want this type to be a static variable
 static DATA: BulkDataWriter<Duration> = BulkDataWriter::new();
-static QUITTING: AtomicBool = AtomicBool::new(false);
 
 fn setup(opts: &mut Opts) {
     std::thread::spawn(|| {
         let one_sec = Duration::from_secs(1);
-        while !QUITTING.load(Ordering::Relaxed) {
+        loop {
             std::thread::sleep(one_sec);
             DATA.mutate(move |value| *value += one_sec);
         }
-    });
-
-    hook::add::<ConfigUnloaded>(|_, _| {
-        QUITTING.store(true, Ordering::Relaxed);
     });
 
     cmd::add("uptime", |pa: &mut Pass| {
@@ -377,40 +493,5 @@ other functions that need access to the list of commands.
 
 Another API that makes use of this is the one backing the `map` and `alias`
 functions.
-
-## Multiple simultaneous writes
-
-One limitation that you might have perceived up to this point is that you can't
-write to two `RwData`-like structures at the same time, since they would both
-need to borrow from the `&mut Pass`, breaking Rust's aliasing XOR mutability
-rule.
-
-There is, however, one way to do this, which is through the `Pass:write_many`
-method. This method takes in a group of `RwData`-like structures and gets
-mutable references to _all_ of them at the same time.
-
-```rust
-use duat::prelude::*;
-
-fn test(pa: &mut Pass, lhs: [&RwData<u32>; 2], rhs: &RwData<u32>) {
-    // You can pass in any tuple (up to 12 elements) or any array
-    // of `RwData`-like structures and this function will give you a
-    // mutable reference to all of them.
-    let ([l0, l1], r): ([&mut u32; 2], &mut u32) = pa.write_many((lhs, rhs));
-
-    let trouble = [lhs[0], lhs[0]];
-    // Note here that I'm writing to the same variable twice.
-    // Instead of returning two mutable references to the same value, this
-    // call will just panic, returning control to Duat and cancelling
-    // whatever you were doing.
-    let [oops0, oops1] = pa.write_many(trouble);
-
-    // If you think this might happen, you can call this instead.
-    let handled = pa.try_write_many(trouble);
-
-    // This function will return `None` in the case of failure.
-    assert!(handled.is_none());
-}
-```
 
 [type erased]: https://en.wikipedia.org/wiki/Type_erasure
