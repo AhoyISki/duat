@@ -5,13 +5,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use duat_base::{
-    BaseBuffer,
-    modes::{Prompt, PromptMode},
-    widgets::FilePlace,
-};
+use duat_base::{BaseBuffer, modes::Prompt, widgets::FilePlace};
 use duat_core::{
-    Ns,
     buffer::Buffer,
     cmd, context,
     data::Pass,
@@ -19,21 +14,23 @@ use duat_core::{
     mode::{self, KeyEvent, Mode, User, event},
     text::{Point, RegexHaystack, Strs, Text, TextMut},
     txt,
-    ui::{RwArea, Widget},
+    ui::Widget,
 };
 use lsp_types::{
-    DocumentChangeOperation, DocumentChanges, GotoDefinitionParams, GotoDefinitionResponse,
-    HoverParams, OneOf, OptionalVersionedTextDocumentIdentifier, Position, ReferenceContext,
-    ReferenceParams, RenameParams, ResourceOp, ServerCapabilities, TextDocumentEdit,
-    TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, TypeDefinitionProviderCapability,
-    Uri, WorkDoneProgressParams, WorkspaceEdit,
-    request::{GotoDefinition, GotoTypeDefinition, HoverRequest, References, Rename},
+    CodeActionContext, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
+    CodeActionTriggerKind, DocumentChangeOperation, DocumentChanges, GotoDefinitionParams,
+    GotoDefinitionResponse, HoverParams, OneOf, OptionalVersionedTextDocumentIdentifier,
+    PartialResultParams, Position, ReferenceContext, ReferenceParams, ResourceOp,
+    ServerCapabilities, TextDocumentEdit, TextDocumentIdentifier, TextDocumentPositionParams,
+    TextEdit, TypeDefinitionProviderCapability, Uri, WorkDoneProgressParams, WorkspaceEdit,
+    request::{CodeActionRequest, GotoDefinition, GotoTypeDefinition, HoverRequest, References},
 };
 
+use crate::parser::diagnostics;
 pub use crate::parser::{LspBuffer, LspCompletions};
-use crate::server::Server;
 
 mod config;
+mod modes;
 mod parser;
 mod server;
 
@@ -57,6 +54,8 @@ impl DuatLsp {
 
         form::set_weak("completion.lsp.detail", Form::mimic("comment"));
         form::set_weak("completion.lsp.kind", Form::mimic("function"));
+        form::set_weak("completion.lsp.command", Form::mimic("function"));
+        form::set_weak("completion.lsp.detail.source", Form::mimic("comment"));
 
         form::set_weak("picker.lsp.buffer", Form::mimic("buffer"));
         form::set_weak("picker.lsp.line", Form::mimic("comment"));
@@ -64,6 +63,7 @@ impl DuatLsp {
         form::set_weak("rename.error", Form::mimic("default.error"));
 
         parser::setup_hooks();
+        modes::setup_hooks();
 
         mode::map::<User>("l", |pa: &mut _| mode::set(pa, Lsp)).doc(txt!("Enter [mode]Lsp[] mode"));
     }
@@ -80,6 +80,7 @@ impl Mode for Lsp {
             event!('d') => txt!("Go to definition"),
             event!('y') => txt!("Go to type definition"),
             event!('r') => txt!("Go to references"),
+            event!('a') => txt!("List code actions"),
             event!('R') => txt!("Rename symbol"),
         })
     }
@@ -197,6 +198,53 @@ impl Mode for Lsp {
                     },
                 );
             }
+            event!('a') => {
+                for server in servers {
+                    let Some(capabilities) = &server.capabilities() else {
+                        continue;
+                    };
+
+                    let encoding = Encoding::new(capabilities);
+                    let text = buf.text();
+                    let start = encoding.pos_from_point(text, buf.text().main_sel().start_point());
+                    let end = encoding.pos_from_point(text, buf.text().main_sel().end_point(text));
+
+                    let can_resolve = match &capabilities.code_action_provider {
+                        Some(CodeActionProviderCapability::Simple(false)) | None => continue,
+                        Some(CodeActionProviderCapability::Options(options)) => {
+                            options.resolve_provider == Some(true)
+                        }
+                        Some(CodeActionProviderCapability::Simple(true)) => false,
+                    };
+
+                    server::Server::send_request::<CodeActionRequest>(&server, CodeActionParams {
+                            text_document: TextDocumentIdentifier { uri: uri.clone() },
+                            range: lsp_types::Range { start, end },
+                            context: CodeActionContext {
+                                diagnostics: diagnostics::get_for(buf, &server),
+                                only: None,
+                                trigger_kind: Some(CodeActionTriggerKind::INVOKED),
+                            },
+                            work_done_progress_params: WorkDoneProgressParams::default(),
+                            partial_result_params: PartialResultParams::default(),
+                        }, {
+                            let server = server.clone();
+                            move |pa, result| {
+                                if let Some(result) = result
+                                    && !result.is_empty()
+                                {
+                                    modes::DoCodeAction::set_or_add(
+                                        pa,
+                                        server,
+                                        can_resolve,
+                                        encoding,
+                                        result,
+                                    );
+                                }
+                            }
+                        });
+                }
+            }
             event!('R')
                 if let Some((server, encoding, ..)) = get!(
                     |cap| &cap.rename_provider,
@@ -223,12 +271,12 @@ impl Mode for Lsp {
                     mode::set(
                         pa,
                         Prompt::new_with(
-                            RenameSymbol {
+                            modes::RenameSymbol::new(
+                                server.clone(),
                                 doc_pos,
-                                chars_regex: popts.word_chars_regex(),
-                                server: server.clone(),
+                                popts.word_chars_regex(),
                                 encoding,
-                            },
+                            ),
                             placeholder,
                         ),
                     );
@@ -299,7 +347,7 @@ fn uri_to_path(uri: Uri) -> PathBuf {
 }
 
 /// An encoding for text positions.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 enum Encoding {
     Utf8,
     #[default]
@@ -515,63 +563,11 @@ fn doc_pos(buf: &Buffer, uri: Uri, encoding: Encoding) -> TextDocumentPositionPa
     }
 }
 
-struct RenameSymbol {
-    server: Server,
-    doc_pos: TextDocumentPositionParams,
-    chars_regex: &'static str,
-    encoding: Encoding,
-}
-
-impl PromptMode for RenameSymbol {
-    fn update(&mut self, _: &mut Pass, mut text: Text, _: &RwArea) -> Text {
-        static NS: std::sync::LazyLock<Ns> = Ns::new_lazy();
-        
-        text.remove_tags(*NS, ..);
-
-        if text.matches_pat(self.chars_regex).unwrap() {
-            text.insert_tag(*NS, .., form::id_of!("rename.info").to_tag(0));
-        } else {
-            text.insert_tag(*NS, .., form::id_of!("rename.error").to_tag(0));
-        }
-
-        text
-    }
-
-    fn prompt(&self) -> Text {
-        txt!("[prompt]rename-symbol")
-    }
-
-    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &RwArea) {
-        let mut new_name = text.to_string();
-        new_name.truncate(new_name.trim_end().len());
-
-        if new_name.is_empty() {
-            context::error!("Name can't be empty");
-        } else {
-            let encoding = self.encoding;
-            self.server.send_request::<Rename>(
-                RenameParams {
-                    new_name,
-                    text_document_position: self.doc_pos.clone(),
-                    work_done_progress_params: WorkDoneProgressParams::default(),
-                },
-                move |pa, result| {
-                    if let Some(result) = result {
-                        duat_core::try_or_log_err! { handle_workspace_edit(pa, result, encoding)? };
-                    }
-                },
-            )
-        }
-    }
-}
-
 fn handle_workspace_edit(
     pa: &mut Pass,
     edit: WorkspaceEdit,
     encoding: Encoding,
 ) -> Result<(), Text> {
-    duat_core::debug!("{edit:#?}");
-
     let apply_edit = |pa: &mut Pass, mut edit: TextDocumentEdit| {
         let path = uri_to_path(edit.text_document.uri.clone());
         let buffer = context::buffer_from_path(pa, &path);

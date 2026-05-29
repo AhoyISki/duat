@@ -116,6 +116,25 @@ static DIAGNOSTICS: LazyLock<Mutex<Diagnostics>> = LazyLock::new(|| {
     Mutex::new(storage::get_if(|_| true).unwrap_or_default())
 });
 
+/// Returns the `Diagnostics` for a given [`Buffer`] and [`Server`]
+pub fn get_for(buffer: &Buffer, server: &Server) -> Vec<Diagnostic> {
+    let diagnostics = DIAGNOSTICS.lock().unwrap();
+
+    if let Some(lists) = diagnostics.0.get(&server.ns())
+        && let Some(uri) = path_to_uri(&buffer.path())
+        && let Some(list) = lists.1.get(&uri)
+    {
+        list.iter()
+            .filter_map(|entry| match entry {
+                Entry::Diagnostic(_, diagnostic, _) => Some(diagnostic.clone()),
+                Entry::Related(..) => None,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    }
+}
+
 /// Handles a list of diagnostics.
 pub fn add(
     pa: &mut Pass,

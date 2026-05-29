@@ -19,10 +19,18 @@ use std::{
 };
 
 use duat_core::{
-    Ns, buffer::Buffer, cmd::{
+    Ns,
+    buffer::Buffer,
+    cmd::{
         CfgOrScratch, ColorSchemeArg, Existing, OtherBuffer, Parameter, ReloadOptions,
         ValidFilePath,
-    }, context::{self, Handle}, data::{Pass, RwData}, hook::{self, BufferUpdated, KeySent, OnMouseEvent, WidgetOpened, WidgetSwitched}, mode::{KeyCode, MouseEventKind, event}, text::{Point, Spawn, Text, TextMut, txt}, ui::{Area, DynSpawnSpecs, Orientation, Side, Widget}
+    },
+    context::{self, Handle},
+    data::{Pass, RwData},
+    hook::{self, BufferUpdated, KeySent, OnMouseEvent, WidgetOpened, WidgetSwitched},
+    mode::{KeyCode, MouseEventKind, event},
+    text::{Point, Spawn, Text, TextMut, txt},
+    ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
 };
 use duat_term::Frame;
 
@@ -31,7 +39,7 @@ pub use crate::widgets::completions::{
     words::WordCompletions,
 };
 use crate::{
-    hooks::{CompletionSelected, CompletionFocused},
+    hooks::{CompletionFocused, CompletionSelected},
     widgets::Info,
 };
 
@@ -119,7 +127,7 @@ pub fn completions_setup() {
                     return;
                 }
 
-                if let event!(KeyCode::Char(..)) = key_event
+                if let event!(KeyCode::Char(..) | KeyCode::Esc | KeyCode::Enter) = key_event
                     && let Some((_, entry)) = completions.write(pa).current_entry.take()
                 {
                     hook::trigger(pa, CompletionSelected(entry));
@@ -455,7 +463,7 @@ impl Completions {
             .write(pa)
             .providers
             .iter_mut()
-            .find_map(|provider| provider.as_any().downcast_mut::<InnerProvider<P>>())
+            .find_map(|provider| provider.as_any_mut().downcast_mut::<InnerProvider<P>>())
         {
             update(&mut inner.provider, &mut inner.matches);
             inner.has_changed = true;
@@ -467,6 +475,19 @@ impl Completions {
                 Completions::set_frame(pa, &completions);
             }
         }
+    }
+
+    /// Wether the `Completions` that is open has a given provider.
+    pub fn has_provider<P: CompletionsProvider>(pa: &Pass) -> bool {
+        let Some(completions) = context::handle_of::<Completions>(pa) else {
+            return false;
+        };
+
+        completions
+            .read(pa)
+            .providers
+            .iter()
+            .any(|provider| provider.as_any().is::<InnerProvider<P>>())
     }
 
     #[track_caller]
@@ -852,7 +873,9 @@ trait ErasedInnerProvider: Any + Send {
     #[allow(clippy::type_complexity)]
     fn start_fn(&self) -> Box<dyn Fn(&Text, Point) -> usize + '_>;
 
-    fn as_any(&mut self) -> &mut dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+
+    fn as_any(&self) -> &dyn Any;
 }
 
 #[allow(clippy::type_complexity)]
@@ -1079,7 +1102,11 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         })
     }
 
-    fn as_any(&mut self) -> &mut dyn Any {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any(&self) -> &dyn Any {
         self
     }
 }

@@ -6,7 +6,7 @@ FOR NEXT UPDATE:
   [x] Formatting.
   [x] Caching.
   [x] Rename.
-  [ ] Actions.
+  [x] Actions.
 [x] Snippet support.
 [ ] More work on the Gutter.
   [x] Diferentiate hovering, cursoring, related and default display.
