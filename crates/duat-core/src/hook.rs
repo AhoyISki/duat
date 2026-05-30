@@ -1191,7 +1191,7 @@ pub trait Hookable: Sized + 'static {
 #[derive(Clone, Copy)]
 struct InnerHooks {
     types: &'static Mutex<HashMap<TypeId, Box<dyn HookHolder>>>,
-    namespaces: &'static Mutex<Vec<Ns>>,
+    namespaces: &'static Mutex<Vec<(usize, Ns)>>,
 }
 
 impl InnerHooks {
@@ -1207,8 +1207,10 @@ impl InnerHooks {
 
         if let Some(ns) = ns {
             let mut namespaces = self.namespaces.lock().unwrap();
-            if !namespaces.contains(&ns) {
-                namespaces.push(ns)
+            if let Some((count, _)) = namespaces.iter_mut().find(|(_, other)| other == &ns) {
+                *count += 1;
+            } else {
+                namespaces.push((1, ns))
             }
         }
 
@@ -1236,7 +1238,10 @@ impl InnerHooks {
 
     /// Removes hooks with said group.
     fn remove(&self, ns: Ns) {
-        self.namespaces.lock().unwrap().retain(|g| *g != ns);
+        self.namespaces
+            .lock()
+            .unwrap()
+            .retain(|(_, other)| *other != ns);
         let map = self.types.lock().unwrap();
         for holder in map.iter() {
             holder.1.remove(ns)
@@ -1279,10 +1284,30 @@ impl InnerHooks {
                 }
                 Callback::FnOnce(fn_once) => {
                     catch_panic(|| fn_once.take().unwrap()(pa, input));
+                    if let Some(hook_ns) = hook.ns {
+                        let mut namespaces = self.namespaces.lock().unwrap();
+                        namespaces.retain_mut(|(count, ns)| {
+                            if *ns == hook_ns {
+                                if *count > 1 {
+                                    *count -= 1;
+                                    true
+                                } else {
+                                    false
+                                }
+                            } else {
+                                true
+                            }
+                        });
+                    }
                     false
                 }
             }
         });
+
+        hooks_of
+            .0
+            .borrow_mut()
+            .retain(|hook| !matches!(hook.ns, Some(ns) if !self.group_exists(ns)));
 
         let mut types = self.types.lock().unwrap();
         if let Some(new_holder) = types.remove(&TypeId::of::<H>()) {
@@ -1310,7 +1335,11 @@ impl InnerHooks {
 
     /// Checks if a hook group exists.
     fn group_exists(&self, ns: Ns) -> bool {
-        self.namespaces.lock().unwrap().contains(&ns)
+        self.namespaces
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(_, other)| *other == ns)
     }
 }
 

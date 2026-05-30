@@ -1040,7 +1040,7 @@ impl TwoWaySearcher {
             let tail_byte = match get_byte(self.position + needle_last) {
                 Some(b) => b,
                 None => {
-                    self.position = haystack.len();
+                    self.position = haystack[0].len() + haystack[1].len();
                     return S::rejecting(old_pos, self.position);
                 }
             };

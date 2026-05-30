@@ -137,7 +137,7 @@ pub fn reset_to(pa: &mut Pass, widget: &Handle<impl Widget + ?Sized>) {
         } {
             set_default(pa, node.handle().clone());
         } else {
-            context::error!("Tried setting a [a]closed[] Handle as active");
+            reset::<Buffer>(pa);
         }
     } else {
         panic!("No default mode set");

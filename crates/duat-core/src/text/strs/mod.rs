@@ -434,6 +434,7 @@ impl Strs {
     /// Returns `false` if `index` is greater than `self.len()`.
     pub fn is_char_boundary(&self, index: usize) -> bool {
         let [s0, s1] = self.to_array();
+
         if index > s0.len() {
             s1.is_char_boundary(index - s0.len())
         } else if index < s0.len() {

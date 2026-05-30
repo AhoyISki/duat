@@ -416,12 +416,16 @@ impl ReloadedBuffer {
         let (buf, selections, path_kind) = if let Some(path) = path {
             let canon_path = path.canonicalize();
             if let Ok(path) = &canon_path
-                && let Ok(buffer) = std::fs::read_to_string(path)
+                && let Ok(mut buffer) = std::fs::read_to_string(path)
             {
                 let selections = {
                     let selection = cache::load(path).unwrap_or_default();
                     Selections::new(selection)
                 };
+                if !buffer.ends_with("\n") {
+                    buffer.push('\n');
+                }
+
                 (
                     StrsBuf::new(buffer),
                     selections,
@@ -432,20 +436,20 @@ impl ReloadedBuffer {
             {
                 canon_path.push(path.file_name().unwrap());
                 (
-                    StrsBuf::new("".to_string()),
+                    StrsBuf::new("\n".to_string()),
                     Selections::new(Selection::default()),
                     PathKind::SetAbsent(canon_path),
                 )
             } else {
                 (
-                    StrsBuf::new("".to_string()),
+                    StrsBuf::new("\n".to_string()),
                     Selections::new(Selection::default()),
                     PathKind::new_unset(),
                 )
             }
         } else {
             (
-                StrsBuf::new("".to_string()),
+                StrsBuf::new("\n".to_string()),
                 Selections::new(Selection::default()),
                 PathKind::new_unset(),
             )

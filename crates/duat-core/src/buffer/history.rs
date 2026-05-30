@@ -911,7 +911,6 @@ impl RangesToUpdate {
     /// [`Handle::printed_line_ranges`]: crate::context::Handle::printed_line_ranges
     /// [`intersecting`]: Self::intersecting
     /// [`select_from`]: Self::select_from
-    #[track_caller]
     pub fn add_ranges(&self, to_add: impl IntoIterator<Item = impl TextRange>) -> bool {
         let mut ranges = self.list.lock().unwrap();
         let (ranges, buf_len) = &mut *ranges;
