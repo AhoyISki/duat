@@ -24,48 +24,44 @@ impl OneKey {
     /// Sends a key to this "[`Mode`]"
     ///
     /// [`Mode`]: duat_core::mode::Mode
-    pub(crate) fn send_key(
-        &self,
-        pa: &mut Pass,
-        event: KeyEvent,
-        handle: &Handle,
-    ) -> (SelType, bool) {
+    pub(crate) fn send_key(&self, pa: &mut Pass, event: KeyEvent) -> (SelType, bool) {
         let just_char = just_char(event);
+        let widget = context::current_widget(pa);
 
         match (*self, just_char) {
-            (OneKey::GoTo(st), _) => (match_goto(pa, handle, event, st), false),
+            (OneKey::GoTo(st), _) => (match_goto(pa, &widget, event, st), false),
             (OneKey::Find(nth, st, ss) | OneKey::Until(nth, st, ss), Some(char)) => {
                 let is_t = matches!(*self, OneKey::Until(..));
-                match_find_until(pa, handle, char, nth, is_t, st);
+                match_find_until(pa, &widget, char, nth, is_t, st);
                 if ss {
                     *SEARCH.lock().unwrap() = char.to_string();
                 }
                 (SelType::Normal, true)
             }
             (OneKey::Surrounding(nth, is_inside), _) => {
-                match_bounds(pa, handle, event, nth, is_inside, Bounds::Both);
+                match_bounds(pa, &widget, event, nth, is_inside, Bounds::Both);
                 (SelType::Normal, true)
             }
             (OneKey::ToNext(nth, is_inside, set_anchor), _) => {
                 if set_anchor {
-                    handle.edit_all(pa, |mut s| s.set_anchor());
+                    widget.edit_all(pa, |mut s| s.set_anchor());
                 } else {
-                    handle.edit_all(pa, |mut s| _ = s.set_anchor_if_needed());
+                    widget.edit_all(pa, |mut s| _ = s.set_anchor_if_needed());
                 }
-                match_bounds(pa, handle, event, nth, is_inside, Bounds::Ahead);
+                match_bounds(pa, &widget, event, nth, is_inside, Bounds::Ahead);
                 (SelType::Normal, true)
             }
             (OneKey::ToPrevious(nth, is_inside, set_anchor), _) => {
                 if set_anchor {
-                    handle.edit_all(pa, |mut s| s.set_anchor());
+                    widget.edit_all(pa, |mut s| s.set_anchor());
                 } else {
-                    handle.edit_all(pa, |mut s| _ = s.set_anchor_if_needed());
+                    widget.edit_all(pa, |mut s| _ = s.set_anchor_if_needed());
                 }
-                match_bounds(pa, handle, event, nth, is_inside, Bounds::Behind);
+                match_bounds(pa, &widget, event, nth, is_inside, Bounds::Behind);
                 (SelType::Normal, true)
             }
             (OneKey::Replace, Some(char)) => {
-                handle.edit_all(pa, |mut s| {
+                widget.edit_all(pa, |mut s| {
                     let anchor_didnt_exist = s.set_anchor_if_needed();
                     let len = s.selection().chars().count();
                     s.replace(char.to_string().repeat(len));
@@ -198,17 +194,16 @@ fn match_bounds(
         edit_or_destroy_all(pa, handle, &mut failed, |s| {
             match bounds {
                 Bounds::Ahead => {
-                    let p = object.find_ahead(s, nth, is_inside)?;
-                    s.move_to(p.saturating_sub(1));
+                    let (_, p) = object.find(s, nth, is_inside);
+                    s.move_to(p?.saturating_sub(1));
                 }
                 Bounds::Behind => {
-                    let p = object.find_behind(s, nth, is_inside)?;
-                    s.move_to(p);
+                    let (p, _) = object.find(s, nth, is_inside);
+                    s.move_to(p?);
                 }
                 Bounds::Both => {
-                    let start = object.find_behind(s, nth, is_inside)?;
-                    let end = object.find_ahead(s, nth, is_inside)?;
-                    s.move_to(start..end);
+                    let (start, end) = object.find(s, nth, is_inside);
+                    s.move_to(start?..end?);
                 }
             };
             Some(())

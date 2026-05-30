@@ -27,23 +27,53 @@ use crate::{
     select_to_end_of_line, set_anchor_if_needed,
 };
 
+/// `duatmode`'s `Normal` mode.
+///
+/// This is the equivalent of Vim/Kakoune/Helix's `Normal` modes,
+/// but with its own quirks.
+///
+/// One way to think about it is that, if Helix is supposed to
+/// be an inbetween of Kakoune and Vim, then Duat is supposed to
+/// be an inbetween of Kakoune and Helix, that is, it's closer
+/// to Kakoune, but with some inspiration and goals taken from Helix.
+///
+/// The biggest divergence from Helix here is that there is no
+/// visual mode. It was a decision that I didn't really agree with
+/// and it was my primary reasoning for not using Helix.
+///
+/// However, it came in for a valid reason, which was that people
+/// didn't want to do so much `alt + shift`, which was par for the
+/// course in Kakoune.
+///
+/// Duat chooses a different way to handle that, while trying not
+/// to break the great orthogonality that Kakoune has by not having
+/// a visual mode.
+///
+/// It does this by having more keys do simpler things, and by having
+/// more keys be "composite". For example, in Kakoune, `)` shifts the
+/// main selection, while `<a-)>` shifts the contents. To prevent the
+/// `alt + shift`, Duat uses the composite sequences `)s` and `)c`
+/// respectively.
+///
+/// This compositeness is only used for less common and more niche
+/// commands, and not all `alt + shift` instances are completely
+/// removed, but you should end up typing `alt + shift` a whole lot
+/// less by default.
 #[derive(Clone)]
 pub struct Normal {
     sel_type: SelType,
     one_key: Option<OneKey>,
     only_one_action: bool,
-    widget: Handle,
 }
 
 impl Normal {
     /// Returns an instance of the [`Normal`] mode, inspired by
     /// Kakoune
-    pub fn new(widget: Handle) -> Self {
+    pub fn new() -> Self {
         Normal {
             sel_type: SelType::Normal,
             one_key: None,
             only_one_action: false,
-            widget,
         }
     }
 
@@ -51,13 +81,6 @@ impl Normal {
     /// mode
     pub(crate) fn only_one_action(self) -> Self {
         Self { only_one_action: true, ..self }
-    }
-
-    /// The [`Widget`] that this `Mode` is focused on.
-    ///
-    /// [`Widget`]: duat_core::ui::Widget
-    pub fn widget(&self) -> Handle {
-        self.widget.clone()
     }
 }
 
@@ -192,9 +215,12 @@ impl Mode for Normal {
             event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
             alt!('o' | 'O') => txt!("Add new line {below}"),
             event!('.') => txt!("Repeats the last [mode]Insert[] command"),
-            event!('r') => (txt!("Replace range"), match _ {
-                event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
-            }),
+            event!('r') => (
+                txt!("Replace range"),
+                match _ {
+                    event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
+                }
+            ),
             event!('`') => txt!("Lowercase the selection"),
             event!('~') => txt!("Uppercase the selection"),
             alt!('`') => txt!("Swap case of selection"),
@@ -255,7 +281,7 @@ impl Mode for Normal {
 
         use mode::KeyCode::*;
 
-        let widget = &self.widget;
+        let widget = context::current_widget(pa);
         let popts = widget.opts(pa);
         let opts = crate::opts::get();
 
@@ -275,7 +301,7 @@ impl Mode for Normal {
         widget.text_mut(pa).new_moment();
 
         if let Some(one_key) = self.one_key.take() {
-            let (sel_type, succeeded) = one_key.send_key(pa, key_event, widget);
+            let (sel_type, succeeded) = one_key.send_key(pa, key_event);
             self.sel_type = sel_type;
             if self.only_one_action {
                 mode::set(pa, crate::Insert::new(widget.clone()));
@@ -331,7 +357,7 @@ impl Mode for Normal {
                         }
                     });
                 }
-                let (mut indents, is_ts_indent) = crate::indents(pa, widget);
+                let (mut indents, is_ts_indent) = crate::indents(pa, &widget);
                 if is_ts_indent {
                     widget.edit_all(pa, |mut s| _ = reindent(0, indents.next().unwrap(), &mut s));
                 }
@@ -359,7 +385,7 @@ impl Mode for Normal {
                         }
                     });
                 }
-                let (mut indents, is_ts_indent) = crate::indents(pa, widget);
+                let (mut indents, is_ts_indent) = crate::indents(pa, &widget);
                 if is_ts_indent {
                     widget.edit_all(pa, |mut s| _ = reindent(0, indents.next().unwrap(), &mut s));
                 }
@@ -538,7 +564,7 @@ impl Mode for Normal {
             }
             alt!('.') => {
                 if let Some((one_key, key_event)) = *ALT_DOT.lock().unwrap() {
-                    let (sel_type, _) = one_key.send_key(pa, key_event, widget);
+                    let (sel_type, _) = one_key.send_key(pa, key_event);
                     self.sel_type = sel_type;
                 } else {
                     context::warn!("No previous 2 key sequence");
@@ -578,7 +604,7 @@ impl Mode for Normal {
             event!(char @ ('m' | 'M')) => {
                 let mut failed = false;
                 let failed = &mut failed;
-                edit_or_destroy_all(pa, widget, failed, |s| {
+                edit_or_destroy_all(pa, &widget, failed, |s| {
                     let mut i = 0;
                     let object = Object::new(key_event, popts, opts.brackets).unwrap();
 
@@ -586,14 +612,14 @@ impl Mode for Normal {
 
                     (0..param).try_for_each(|_| {
                         s.move_hor(1);
-                        let end = object.find_ahead(s, 0, true)?;
-                        s.move_to(end);
+                        let (_, end) = object.find(s, 0, true);
+                        s.move_to(end?);
                         if char == 'm' {
                             s.set_anchor();
                             let bounds = opts.brackets.bounds_matching(s.selection())?;
                             let object = Object::two_bounds_simple(bounds[0], bounds[1]);
-                            let start = object.find_behind(s, 1, false)?;
-                            s.move_to(start);
+                            let (start, _) = object.find(s, 1, false);
+                            s.move_to(start?);
                             s.set_cursor_on_end();
                         }
                         i += 1;
@@ -606,22 +632,22 @@ impl Mode for Normal {
             alt!(char @ ('m' | 'M')) => {
                 let mut failed = false;
                 let failed = &mut failed;
-                edit_or_destroy_all(pa, widget, failed, |s| {
+                edit_or_destroy_all(pa, &widget, failed, |s| {
                     let mut i = 0;
                     let object = Object::new(key_event, popts, opts.brackets).unwrap();
 
                     set_anchor_if_needed(char == 'M', s);
 
                     (0..param).try_for_each(|_| {
-                        let start = object.find_behind(s, 0, false)?;
-                        s.move_to(start);
+                        let (start, _) = object.find(s, 0, false);
+                        s.move_to(start?);
 
                         if char == 'm' {
                             s.set_anchor();
                             let bounds = opts.brackets.bounds_matching(s.selection())?;
                             let object = Object::two_bounds_simple(bounds[0], bounds[1]);
-                            let end = object.find_ahead(s, 0, true)?;
-                            s.move_to(end);
+                            let (_, end) = object.find(s, 0, true);
+                            s.move_to(end?);
                             s.set_cursor_on_start();
                         }
                         i += 1;
@@ -640,7 +666,7 @@ impl Mode for Normal {
             }
             event!('I') => {
                 if opts.indent_on_capital_i {
-                    let (mut indents, is_ts_indent) = crate::indents(pa, widget);
+                    let (mut indents, is_ts_indent) = crate::indents(pa, &widget);
                     if is_ts_indent {
                         widget.edit_all(pa, |mut s| {
                             reindent(s.indent(), indents.next().unwrap(), &mut s);
@@ -705,7 +731,7 @@ impl Mode for Normal {
                         });
 
                         if opts.indent_on_capital_i {
-                            let (mut indents, is_ts_indent) = crate::indents(pa, widget);
+                            let (mut indents, is_ts_indent) = crate::indents(pa, &widget);
                             if is_ts_indent {
                                 widget.edit_all(pa, |mut s| {
                                     reindent(s.indent(), indents.next().unwrap(), &mut s);
@@ -721,7 +747,7 @@ impl Mode for Normal {
                     Some(InsertKey::NewLineBelow) => open_new_line_below(pa),
                     None => context::warn!("No previous insertion"),
                 }
-                crate::insert::repeat_last_insert(pa, widget)
+                crate::insert::repeat_last_insert(pa, &widget)
             }
 
             ////////// Selection alteration keys
@@ -958,10 +984,17 @@ impl Mode for Normal {
             }
 
             ////////// Clipboard keys
-            event!('y') => duat_base::modes::copy_selections(pa, widget),
+            event!('y') => {
+                duat_base::modes::copy_selections(pa, &widget);
+                if widget.selections(pa).len() > 1 {
+                    context::info!("Yanked [a]{}[] selections", widget.selections(pa).len());
+                } else {
+                    context::info!("Yanked [a]1[] selection");
+                }
+            },
             event!(char @ ('d' | 'c')) | alt!(char @ ('d' | 'c')) => {
                 if key_event.modifiers == KeyMod::NONE {
-                    duat_base::modes::copy_selections(pa, widget);
+                    duat_base::modes::copy_selections(pa, &widget);
                 }
                 delete_selections(pa);
                 if char == 'c' {
@@ -1071,14 +1104,14 @@ impl Mode for Normal {
             }
 
             ////////// Search keys
-            event!('/') => mode::set(pa, IncSearch::new(SearchFwd, self.widget.clone())),
-            alt!('/') => mode::set(pa, IncSearch::new(SearchRev, self.widget.clone())),
-            event!('?') => mode::set(pa, IncSearch::new(ExtendFwd, self.widget.clone())),
-            alt!('?') => mode::set(pa, IncSearch::new(ExtendRev, self.widget.clone())),
-            event!('s') => mode::set(pa, IncSearch::new(Select, self.widget.clone())),
-            event!('S') => mode::set(pa, IncSearch::new(Split, self.widget.clone())),
-            alt!('k') => mode::set(pa, IncSearch::new(KeepMatching(true), self.widget.clone())),
-            alt!('K') => mode::set(pa, IncSearch::new(KeepMatching(false), self.widget.clone())),
+            event!('/') => mode::set(pa, IncSearch::new(SearchFwd, widget.clone())),
+            alt!('/') => mode::set(pa, IncSearch::new(SearchRev, widget.clone())),
+            event!('?') => mode::set(pa, IncSearch::new(ExtendFwd, widget.clone())),
+            alt!('?') => mode::set(pa, IncSearch::new(ExtendRev, widget.clone())),
+            event!('s') => mode::set(pa, IncSearch::new(Select, widget.clone())),
+            event!('S') => mode::set(pa, IncSearch::new(Split, widget.clone())),
+            alt!('k') => mode::set(pa, IncSearch::new(KeepMatching(true), widget.clone())),
+            alt!('K') => mode::set(pa, IncSearch::new(KeepMatching(false), widget.clone())),
 
             event!('n') | alt!('n') => {
                 let search = SEARCH.lock().unwrap();

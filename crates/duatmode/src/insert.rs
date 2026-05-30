@@ -324,9 +324,9 @@ impl Mode for Insert {
 
             event!(Esc) => {
                 widget.text_mut(pa).new_moment();
-                mode::set(pa, Normal::new(widget.clone()));
+                mode::set(pa, Normal::new());
             }
-            alt!(';') => mode::set(pa, Normal::new(widget.clone()).only_one_action()),
+            alt!(';') => mode::set(pa, Normal::new().only_one_action()),
             ctrl!('u') => widget.text_mut(pa).new_moment(),
             _ => {}
         }

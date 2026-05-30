@@ -744,7 +744,7 @@ impl DuatMode {
         require(TypeId::of::<DuatTreeSitter>(), || DuatTreeSitter._plug());
 
         mode::set_alt_is_reverse(true);
-        mode::set_default(Normal::new);
+        mode::set_default(|_| Normal::new());
 
         hook::add::<SearchPerformed>(|_, search| *SEARCH.lock().unwrap() = search.to_string());
 
@@ -976,44 +976,113 @@ impl<'o> Object<'o> {
         }
     }
 
-    fn find_ahead(self, s: &mut SelectionMut, count: usize, is_inside: bool) -> Option<usize> {
+    // Find the forward and backwards matches of this `Object`.
+    fn find(self, s: &SelectionMut, count: usize, inside: bool) -> (Option<usize>, Option<usize>) {
         let mut s_diff = count as i32;
-        let (range, inside_pat) = match self {
-            Object::OneBound(ahead) => (
+        let mut e_diff = count as i32;
+        let (behind, ahead) = match self {
+            Object::OneBound(one) => (
+                s.search(one.around)
+                    .to_cursor()
+                    .nth_back(count.saturating_sub(1))
+                    .zip(Some(one.inside)),
+                s.search(one.around)
+                    .from_cursor()
+                    .nth(count.saturating_sub(1))
+                    .zip(Some(one.inside)),
+            ),
+            Object::TwoBounds { behind, ahead, repeat: false, .. } => (
+                s.search(behind.around)
+                    .to_cursor()
+                    .next_back()
+                    .zip(Some(behind.inside)),
                 s.search(ahead.around)
                     .from_cursor()
-                    .nth(count.saturating_sub(1))?,
-                ahead.inside,
+                    .next()
+                    .zip(Some(ahead.inside)),
             ),
-            Object::TwoBounds { ahead, repeat: false, .. } => {
-                (s.search(ahead.around).from_cursor().next()?, ahead.inside)
-            }
             Object::TwoBounds { ahead, behind, repeat: true } => {
                 let pat = [behind.around, ahead.around];
-                let (_, range) = s.search(pat).from_cursor().find(|&(id, _)| {
-                    s_diff += (id == 0) as i32 - (id == 1) as i32;
-                    s_diff <= 0
-                })?;
-                (range, ahead.inside)
+                let (_, range_ahead) = s
+                    .search(pat)
+                    .from_cursor()
+                    .find(|&(id, _)| {
+                        s_diff += (id == 0) as i32 - (id == 1) as i32;
+                        s_diff <= 0
+                    })
+                    .unzip();
+
+                let pat = [behind.around, ahead.around];
+                let (_, range_behind) = s
+                    .search(pat)
+                    .to_cursor()
+                    .rev()
+                    .find(|&(id, _)| {
+                        e_diff += (id == 1) as i32 - (id == 0) as i32;
+                        e_diff <= 0
+                    })
+                    .unzip();
+
+                (
+                    range_behind.zip(Some(behind.inside)),
+                    range_ahead.zip(Some(ahead.inside)),
+                )
             }
             Object::Argument { ahead, behind } => {
                 let pat = [r"\s*([;,]\s*|\z)", behind.around, ahead.around];
-                let (id, range) = s.search(pat).from_cursor_excl().find(|(id, _)| {
-                    s_diff += (*id == 1) as i32 - (*id == 2) as i32;
-                    s_diff == 0 || (s_diff == 1 && *id == 0)
-                })?;
+                let (sid, srange) = s
+                    .search(pat)
+                    .from_cursor_excl()
+                    .find(|(id, _)| {
+                        s_diff += (*id == 1) as i32 - (*id == 2) as i32;
+                        s_diff == 0 || (e_diff == 1 && *id == 0)
+                    })
+                    .unwrap();
 
-                return Some(if is_inside {
-                    if id == 0 {
-                        range.start
+                let pat = [r"(\A|[;,])\s*", behind.around, ahead.around];
+                let (eid, erange) = s
+                    .search(pat)
+                    .to_cursor_incl()
+                    .rev()
+                    .find(|(id, _)| {
+                        e_diff += (*id == 2) as i32 - (*id == 1) as i32;
+                        e_diff == 0 || (e_diff == 1 && *id == 0)
+                    })
+                    .unwrap();
+
+                let byte_ahead = Some(if inside {
+                    if sid == 0 {
+                        srange.start
                     } else {
-                        s.search(r"\s*").range(..range.start).next_back()?.start
+                        s.search(r"\s*")
+                            .range(..srange.start)
+                            .next_back()
+                            .unwrap()
+                            .start
                     }
-                } else if id == 0 {
-                    range.end
+                } else if sid == 0 {
+                    srange.end
                 } else {
-                    range.start
+                    srange.start
                 });
+
+                let byte_behind = Some(if inside {
+                    if eid == 0 {
+                        erange.end
+                    } else {
+                        s.search(r"\s*").range(erange.end..).next().unwrap().end
+                    }
+                } else if eid == 0 {
+                    if sid == 0 {
+                        erange.start + 1
+                    } else {
+                        erange.start
+                    }
+                } else {
+                    erange.end
+                });
+
+                return (byte_behind, byte_ahead);
             }
             Object::Indent => {
                 let indent = s.indent();
@@ -1025,7 +1094,7 @@ impl<'o> Object<'o> {
                     point = s.text().point_at_coords(point.line() + 1, 0)
                 }
 
-                return Some(if is_inside {
+                let byte_ahead = Some(if inside {
                     point.byte()
                 } else {
                     s.text()[point..]
@@ -1034,58 +1103,7 @@ impl<'o> Object<'o> {
                         .map(|line| line.byte_range().start)
                         .unwrap_or(s.text().len())
                 });
-            }
-        };
 
-        Some(if is_inside {
-            let pat = inside_pat;
-            s.search(pat).range(..range.end).next_back()?.start
-        } else {
-            range.end
-        })
-    }
-
-    fn find_behind(self, s: &mut SelectionMut, count: usize, is_inside: bool) -> Option<usize> {
-        let mut e_diff = count as i32;
-        let (range, inside_pat) = match self {
-            Object::OneBound(behind) => (
-                s.search(behind.around)
-                    .to_cursor()
-                    .nth_back(count.saturating_sub(1))?,
-                behind.inside,
-            ),
-            Object::TwoBounds { behind, repeat: false, .. } => (
-                s.search(behind.around).to_cursor().next_back()?,
-                behind.inside,
-            ),
-            Object::TwoBounds { ahead, behind, repeat: true } => {
-                let pat = [behind.around, ahead.around];
-                let (_, range) = s.search(pat).to_cursor().rev().find(|&(id, _)| {
-                    e_diff += (id == 1) as i32 - (id == 0) as i32;
-                    e_diff <= 0
-                })?;
-                (range, behind.inside)
-            }
-            Object::Argument { ahead, behind } => {
-                let pat = [r"(\A|[;,])\s*", behind.around, ahead.around];
-                let (id, range) = s.search(pat).to_cursor_incl().rev().find(|(id, _)| {
-                    e_diff += (*id == 2) as i32 - (*id == 1) as i32;
-                    e_diff == 0 || (e_diff == 1 && *id == 0)
-                })?;
-
-                return Some(if is_inside {
-                    if id == 0 {
-                        range.end
-                    } else {
-                        s.search(r"\s*").range(range.end..).next()?.end
-                    }
-                } else if id == 0 {
-                    range.start + 1
-                } else {
-                    range.end
-                });
-            }
-            Object::Indent => {
                 let indent = s.indent();
                 let mut point = s.text().point_at_coords(s.cursor().line(), 0);
 
@@ -1097,7 +1115,7 @@ impl<'o> Object<'o> {
                     point = s.text().point_at_coords(point.line() - 1, 0)
                 }
 
-                return Some(if is_inside {
+                let byte_behind = Some(if inside {
                     point.byte()
                 } else {
                     s.text()[..point]
@@ -1108,15 +1126,27 @@ impl<'o> Object<'o> {
                         .map(|line| line.byte_range().start)
                         .unwrap_or(point.byte())
                 });
+
+                return (byte_behind, byte_ahead);
             }
         };
 
-        Some(if is_inside {
-            let pat = inside_pat;
-            s.search(pat).range(range.start..).next()?.end
-        } else {
-            range.start
-        })
+        (
+            ahead.and_then(|(range, pat)| {
+                Some(if inside {
+                    s.search(pat).range(..range.end).next_back()?.start
+                } else {
+                    range.end
+                })
+            }),
+            behind.and_then(|(range, pat)| {
+                Some(if inside {
+                    s.search(pat).range(range.start..).next()?.end
+                } else {
+                    range.start
+                })
+            }),
+        )
     }
 }
 

@@ -706,8 +706,8 @@ impl Completions {
         let sidebar = completions.read(pa).sidebar.clone();
         if let Some(area) = completions.area().write_as::<duat_term::Area>(pa) {
             let mut frame = Frame {
-                left: true,
-                right: true,
+                above: false,
+                below: false,
                 ..Frame::default()
             };
             frame.set_text(Side::Left, {
