@@ -127,7 +127,7 @@ pub fn completions_setup() {
                     return;
                 }
 
-                if let event!(KeyCode::Char(..) | KeyCode::Esc | KeyCode::Enter) = key_event
+                if let event!(KeyCode::Char(..) | KeyCode::Enter) = key_event
                     && let Some((_, entry)) = completions.write(pa).current_entry.take()
                 {
                     hook::trigger(pa, CompletionSelected(entry));
@@ -622,12 +622,7 @@ impl Completions {
                         Info::set_text(pa, &info, |text| *text = info_text);
                         Some(info)
                     } else {
-                        let specs = DynSpawnSpecs {
-                            orientation,
-                            width: None,
-                            height: None,
-                            ..Default::default()
-                        };
+                        let specs = DynSpawnSpecs { orientation, ..Default::default() };
 
                         let info_handle = completions.spawn_widget(pa, Info::new(info_text), specs);
                         completions.write(pa).info_handle = info_handle.clone();

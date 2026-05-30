@@ -701,9 +701,7 @@ impl Mode for Normal {
                     Some(InsertKey::InsertStart) => {
                         widget.edit_all(pa, |mut s| {
                             s.unset_anchor();
-                            if !opts.indent_on_capital_i {
-                                s.move_to_col(s.indent());
-                            }
+                            s.move_to_col(s.indent());
                         });
 
                         if opts.indent_on_capital_i {

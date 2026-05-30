@@ -3,17 +3,22 @@
 //! This is a very simple `Widget`, it basically just exists so I
 //! don't have to define a new `Widget` every time I want to show
 //! static information.
-use std::sync::Once;
+use std::sync::{LazyLock, Mutex, Once};
 
 use duat_core::{
-    context::Handle,
+    Ns,
+    context::{self, Handle},
     data::{Pass, RwData},
-    hook::{self, OnMouseEvent, WidgetOpened},
+    hook::{self, KeyTyped, OnMouseEvent, WidgetOpened},
     mode::MouseEventKind,
     opts::PrintOpts,
     text::{Text, TextMut},
-    ui::Widget,
+    txt,
+    ui::{DynSpawnSpecs, Orientation, Side, Widget},
 };
+use duat_term::Frame;
+
+static ORIENTATION: Mutex<Orientation> = Mutex::new(Orientation::VerRightBelow);
 
 /// Adds the hooks for the [`Info`] widget.
 pub fn info_setup() {
@@ -49,6 +54,7 @@ pub fn info_setup() {
 pub struct Info {
     /// The [`Text`] that will be shown by this widget
     text: Text,
+    is_corner: bool,
 }
 
 impl Info {
@@ -63,7 +69,70 @@ impl Info {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {});
 
-        Self { text }
+        Self { text, is_corner: false }
+    }
+
+    /// Sets the [`Text`] for the corner `Info`.
+    ///
+    /// This is a special kind of `Info`, of which only one can exist
+    /// at once.
+    pub fn set_corner(pa: &mut Pass, text: Text, title: Option<Text>, fragile: bool) {
+        static NS: LazyLock<Ns> = Ns::new_lazy();
+
+        let info = if let Some(info) = context::windows()
+            .handles_of::<Info>(pa)
+            .into_iter()
+            .find(|info| info.read(pa).is_corner)
+        {
+            Info::set_text(pa, &info, |t| *t = text);
+            info
+        } else {
+            let orientation = *ORIENTATION.lock().unwrap();
+            let buffer = context::current_buffer(pa);
+            let Some(info) = buffer.spawn_widget(
+                pa,
+                Info { text, is_corner: true },
+                DynSpawnSpecs {
+                    orientation,
+                    width: None,
+                    height: None,
+                    hidden: false,
+                    inside: true,
+                },
+            ) else {
+                return;
+            };
+            if let Some(term_area) = buffer.area().write_as::<duat_term::Area>(pa) {
+                let mut frame = Frame::default();
+                if let Some(title) = title {
+                    frame.set_text(Side::Above, move |_| {
+                        txt!("[terminal.border.Info]┤[]{title}[terminal.border.Info]├")
+                    });
+                }
+                term_area.set_frame(frame)
+            }
+
+            info
+        };
+
+        if fragile && !hook::group_exists(*NS) {
+            hook::add_once::<KeyTyped>(move |pa, _| {
+                _ = info.close(pa);
+            })
+            .grouped(*NS)
+            .lateness(0);
+        }
+    }
+
+    /// Closes the corner [`Info`], if one was opened.
+    pub fn close_corner(pa: &mut Pass) {
+        if let Some(info) = context::windows()
+            .handles_of::<Info>(pa)
+            .into_iter()
+            .find(|info| info.read(pa).is_corner)
+        {
+            _ = info.close(pa);
+        }
     }
 
     /// Mutate the [`Text`] of this `Info`.
@@ -77,6 +146,16 @@ impl Info {
         let size = area.size_of_text(info.print_opts(), &info.text).unwrap();
         _ = area.set_width(size.x);
         _ = area.set_height(size.y);
+    }
+
+    /// Sets the [`Orientation`] where the corner [`Info`] will be spawned.
+    pub fn set_corner_orientation(orientation: Orientation) {
+        *ORIENTATION.lock().unwrap() = orientation;
+    }
+
+    /// Wether this is the corner `Info`.
+    pub fn is_corner(&self) -> bool {
+        self.is_corner
     }
 }
 

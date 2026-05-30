@@ -17,9 +17,9 @@ use duat_core::{
     ui::Widget,
 };
 use lsp_types::{
-    CodeActionContext, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
-    CodeActionTriggerKind, DocumentChangeOperation, DocumentChanges, GotoDefinitionParams,
-    GotoDefinitionResponse, HoverParams, OneOf, OptionalVersionedTextDocumentIdentifier,
+    CodeActionContext, CodeActionParams, CodeActionProviderCapability, CodeActionTriggerKind,
+    DocumentChangeOperation, DocumentChanges, GotoDefinitionParams, GotoDefinitionResponse,
+    HoverParams, HoverProviderCapability, OneOf, OptionalVersionedTextDocumentIdentifier,
     PartialResultParams, Position, ReferenceContext, ReferenceParams, ResourceOp,
     ServerCapabilities, TextDocumentEdit, TextDocumentIdentifier, TextDocumentPositionParams,
     TextEdit, TypeDefinitionProviderCapability, Uri, WorkDoneProgressParams, WorkspaceEdit,
@@ -30,6 +30,7 @@ use crate::parser::diagnostics;
 pub use crate::parser::{LspBuffer, LspCompletions};
 
 mod config;
+mod hover;
 mod modes;
 mod parser;
 mod server;
@@ -89,6 +90,7 @@ impl Mode for Lsp {
         let buffer = context::current_buffer(pa);
 
         let Some(servers) = server::get_servers_for(buffer.read(pa)) else {
+            mode::reset::<Buffer>(pa);
             return;
         };
 
@@ -116,28 +118,23 @@ impl Mode for Lsp {
 
         match key_event {
             event!('f') => buffer.lsp_format(pa, None),
-            event!('h') => {
-                for server in servers {
-                    let Some(capabilities) = server.capabilities() else {
-                        continue;
-                    };
-                    let encoding = Encoding::new(capabilities);
-                    if capabilities.hover_provider.is_none() {
-                        continue;
-                    }
-
-                    server.send_request::<HoverRequest>(
-                        HoverParams {
-                            text_document_position_params: doc_pos(buf, uri.clone(), encoding),
-                            work_done_progress_params: WorkDoneProgressParams::default(),
-                        },
-                        |_, result| {
-                            duat_core::debug!("{result:#?}");
-                        },
-                    );
-                }
-
-                buffer.hover_gutter_entries_on(pa, buffer.selections(pa).main().cursor())
+            event!('h')
+                if let Some((server, encoding, ..)) = get!(
+                    |cap| &cap.hover_provider,
+                    HoverProviderCapability::Simple(true) | HoverProviderCapability::Options(..)
+                ) =>
+            {
+                server.send_request::<HoverRequest>(
+                    HoverParams {
+                        text_document_position_params: doc_pos(buf, uri.clone(), encoding),
+                        work_done_progress_params: WorkDoneProgressParams::default(),
+                    },
+                    move |pa, result| {
+                        if let Some(result) = result {
+                            hover::hover(pa, encoding, result);
+                        }
+                    },
+                );
             }
             event!('d')
                 if let Some((server, encoding, ..)) = get!(
@@ -217,7 +214,8 @@ impl Mode for Lsp {
                         Some(CodeActionProviderCapability::Simple(true)) => false,
                     };
 
-                    server::Server::send_request::<CodeActionRequest>(&server, CodeActionParams {
+                    server.send_request::<CodeActionRequest>(
+                        CodeActionParams {
                             text_document: TextDocumentIdentifier { uri: uri.clone() },
                             range: lsp_types::Range { start, end },
                             context: CodeActionContext {
@@ -227,7 +225,8 @@ impl Mode for Lsp {
                             },
                             work_done_progress_params: WorkDoneProgressParams::default(),
                             partial_result_params: PartialResultParams::default(),
-                        }, {
+                        },
+                        {
                             let server = server.clone();
                             move |pa, result| {
                                 if let Some(result) = result
@@ -242,7 +241,8 @@ impl Mode for Lsp {
                                     );
                                 }
                             }
-                        });
+                        },
+                    );
                 }
             }
             event!('R')
@@ -285,6 +285,7 @@ impl Mode for Lsp {
             }
             _ => {}
         }
+
         mode::reset::<Buffer>(pa);
     }
 }

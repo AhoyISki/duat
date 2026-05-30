@@ -146,13 +146,9 @@ impl Parser {
         visible_ranges: &[Range<usize>],
         start: Option<Instant>,
     ) -> bool {
-        // To parse something, in case there are no visible ranges.
-        let visible_ranges = if visible_ranges.is_empty() {
-            #[allow(clippy::single_range_in_vec_init)]
-            &[0..1]
-        } else {
-            visible_ranges
-        };
+        if visible_ranges.is_empty() {
+            return true;
+        }
 
         let mut parsed_at_least_one_region = false;
 

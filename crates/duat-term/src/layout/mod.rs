@@ -1001,7 +1001,7 @@ impl Constraints {
 ///
 /// [`Area`]: super::Area
 /// [`Widget`]: duat_core::ui::Widget
-#[derive(Default, Clone)]
+#[derive(Clone)]
 #[allow(clippy::type_complexity)]
 pub struct Frame {
     /// Show a frame above
@@ -1062,22 +1062,22 @@ impl Frame {
         }
 
         let corners = [
-            (above && right).then_some((Coord::new(coords.br.x, coords.tl.y - 1), [
-                Side::Above,
-                Side::Right,
-            ])),
-            (below && right).then_some((Coord::new(coords.br.x, coords.br.y), [
-                Side::Below,
-                Side::Right,
-            ])),
-            (below && left).then_some((Coord::new(coords.tl.x - 1, coords.br.y), [
-                Side::Below,
-                Side::Left,
-            ])),
-            (above && left).then_some((Coord::new(coords.tl.x - 1, coords.tl.y - 1), [
-                Side::Above,
-                Side::Left,
-            ])),
+            (above && right).then_some((
+                Coord::new(coords.br.x, coords.tl.y - 1),
+                [Side::Above, Side::Right],
+            )),
+            (below && right).then_some((
+                Coord::new(coords.br.x, coords.br.y),
+                [Side::Below, Side::Right],
+            )),
+            (below && left).then_some((
+                Coord::new(coords.tl.x - 1, coords.br.y),
+                [Side::Below, Side::Left],
+            )),
+            (above && left).then_some((
+                Coord::new(coords.tl.x - 1, coords.tl.y - 1),
+                [Side::Above, Side::Left],
+            )),
         ];
 
         for (coord, sides) in corners.into_iter().flatten() {
@@ -1159,6 +1159,20 @@ impl Frame {
             Side::Right => self.side_texts[1] = Some(Arc::new(text_fn)),
             Side::Below => self.side_texts[2] = Some(Arc::new(text_fn)),
             Side::Left => self.side_texts[3] = Some(Arc::new(text_fn)),
+        }
+    }
+}
+
+impl Default for Frame {
+    fn default() -> Self {
+        Self {
+            above: true,
+            below: true,
+            left: true,
+            right: true,
+            style: Default::default(),
+            form: Default::default(),
+            side_texts: Default::default(),
         }
     }
 }

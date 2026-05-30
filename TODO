@@ -7,6 +7,10 @@ FOR NEXT UPDATE:
   [x] Caching.
   [x] Rename.
   [x] Actions.
+  [ ] Hover.
+    [x] Info.
+    [ ] Diagnostics.
+  [ ] See all diagnostics.
 [x] Snippet support.
 [ ] More work on the Gutter.
   [x] Diferentiate hovering, cursoring, related and default display.
@@ -15,10 +19,9 @@ FOR NEXT UPDATE:
   [x] Add user configuration.
 [ ] Perfect print iterators.
   [ ] Perfect words iterator.
-[ ] Fix pager search.
+[x] Fix pager search.
 [ ] Fix logs scrolling.
 [x] Fix commandline completion bs.
-[ ] Stop eagerly merging Selections.
 [x] Additional wrap continuation characters.
 [ ] Add a donation splash screen.
 [x] Some QoL features:
@@ -32,11 +35,16 @@ FOR NEXT UPDATE:
 [x] Remove Widget argument from Modes.
 [x] Widget::text and Widget::text_mut have been amplified immensely.
 [x] Picker implementation.
+[ ] Expose duatmode keys as functions.
+[ ] Improvements to duatmode:
+  [ ] `m` key like helix's.
+  [ ] composite `(` and `)` (and maybe `f` and `t`?).
 
 KNOWN BUGS:
  HIGH PRIORITY:
   [x] Get rid of Text::selections_mut.
   [ ] Indentation is inefficient because tree-sitter query results aren't cached.
+  [ ] Stop eagerly merging Selections.
  LOW PRIORITY:
   [ ] Selections struct that holds a reference to the Bytes.
     [ ] Also make the Bytes-less version inaccessible.
@@ -48,7 +56,6 @@ KNOWN BUGS:
 
 POSSIBLE NOW:
 [ ] Turn the History into a tree.
-[ ] Expose duatmode keys as functions.
 
 FUTURE UPDATES:
 [ ] Add registers possibly.
