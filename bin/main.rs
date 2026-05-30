@@ -64,7 +64,6 @@ struct Args {
     /// Initializes a fresh configuration
     #[arg(long)]
     init_config: bool,
-    #[arg(long, requires = "init_config")]
     /// Initializes a new Duat Plugin
     #[arg(long, value_name = "NAME", global = true)]
     init_plugin: Option<String>,
