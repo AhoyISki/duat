@@ -1012,7 +1012,6 @@ impl<'o> Object<'o> {
                     })
                     .unzip();
 
-                let pat = [behind.around, ahead.around];
                 let (_, range_behind) = s
                     .search(pat)
                     .to_cursor()
@@ -1132,18 +1131,18 @@ impl<'o> Object<'o> {
         };
 
         (
-            ahead.and_then(|(range, pat)| {
-                Some(if inside {
-                    s.search(pat).range(..range.end).next_back()?.start
-                } else {
-                    range.end
-                })
-            }),
             behind.and_then(|(range, pat)| {
                 Some(if inside {
                     s.search(pat).range(range.start..).next()?.end
                 } else {
                     range.start
+                })
+            }),
+            ahead.and_then(|(range, pat)| {
+                Some(if inside {
+                    s.search(pat).range(..range.end).next_back()?.start
+                } else {
+                    range.end
                 })
             }),
         )
