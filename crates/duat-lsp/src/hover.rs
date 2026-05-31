@@ -1,5 +1,9 @@
 use duat_base::widgets::Info;
-use duat_core::{context, data::Pass, text::Text};
+use duat_core::{
+    context,
+    data::Pass,
+    text::{RegexHaystack, Text},
+};
 use lsp_types::{Hover, HoverContents, MarkedString, MarkupKind};
 
 use crate::Encoding;
@@ -37,12 +41,22 @@ pub fn hover(pa: &mut Pass, encoding: Encoding, hover: Hover) {
             )
     });
 
-    for mut range in backtick_ranges.into_iter().rev() {
-        if text[range.end..].starts_with("\n") {
-            range.start -= 1;
+    for range in backtick_ranges.into_iter().rev() {
+        if range.start == 0 {
+            text.replace_range(range, "");
+        } else {
+            text.replace_range(range, "\n");
         }
+    }
 
-        text.replace_range(range, "");
+    let multi_nl_ranges = Vec::from_iter(text.search("(\n|\r\n){2,}|\\A(\n|\r\n)"));
+
+    for range in multi_nl_ranges.into_iter().rev() {
+        if range.start == 0 {
+            text.replace_range(range, "");
+        } else {
+            text.replace_range(range, "\n\n");
+        }
     }
 
     let title = {

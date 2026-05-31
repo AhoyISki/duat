@@ -17,9 +17,8 @@ use duat_core::{
     ui::RwArea,
 };
 use lsp_types::{
-    CodeAction, CodeActionOptions, CodeActionOrCommand, CodeActionProviderCapability, Command,
-    ExecuteCommandParams, RenameParams, ServerCapabilities, TextDocumentPositionParams,
-    WorkDoneProgressParams,
+    CodeAction, CodeActionOrCommand, Command, ExecuteCommandParams, RenameParams,
+    TextDocumentPositionParams, WorkDoneProgressParams,
     request::{CodeActionResolveRequest, ExecuteCommand, Rename},
 };
 
@@ -38,7 +37,9 @@ pub fn setup_hooks() {
                 let server = entry.server.clone();
                 let do_action = move |pa: &mut Pass, action: CodeAction| {
                     if let Some(edit) = &action.edit {
-                        handle_workspace_edit(pa, edit.clone(), encoding);
+                        duat_core::try_or_log_err! {
+                            handle_workspace_edit(pa, edit.clone(), encoding)?;
+                        }
                     }
                     if let Some(command) = &action.command {
                         server.send_request_with_id::<ExecuteCommand>(
