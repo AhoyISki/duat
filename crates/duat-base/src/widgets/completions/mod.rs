@@ -632,13 +632,7 @@ impl Completions {
                     if let Some(info_handle) = info_handle.as_ref()
                         && let Some(area) = info_handle.area().write_as::<duat_term::Area>(pa)
                     {
-                        let mut frame = Frame {
-                            above: true,
-                            below: true,
-                            left: true,
-                            right: true,
-                            ..Default::default()
-                        };
+                        let mut frame = Frame::default();
                         frame.set_text(Side::Above, move |_| {
                             txt!("[terminal.border.Info]┤[]{word}[terminal.border.Info]├")
                         });

@@ -197,6 +197,10 @@ impl DuatBase {
         form::set_weak("regex.operator", Form::mimic("operator"));
         form::set_weak("regex.class", Form::mimic("constant"));
         form::set_weak("regex.bracket", Form::mimic("punctuation.bracket"));
+        form::set_weak("caller.info", Form::mimic("accent.info"));
+        form::set_weak("caller.error", Form::mimic("accent.error"));
+        form::set_weak("param.info", Form::mimic("default.info"));
+        form::set_weak("param.error", Form::mimic("default.error"));
 
         // Setup for Completions
         form::set_weak("default.Completions", Form::new().on_dark_grey());

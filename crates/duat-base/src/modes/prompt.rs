@@ -37,7 +37,7 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     form::{self, Form},
-    hook::{self, ModeSwitched},
+    hook::{self, FocusedUpdated, KeySent, ModeSwitched, WidgetSwitched},
     mode::{self, KeyEvent, event, shift},
     text::{Inlay, Text, txt},
     ui::RwArea,
@@ -46,9 +46,10 @@ use duat_core::{
 use crate::widgets::{CommandsCompletions, Completions, PromptLine};
 
 static HISTORY: Mutex<Vec<(TypeId, Vec<String>)>> = Mutex::new(Vec::new());
-static PROMPT_NS: LazyLock<Ns> = LazyLock::new(Ns::new);
 static NS: LazyLock<Ns> = LazyLock::new(Ns::new);
+static PROMPT_NS: LazyLock<Ns> = LazyLock::new(Ns::new);
 static PREVIEW_NS: LazyLock<Ns> = LazyLock::new(Ns::new);
+static HOOK_NS: LazyLock<Ns> = Ns::new_lazy();
 
 /// Add the [`Prompt`] hook.
 pub fn add_prompt_hook() {
@@ -345,7 +346,6 @@ impl mode::Mode for Prompt {
             _ => {}
         }
 
-        self.mode.post_update(pa, &promptline);
         self.show_preview(pa, promptline);
     }
 }
@@ -415,7 +415,7 @@ pub trait PromptMode: Send + 'static {
     /// in the [`Prompt`] mode.
     fn update(&mut self, pa: &mut Pass, text: Text, area: &RwArea) -> Text;
 
-    /// What to do when switchin onto this [`PromptMode`]
+    /// What to do when switching onto this [`PromptMode`]
     ///
     /// The initial [`Text`] is always empty, except for the [prompt]
     /// [`Inlay`] at the beginning of the line.
@@ -434,16 +434,6 @@ pub trait PromptMode: Send + 'static {
     /// [`IncSearch`]: crate::modes::IncSearch
     fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &RwArea) {}
 
-    /// A post update hook to be called on the [`Handle`] itself
-    ///
-    /// One useful thing that you can do on this function is a call to
-    /// [`CompletionsBuilder::open`], which doesn't work on
-    /// [`PromptMode::update`] because the [`Text`] of the
-    /// [`PromptLine`] is taken.
-    ///
-    /// [`CompletionsBuilder::open`]: crate::widgets::CompletionsBuilder::open
-    fn post_update(&mut self, pa: &mut Pass, handle: &Handle<PromptLine>) {}
-
     /// What text should be at the beginning of the [`PromptLine`], as
     /// a [`Inlay`]
     fn prompt(&self) -> Text;
@@ -460,31 +450,64 @@ pub trait PromptMode: Send + 'static {
 /// [`Parameter`]s
 ///
 /// [`Parameter`]: duat_core::cmd::Parameter
-#[derive(Default)]
-pub struct RunCommands(Option<Completion>);
+#[non_exhaustive]
+pub struct RunCommands;
 
 impl RunCommands {
     /// Crates a new [`RunCommands`]
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Prompt {
-        Self::call_once();
-        Prompt::new(Self(None))
+        Self::add_hooks();
+        Prompt::new(Self)
     }
 
     /// Opens a [`RunCommands`] with some initial text
     pub fn new_with(initial: impl ToString) -> Prompt {
-        Self::call_once();
-        Prompt::new_with(Self(None), initial)
+        Self::add_hooks();
+        Prompt::new_with(Self, initial)
     }
 
-    fn call_once() {
-        static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            form::set_weak("caller.info", Form::mimic("accent.info"));
-            form::set_weak("caller.error", Form::mimic("accent.error"));
-            form::set_weak("param.info", Form::mimic("default.info"));
-            form::set_weak("param.error", Form::mimic("default.error"));
-        });
+    fn add_hooks() {
+        let mut completions = None;
+
+        hook::add::<FocusedUpdated<PromptLine>>(move |pa, promptline| {
+            let text = promptline.text(pa);
+            let Some(main) = text.get_main_sel() else {
+                Completions::close(pa);
+                return;
+            };
+
+            let is_parameter = text[..main.cursor()]
+                .chars()
+                .rev()
+                .any(|char| char.is_whitespace());
+
+            let new_completion = if is_parameter {
+                let call = text[..main.cursor()].to_string();
+                let Some(parameters) = cmd::last_parsed_parameters(pa, &call) else {
+                    completions = None;
+                    Completions::close(pa);
+                    return;
+                };
+
+                Completion::Parameters(parameters)
+            } else {
+                Completion::Caller
+            };
+
+            if completions.as_ref() != Some(&new_completion) {
+                match &new_completion {
+                    Completion::Caller => Completions::builder()
+                        .with_provider(CommandsCompletions::new(pa))
+                        .open(pa),
+                    Completion::Parameters(params) => Completions::open_for(pa, params),
+                }
+            }
+
+            completions = Some(new_completion)
+        })
+        .grouped(*HOOK_NS)
+        .lateness(usize::MAX);
     }
 }
 
@@ -517,47 +540,13 @@ impl PromptMode for RunCommands {
     }
 
     fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &RwArea) {
+        Completions::close(pa);
+        hook::remove(*HOOK_NS);
+
         let call = text.to_string_no_last_nl();
         if !call.is_empty() {
             _ = cmd::call_notify(pa, call);
         }
-    }
-
-    fn post_update(&mut self, pa: &mut Pass, handle: &Handle<PromptLine>) {
-        let text = handle.text(pa);
-        let Some(main) = text.get_main_sel() else {
-            Completions::close(pa);
-            return;
-        };
-
-        let is_parameter = text[..main.cursor()]
-            .chars()
-            .rev()
-            .any(|char| char.is_whitespace());
-
-        let new_completion = if is_parameter {
-            let call = text[..main.cursor()].to_string();
-            let Some(parameters) = cmd::last_parsed_parameters(pa, &call) else {
-                self.0 = None;
-                Completions::close(pa);
-                return;
-            };
-
-            Completion::Parameters(parameters)
-        } else {
-            Completion::Caller
-        };
-
-        if self.0.as_ref() != Some(&new_completion) {
-            match &new_completion {
-                Completion::Caller => Completions::builder()
-                    .with_provider(CommandsCompletions::new(pa))
-                    .open(pa),
-                Completion::Parameters(params) => Completions::open_for(pa, params),
-            }
-        }
-
-        self.0 = Some(new_completion)
     }
 
     fn prompt(&self) -> Text {
