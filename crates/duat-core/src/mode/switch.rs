@@ -127,9 +127,9 @@ pub fn reset<W: Widget>(pa: &mut Pass) {
 /// given [`Handle`]
 #[track_caller]
 pub fn reset_to(pa: &mut Pass, widget: &Handle<impl Widget + ?Sized>) {
-    let mut set_default = SET_DEFAULT.lock().unwrap();
+    let mut set_default_guard = SET_DEFAULT.lock().unwrap();
 
-    if let Some(set_default) = set_default.as_mut() {
+    if let Some(set_default) = set_default_guard.as_mut() {
         if let Some((_, node)) = {
             context::windows()
                 .entries(pa)
@@ -137,6 +137,7 @@ pub fn reset_to(pa: &mut Pass, widget: &Handle<impl Widget + ?Sized>) {
         } {
             set_default(pa, node.handle().clone());
         } else {
+            drop(set_default_guard);
             reset::<Buffer>(pa);
         }
     } else {
