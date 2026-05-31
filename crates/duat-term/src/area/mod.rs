@@ -166,7 +166,9 @@ impl Area {
             |lines, len| lines.write_all(&SPACES[..len as usize]).unwrap(),
             |lines, len, max_x| {
                 if lines.coords().br.x == max_x {
-                    lines.write_all(b"\x1b[0K").unwrap();
+                    if lines.coords().tl.x + len < max_x {
+                        lines.write_all(b"\x1b[0K").unwrap();
+                    }
                 } else {
                     lines
                         .write_all(&SPACES[..(lines.coords().width() - len) as usize])
