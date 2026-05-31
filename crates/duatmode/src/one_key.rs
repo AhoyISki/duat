@@ -2,7 +2,7 @@ use duat_core::{
     cmd,
     context::{self, Handle},
     data::Pass,
-    mode::{self, KeyEvent, event},
+    mode::{self, KeyCode, KeyEvent, alt, event},
 };
 
 use crate::{
@@ -14,9 +14,11 @@ pub(crate) enum OneKey {
     GoTo(SelType),
     Find(usize, SelType, bool),
     Until(usize, SelType, bool),
-    Surrounding(usize, bool),
+    Surrounding(usize, bool, bool),
     ToNext(usize, bool, bool),
     ToPrevious(usize, bool, bool),
+    Match(usize, bool),
+    Rotate(usize, bool),
     Replace,
 }
 
@@ -24,41 +26,28 @@ impl OneKey {
     /// Sends a key to this "[`Mode`]"
     ///
     /// [`Mode`]: duat_core::mode::Mode
-    pub(crate) fn send_key(&self, pa: &mut Pass, event: KeyEvent) -> (SelType, bool) {
+    pub(crate) fn send_key(&self, pa: &mut Pass, event: KeyEvent) -> OneKeyOrResult {
         let just_char = just_char(event);
         let widget = context::current_widget(pa);
 
         match (*self, just_char) {
-            (OneKey::GoTo(st), _) => (match_goto(pa, &widget, event, st), false),
-            (OneKey::Find(nth, st, ss) | OneKey::Until(nth, st, ss), Some(char)) => {
+            (OneKey::GoTo(st), _) => match_goto(pa, &widget, event, st),
+            (OneKey::Find(count, st, ss) | OneKey::Until(count, st, ss), Some(char)) => {
                 let is_t = matches!(*self, OneKey::Until(..));
-                match_find_until(pa, &widget, char, nth, is_t, st);
+                match_find_until(pa, &widget, char, count, is_t, st);
                 if ss {
                     *SEARCH.lock().unwrap() = char.to_string();
                 }
-                (SelType::Normal, true)
+                OneKeyOrResult::Result(SelType::Normal, true)
             }
-            (OneKey::Surrounding(nth, is_inside), _) => {
-                match_bounds(pa, &widget, event, nth, is_inside, Bounds::Both);
-                (SelType::Normal, true)
+            (OneKey::Surrounding(count, inside, extend), _) => {
+                match_bounds(pa, &widget, event, count, inside, extend, Bounds::Both)
             }
-            (OneKey::ToNext(nth, is_inside, set_anchor), _) => {
-                if set_anchor {
-                    widget.edit_all(pa, |mut s| s.set_anchor());
-                } else {
-                    widget.edit_all(pa, |mut s| _ = s.set_anchor_if_needed());
-                }
-                match_bounds(pa, &widget, event, nth, is_inside, Bounds::Ahead);
-                (SelType::Normal, true)
+            (OneKey::ToNext(count, inside, extend), _) => {
+                match_bounds(pa, &widget, event, count, inside, extend, Bounds::Ahead)
             }
-            (OneKey::ToPrevious(nth, is_inside, set_anchor), _) => {
-                if set_anchor {
-                    widget.edit_all(pa, |mut s| s.set_anchor());
-                } else {
-                    widget.edit_all(pa, |mut s| _ = s.set_anchor_if_needed());
-                }
-                match_bounds(pa, &widget, event, nth, is_inside, Bounds::Behind);
-                (SelType::Normal, true)
+            (OneKey::ToPrevious(count, inside, extend), _) => {
+                match_bounds(pa, &widget, event, count, inside, extend, Bounds::Behind)
             }
             (OneKey::Replace, Some(char)) => {
                 widget.edit_all(pa, |mut s| {
@@ -69,19 +58,47 @@ impl OneKey {
                         s.unset_anchor();
                     }
                 });
-                (SelType::Normal, true)
+                OneKeyOrResult::Result(SelType::Normal, true)
             }
-            _ => (SelType::Normal, false),
+            (OneKey::Match(count, set_anchor), _) => {
+                match_match(pa, &widget, event, count, set_anchor)
+            }
+            (OneKey::Rotate(count, fwd), Some(char)) => match_rotate(pa, &widget, count, fwd, char),
+            _ => OneKeyOrResult::Result(SelType::Normal, false),
         }
     }
+
+    /// Returns a `OneKey::Until` or `OneKey::Find`.
+    pub(crate) fn ft(count: i32, until: bool, extend_selections: bool) -> Self {
+        let opts = crate::opts::get();
+
+        let sel_type = match (extend_selections, count < 0) {
+            (true, true) => SelType::ExtendRev,
+            (true, false) => SelType::Extend,
+            (false, true) => SelType::Reverse,
+            (false, false) => SelType::Normal,
+        };
+
+        let abs = count.unsigned_abs() as usize;
+        if until {
+            OneKey::Until(abs - 1, sel_type, opts.f_and_t_set_search)
+        } else {
+            OneKey::Find(abs - 1, sel_type, opts.f_and_t_set_search)
+        }
+    }
+}
+/// The result of a [`OneKey`] key being sent.
+pub(crate) enum OneKeyOrResult {
+    OneKey(OneKey),
+    Result(SelType, bool),
 }
 
 fn match_goto(
     pa: &mut Pass,
-    handle: &Handle,
+    widget: &Handle,
     key_event: KeyEvent,
     mut sel_type: SelType,
-) -> SelType {
+) -> OneKeyOrResult {
     let mut switch_and_register = |cmd| {
         if cmd::call_notify(pa, cmd).is_ok() {
             let handle = context::current_buffer(pa);
@@ -90,26 +107,26 @@ fn match_goto(
     };
 
     match key_event {
-        event!('h') => handle.edit_all(pa, |mut s| {
+        event!('h') => widget.edit_all(pa, |mut s| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
             let range = s.search("\n").to_cursor().next_back();
             s.move_to(range.unwrap_or_default().end);
         }),
-        event!('j') => handle.edit_all(pa, |mut s| {
+        event!('j') => widget.edit_all(pa, |mut s| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
             s.move_ver(i32::MAX);
         }),
-        event!('k' | 'g') => handle.edit_all(pa, |mut s| {
+        event!('k' | 'g') => widget.edit_all(pa, |mut s| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
             s.move_to_coords(0, 0)
         }),
         event!('l') => {
-            handle.edit_all(pa, |s| {
+            widget.edit_all(pa, |s| {
                 select_to_end_of_line(sel_type == SelType::Extend, s)
             });
             sel_type = SelType::BeforeEndOfLine;
         }
-        event!('i') => handle.edit_all(pa, |mut s| {
+        event!('i') => widget.edit_all(pa, |mut s| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
             let range = s.search("(\\A|\n)[ \t]*").to_cursor().next_back();
             if let Some(range) = range {
@@ -130,23 +147,23 @@ fn match_goto(
         _ => {}
     }
 
-    sel_type
+    OneKeyOrResult::Result(sel_type, false)
 }
 
 fn match_find_until(
     pa: &mut Pass,
-    handle: &Handle,
+    widget: &Handle,
     char: char,
-    nth: usize,
+    count: usize,
     is_t: bool,
     st: SelType,
 ) {
     use SelType::*;
-    handle.edit_all(pa, |mut s| {
+    widget.edit_all(pa, |mut s| {
         let search = format!("\\x{{{:X}}}", char as u32);
         let (points, back) = match st {
-            Reverse | ExtendRev => (s.search(search).to_cursor().nth_back(nth), 1),
-            Normal | Extend => (s.search(search).from_cursor_excl().nth(nth), -1),
+            Reverse | ExtendRev => (s.search(search).to_cursor().nth_back(count), 1),
+            Normal | Extend => (s.search(search).from_cursor_excl().nth(count), -1),
             _ => unreachable!(),
         };
 
@@ -161,58 +178,215 @@ fn match_find_until(
             if is_t {
                 s.move_hor(back);
             }
-        } else if nth == 0 {
+        } else if count == 0 {
             context::warn!("Char [a]{char}[] not found")
         } else {
-            let suffix = match (nth + 1) % 10 {
+            let suffix = match (count + 1) % 10 {
                 1 => "st",
                 2 => "nd",
                 3 => "rd",
                 _ => "th",
             };
 
-            context::warn!("{}{suffix} char [a]{char}[] not found", nth + 1)
+            context::warn!("{}{suffix} char [a]{char}[] not found", count + 1)
         }
     });
 }
 
+fn match_match(
+    pa: &mut Pass,
+    widget: &Handle,
+    event: KeyEvent,
+    count: usize,
+    extend: bool,
+) -> OneKeyOrResult {
+    let opts = crate::opts::get();
+    let popts = widget.opts(pa);
+    let key_event = KeyEvent::from(KeyCode::Char('m'));
+
+    match event {
+        event!(char @ ('l' | 'm' | 'M')) => {
+            let mut failed = false;
+            let failed = &mut failed;
+            edit_or_destroy_all(pa, &widget, failed, |s| {
+                let mut i = 0;
+                let object = Object::new(key_event, popts, opts.brackets).unwrap();
+
+                set_anchor_if_needed(extend || char == 'M', s);
+
+                (0..count).try_for_each(|_| {
+                    s.move_hor(1);
+                    let (_, end) = object.find(s, 0, true);
+                    s.move_to(end?);
+                    if !(extend || char == 'M') {
+                        s.set_anchor();
+                        let bounds = opts.brackets.bounds_matching(s.selection())?;
+                        let object = Object::two_bounds_simple(bounds[0], bounds[1]);
+                        let (start, _) = object.find(s, 1, false);
+                        s.move_to(start?);
+                        s.set_cursor_on_end();
+                    }
+                    i += 1;
+                    Some(())
+                });
+
+                (i > 0).then_some(())
+            })
+        }
+        event!(char @ 'h') | alt!(char @ ('m' | 'M')) => {
+            let mut failed = false;
+            let failed = &mut failed;
+            edit_or_destroy_all(pa, &widget, failed, |s| {
+                let mut i = 0;
+                let object = Object::new(key_event, popts, opts.brackets).unwrap();
+
+                set_anchor_if_needed(extend, s);
+
+                (0..count).try_for_each(|_| {
+                    let (start, _) = object.find(s, 0, false);
+                    s.move_to(start?);
+
+                    if !extend {
+                        s.set_anchor();
+                        let bounds = opts.brackets.bounds_matching(s.selection())?;
+                        let object = Object::two_bounds_simple(bounds[0], bounds[1]);
+                        let (_, end) = object.find(s, 0, true);
+                        s.move_to(end?);
+                        s.set_cursor_on_start();
+                    }
+                    i += 1;
+                    Some(())
+                });
+
+                (i > 0).then_some(())
+            })
+        }
+        event!('i') => return OneKeyOrResult::OneKey(OneKey::Surrounding(count, true, extend)),
+        event!('a') => return OneKeyOrResult::OneKey(OneKey::Surrounding(count, false, extend)),
+        _ => return OneKeyOrResult::Result(SelType::Normal, false),
+    }
+
+    OneKeyOrResult::Result(SelType::Normal, true)
+}
+
+fn match_rotate(
+    pa: &mut Pass,
+    widget: &Handle,
+    count: usize,
+    fwd: bool,
+    char: char,
+) -> OneKeyOrResult {
+    match char {
+        's' if fwd => widget.rotate_main_selection(pa, count as i32),
+        's' => widget.rotate_main_selection(pa, -(count as i32)),
+        // TODO: Implement parameter
+        'c' if fwd => {
+            if widget.selections(pa).len() == 1 {
+                return OneKeyOrResult::Result(SelType::Normal, true);
+            }
+
+            let mut last_sel = None;
+
+            widget.edit_all(pa, |mut s| {
+                if let Some(last_sel) = last_sel.replace(s.selection().to_string()) {
+                    s.set_anchor_if_needed();
+                    s.replace(last_sel);
+                }
+            });
+
+            widget.edit_nth(pa, 0, |mut s| s.replace(last_sel.unwrap()));
+        }
+        // TODO: Implement parameter
+        'c' => {
+            if widget.selections(pa).len() == 1 {
+                return OneKeyOrResult::Result(SelType::Normal, true);
+            }
+            let mut selections = Vec::<String>::new();
+            widget.edit_all(pa, |s| selections.push(s.selection().to_string()));
+            let mut s_iter = selections.into_iter().cycle();
+            s_iter.next();
+            widget.edit_all(pa, |mut s| {
+                if let Some(next) = s_iter.next() {
+                    s.set_anchor_if_needed();
+                    s.replace(next);
+                }
+            });
+        }
+        _ => return OneKeyOrResult::Result(SelType::Normal, false),
+    }
+
+    OneKeyOrResult::Result(SelType::Normal, true)
+}
+
 fn match_bounds(
     pa: &mut Pass,
-    handle: &Handle,
+    widget: &Handle,
     event: KeyEvent,
-    nth: usize,
-    is_inside: bool,
+    count: usize,
+    inside: bool,
+    extend: bool,
     bounds: Bounds,
-) {
-    let opts = handle.opts(pa);
-    let initial_sels_len = handle.selections(pa).len();
+) -> OneKeyOrResult {
+    let opts = widget.opts(pa);
+    let initial_sels_len = widget.selections(pa).len();
     let brackets = crate::opts::get().brackets;
 
     let mut failed = false;
 
     if let Some(object) = Object::new(event, opts, brackets) {
-        edit_or_destroy_all(pa, handle, &mut failed, |s| {
+        edit_or_destroy_all(pa, widget, &mut failed, |s| {
+            let old_range = s.range();
             match bounds {
                 Bounds::Ahead => {
-                    let (_, p) = object.find(s, nth, is_inside);
+                    if extend {
+                        s.set_anchor();
+                    } else {
+                        s.set_anchor_if_needed();
+                    }
+                    let (_, p) = object.find(s, count, inside);
                     s.move_to(p?.saturating_sub(1));
                 }
                 Bounds::Behind => {
-                    let (p, _) = object.find(s, nth, is_inside);
+                    if extend {
+                        s.set_anchor();
+                    } else {
+                        s.set_anchor_if_needed();
+                    }
+                    let (p, _) = object.find(s, count, inside);
                     s.move_to(p?);
                 }
                 Bounds::Both => {
-                    let (start, end) = object.find(s, nth, is_inside);
-                    s.move_to(start?..end?);
+                    let (start, end) = object.find(s, count, inside);
+                    let start = if extend {
+                        start?.min(old_range.start.byte())
+                    } else {
+                        start?
+                    };
+                    let end = if extend {
+                        end?.max(old_range.end.byte())
+                    } else {
+                        end?
+                    };
+
+                    s.move_to(start..end);
                 }
             };
             Some(())
         });
-    }
 
-    if initial_sels_len == 1 && failed {
-        let rel = if is_inside { "inside" } else { "around" };
-        context::warn!("Failed selecting {rel} object");
+        if initial_sels_len == 1 && failed {
+            let rel = if inside { "inside" } else { "around" };
+            context::warn!("Failed selecting {rel} object");
+        }
+
+        OneKeyOrResult::Result(SelType::Normal, true)
+    } else {
+        context::warn!(
+            "Invalid object: [a]{}",
+            duat_core::mode::keys_to_string(&[event])
+        );
+
+        OneKeyOrResult::Result(SelType::Normal, false)
     }
 }
 

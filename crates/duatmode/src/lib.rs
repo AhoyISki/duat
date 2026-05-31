@@ -476,8 +476,9 @@ pub use crate::{
 
 mod inc_searchers;
 mod insert;
-mod normal;
+pub mod normal;
 mod one_key;
+mod bindings;
 
 use duat_base::hooks::SearchPerformed;
 use duat_core::{
@@ -749,7 +750,8 @@ impl DuatMode {
         hook::add::<SearchPerformed>(|_, search| *SEARCH.lock().unwrap() = search.to_string());
 
         normal::jump_list::add_jump_hook();
-        insert::add_insert_hook();
+        normal::setup_hooks();
+        insert::setup_hooks();
 
         form::enable_mask("Insert");
         form::enable_mask("Normal");
@@ -813,6 +815,12 @@ enum SelType {
     Extend,
     ExtendRev,
     Normal,
+}
+
+impl SelType {
+    fn set_anchor(&self) -> bool {
+        matches!(self, Self::Extend | Self::ExtendRev)
+    }
 }
 
 #[derive(PartialEq, Eq)]

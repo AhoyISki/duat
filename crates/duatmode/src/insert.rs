@@ -14,7 +14,7 @@ use duat_filetype::{AutoPrefix, FileType};
 
 use crate::{Normal, opts::INSERT_TABS, set_anchor_if_needed};
 
-pub fn add_insert_hook() {
+pub fn setup_hooks() {
     let mask_ns = Ns::new();
 
     hook::add::<ModeSwitched>(move |pa, switch| {
@@ -59,24 +59,7 @@ impl Insert {
 
 impl Mode for Insert {
     fn bindings() -> mode::Bindings {
-        use duat_core::text::txt;
-        use mode::KeyCode::*;
-
-        mode::bindings!(match _ {
-            event!(Char(..) | Enter) => txt!("Insert the character"),
-            event!(Left | Down | Up | Right) => txt!("Move cursor"),
-            shift!(Left | Down | Up | Right) => txt!("Select and move cursor"),
-            event!(Home | End) => txt!("Move to [a]start[][separator],[a]end[] of line"),
-            ctrl!('n') => txt!("Next completion entry"),
-            ctrl!('p') | shift!(BackTab) => txt!("Previous completion entry"),
-            event!(Tab) => txt!("Reindent or next completion entry"),
-            event!(Backspace | Delete) => txt!("Remove character or selection"),
-            ctrl!('l') => txt!("Replace next snippet jump"),
-            ctrl!('h') => txt!("Replace prev snippet jump"),
-            event!(Esc) => txt!("Return to [mode]Normal[] mode"),
-            alt!(';') => txt!("Run a single [mode]Normal[] mode command"),
-            ctrl!('u') => txt!("Merge changes to this point in a single [a]Moment"),
-        })
+        crate::bindings::insert_bindings()
     }
 
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent) {
