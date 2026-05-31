@@ -29,33 +29,84 @@ use crate::{
     utils::{add_shifts as add, merging_range_by_guess_and_lazy_shift},
 };
 
+/// A node in the history tree.
+#[derive(Debug)]
+struct HistoryNode {
+    moment: Moment,
+    parent: Option<usize>,
+    children: Vec<usize>,
+    selected_child: Option<usize>,
+}
+
+impl<Context> Decode<Context> for HistoryNode {
+    fn decode<D: bincode::de::Decoder<Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(HistoryNode {
+            moment: Decode::decode(decoder)?,
+            parent: Decode::decode(decoder)?,
+            children: Decode::decode(decoder)?,
+            selected_child: Decode::decode(decoder)?,
+        })
+    }
+}
+
+impl<'de, Context> bincode::BorrowDecode<'de, Context> for HistoryNode {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de, Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(HistoryNode {
+            moment: Decode::decode(decoder)?,
+            parent: Decode::decode(decoder)?,
+            children: Decode::decode(decoder)?,
+            selected_child: Decode::decode(decoder)?,
+        })
+    }
+}
+
+impl Encode for HistoryNode {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        self.moment.encode(encoder)?;
+        self.parent.encode(encoder)?;
+        self.children.encode(encoder)?;
+        self.selected_child.encode(encoder)
+    }
+}
+
 /// The history of edits, contains all moments.
 #[derive(Debug)]
 pub struct History {
     // Moments in regard to undoing/redoing.
     new_moment: Moment,
-    undo_redo_moments: Vec<Moment>,
-    cur_moment: usize,
+    nodes: Vec<HistoryNode>,
+    cur_node: usize,
     // Moments in regard to namespaces.
     unread_moments: Mutex<Vec<(Ns, Moment)>>,
     ranges_to_update: Arc<Mutex<(Vec<(Ns, Ranges)>, usize)>>,
-    // The moment where a [`Buffer`] was saved.
-    //
-    // [`Buffer`]: crate::buffer::Buffer
-    saved_moment: Option<usize>,
+    // The node where a Buffer was saved.
+    saved_node: Option<usize>,
 }
 
 impl History {
     /// Returns a new `History`.
     #[allow(clippy::new_without_default)]
     pub fn new(text: &Strs) -> Self {
+        let root = HistoryNode {
+            moment: Moment::new(),
+            parent: None,
+            children: vec![],
+            selected_child: None,
+        };
         Self {
             new_moment: Moment::new(),
-            undo_redo_moments: Vec::new(),
-            cur_moment: 0,
+            nodes: vec![root],
+            cur_node: 0,
             unread_moments: Mutex::new(Vec::new()),
             ranges_to_update: Arc::new(Mutex::new((Vec::new(), text.len()))),
-            saved_moment: None,
+            saved_node: Some(0),
         }
     }
 
@@ -94,17 +145,17 @@ impl History {
             return;
         }
 
-        self.undo_redo_moments.truncate(self.cur_moment);
-
-        if let Some(saved_moment) = self.saved_moment
-            && saved_moment > self.cur_moment
-        {
-            self.saved_moment = None;
-        }
-
-        self.undo_redo_moments
-            .push(std::mem::take(&mut self.new_moment));
-        self.cur_moment += 1;
+        let new_idx = self.nodes.len();
+        let new_node = HistoryNode {
+            moment: std::mem::take(&mut self.new_moment),
+            parent: Some(self.cur_node),
+            children: vec![],
+            selected_child: None,
+        };
+        self.nodes.push(new_node);
+        self.nodes[self.cur_node].children.push(new_idx);
+        self.nodes[self.cur_node].selected_child = Some(new_idx);
+        self.cur_node = new_idx;
     }
 
     /// Redoes the next [`Moment`], returning its [`Change`]s.
@@ -113,40 +164,38 @@ impl History {
     /// will result in a correct redoing.
     pub(crate) fn move_forward(&mut self) -> Option<impl ExactSizeIterator<Item = Change<'_>>> {
         self.new_moment();
-        if self.cur_moment == self.undo_redo_moments.len() {
-            None
-        } else {
-            self.cur_moment += 1;
+        let child_idx = self.nodes[self.cur_node].selected_child?;
+        self.cur_node = child_idx;
 
-            let mut ranges_to_update = self.ranges_to_update.lock().unwrap();
-            let unread_moments = self.unread_moments.get_mut().unwrap();
+        let mut ranges_to_update = self.ranges_to_update.lock().unwrap();
+        let unread_moments = self.unread_moments.get_mut().unwrap();
 
-            let iter = self.undo_redo_moments[self.cur_moment - 1]
-                .iter()
-                .enumerate()
-                .map(move |(i, change)| {
-                    let (ranges_to_update, buf_len) = &mut *ranges_to_update;
-                    *buf_len = buf_len.saturating_add_signed(change.shift()[0] as isize);
+        let iter = self.nodes[child_idx]
+            .moment
+            .iter()
+            .enumerate()
+            .map(move |(i, change)| {
+                let (ranges_to_update, buf_len) = &mut *ranges_to_update;
+                *buf_len = buf_len.saturating_add_signed(change.shift()[0] as isize);
 
-                    for (_, ranges) in ranges_to_update.iter_mut() {
-                        ranges.shift_by(
-                            change.start().byte(),
-                            change.added_end().byte() as i32 - change.taken_end().byte() as i32,
-                        );
+                for (_, ranges) in ranges_to_update.iter_mut() {
+                    ranges.shift_by(
+                        change.start().byte(),
+                        change.added_end().byte() as i32 - change.taken_end().byte() as i32,
+                    );
 
-                        let range = change.added_range();
-                        ranges.add(range.start.byte()..range.end.byte());
-                    }
+                    let range = change.added_range();
+                    ranges.add(range.start.byte()..range.end.byte());
+                }
 
-                    for (_, moment) in unread_moments.iter_mut() {
-                        moment.add_change(Some(i), change.to_string_change());
-                    }
+                for (_, moment) in unread_moments.iter_mut() {
+                    moment.add_change(Some(i), change.to_string_change());
+                }
 
-                    change
-                });
+                change
+            });
 
-            Some(iter)
-        }
+        Some(iter)
     }
 
     /// Undoes a [`Moment`], returning its reversed [`Change`]s.
@@ -156,15 +205,17 @@ impl History {
     /// modifications, will result in a correct undoing.
     pub(crate) fn move_backwards(&mut self) -> Option<impl ExactSizeIterator<Item = Change<'_>>> {
         self.new_moment();
-        if self.cur_moment == 0 {
-            None
-        } else {
-            self.cur_moment -= 1;
+        let parent_idx = self.nodes[self.cur_node].parent?;
+        let old_node = self.cur_node;
+        self.nodes[parent_idx].selected_child = Some(old_node);
+        self.cur_node = parent_idx;
 
-            let mut ranges_to_update = self.ranges_to_update.lock().unwrap();
-            let unread_moments = self.unread_moments.get_mut().unwrap();
+        let mut ranges_to_update = self.ranges_to_update.lock().unwrap();
+        let unread_moments = self.unread_moments.get_mut().unwrap();
 
-            let iter = self.undo_redo_moments[self.cur_moment]
+        let iter =
+            self.nodes[old_node]
+                .moment
                 .iter()
                 .undone()
                 .enumerate()
@@ -189,23 +240,18 @@ impl History {
                     change
                 });
 
-            Some(iter)
-        }
+        Some(iter)
     }
 
     /// Declares that the current state of the [`Text`] was saved on
     /// disk.
     pub(super) fn declare_saved(&mut self) {
-        self.saved_moment = Some(self.cur_moment);
+        self.saved_node = Some(self.cur_node);
     }
 
     /// Wether there are any unsaved changes.
     pub(super) fn has_unsaved_changes(&self) -> bool {
-        !self.new_moment.is_empty()
-            || (self
-                .saved_moment
-                .is_none_or(|saved| saved != self.cur_moment)
-                && !self.undo_redo_moments.is_empty())
+        !self.new_moment.is_empty() || self.saved_node != Some(self.cur_node)
     }
 }
 
@@ -215,11 +261,11 @@ impl<Context> Decode<Context> for History {
     ) -> Result<Self, bincode::error::DecodeError> {
         Ok(History {
             new_moment: Decode::decode(decoder)?,
-            undo_redo_moments: Decode::decode(decoder)?,
-            cur_moment: Decode::decode(decoder)?,
+            nodes: Decode::decode(decoder)?,
+            cur_node: Decode::decode(decoder)?,
             unread_moments: Mutex::new(Vec::new()),
             ranges_to_update: Arc::new(Mutex::new((Vec::new(), usize::decode(decoder)?))),
-            saved_moment: Decode::decode(decoder)?,
+            saved_node: Decode::decode(decoder)?,
         })
     }
 }
@@ -232,10 +278,10 @@ impl Encode for History {
         encoder: &mut E,
     ) -> Result<(), bincode::error::EncodeError> {
         self.new_moment.encode(encoder)?;
-        self.undo_redo_moments.encode(encoder)?;
-        self.cur_moment.encode(encoder)?;
+        self.nodes.encode(encoder)?;
+        self.cur_node.encode(encoder)?;
         self.ranges_to_update.lock().unwrap().1.encode(encoder)?;
-        self.saved_moment.encode(encoder)
+        self.saved_node.encode(encoder)
     }
 }
 
@@ -1128,5 +1174,269 @@ impl std::fmt::Debug for RangesToUpdate {
         f.debug_struct("RangesToUpdate")
             .field("ranges", &*self.list.lock().unwrap())
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::text::Text;
+
+    fn make_history() -> History {
+        let text = Text::new();
+        History::new(text.as_ref())
+    }
+
+    fn apply_and_commit(history: &mut History, s: &'static str) {
+        let start = Point::from_raw(0, 0, 0);
+        let change = Change::str_insert(s, start).to_string_change();
+        history.apply_change(None, change);
+        history.new_moment();
+    }
+
+    fn replace_text_and_commit(
+        text: &mut Text,
+        history: &mut History,
+        range: Range<usize>,
+        s: &str,
+    ) {
+        let mut text = text.as_mut_with_strs_mutation();
+        text.attach_history(history);
+        text.replace_range(range, s);
+        text.new_moment();
+    }
+
+    fn undo_text(text: &mut Text, history: &mut History) {
+        let mut text = text.as_mut_with_strs_mutation();
+        text.attach_history(history);
+        text.undo();
+    }
+
+    fn redo_text(text: &mut Text, history: &mut History) {
+        let mut text = text.as_mut_with_strs_mutation();
+        text.attach_history(history);
+        text.redo();
+    }
+
+    fn text_without_trailing_cursor_line(text: &Text) -> String {
+        let text = text.to_string();
+        text.strip_suffix('\n').unwrap_or(&text).to_string()
+    }
+
+    fn drain(iter: impl Iterator) -> bool {
+        iter.count() > 0
+    }
+
+    #[test]
+    fn linear_undo_redo() {
+        let mut h = make_history();
+
+        // Apply change A
+        apply_and_commit(&mut h, "A");
+        let node_a = h.cur_node;
+
+        // Apply change B
+        apply_and_commit(&mut h, "B");
+        let node_b = h.cur_node;
+
+        // Undo B
+        let iter_b_undo = h.move_backwards().expect("should undo B");
+        assert!(drain(iter_b_undo), "iterator should have items");
+        assert_eq!(h.cur_node, node_a, "after undoing B, should be at A node");
+
+        // Undo A
+        let iter_a_undo = h.move_backwards().expect("should undo A");
+        assert!(drain(iter_a_undo), "iterator should have items");
+        assert_eq!(h.cur_node, 0, "after undoing A, should be at root");
+
+        // Redo A
+        let iter_a_redo = h.move_forward().expect("should redo A");
+        assert!(drain(iter_a_redo), "iterator should have items");
+        assert_eq!(h.cur_node, node_a, "after redoing A, should be at A node");
+
+        // Redo B
+        let iter_b_redo = h.move_forward().expect("should redo B");
+        assert!(drain(iter_b_redo), "iterator should have items");
+        assert_eq!(h.cur_node, node_b, "after redoing B, should be at B node");
+    }
+
+    #[test]
+    fn branch_preservation() {
+        let mut h = make_history();
+
+        // Apply A
+        apply_and_commit(&mut h, "A");
+        let node_a = h.cur_node;
+
+        // Apply B
+        apply_and_commit(&mut h, "B");
+        let node_b = h.cur_node;
+
+        // Undo back to A
+        drain(h.move_backwards().expect("should undo B"));
+        assert_eq!(h.cur_node, node_a);
+
+        // Apply C (creates a new branch from A)
+        apply_and_commit(&mut h, "C");
+        let node_c = h.cur_node;
+
+        // B-node should still exist in nodes
+        assert!(h.nodes.len() > node_b, "B node still in tree");
+
+        // A-node should have 2 children: B and C
+        let a_node = &h.nodes[node_a];
+        assert_eq!(a_node.children.len(), 2, "A node has 2 children");
+        assert!(a_node.children.contains(&node_b), "A's children include B");
+        assert!(a_node.children.contains(&node_c), "A's children include C");
+
+        // A-node's selected_child should point to C
+        assert_eq!(
+            a_node.selected_child,
+            Some(node_c),
+            "A's selected child is C"
+        );
+    }
+
+    #[test]
+    fn selected_branch_behavior() {
+        let mut h = make_history();
+
+        // Apply A
+        apply_and_commit(&mut h, "A");
+        let node_a = h.cur_node;
+
+        // Apply B
+        apply_and_commit(&mut h, "B");
+
+        // Undo back to A
+        drain(h.move_backwards().expect("should undo B"));
+        assert_eq!(h.cur_node, node_a);
+
+        // Apply C
+        apply_and_commit(&mut h, "C");
+        let node_c = h.cur_node;
+
+        // Go back to A again
+        drain(h.move_backwards().expect("should undo C"));
+        assert_eq!(h.cur_node, node_a);
+
+        // Redo should follow C (the selected branch), not B
+        drain(h.move_forward().expect("should redo"));
+        assert_eq!(h.cur_node, node_c, "redo follows C (selected branch)");
+    }
+
+    #[test]
+    fn text_mut_undo_redo_replays_selected_branch_contents() {
+        let mut text = Text::new();
+        let mut h = History::new(text.as_ref());
+
+        replace_text_and_commit(&mut text, &mut h, 0..0, "A");
+        assert_eq!(text_without_trailing_cursor_line(&text), "A");
+
+        replace_text_and_commit(&mut text, &mut h, 1..1, "B");
+        assert_eq!(text_without_trailing_cursor_line(&text), "AB");
+
+        undo_text(&mut text, &mut h);
+        assert_eq!(text_without_trailing_cursor_line(&text), "A");
+
+        replace_text_and_commit(&mut text, &mut h, 1..1, "C");
+        assert_eq!(text_without_trailing_cursor_line(&text), "AC");
+
+        undo_text(&mut text, &mut h);
+        assert_eq!(text_without_trailing_cursor_line(&text), "A");
+
+        redo_text(&mut text, &mut h);
+        assert_eq!(text_without_trailing_cursor_line(&text), "AC");
+    }
+
+    #[test]
+    fn saved_state() {
+        let mut h = make_history();
+
+        // Fresh history should have no unsaved changes
+        assert!(
+            !h.has_unsaved_changes(),
+            "fresh history has no unsaved changes"
+        );
+
+        // Apply A and commit
+        apply_and_commit(&mut h, "A");
+        assert!(
+            h.has_unsaved_changes(),
+            "after A, there are unsaved changes"
+        );
+
+        // Declare saved
+        h.declare_saved();
+        assert!(
+            !h.has_unsaved_changes(),
+            "after declaring saved, no unsaved changes"
+        );
+
+        // Undo A
+        drain(h.move_backwards().expect("should undo A"));
+        assert!(
+            h.has_unsaved_changes(),
+            "after undo, there are unsaved changes again"
+        );
+
+        // Redo A
+        drain(h.move_forward().expect("should redo A"));
+        assert!(
+            !h.has_unsaved_changes(),
+            "after redo to saved node, no unsaved changes"
+        );
+    }
+
+    #[test]
+    fn bincode_roundtrip() {
+        let mut h = make_history();
+
+        // Build: A -> B, then undo to A, then C
+        apply_and_commit(&mut h, "A");
+        let node_a = h.cur_node;
+        apply_and_commit(&mut h, "B");
+        let node_b = h.cur_node;
+        drain(h.move_backwards().expect("undo B"));
+        apply_and_commit(&mut h, "C");
+        let node_c = h.cur_node;
+
+        // Record tree structure
+        let orig_cur_node = h.cur_node;
+        let orig_saved_node = h.saved_node;
+        let orig_num_nodes = h.nodes.len();
+        let orig_a_children = h.nodes[node_a].children.clone();
+        let orig_a_selected = h.nodes[node_a].selected_child;
+        let orig_b_parent = h.nodes[node_b].parent;
+        let orig_c_parent = h.nodes[node_c].parent;
+
+        // Encode
+        let encoded =
+            bincode::encode_to_vec(&h, bincode::config::standard()).expect("encode should succeed");
+
+        // Decode
+        let (decoded, _): (History, _) =
+            bincode::decode_from_slice(&encoded, bincode::config::standard())
+                .expect("decode should succeed");
+
+        assert_eq!(decoded.cur_node, orig_cur_node, "cur_node matches");
+        assert_eq!(decoded.saved_node, orig_saved_node, "saved_node matches");
+        assert_eq!(decoded.nodes.len(), orig_num_nodes, "node count matches");
+        assert_eq!(
+            decoded.nodes[node_a].children, orig_a_children,
+            "A children match"
+        );
+        assert_eq!(
+            decoded.nodes[node_a].selected_child, orig_a_selected,
+            "A selected_child matches"
+        );
+        assert_eq!(
+            decoded.nodes[node_b].parent, orig_b_parent,
+            "B parent matches"
+        );
+        assert_eq!(
+            decoded.nodes[node_c].parent, orig_c_parent,
+            "C parent matches"
+        );
     }
 }
