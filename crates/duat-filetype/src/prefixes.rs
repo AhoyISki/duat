@@ -27,7 +27,7 @@ impl AutoPrefix for SelectionMut<'_, '_> {
 
         if let Some(prefixes) = PREFIXES.get(filetype) {
             let line = self.text().line(prev_lnum);
-            for prefix in prefixes.iter() {
+            'prefixes: for prefix in prefixes.iter() {
                 if let Some(range) = line.search(prefix.from).next()
                     && prefix.blocker.is_none_or(|blocker| {
                         line.search(blocker)
@@ -35,6 +35,16 @@ impl AutoPrefix for SelectionMut<'_, '_> {
                             .is_none_or(|blocker_range| blocker_range.end <= range.start)
                     })
                 {
+                    if let Some(chain_start) = prefix.chain_start {
+                        for line in self.text()[..line.byte_range().start].lines().rev() {
+                            if line.search(chain_start).next().is_some() {
+                                break;
+                            } else if line.search(prefix.from).next().is_none() {
+                                continue 'prefixes;
+                            }
+                        }
+                    }
+
                     self.insert(prefix.set);
                     self.move_hor(prefix.set.chars().count() as i32);
 
@@ -51,41 +61,47 @@ struct Prefix {
     from: &'static str,
     set: &'static str,
     blocker: Option<&'static str>,
+    chain_start: Option<&'static str>,
 }
 
-const fn pf(from: &'static str, set: &'static str, blocker: Option<&'static str>) -> Prefix {
-    Prefix { from, set, blocker }
+const fn pf(
+    from: &'static str,
+    set: &'static str,
+    blocker: Option<&'static str>,
+    chain_start: Option<&'static str>,
+) -> Prefix {
+    Prefix { from, set, blocker, chain_start }
 }
 
 // List taken from https://gist.github.com/dk949/88b2652284234f723decaeb84db2576c
 static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
-    const HASH: Prefix = pf(r"^\s*#", "#", None);
-    const DOUBLE_HASH: &[Prefix] = &[pf(r"^\s*##", "##", None)];
+    const HASH: Prefix = pf(r"^\s*#", "#", None, None);
+    const DOUBLE_HASH: &[Prefix] = &[pf(r"^\s*##", "##", None, None)];
 
-    const SLASHES: Prefix = pf(r"^\s*//", "//", None);
-    const DOC_SLASHES: Prefix = pf(r"^\s*///", "///", None);
-    const INNER_DOC_SLASHES: Prefix = pf(r"^\s*//!", "//!", None);
-    const ASTERISK: Prefix = pf(r"^\s*\*", " *", Some(r#"\*/"#));
-    const SLASH_ASTERISK: Prefix = pf(r"^\s*/\*", " *", Some(r#"\*/"#));
-    const SLASH_ASTERISK_LINE: &[Prefix] = &[pf(r"^\s*/\*", "/*", None)];
+    const SLASHES: Prefix = pf(r"^\s*//", "//", None, None);
+    const DOC_SLASHES: Prefix = pf(r"^\s*///", "///", None, None);
+    const INNER_DOC_SLASHES: Prefix = pf(r"^\s*//!", "//!", None, None);
+    const ASTERISK: Prefix = pf(r"^\s*\*", " *", Some(r#"\*/"#), Some(r"^\s*/\*"));
+    const SLASH_ASTERISK: Prefix = pf(r"^\s*/\*", " *", Some(r#"\*/"#), None);
+    const SLASH_ASTERISK_LINE: &[Prefix] = &[pf(r"^\s*/\*", "/*", None, None)];
 
-    const QUOTE: Prefix = pf(r"^\s*'", "'", None);
-    const DQUOTE: Prefix = pf(r#"^\s*""#, r#"""#, None);
-    const SEMICOLON: Prefix = pf(r"^\s;", ";", None);
-    const PERCENT: Prefix = pf(r"^\s*%", "%", None);
-    const EXCLAMATION: Prefix = pf(r"^\s*!", "!", None);
-    const DOLLAR_SIGN: Prefix = pf(r"^\s*$", "$", None);
-    const SLASH: Prefix = pf(r"^\s*/", "/", None);
+    const QUOTE: Prefix = pf(r"^\s*'", "'", None, None);
+    const DQUOTE: Prefix = pf(r#"^\s*""#, r#"""#, None, None);
+    const SEMICOLON: Prefix = pf(r"^\s;", ";", None, None);
+    const PERCENT: Prefix = pf(r"^\s*%", "%", None, None);
+    const EXCLAMATION: Prefix = pf(r"^\s*!", "!", None, None);
+    const DOLLAR_SIGN: Prefix = pf(r"^\s*$", "$", None, None);
+    const SLASH: Prefix = pf(r"^\s*/", "/", None, None);
 
-    const DASHES: Prefix = pf(r"^\s*--", "--", None);
-    const REM: Prefix = pf("^REM", "REM", None);
-    const DOT_ESCAPED_DQUOTE: &[Prefix] = &[pf(r#"^\s\.\\""#, r#".\""#, None)];
-    const DOUBLE_COLON: Prefix = pf(r"^\s*::", "::", None);
-    const ASTERISK_LINE: Prefix = pf(r"^\s*\*", "*", None);
+    const DASHES: Prefix = pf(r"^\s*--", "--", None, None);
+    const REM: Prefix = pf("^REM", "REM", None, None);
+    const DOT_ESCAPED_DQUOTE: &[Prefix] = &[pf(r#"^\s\.\\""#, r#".\""#, None, None)];
+    const DOUBLE_COLON: Prefix = pf(r"^\s*::", "::", None, None);
+    const ASTERISK_LINE: Prefix = pf(r"^\s*\*", "*", None, None);
     const LISP: &[Prefix] = &[
-        const { pf(r"^\s*;;;;", ";;;;", None) },
-        const { pf(r"^\s*;;;", ";;;", None) },
-        const { pf(r"^\s*;;", ";;", None) },
+        const { pf(r"^\s*;;;;", ";;;;", None, None) },
+        const { pf(r"^\s*;;;", ";;;", None, None) },
+        const { pf(r"^\s*;;", ";;", None, None) },
         SEMICOLON,
     ];
 
@@ -231,7 +247,7 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
         ("velocity", DOUBLE_HASH),
         ("webmacro", DOUBLE_HASH),
         // Slash group
-        ("groff", const { &[pf(r"^\s*\#", r"\#", None)] }),
+        ("groff", const { &[pf(r"^\s*\#", r"\#", None, None)] }),
         ("acedb", &[SLASH_ASTERISK, ASTERISK, SLASHES]),
         ("actionscript", &[SLASH_ASTERISK, ASTERISK, SLASHES]),
         ("asy", &[SLASH_ASTERISK, ASTERISK, SLASHES]),
@@ -295,11 +311,10 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
         ("vala", &[SLASH_ASTERISK, ASTERISK, SLASHES]),
         ("vera", &[SLASH_ASTERISK, ASTERISK, SLASHES]),
         ("verilog", &[SLASH_ASTERISK, ASTERISK, SLASHES]),
-        ("verilog_systemverilog", &[
-            SLASH_ASTERISK,
-            ASTERISK,
-            SLASHES,
-        ]),
+        (
+            "verilog_systemverilog",
+            &[SLASH_ASTERISK, ASTERISK, SLASHES],
+        ),
         ("sass", &[SLASH_ASTERISK, ASTERISK, SLASHES]),
         ("asciidoc", &[SLASHES]),
         ("ats", &[SLASHES]),
@@ -315,18 +330,24 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
         ("scilab", &[SLASHES]),
         ("specman", &[SLASHES]),
         ("xkb", &[SLASHES]),
-        ("s", &[SLASH_ASTERISK, ASTERISK, DOC_SLASHES, SLASHES]),
+        ("c", &[SLASH_ASTERISK, ASTERISK, DOC_SLASHES, SLASHES]),
         ("cpp", &[SLASH_ASTERISK, ASTERISK, DOC_SLASHES, SLASHES]),
-        ("rust", &[
-            SLASH_ASTERISK,
-            ASTERISK,
-            DOC_SLASHES,
-            INNER_DOC_SLASHES,
-            SLASHES,
-        ]),
+        (
+            "rust",
+            &[
+                SLASH_ASTERISK,
+                ASTERISK,
+                DOC_SLASHES,
+                INNER_DOC_SLASHES,
+                SLASHES,
+            ],
+        ),
         ("zig", &[DOC_SLASHES, INNER_DOC_SLASHES, SLASHES]),
-        ("spectre", &[SLASHES, const { pf(r"^\s*\*", "*", None) }]),
-        ("emblem", &[const { pf(r"^\s*/", "/", None) }]),
+        (
+            "spectre",
+            &[SLASHES, const { pf(r"^\s*\*", "*", None, None) }],
+        ),
+        ("emblem", &[const { pf(r"^\s*/", "/", None, None) }]),
         ("aml", SLASH_ASTERISK_LINE),
         ("natural", SLASH_ASTERISK_LINE),
         ("vsejcl", SLASH_ASTERISK_LINE),
@@ -356,7 +377,7 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
         ("sqlforms", &[DASHES]),
         ("sqlj", &[DASHES]),
         ("vhdl", &[DASHES]),
-        ("lhaskell", const { &[pf(r"^\s*>--", ">--", None)] }),
+        ("lhaskell", const { &[pf(r"^\s*>--", ">--", None, None)] }),
         // Semicolon group
         ("amiga", &[SEMICOLON]),
         ("armasm", &[SEMICOLON]),
@@ -411,16 +432,16 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
         // Keyword group
         ("basic", &[QUOTE, REM]),
         ("simula", &[PERCENT]),
-        ("cvs", const { &[pf("^CVS:", "^CVS:", None)] }),
+        ("cvs", const { &[pf("^CVS:", "^CVS:", None, None)] }),
         ("dosbatch", &[REM, DOUBLE_COLON]),
-        ("m4", const { &[pf(r"^\s*dnl", "dnl", None)] }),
+        ("m4", const { &[pf(r"^\s*dnl", "dnl", None, None)] }),
         ("opl", &[REM]),
         (
             "texinfo",
             const {
                 &[
-                    pf(r"^\s*@comment", "@comment", None),
-                    pf(r"^\s*@s", "@s", None),
+                    pf(r"^\s*@comment", "@comment", None, None),
+                    pf(r"^\s*@s", "@s", None, None),
                 ]
             },
         ),
@@ -452,7 +473,7 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
         ("lscript", &[QUOTE]),
         ("spin", &[QUOTE]),
         ("vb", &[QUOTE]),
-        ("man", const { &[pf(r#"^\s\.""#, r#".""#, None)] }),
+        ("man", const { &[pf(r#"^\s\.""#, r#".""#, None, None)] }),
         ("mandoc", DOT_ESCAPED_DQUOTE),
         ("troff", DOT_ESCAPED_DQUOTE),
         ("nroff", &[DQUOTE]),
@@ -472,10 +493,10 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
         ("vasp", &[EXCLAMATION]),
         ("xdefaults", &[EXCLAMATION]),
         ("xpm2", &[EXCLAMATION]),
-        ("factor", &[
-            EXCLAMATION,
-            const { pf(r"^\s*!#", "!#", None) },
-        ]),
+        (
+            "factor",
+            &[EXCLAMATION, const { pf(r"^\s*!#", "!#", None, None) }],
+        ),
         // Dollar sign group
         ("master", &[DOLLAR_SIGN]),
         ("nastran", &[DOLLAR_SIGN]),
@@ -484,7 +505,7 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
         ("spice", &[DOLLAR_SIGN]),
         ("tak", &[DOLLAR_SIGN]),
         ("trasys", &[DOLLAR_SIGN]),
-        ("dcl", const { &[pf(r"^\s*$!", "$!", None)] }),
+        ("dcl", const { &[pf(r"^\s*$!", "$!", None, None)] }),
         // Mixed group
         ("hocon", &[SLASHES, HASH]),
         ("octave", &[PERCENT, HASH]),
@@ -503,8 +524,8 @@ static PREFIXES: LazyLock<HashMap<&str, &[Prefix]>> = LazyLock::new(|| {
         ("gams", &[ASTERISK_LINE]),
         ("sicad", &[ASTERISK_LINE]),
         ("snobol4", &[ASTERISK_LINE]),
-        ("focexec", const { &[pf(r"^\s*-\*", "-*", None)] }),
-        ("haml", &[const { pf(r"^\s*-#", "-#", None) }, SLASH]),
-        ("haml", &[SLASH, const { pf(r"^\s*/!", "/!", None) }]),
+        ("focexec", const { &[pf(r"^\s*-\*", "-*", None, None)] }),
+        ("haml", &[const { pf(r"^\s*-#", "-#", None, None) }, SLASH]),
+        ("haml", &[SLASH, const { pf(r"^\s*/!", "/!", None, None) }]),
     ])
 });
