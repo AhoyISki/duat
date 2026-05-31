@@ -575,7 +575,7 @@ impl Layout {
                 id,
                 spec: SpawnSpec::Dynamic(orientation, target_spawn_id),
                 cons,
-                frame: Default::default(),
+                frame: Frame::empty(),
             },
             rect,
         ));
@@ -597,7 +597,7 @@ impl Layout {
                 id,
                 spec: SpawnSpec::Dynamic(specs.orientation, None),
                 cons,
-                frame: Default::default(),
+                frame: Frame::empty(),
             },
             rect,
         ));
@@ -619,7 +619,7 @@ impl Layout {
                     orig_max,
                 },
                 cons,
-                frame: Default::default(),
+                frame: Frame::empty(),
             },
             rect,
         ));
@@ -1026,6 +1026,17 @@ pub struct Frame {
 }
 
 impl Frame {
+    /// Returns an empty `Frame`.
+    pub fn empty() -> Self {
+        Self {
+            above: false,
+            below: false,
+            left: false,
+            right: false,
+            ..Default::default()
+        }
+    }
+
     /// An [`Iterator`] over the sides of the `Frame`
     ///
     /// The order is: above, below, left, right
