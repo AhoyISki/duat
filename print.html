@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3b2ed81f.js";
+            window.path_to_searchindex_js = "searchindex-846be38c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-261cd8e4.js"></script>
@@ -319,8 +319,8 @@ incremented by typing digits.  For example, if you type
 <details>
 <summary><b>Object selection</b></summary>
 <p>In Duat, there are various types of “objects” for selection. These
-get used on <code>Normal</code> mode key sequences, most notably on <code>'</code> and
-<code>"</code>. Each of them defines something to be selected:</p>
+get used on <code>Normal</code> mode key sequences, most notably on <code>mi</code> and
+<code>ma</code>. Each of them defines something to be selected:</p>
 <p><code>b</code>, <code>(</code>, <code>)</code><br>Inside/around parenthesis.</p>
 <p><code>B</code>, <code>{</code>, <code>}</code><br>Inside/around curly braces.</p>
 <p><code>r</code>, <code>[</code>, <code>]</code><br>Inside/around brackets.</p>
@@ -362,15 +362,12 @@ mode.</p>
 <p><code>&lt;a-h&gt;</code>, <code>&lt;Home&gt;</code><br>Selects to the start of the line.</p>
 <p><code>&lt;a-l&gt;</code>, <code>&lt;End&gt;</code><br>Selects until the end of the line.</p>
 <p><code>&lt;a-H&gt;</code>, <code>&lt;s-Home&gt;</code>, <code>&lt;a-L&gt;</code>, <code>&lt;s-End&gt;</code><br>Same as the previous two, but extends the selection.</p>
-<p><code>"</code><br>Select around object</p>
 <p><code>[</code>,<code>]</code><br>Select around start/end of object</p>
 <p><code>{</code>,<code>}</code><br>Extend around start/end of object</p>
-<p><code>'</code><br>Select inside object</p>
 <p><code>&lt;a-[&gt;</code>,<code>&lt;a-]&gt;</code><br>Select inside start/end of object</p>
 <p><code>&lt;a-{&gt;</code>,<code>&lt;a-}&gt;</code><br>Extend inside start/end of object</p>
-<p><code>m</code><br>Selects to the next pair of matching brackets.</p>
-<p><code>&lt;a-m&gt;</code><br>Selects the previous pair of matching brackets.</p>
-<p><code>M</code>, <code>&lt;a-M&gt;</code><br>Same as the previous two, but extends the selection.</p>
+<p><code>m</code>,<a-m><br>Enter Match mode by selecting.</a-m></p>
+<p><code>M</code>,<a-m><br>Enter Match mode by extending.</a-m></p>
 <p><code>&lt;a-u&gt;</code><br>Returns to the previous state for the selections.</p>
 <p><code>&lt;a-U&gt;</code><br>Goes to the next state for the selections.</p>
 <p><code>;</code><br>Reduces selections to just the cursor.</p>
@@ -415,8 +412,8 @@ placed on the previous line).</p>
 <p><code>`</code><br>Changes selection to lowercase.</p>
 <p><code>~</code><br>Changes selection to uppercase.</p>
 <p><code>&lt;A-`&gt;</code><br>Swaps the case of each character.</p>
-<p><code>&lt;A-)&gt;</code><br>Rotates each selection’s content forwards.</p>
-<p><code>&lt;A-(&gt;</code><br>Rotates each selection’s content backwards.</p>
+<p><code>)</code><br>Enters rotate mode, rotating forwards.</p>
+<p><code>(</code><br>Enters rotate mode, rotating backwards.</p>
 <p><code>|</code><br>Pipes the selections to an external command, replacing
 their content with the output.</p>
 <p><code>&lt;c-r&gt;</code><br>Reload Duat’s config.</p>
@@ -446,11 +443,10 @@ It serves a s a way to quickly move places, be it on selections or to other
 <code>Buffer</code>s and such.</p>
 <p>Note that if these keys are preceded by a count, like <code>10g</code>, you
 will instead immediately go to the 10th line, instead of goto mode.</p>
-<details>
-<summary><b>Key bindings</b></summary>
-<p><code>goto</code> mode is entered with the <code>g</code> or <code>G</code> keys in <code>normal</code> mode.</p>
 <p>On every key that selects, <code>G</code> will have the same behavior, but
 extending the selection instead.</p>
+<details>
+<summary><b>Key bindings</b></summary>
 <p><code>h</code><br>Move to the beginning of the line (before indents, column 0).</p>
 <p><code>l</code><br>Go to the end of the line.</p>
 <p><code>i</code><br>Go to the beginning of the line, after indents.</p>
@@ -459,6 +455,31 @@ extending the selection instead.</p>
 <p><code>a</code><br>Go to the last buffer. Repeating will return to this buffer</p>
 <p><code>n</code><br>Go to the next buffer (includes other windows).</p>
 <p><code>N</code><br>Go to the previous buffer (includes other windows).</p>
+</details>
+<h3 id="match-mode"><a class="header" href="#match-mode">match mode</a></h3>
+<p>match mode is entered with the <code>m</code>, <code>&lt;a-m&gt;</code>, <code>M</code> and <code>&lt;a-M&gt;</code>
+keys.</p>
+<p>It is very similar to Helix’s match mode, however, there are
+some differences in behavior with the <code>m</code> key specifically,
+plus some other mappings that are done for convenience:</p>
+<details>
+<summary><b>Key bindings</b></summary>
+<p><code>m</code>,<code>l</code><br>Select/extend to the next matching pair.</p>
+<p><code>M</code><br>Extend to the next matching pair.</p>
+<p><code>&lt;a-m&gt;</code>,<code>h</code><br>Select/extend to the previous matching pair.</p>
+<p><code>&lt;a-M&gt;</code><br>Extend to the previous matching pair.</p>
+<p><code>i</code><br>Select/extend inside object.</p>
+<p><code>a</code><br>Select/extend around object.</p>
+</details>
+<h3 id="rotate-mode"><a class="header" href="#rotate-mode">rotate mode</a></h3>
+<p>Rotate mode is entered via <code>(</code> or <code>)</code>.</p>
+<p>It serves the purpose of shifting the content/range of selections
+relative to each other. There are only two keybindings right now
+but more may be added in the future, and suggestions are welcome.</p>
+<details>
+<summary><b>Key bindings</b></summary>
+<p><code>s</code><br>Rotates the selections.</p>
+<p><code>c</code><br>Rotates the content of the selections.</p>
 </details>
 <h2 id="user-mode"><a class="header" href="#user-mode">User mode</a></h2>
 <p>In Duat, <code>User</code> mode is a “generalized mode”, which should be
