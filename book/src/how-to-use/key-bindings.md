@@ -42,8 +42,8 @@ incremented by typing digits.  For example, if you type
 <summary><b>Object selection</b></summary>
 
 In Duat, there are various types of “objects” for selection. These
-get used on `Normal` mode key sequences, most notably on `'` and
-`"`. Each of them defines something to be selected:
+get used on `Normal` mode key sequences, most notably on `mi` and
+`ma`. Each of them defines something to be selected:
 
 `b`, `(`, `)`\
 Inside/around parenthesis.
@@ -159,17 +159,11 @@ Selects until the end of the line.
 `<a-H>`, `<s-Home>`, `<a-L>`, `<s-End>`\
 Same as the previous two, but extends the selection.
 
-`"`\
-Select around object
-
 `[`,`]`\
 Select around start/end of object
 
 `{`,`}`\
 Extend around start/end of object
-
-`'`\
-Select inside object
 
 `<a-[>`,`<a-]>`\
 Select inside start/end of object
@@ -177,14 +171,11 @@ Select inside start/end of object
 `<a-{>`,`<a-}>`\
 Extend inside start/end of object
 
-`m`\
-Selects to the next pair of matching brackets.
+`m`,<a-m>\
+Enter Match mode by selecting.
 
-`<a-m>`\
-Selects the previous pair of matching brackets.
-
-`M`, `<a-M>`\
-Same as the previous two, but extends the selection.
+`M`,<a-M>\
+Enter Match mode by extending.
 
 `<a-u>`\
 Returns to the previous state for the selections.
@@ -308,11 +299,11 @@ Changes selection to uppercase.
 ``<A-`>``\
 Swaps the case of each character.
 
-`<A-)>`\
-Rotates each selection's content forwards.
+`)`\
+Enters rotate mode, rotating forwards.
 
-`<A-(>`\
-Rotates each selection's content backwards.
+`(`\
+Enters rotate mode, rotating backwards.
 
 `|`\
 Pipes the selections to an external command, replacing
@@ -380,13 +371,11 @@ It serves a s a way to quickly move places, be it on selections or to other
 Note that if these keys are preceded by a count, like `10g`, you
 will instead immediately go to the 10th line, instead of goto mode.
 
-<details>
-<summary><b>Key bindings</b></summary>
-
-`goto` mode is entered with the `g` or `G` keys in `normal` mode.
-
 On every key that selects, `G` will have the same behavior, but
 extending the selection instead.
+
+<details>
+<summary><b>Key bindings</b></summary>
 
 `h`\
 Move to the beginning of the line (before indents, column 0).
@@ -411,6 +400,57 @@ Go to the next buffer (includes other windows).
 
 `N`\
 Go to the previous buffer (includes other windows).
+
+</details>
+
+### match mode
+
+match mode is entered with the `m`, `<a-m>`, `M` and `<a-M>`
+keys.
+
+It is very similar to Helix’s match mode, however, there are
+some differences in behavior with the `m` key specifically,
+plus some other mappings that are done for convenience:
+
+<details>
+<summary><b>Key bindings</b></summary>
+
+`m`,`l`  
+Select/extend to the next matching pair.
+
+`M`  
+Extend to the next matching pair.
+
+`<a-m>`,`h`  
+Select/extend to the previous matching pair.
+
+`<a-M>`  
+Extend to the previous matching pair.
+
+`i`  
+Select/extend inside object.
+
+`a`  
+Select/extend around object.
+
+</details>
+
+### rotate mode
+
+Rotate mode is entered via `(` or `)`.
+
+It serves the purpose of shifting the content/range of selections
+relative to each other. There are only two keybindings right now
+but more may be added in the future, and suggestions are welcome.
+
+<details>
+<summary><b>Key bindings</b></summary>
+
+`s`\
+Rotates the selections.
+
+`c`\
+Rotates the content of the selections.
 
 </details>
 

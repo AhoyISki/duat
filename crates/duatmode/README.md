@@ -11,7 +11,7 @@ in duat’s [`opts`][__link3] module by default
 ## Keymaps
 
 On every key, if the action involves selections, unless stated
-otherwise, it will take place in all selections.
+//! otherwise, it will take place in all selections.
 
 ### `Insert` mode
 
@@ -24,7 +24,7 @@ following:
 `<Tab>` and `<s-Tab>` will do different things depending on your
 [tab mode][__link4].
 
-`<c-n>` and `<c-p>` go to the next and previous completion
+`<s-n>` and `<s-p>` go to the next and previous completion
 entries.
 
 `<Esc>` exits insert mode, returning to `Normal` mode\`.
@@ -170,17 +170,11 @@ Selects until the end of the line.
 `<a-H>`, `<s-Home>`, `<a-L>`, `<s-End>`  
 Same as the previous two, but extends the selection.
 
-`"`  
-Select around object
-
 `[`,`]`  
 Select around start/end of object
 
 `{`,`}`  
 Extend around start/end of object
-
-`'`  
-Select inside object
 
 `<a-[>`,`<a-]>`  
 Select inside start/end of object
@@ -188,14 +182,11 @@ Select inside start/end of object
 `<a-{>`,`<a-}>`  
 Extend inside start/end of object
 
-`m`  
-Selects to the next pair of matching brackets.
+`m`,<a-m>  
+Enter Match mode by selecting.
 
-`<a-m>`  
-Selects the previous pair of matching brackets.
-
-`M`, `<a-M>`  
-Same as the previous two, but extends the selection.
+`M`,<a-M>  
+Enter Match mode by extending.
 
 `<a-u>`  
 Returns to the previous state for the selections.
@@ -236,7 +227,7 @@ Replays the recorded macro.
 `<a-Q>`  
 Starts/stops recording a macro.
 
-`<c-r>`  
+`<s-r>`  
 Reloads the configuration crate.
 
 </details>
@@ -325,11 +316,11 @@ Changes selection to uppercase.
 ``<a-`>``  
 Swaps the case of each character.
 
-`<a-)>`  
-Rotates each selection’s content forwards.
+`)`  
+Enter `rotate` mode, moving forwards.
 
-`<a-(>`  
-Rotates each selection’s content backwards.
+`)`  
+Enter `rotate` mode, moving backwards.
 
 `|`  
 Changes mode to [`PipeSelections`][__link13], letting you pipe each
@@ -431,6 +422,59 @@ Go to the previous buffer (includes other windows).
 <details>
 <summary>
 
+### `match` mode
+
+</summary>
+
+`match` mode is entered with the `m`, `<a-m>`, `M` and `<a-M>`
+keys.
+
+It is very similar to Helix’s match mode, however, there are
+some differences in behavior with the `m` key specifically,
+plus some other mappings that are done for convenience:
+
+`m`,`l`  
+Select/extend to the next matching pair.
+
+`M`  
+Extend to the next matching pair.
+
+`<a-m>`,`h`  
+Select/extend to the previous matching pair.
+
+`<a-M>`  
+Extend to the previous matching pair.
+
+`i`  
+Select/extend inside object.
+
+`a`  
+Select/extend around object.
+
+</details>
+
+<details>
+<summary>
+
+### `rotate` mode
+
+</summary>
+
+`rotate` mode is entered via `(` or `)`.
+
+It serves the purpose of shifting the content/range of selections
+relative to each other. There are only two keybindings right now
+but more may be added in the future, and suggestions are welcome.
+
+`s`  
+Rotates the selections.
+
+`c`  
+Rotates the content of the selections.
+
+<details>
+<summary>
+
 ### User mode
 
 </summary>
@@ -448,9 +492,9 @@ To enter `User` mode, you type `<Space>` in `Normal` mode.
 </details>
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG0tZRfnXg4SDG5oHQ2d9A0QfGw7rSln0YpkuG_k-zi9-hxiKYWSEgmZQbHVnaW72gmlkdWF0X2Jhc2VmMC4xMC4wgmlkdWF0X2NvcmVmMC4xMC4wgmhkdWF0bW9kZWYwLjEwLjE
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGyh7ctCLt3APG06AUDp5OvLtGx73_YeVBOFHG1HgJfSP7XOFYWSDgmlkdWF0X2Jhc2VmMC4xMC4wgmlkdWF0X2NvcmVmMC4xMC4wgmhkdWF0bW9kZWYwLjEwLjE
  [__link0]: https://github.com/mawww/kakoune
- [__link1]: https://crates.io/crates/Plugin
+ [__link1]: https://docs.rs/crates/duat/latest/struct.Plugin.html
  [__link10]: https://docs.rs/duat_core/0.10.0/duat_core/?search=mode::SelectionMut::anchor
  [__link11]: https://docs.rs/duat_core/0.10.0/duat_core/?search=text::TextMut::undo
  [__link12]: https://docs.rs/duat_core/0.10.0/duat_core/?search=text::TextMut::redo
@@ -459,7 +503,7 @@ To enter `User` mode, you type `<Space>` in `Normal` mode.
  [__link15]: https://docs.rs/duat_core/0.10.0/duat_core/?search=mode::Mode
  [__link16]: https://docs.rs/duat_base/0.10.0/duat_base/?search=modes::IncSearcher
  [__link17]: https://docs.rs/duat_core/0.10.0/duat_core/?search=mode::User
- [__link18]: https://crates.io/crates/Plugin
+ [__link18]: https://docs.rs/crates/duat/latest/struct.Plugin.html
  [__link19]: https://docs.rs/duat_core/0.10.0/duat_core/?search=mode::User
  [__link2]: https://docs.rs/duatmode/0.10.1/duatmode/opts/index.html
  [__link3]: https://docs.rs/duat/latest/duat/opts

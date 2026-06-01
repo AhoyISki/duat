@@ -249,8 +249,8 @@ impl Mode for Normal {
             event!('*') => fns::set_search_to_main_selection(pa),
 
             ////////// Jumping
-            alt!('u') => fns::jump_on_selection_history(pa, param as i32),
-            alt!('U') => fns::jump_on_selection_history(pa, -(param as i32)),
+            alt!('u') => fns::jump_on_selection_history(pa, -(rec as i32)),
+            alt!('U') => fns::jump_on_selection_history(pa, rec as i32),
 
             ////////// Macro keys
             alt!('q') => fns::play_macro(pa),
