@@ -169,7 +169,7 @@ impl Area {
                     if lines.coords().tl.x + len < max_x {
                         lines.write_all(b"\x1b[0K").unwrap();
                     }
-                } else {
+                } else if lines.coords().width() > len {
                     lines
                         .write_all(&SPACES[..(lines.coords().width() - len) as usize])
                         .unwrap();

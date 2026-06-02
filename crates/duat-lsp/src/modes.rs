@@ -27,7 +27,7 @@ use crate::{Encoding, handle_workspace_edit, server::Server};
 /// Add the hooks necessary for the custom modes to work.
 pub fn setup_hooks() {
     hook::add::<CompletionSelected>(|pa, entry| {
-        let Some(entry) = entry.get_for::<Actions>() else {
+        let Some(entry) = entry.get_as::<Actions>() else {
             return;
         };
 
@@ -85,7 +85,7 @@ pub fn setup_hooks() {
     });
 
     hook::add::<CompletionFocused>(|_, entry| {
-        if let Some(entry) = entry.get_for::<Actions>()
+        if let Some(entry) = entry.get_as::<Actions>()
             && let ActionOrCommand::Action(action, _) = &entry.a_or_c
             && !action.lock().unwrap().1
         {

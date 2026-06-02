@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use duat_base::{
     BaseBuffer,
     hooks::{CompletionFocused, CompletionSelected},
-    widgets::Completions,
+    widgets::{CommandsCompletions, Completions},
 };
 use duat_core::{
     Ns, context,
@@ -16,9 +16,9 @@ use duat_core::{
 use jsonrpc_lite::Id;
 use lsp_types::{
     CompletionContext, CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse,
-    CompletionTextEdit, CompletionTriggerKind, Documentation, InsertTextFormat, InsertTextMode,
-    PartialResultParams, TextDocumentIdentifier, TextDocumentPositionParams, Uri,
-    WorkDoneProgressParams,
+    CompletionTextEdit, CompletionTriggerKind, Documentation, InsertReplaceEdit, InsertTextFormat,
+    InsertTextMode, LSPAny, LSPArray, PartialResultParams, TextDocumentIdentifier,
+    TextDocumentPositionParams, Uri, WorkDoneProgressParams,
     request::{Completion, ResolveCompletionItem},
 };
 
@@ -26,7 +26,7 @@ use crate::{Encoding, parser::PARSERS, path_to_uri, server::Server};
 
 pub fn setup_hooks() {
     hook::add::<CompletionFocused>(|_, entry| {
-        let Some(lsp_entry) = entry.get_for::<LspCompletions>() else {
+        let Some(lsp_entry) = entry.get_as::<LspCompletions>() else {
             return;
         };
 
@@ -86,7 +86,7 @@ pub fn setup_hooks() {
         let buffer = context::current_buffer(pa);
         let popts = buffer.opts(pa);
 
-        let Some(lsp_entry) = entry.get_for::<LspCompletions>() else {
+        let Some(lsp_entry) = entry.get_as::<LspCompletions>() else {
             return;
         };
 
@@ -96,18 +96,16 @@ pub fn setup_hooks() {
         .flatten()
         .unwrap();
 
-        let text = buffer.text(pa);
-
         let replacement = if let Some(edit) = &lsp_entry.text_edit {
             let (range, new_text) = match edit {
                 CompletionTextEdit::Edit(edit) => (edit.range, &edit.new_text),
-                CompletionTextEdit::InsertAndReplace(edit) => (edit.replace, &edit.new_text),
+                CompletionTextEdit::InsertAndReplace(edit) => (edit.insert, &edit.new_text),
             };
 
+            let text = buffer.text(pa);
+
             let start = encoding.byte_from_pos(text, range.start);
-            // It would otherwise replace just what was typed by the user, not the
-            // auto-replaced text.
-            let end = start.map(|s| s + entry.replacement.len());
+            let end = encoding.byte_from_pos(text, range.end);
 
             if let (Some(start), Some(end)) = (start, end) {
                 Some((start..end, new_text))
@@ -115,14 +113,17 @@ pub fn setup_hooks() {
                 None
             }
         } else if let Some(insert) = &lsp_entry.insert_text {
-            let cursor = text.main_sel().cursor().byte();
-
-            Some((cursor - insert.len()..cursor, insert))
+            Some((entry.orig_range.clone(), insert))
         } else {
             None
         };
 
         if let Some((range, edit)) = replacement {
+            let mut text = buffer.text_mut(pa);
+            let start = entry.orig_range.start;
+            let end = entry.orig_range.start + entry.replacement.len();
+            text.replace_range(start..end, &entry.orig_typed);
+
             let edited;
             let edit = if let None | Some(InsertTextMode::ADJUST_INDENTATION) =
                 lsp_entry.insert_text_mode
@@ -295,7 +296,41 @@ impl duat_base::widgets::CompletionsProvider for LspCompletions {
     }
 
     fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
-        get_start(text, cursor)
+        let mut inferred_byte = None;
+
+        for (entry, encoding) in self.lists.iter().flat_map(|(_, encoding, list)| {
+            list.iter()
+                .flat_map(|list| &list.entries)
+                .zip(std::iter::repeat(encoding))
+        }) {
+            if let Some(CompletionTextEdit::InsertAndReplace(edit @ InsertReplaceEdit { .. })) =
+                &entry.text_edit
+                && let Some(start_byte) = encoding.byte_from_pos(text, edit.replace.start)
+            {
+                if let Some(byte) = inferred_byte
+                    && byte != start_byte
+                {
+                    inferred_byte = None;
+                    break;
+                } else if start_byte > cursor.byte() {
+                    break;
+                } else {
+                    inferred_byte = Some(start_byte);
+                }
+            }
+        }
+
+        if let Some(byte) = inferred_byte {
+            Some(byte)
+        } else {
+            let start = text
+                .search(r"\w*\z")
+                .range(..cursor)
+                .next_back()
+                .map(|r| r.start);
+
+            start
+        }
     }
 
     fn word(entry: &Self::Entry) -> &str {
@@ -376,6 +411,8 @@ fn send_update_request(text: &Text, server: &Server, encoding: Encoding, uri: Ur
                         .iter_mut()
                         .find(|(server, ..)| ns == server.ns())
                         .unwrap();
+
+                    
                     *old = Some(new_list);
                 });
             }
@@ -395,13 +432,6 @@ fn string_cmp(target: &str, entry: &str) -> Option<usize> {
     }
 
     Some(diff)
-}
-
-fn get_start(text: &Text, cursor: Point) -> Option<usize> {
-    text.search(r"\w*\z")
-        .range(..cursor)
-        .next_back()
-        .map(|r| r.start)
 }
 
 struct List {

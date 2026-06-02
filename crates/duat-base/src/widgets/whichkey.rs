@@ -113,13 +113,7 @@ impl WhichKey {
         if let Some(area) = keys_handle.area().write_as::<duat_term::Area>(pa) {
             use duat_core::text::Spacer;
 
-            let mut frame = Frame {
-                left: true,
-                right: true,
-                above: true,
-                below: true,
-                ..Frame::default()
-            };
+            let mut frame = Frame::default();
             frame.set_text(Side::Above, move |_| {
                 txt!("{Spacer}[terminal.border]┤[]{title}[terminal.border]├{Spacer}")
             });

@@ -1,5 +1,4 @@
 use std::{
-    hash::Hash,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock},
 };

@@ -102,14 +102,14 @@ impl Info {
             ) else {
                 return;
             };
-            if let Some(term_area) = buffer.area().write_as::<duat_term::Area>(pa) {
+            if let Some(area) = info.area().write_as::<duat_term::Area>(pa) {
                 let mut frame = Frame::default();
                 if let Some(title) = title {
                     frame.set_text(Side::Above, move |_| {
                         txt!("[terminal.border.Info]┤[]{title}[terminal.border.Info]├")
                     });
                 }
-                term_area.set_frame(frame)
+                area.set_frame(frame)
             }
 
             info

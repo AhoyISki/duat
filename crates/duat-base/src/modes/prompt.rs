@@ -27,7 +27,7 @@
 use std::{
     any::TypeId,
     io::Write,
-    sync::{LazyLock, Mutex, Once},
+    sync::{LazyLock, Mutex},
 };
 
 use duat_core::{
@@ -36,8 +36,8 @@ use duat_core::{
     cmd,
     context::{self, Handle},
     data::Pass,
-    form::{self, Form},
-    hook::{self, FocusedUpdated, KeySent, ModeSwitched, WidgetSwitched},
+    form,
+    hook::{self, FocusedUpdated, ModeSwitched},
     mode::{self, KeyEvent, event, shift},
     text::{Inlay, Text, txt},
     ui::RwArea,

@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use duat_base::{BaseBuffer, modes::Prompt, widgets::FilePlace};
+use duat_base::{modes::Prompt, widgets::FilePlace};
 use duat_core::{
     buffer::Buffer,
     cmd, context,

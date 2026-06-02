@@ -87,10 +87,12 @@ impl RawUi for Ui {
         }
 
         if let Ok(true) = terminal::supports_keyboard_enhancement() {
-            queue!(
+            execute!(
                 io::stdout(),
                 PushKeyboardEnhancementFlags(
-                    KEF::DISAMBIGUATE_ESCAPE_CODES | KEF::REPORT_ALTERNATE_KEYS
+                    KEF::DISAMBIGUATE_ESCAPE_CODES
+                        | KEF::REPORT_ALTERNATE_KEYS
+                        | KEF::REPORT_EVENT_TYPES
                 )
             )
             .unwrap();

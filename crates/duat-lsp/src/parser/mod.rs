@@ -210,11 +210,15 @@ pub fn setup_hooks() {
 
             let version = text.version().strs;
 
-            let (parser, buf) = PARSERS.register(pa, buffer, Parser {
-                uri,
-                servers: servers.clone(),
-                tokens: BufferTokens::default(),
-            });
+            let (parser, buf) = PARSERS.register(
+                pa,
+                buffer,
+                Parser {
+                    uri,
+                    servers: servers.clone(),
+                    tokens: BufferTokens::default(),
+                },
+            );
 
             for server in &servers {
                 server.send_semantic_tokens_request(buffer, version, parser);
@@ -263,6 +267,9 @@ pub fn setup_hooks() {
                     })
                     .collect(),
             };
+            
+            context::debug!("sent {notification.content_changes:#?}");
+
             server.send_notification::<DidChangeTextDocument>(notification);
 
             server.send_semantic_tokens_request(buffer, version, parser);
