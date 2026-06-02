@@ -23,57 +23,67 @@ use duat_core::{
     context::Handle,
     data::Pass,
     hook::{self, BufferOpened, BufferUpdated},
-    text::{Point, RegexHaystack, Spacer, Strs, Text, txt},
+    text::{RegexHaystack, Spacer, Strs, Text, txt},
 };
 
-use crate::widgets::completions::{CompletionsProvider, string_cmp};
+use crate::widgets::completions::{CompletionKind, ErasedList, Sealed, string_cmp};
 
-static BUFFER_WORDS: Mutex<BTreeMap<Arc<str>, WordInfo>> = Mutex::new(BTreeMap::new());
+impl CompletionKind for WordInfo {
+    fn value(&self) -> &str {
+        &self.word
+    }
+
+    fn default_fmt(&self) -> Text {
+        txt!("[completion.word]{self.word}[]{Spacer}[completion.word.source]{self.source}",)
+    }
+}
+
+/// Information about an entry in the [`WordCompletions`]
+#[derive(Clone, Debug)]
+pub struct WordInfo {
+    pub word: String,
+    /// The first [`Buffer`] in which this word was found
+    ///
+    /// [`Buffer`]: duat_core::buffer::Buffer
+    pub source: Arc<str>,
+    /// How many times this word appears, always greater than 0
+    pub count: usize,
+    upper: Arc<str>,
+}
 
 /// Word completions provider.
-#[derive(Clone)]
-pub struct WordCompletions {
-    case_insensitive: bool,
-}
+pub struct WordCompletions;
 
-impl WordCompletions {
-    /// Returns a `WordCompletions`.
-    ///
-    /// Case insensitivity is only applied if the word being completed
-    /// is fully lowercase.
-    pub fn new(case_insensitive: bool) -> Self {
-        Self { case_insensitive }
+impl Sealed<WordInfo> for WordCompletions {
+    fn into_erased(self, start_byte: usize) -> Box<dyn ErasedList> {
+        Box::new(InnerWordCompletions { start_byte })
     }
 }
 
-impl CompletionsProvider for WordCompletions {
-    type Entry = WordInfo;
+struct InnerWordCompletions {
+    start_byte: usize,
+}
 
-    const ALLOW_WITH_MULTIPLE_SELECTIONS: bool = true;
+impl ErasedList for InnerWordCompletions {
+    fn match_indices(&self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>> {
+        let main_byte = text.get_main_sel()?.cursor().byte();
+        let suffix = &text[text.search(r"\A\w*").range(main_byte..).next().unwrap()];
 
-    fn default_fmt(entry: &Self::Entry) -> Text {
-        txt!(
-            "[completion.word]{entry.word}[]{Spacer}[completion.word.source]{}",
-            &entry.source
-        )
-    }
-
-    fn matches(&mut self, text: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
-        let cursor = text.main_sel().cursor();
-        let suffix = &text[text.search(r"\A\w*").range(cursor..).next().unwrap()];
+        let prefix = text.get(self.start_byte..main_byte)?;
 
         let (prefix, case_insensitive) =
-            if self.case_insensitive && prefix.chars().all(|char| !char.is_uppercase()) {
-                (prefix.to_uppercase(), true)
+            if case_insensitive && !prefix.chars().any(|char| char.is_uppercase()) {
+                (prefix.to_string().to_uppercase(), true)
             } else {
                 (prefix.to_string(), false)
             };
 
         let mut matches: Vec<_> = BUFFER_WORDS
-            .lock()
-            .unwrap_or_else(|err| err.into_inner())
+            .try_lock()
+            .ok()?
             .iter()
-            .filter_map(|(word, entry)| {
+            .enumerate()
+            .filter_map(|(i, (word, entry))| {
                 let cmp = if case_insensitive { &entry.upper } else { word };
                 if let Some(difference) = string_cmp(&prefix, cmp) {
                     (!(difference == 0 && entry.count == 1 && cmp[prefix.len()..] == suffix))
@@ -93,32 +103,31 @@ impl CompletionsProvider for WordCompletions {
             (string_cmp(&prefix, cmp), cmp.len())
         });
 
-        matches
+        (!matches.is_empty()).then(|| matches.into_iter().map(|(idx, _)| idx).collect())
     }
 
-    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
-        text.search(r"\w*\z")
-            .range(..cursor)
-            .next_back()
-            .map(|r| r.start)
+    fn start_byte(&self) -> usize {
+        self.start_byte
     }
 
-    fn word(entry: &Self::Entry) -> &str {
-        &entry.word
+    fn value_for_index(&self, i: usize) -> String {
+        let (_, info) = BUFFER_WORDS.lock().unwrap().iter().nth(i).unwrap();
+        info.word.clone()
     }
-}
 
-/// Information about an entry in the [`WordCompletions`]
-#[derive(Clone, Debug)]
-pub struct WordInfo {
-    pub word: String,
-    /// The first [`Buffer`] in which this word was found
-    ///
-    /// [`Buffer`]: duat_core::buffer::Buffer
-    pub source: Arc<str>,
-    /// How many times this word appears, always greater than 0
-    pub count: usize,
-    upper: Arc<str>,
+    fn text_for_index(&self, i: usize) -> Text {
+        let (_, info) = BUFFER_WORDS.lock().unwrap().iter().nth(i).unwrap();
+        info.default_fmt()
+    }
+
+    fn info_for_index(&self, i: usize) -> Option<Text> {
+        None
+    }
+
+    fn get(&self, i: usize) -> Box<dyn std::any::Any + Send + 'static> {
+        let (_, info) = BUFFER_WORDS.lock().unwrap().iter().nth(i).unwrap();
+        Box::new(info)
+    }
 }
 
 #[doc(hidden)]
@@ -127,24 +136,28 @@ pub(super) fn track_words() {
     let ns = Ns::new();
 
     hook::add::<BufferOpened>(move |pa, buffer| {
-        let mut words = BUFFER_WORDS.lock().unwrap();
         let buf = buffer.read(pa);
 
         let source: Arc<str> = buf.name().into();
-        for range in buf.text().search(r"\w{3,}") {
-            let word = buf.text()[range].to_string();
-            let upper = word.to_uppercase().into();
-            let info = words
-                .entry(word.into())
-                .or_insert_with_key(|word| WordInfo {
-                    word: word.to_string(),
-                    source: source.clone(),
-                    count: 0,
-                    upper,
-                });
+        let buf = buf.text().to_string();
 
-            info.count += 1;
-        }
+        std::thread::spawn(move || {
+            let mut words = BUFFER_WORDS.lock().unwrap();
+            for range in buf.search(r"\w{3,}") {
+                let word = buf[range].to_string();
+                let upper = word.to_uppercase().into();
+                let info = words
+                    .entry(word.into())
+                    .or_insert_with_key(|word| WordInfo {
+                        word: word.to_string(),
+                        source: source.clone(),
+                        count: 0,
+                        upper,
+                    });
+
+                info.count += 1;
+            }
+        });
     });
 
     hook::add::<BufferUpdated>(move |pa, buffer| update_counts(pa, buffer, ns));
@@ -192,12 +205,15 @@ fn update_counts(pa: &mut Pass, buffer: &Handle<Buffer>, ns: Ns) {
             (Some(info), false) => info.count += 1,
             (None, false) => {
                 let upper = word.to_uppercase().into();
-                buffer_words.insert(word.into(), WordInfo {
-                    word: word.to_string(),
-                    source: source.clone(),
-                    count: 1,
-                    upper,
-                });
+                buffer_words.insert(
+                    word.into(),
+                    WordInfo {
+                        word: word.to_string(),
+                        source: source.clone(),
+                        count: 1,
+                        upper,
+                    },
+                );
             }
             (Some(info), true) if info.count > 1 => info.count -= 1,
             (Some(_), true) => {
@@ -273,3 +289,5 @@ fn update_counts(pa: &mut Pass, buffer: &Handle<Buffer>, ns: Ns) {
         }
     }
 }
+
+static BUFFER_WORDS: Mutex<BTreeMap<Arc<str>, WordInfo>> = Mutex::new(BTreeMap::new());

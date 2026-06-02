@@ -29,7 +29,7 @@ use duat_core::{
     data::{Pass, RwData},
     hook::{self, BufferUpdated, KeySent, OnMouseEvent, WidgetOpened, WidgetSwitched},
     mode::{KeyCode, MouseEventKind, event},
-    text::{Spawn, Text, TextIndex, TextMut, txt},
+    text::{RegexHaystack, Spawn, Text, TextIndex, TextMut, txt},
     ui::{DynSpawnSpecs, Orientation, Side, Widget},
 };
 use duat_term::Frame;
@@ -55,9 +55,7 @@ static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (usize, ParamCompletions)>>> 
 /// Initial setup for completions
 pub fn completions_setup() {
     words::track_words();
-    Completions::set_for_parameter::<ValidFilePath>(75, |_, builder| {
-        builder.with_provider(paths::PathCompletions::new(true, true))
-    });
+    Completions::set_for_parameter::<ValidFilePath>(75, |_, builder| PathCompletions::new(true));
 
     Completions::set_for_parameter::<Handle<Buffer>>(50, |pa, builder| {
         let mut list: Vec<String> = context::windows()
@@ -68,7 +66,7 @@ pub fn completions_setup() {
 
         list.sort_unstable();
 
-        builder.with_provider(list)
+        list
     });
 
     Completions::set_for_parameter::<OtherBuffer>(50, |pa, builder| {
@@ -82,26 +80,21 @@ pub fn completions_setup() {
 
         list.sort_unstable();
 
-        builder.with_provider(list)
+        list
     });
 
-    Completions::set_for_parameter::<Existing>(25, |_, builder| {
-        builder.with_provider(["--existing"])
-    });
+    Completions::set_for_parameter::<Existing>(25, |_, builder| ["--existing"]);
 
     Completions::set_for_parameter::<CfgOrScratch>(30, |_, builder| {
-        builder.with_provider(["--cfg", "--cfg-manifest", "--scratch"])
+        ["--cfg", "--cfg-manifest", "--scratch"]
     });
 
-    Completions::set_for_parameter::<ReloadOptions>(50, |_, builder| {
-        builder.with_provider(ExhaustiveCompletionsList {
-            list: vec!["--clean", "--update"],
-            only_one: false,
-        })
+    Completions::set_for_parameter::<ReloadOptions>(50, |_, builder| ExhaustiveCompletionsList {
+        list: vec!["--clean", "--update"],
     });
 
     Completions::set_for_parameter::<ColorSchemeArg>(50, |_, builder| {
-        builder.with_provider(duat_core::form::colorscheme_list())
+        duat_core::form::colorscheme_list()
     });
 
     hook::add::<WidgetOpened<Completions>>(move |pa, completions| {
@@ -155,11 +148,6 @@ pub fn completions_setup() {
                 }
 
                 Completions::scroll_and_update(pa, &completions, 0);
-                completions.write(pa).last_cursor =
-                    completions_master.selections(pa).main().cursor();
-                if !completions.is_closed() {
-                    Completions::set_frame(pa, &completions);
-                }
             }
         };
 
@@ -228,6 +216,38 @@ impl CompletionEntry {
     }
 }
 
+pub trait CompletionEntries<C>: Sealed<C> {}
+impl<S: Sealed<C>, C> CompletionEntries<C> for S {}
+
+trait Sealed<C> {
+    fn into_erased(self, start_byte: usize) -> Box<dyn ErasedList>;
+}
+
+/// A type of object that can be completed and will show up in
+/// the [`Completions`] widget.
+pub trait CompletionKind: Send + Clone + 'static {
+    /// Function to pick a word to match on.
+    ///
+    /// This word is what will be placed over the current word.
+    #[doc(hidden)]
+    fn value(&self) -> &str;
+
+    /// The default formatting for entries from this provider
+    ///
+    /// Each [`Text`] must only be one line long (Nothing bad happens
+    /// if they are multiple lines long, but don't expect the
+    /// [`Completions`] to show things correctly).
+    #[doc(hidden)]
+    fn default_fmt(&self) -> Text;
+
+    /// Additional information about an entry, which can be shown when
+    /// it is selected.
+    #[doc(hidden)]
+    fn default_info(&self) -> Option<(Text, Orientation)> {
+        None
+    }
+}
+
 /// A list of completions, used to quickly fill in matches
 pub struct Completions {
     lists: Vec<(usize, Box<dyn ErasedList>, Ns)>,
@@ -243,19 +263,15 @@ pub struct Completions {
     info: Option<(Handle<Info>, Orientation)>,
 }
 
-trait Sealed {
-    fn into_erased(self) -> Box<dyn ErasedList>;
-}
-pub trait CompletionEntries: Sealed {}
-
 impl Completions {
     /// Adds a list of entries to the `Completions`.
     ///
     /// This can be one of three things:
     ///
-    /// - A [`Vec<impl CompletionKind>`].
+    /// - Any [`IntoIterator<Item = impl CompletionKind>`].
     /// - The [`WordCompletions`] struct.
     /// - The [`PathCompletions`] struct.
+    /// - The [`ExhaustiveCompletionsList`] struct.
     ///
     /// If there was a list before that had the same [`Ns`], that list
     /// will be removed before the new one is added.
@@ -352,8 +368,7 @@ impl Completions {
         });
     }
 
-    /// Set the [`CompletionsBuilder`] function for a [`Parameter`]
-    /// type
+    /// Sets the [`CompletionEntries`] for a [`Parameter`].
     pub fn set_for_parameter<P: Parameter, C: CompletionEntries>(
         priority: usize,
         entries_fn: impl FnMut(&Pass) -> C,
@@ -362,7 +377,9 @@ impl Completions {
             TypeId::of::<P>(),
             (
                 priority,
-                Box::new(Mutex::new(|pa| entries_fn(pa).into_erased())),
+                Box::new(Mutex::new(|pa, start_byte| {
+                    entries_fn(pa).into_erased(start_byte)
+                })),
             ),
         );
     }
@@ -375,28 +392,51 @@ impl Completions {
     /// Returns [`None`] if none of the `TypeId`s had completions set
     /// for them.
     pub fn open_for(pa: &mut Pass, param_type_ids: &[TypeId]) {
+        let master = context::current_widget(pa);
+        let text = master.text(pa);
+
+        let Some(main_byte) = text.get_main_sel() else {
+            context::error!("Tried spawning completions on a widget with no selections");
+            return;
+        };
+
+        let start_byte = text
+            .search([" '([^']|\\')*", "[^ \n]*"])
+            .range(..main_byte)
+            .next_back()
+            .map(|(pat_id, range)| range.start + (pat_id == 0) as usize)
+            .unwrap();
+
         let completions = COMPLETIONS.lock().unwrap();
 
-        let mut builder = Completions::builder();
-        builder.min_prefix = builder.cmd_min_prefix;
-
-        let mut param_fns: Vec<_> = param_type_ids
+        let mut lists: Vec<_> = param_type_ids
             .iter()
-            .filter_map(|ty| Some(*ty).zip(completions.get(ty)))
+            .filter_map(|ty| completions.get(ty))
+            .map(|(prio, entries_fn)| (prio, entries_fn(pa), Ns::basic()))
             .collect();
 
-        if param_fns.is_empty() {
+        if lists.is_empty() {
             Completions::close(pa);
             return;
         }
 
-        param_fns.sort_by_key(|(_, (priority, _))| priority);
+        lists.sort_by_key(|(prio, ..)| prio);
 
-        for (_, (_, param_fn)) in param_fns {
-            builder = (param_fn.lock().unwrap())(pa, builder);
-        }
+        let comp = Completions {
+            lists,
+            text: Text::new(),
+            max_height: 20,
+            cur_min_prefix: 0,
+            min_prefix: 0,
+            start_byte,
+            orig_typed: text[start_byte..main_byte].to_string(),
+            matches: None,
+            info: None,
+        };
 
-        builder.open(pa);
+        master
+            .text_mut(pa)
+            .insert_tag(*WIDGET_NS, start_byte, Spawn::new(comp, SPAWN_SPECS));
     }
 
     /// Closes the `Completions` list
@@ -422,19 +462,6 @@ impl Completions {
     /// Wether there is an open `Completions` [`Widget`]
     pub fn is_open(pa: &Pass) -> bool {
         context::handle_of::<Completions>(pa).is_some()
-    }
-
-    /// Wether the `Completions` that is open has a given provider.
-    pub fn has_provider<C: CompletionKind>(pa: &Pass) -> bool {
-        let Some(completions) = context::handle_of::<Completions>(pa) else {
-            return false;
-        };
-
-        completions
-            .read(pa)
-            .providers
-            .iter()
-            .any(|provider| provider.as_any().is::<InnerList<C>>())
     }
 
     #[track_caller]
@@ -474,8 +501,8 @@ impl Completions {
                     .find_map(|(i, (_, list))| list.match_indices(text, true).zip(Some(i)))
                 else {
                     comp.text = Text::default();
-                    comp.sidebar = Text::default();
                     area.hide();
+                    return None;
                 };
 
                 comp.orig_typed = text[comp.lists[list_idx].1.start_byte()..main_byte].to_string();
@@ -508,7 +535,7 @@ impl Completions {
             let replacement = match (&matches.selected, new_idx) {
                 (None, None) => None,
                 (None, Some(new_idx)) => Some(list.value_for_index(new_idx)),
-                (Some(selected), None) => Some(comp.orig_typed.as_ref()),
+                (Some(selected), None) => Some(comp.orig_typed.clone()),
                 (Some(selected), Some(new_idx)) => {
                     let new_value = list.value_for_index(new_idx);
                     (new_value != selected.value).then_some(new_value)
@@ -730,124 +757,18 @@ impl Widget for Completions {
     }
 }
 
-/// A type of object that can be completed and will show up in
-/// the [`Completions`] widget.
-pub trait CompletionKind: Send + Clone + 'static {
-    /// Function to pick a word to match on.
-    ///
-    /// This word is what will be placed over the current word.
-    fn value(&self) -> &str;
-
-    /// The default formatting for entries from this provider
-    ///
-    /// Each [`Text`] must only be one line long (Nothing bad happens
-    /// if they are multiple lines long, but don't expect the
-    /// [`Completions`] to show things correctly).
-    fn default_fmt(&self) -> Text;
-
-    /// Additional information about an entry, which can be shown when
-    /// it is selected.
-    fn default_info(&self) -> Option<(Text, Orientation)> {
-        None
-    }
-}
-
 trait ErasedList: Send {
     fn match_indices(&self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>>;
 
     fn start_byte(&self) -> usize;
 
-    fn value_for_index(&self, i: usize) -> &str;
+    fn value_for_index(&self, i: usize) -> String;
 
     fn text_for_index(&self, i: usize) -> Text;
 
     fn info_for_index(&self, i: usize) -> Option<Text>;
 
     fn get(&self, i: usize) -> Box<dyn Any + Send + 'static>;
-}
-
-#[allow(clippy::type_complexity)]
-struct InnerList<C: CompletionKind> {
-    list: Vec<C>,
-    fmt: Box<dyn FnMut(&C) -> Text + Send>,
-    start_byte: usize,
-}
-
-impl<C: CompletionKind> InnerList<C> {
-    fn new(list: Vec<C>, text: &Text, start_byte: usize, min_prefix: usize) -> Self {
-        let Some(main_cursor) = text.get_main_sel().map(|sel| sel.cursor()) else {
-            panic!("Tried to spawn completions on a Text with no main selection");
-        };
-
-        let prefix = text[start_byte..main_cursor.byte()].to_string();
-
-        Self {
-            list,
-            fmt: Box::new(C::default_fmt),
-            start_byte,
-        }
-    }
-}
-
-impl<C: CompletionKind> ErasedList for InnerList<C> {
-    /// Get the indices of the matches.
-    fn match_indices(&self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>> {
-        let main_byte = text.get_main_sel()?.cursor().byte();
-
-        if main_byte < self.start_byte {
-            return None;
-        } else if main_byte == self.start_byte {
-            return Some((0..self.list.len()).collect());
-        }
-
-        let prefix = &text[self.start_byte..main_byte];
-        let (prefix, case_insensitive) =
-            if case_insensitive && !prefix.chars().any(|char| char.is_uppercase()) {
-                (prefix.to_string().to_uppercase(), true)
-            } else {
-                (prefix.to_string(), false)
-            };
-
-        let mut list = Vec::from_iter(self.list.iter().enumerate().filter_map(|(i, entry)| {
-            if case_insensitive {
-                let word = entry.value().to_uppercase();
-                string_cmp(&prefix, &word).and(Some(i))
-            } else {
-                string_cmp(&prefix, entry.value()).and(Some(i))
-            }
-        }));
-
-        list.sort_by_key(|i| {
-            if case_insensitive {
-                let word = self.list[*i].value().to_uppercase();
-                string_cmp(&prefix, &word).unwrap()
-            } else {
-                string_cmp(&prefix, self.list[*i].value()).unwrap()
-            }
-        });
-
-        (!list.is_empty()).then_some(list)
-    }
-
-    fn text_for_index(&self, i: usize) -> Text {
-        self.fmt(&self.list[i])
-    }
-
-    fn value_for_index(&self, i: usize) -> &str {
-        self.list[i].value()
-    }
-
-    fn start_byte(&self) -> usize {
-        self.start_byte
-    }
-
-    fn info_for_index(&self, i: usize) -> Option<Text> {
-        self.list[i].default_info()
-    }
-
-    fn get(&self, i: usize) -> Box<dyn Any + Send + 'static> {
-        Box::new(self.list[i].clone())
-    }
 }
 
 /// A simple [`String`] comparison function, which prioritizes matched
@@ -897,4 +818,4 @@ struct Selected {
     value: String,
 }
 
-type ParamCompletions = Box<Mutex<dyn FnMut(&Pass) -> Box<dyn ErasedList> + Send + Sync>>;
+type ParamCompletions = Box<Mutex<dyn FnMut(&Pass, usize) -> Box<dyn ErasedList> + Send + Sync>>;

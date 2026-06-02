@@ -24,7 +24,6 @@ use crate::widgets::CompletionsProvider;
 /// [`PromptLine`]: crate::widgets::PromptLine
 #[derive(Clone)]
 pub struct PathCompletions {
-    case_insensitive: bool,
     for_parameters: bool,
 }
 
@@ -35,8 +34,8 @@ impl PathCompletions {
     /// completions to show up, a `/` must be part of the string (or
     /// `\` on Windows). This makes this completion more flexible when
     /// working with multiple completions at once.
-    pub fn new(case_insensitive: bool, for_parameters: bool) -> Self {
-        Self { case_insensitive, for_parameters }
+    pub fn new(for_parameters: bool) -> Self {
+        Self { for_parameters }
     }
 }
 

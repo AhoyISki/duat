@@ -1,68 +1,113 @@
-use duat_core::text::{Point, RegexHaystack, Spacer, Text, txt};
+use std::any::Any;
 
-use crate::widgets::{CompletionsProvider, completions::string_cmp};
+use crate::widgets::completions::{CompletionKind, ErasedList, Sealed, string_cmp};
+use duat_core::text::{RegexHaystack, Spacer, Text, txt};
 
-impl<S: AsRef<str> + Send + 'static> CompletionsProvider for Vec<S> {
-    type Entry = String;
-
-    const ALLOW_WITH_MULTIPLE_SELECTIONS: bool = true;
-
-    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
-        let mut entries = Vec::from_iter(self.iter().filter_map(|entry| {
-            string_cmp(prefix, entry.as_ref()).map(|_| entry.as_ref().to_string())
-        }));
-
-        entries.sort_by(|lhs, rhs| {
-            string_cmp(prefix, lhs)
-                .unwrap()
-                .cmp(&string_cmp(prefix, rhs).unwrap())
-        });
-
-        entries
+impl CompletionKind for String {
+    #[doc(hidden)]
+    fn value(&self) -> &str {
+        &self
     }
 
-    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
-        Some(text.search(r"\S*").range(..cursor).next_back()?.start)
-    }
-
-    fn default_fmt(entry: &Self::Entry) -> Text {
-        txt!("[completion.entry]{entry}[]{Spacer}")
-    }
-
-    fn word(entry: &Self::Entry) -> &str {
-        entry
+    #[doc(hidden)]
+    fn default_fmt(&self) -> Text {
+        txt!("[completion.entry]{self}[]{Spacer}")
     }
 }
 
-impl<const N: usize, S: AsRef<str> + Send + 'static> CompletionsProvider for [S; N] {
-    type Entry = String;
+impl CompletionKind for &'static str {
+    #[doc(hidden)]
+    fn value(&self) -> &str {
+        self
+    }
 
-    const ALLOW_WITH_MULTIPLE_SELECTIONS: bool = true;
+    #[doc(hidden)]
+    fn default_fmt(&self) -> Text {
+        txt!("[completion.entry]{self}[]{Spacer}")
+    }
+}
 
-    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
-        let mut entries = Vec::from_iter(self.iter().filter_map(|entry| {
-            string_cmp(prefix, entry.as_ref()).map(|_| entry.as_ref().to_string())
+impl<I: IntoIterator<Item = C>, C: CompletionKind> Sealed<C> for I {
+    fn into_erased(self, start_byte: usize) -> Box<dyn ErasedList> {
+        Box::new(InnerList::new(self.into_iter().collect(), start_byte))
+    }
+}
+
+#[allow(clippy::type_complexity)]
+struct InnerList<C: CompletionKind> {
+    list: Vec<C>,
+    fmt: Box<dyn FnMut(&C) -> Text + Send>,
+    start_byte: usize,
+}
+
+impl<C: CompletionKind> InnerList<C> {
+    fn new(list: Vec<C>, start_byte: usize) -> Self {
+        Self {
+            list,
+            fmt: Box::new(C::default_fmt),
+            start_byte,
+        }
+    }
+}
+
+impl<C: CompletionKind> ErasedList for InnerList<C> {
+    /// Get the indices of the matches.
+    fn match_indices(&self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>> {
+        let main_byte = text.get_main_sel()?.cursor().byte();
+
+        if main_byte < self.start_byte {
+            return None;
+        } else if main_byte == self.start_byte {
+            return Some((0..self.list.len()).collect());
+        }
+
+        let prefix = &text[self.start_byte..main_byte];
+        let (prefix, case_insensitive) =
+            if case_insensitive && !prefix.chars().any(|char| char.is_uppercase()) {
+                (prefix.to_string().to_uppercase(), true)
+            } else {
+                (prefix.to_string(), false)
+            };
+
+        let mut list = Vec::from_iter(self.list.iter().enumerate().filter_map(|(i, entry)| {
+            if case_insensitive {
+                let word = entry.value().to_uppercase();
+                string_cmp(&prefix, &word).and(Some(i))
+            } else {
+                string_cmp(&prefix, entry.value()).and(Some(i))
+            }
         }));
 
-        entries.sort_by(|lhs, rhs| {
-            string_cmp(prefix, lhs)
-                .unwrap()
-                .cmp(&string_cmp(prefix, rhs).unwrap())
+        list.sort_by_key(|i| {
+            if case_insensitive {
+                let word = self.list[*i].value().to_uppercase();
+                string_cmp(&prefix, &word).unwrap()
+            } else {
+                string_cmp(&prefix, self.list[*i].value()).unwrap()
+            }
         });
 
-        entries
+        (!list.is_empty()).then_some(list)
     }
 
-    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
-        Some(text.search(r"\S*").range(..cursor).next_back()?.start)
+    fn text_for_index(&self, i: usize) -> Text {
+        self.fmt(&self.list[i])
     }
 
-    fn default_fmt(entry: &Self::Entry) -> Text {
-        txt!("[completion.entry]{entry}[]{Spacer}")
+    fn value_for_index(&self, i: usize) -> String {
+        self.list[i].value().to_string()
     }
 
-    fn word(entry: &Self::Entry) -> &str {
-        entry
+    fn start_byte(&self) -> usize {
+        self.start_byte
+    }
+
+    fn info_for_index(&self, i: usize) -> Option<Text> {
+        self.list[i].default_info()
+    }
+
+    fn get(&self, i: usize) -> Box<dyn Any + Send + 'static> {
+        Box::new(self.list[i].clone())
     }
 }
 
@@ -75,27 +120,37 @@ impl<const N: usize, S: AsRef<str> + Send + 'static> CompletionsProvider for [S;
 pub struct ExhaustiveCompletionsList<S> {
     /// The list of possible entries.
     pub list: Vec<S>,
-    /// Wether only one is allowed.
-    pub only_one: bool,
 }
 
-impl<S: AsRef<str> + Send + 'static> CompletionsProvider for ExhaustiveCompletionsList<S> {
-    type Entry = String;
+impl<S: AsRef<str> + Send + 'static> Sealed<S> for ExhaustiveCompletionsList<S> {
+    fn into_erased(self, start_byte: usize) -> Box<dyn super::ErasedList> {
+        Box::new(InnerExhaustiveList {
+            list: self.list.into_iter().map(String::from).collect(),
+            start_byte,
+        })
+    }
+}
 
-    const ALLOW_WITH_MULTIPLE_SELECTIONS: bool = true;
+struct InnerExhaustiveList {
+    list: Vec<String>,
+    start_byte: usize,
+}
 
-    fn matches(&mut self, text: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
-        let cursor = text.main_sel().cursor();
+impl ErasedList for InnerExhaustiveList {
+    fn match_indices(&self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>> {
+        let main_byte = text.main_sel().cursor().byte();
 
         let yet_to_be_typed = Vec::from_iter(
             self.list
                 .iter()
-                .filter(|word| !text[..cursor].contains_pat(word.as_ref()).unwrap()),
+                .filter(|word| !text[..main_byte].contains_pat(word.as_ref()).unwrap()),
         );
 
-        if yet_to_be_typed.len() < self.list.len() && self.only_one {
-            return Vec::new();
+        if yet_to_be_typed.len() < self.list.len() {
+            return None;
         }
+
+        let prefix = text.get(self.start_byte..main_byte)?;
 
         let mut entries = Vec::from_iter(yet_to_be_typed.into_iter().filter_map(|entry| {
             string_cmp(prefix, entry.as_ref()).map(|_| entry.as_ref().to_string())
@@ -107,18 +162,26 @@ impl<S: AsRef<str> + Send + 'static> CompletionsProvider for ExhaustiveCompletio
                 .cmp(&string_cmp(prefix, rhs).unwrap())
         });
 
-        entries
+        Some(entries)
     }
 
-    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
-        Some(text.search(r"\S*").range(..cursor).next_back()?.start)
+    fn start_byte(&self) -> usize {
+        self.start_byte
     }
 
-    fn default_fmt(entry: &Self::Entry) -> Text {
-        txt!("[completion.entry]{entry}[]{Spacer}")
+    fn value_for_index(&self, i: usize) -> String {
+        self.list[i].as_str().to_string()
     }
 
-    fn word(entry: &Self::Entry) -> &str {
-        entry
+    fn text_for_index(&self, i: usize) -> Text {
+        self.list[i].default_fmt()
+    }
+
+    fn info_for_index(&self, i: usize) -> Option<Text> {
+        todo!()
+    }
+
+    fn get(&self, i: usize) -> Box<dyn Any + Send + 'static> {
+        todo!()
     }
 }
