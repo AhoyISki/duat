@@ -1,12 +1,16 @@
 use std::any::Any;
 
 use crate::widgets::completions::{CompletionKind, ErasedList, Sealed, string_cmp};
-use duat_core::text::{RegexHaystack, Spacer, Text, txt};
+use duat_core::{
+    cmd::CmdDoc,
+    text::{RegexHaystack, Spacer, Text, txt},
+    ui::Orientation,
+};
 
 impl CompletionKind for String {
     #[doc(hidden)]
-    fn value(&self) -> &str {
-        &self
+    fn value(&self) -> String {
+        self.clone()
     }
 
     #[doc(hidden)]
@@ -17,13 +21,52 @@ impl CompletionKind for String {
 
 impl CompletionKind for &'static str {
     #[doc(hidden)]
-    fn value(&self) -> &str {
-        self
+    fn value(&self) -> String {
+        self.to_string()
     }
 
     #[doc(hidden)]
     fn default_fmt(&self) -> Text {
         txt!("[completion.entry]{self}[]{Spacer}")
+    }
+}
+
+impl CompletionKind for CmdDoc {
+    #[doc(hidden)]
+    fn value(&self) -> String {
+        self.caller.to_string()
+    }
+
+    #[doc(hidden)]
+    fn default_fmt(&self) -> Text {
+        txt!("[cmd.Completions]{self.caller}{Spacer}")
+    }
+
+    #[doc(hidden)]
+    fn default_info(&self) -> Option<(Text, Orientation)> {
+        let mut builder = Text::builder();
+
+        let short = self.short.as_ref()?;
+
+        if !self.params.is_empty() {
+            builder.push(txt!("{}\n\nArguments:", short));
+
+            for param in self.params.iter() {
+                let Some(short) = param.short.as_ref() else {
+                    continue;
+                };
+
+                builder.push(txt!("\n\t- {param.arg_name}: {short}"));
+            }
+        } else {
+            builder.push(Text::clone(short));
+        }
+
+        if let Some(long) = self.long.as_ref() {
+            builder.push(txt!("\n\n{long}"));
+        }
+
+        Some((builder.build(), Orientation::HorTopRight))
     }
 }
 

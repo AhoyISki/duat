@@ -33,8 +33,8 @@ pub(crate) use self::{
 };
 pub use self::{
     completions::{
-        CommandsCompletions, CompletionEntry, Completions, CompletionsBuilder, CompletionsProvider,
-        PathCompletions, WordCompletions,
+        CommandsCompletions, CompletionEntry, CompletionKind, Completions,
+        ExhaustiveCompletionsList, PathCompletions, WordCompletions,
     },
     gutter::{Gutter, GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts},
     info::Info,

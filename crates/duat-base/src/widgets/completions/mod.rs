@@ -43,7 +43,6 @@ use crate::{
     widgets::Info,
 };
 
-mod commands;
 mod lists;
 mod paths;
 mod words;

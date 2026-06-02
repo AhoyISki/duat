@@ -29,8 +29,8 @@ use duat_core::{
 use crate::widgets::completions::{CompletionKind, ErasedList, Sealed, string_cmp};
 
 impl CompletionKind for WordInfo {
-    fn value(&self) -> &str {
-        &self.word
+    fn value(&self) -> String {
+        self.word.clone()
     }
 
     fn default_fmt(&self) -> Text {
