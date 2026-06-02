@@ -230,7 +230,7 @@ pub trait CompletionKind: Send + Clone + 'static {
     ///
     /// This word is what will be placed over the current word.
     #[doc(hidden)]
-    fn value(&self) -> &str;
+    fn value(&self) -> String;
 
     /// The default formatting for entries from this provider
     ///
@@ -302,7 +302,7 @@ impl Completions {
             let comp = completions.write(pa);
             comp.remove_ns(ns);
 
-            let erased = entries.into_erased();
+            let mut erased = entries.into_erased();
 
             let (Ok(list_idx) | Err(list_idx)) = comp
                 .lists
@@ -496,7 +496,7 @@ impl Completions {
             } else {
                 let Some((list, list_idx)) = comp
                     .lists
-                    .iter()
+                    .iter_mut()
                     .enumerate()
                     .find_map(|(i, (_, list))| list.match_indices(text, true).zip(Some(i)))
                 else {
@@ -758,7 +758,7 @@ impl Widget for Completions {
 }
 
 trait ErasedList: Send {
-    fn match_indices(&self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>>;
+    fn match_indices(&mut self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>>;
 
     fn start_byte(&self) -> usize;
 

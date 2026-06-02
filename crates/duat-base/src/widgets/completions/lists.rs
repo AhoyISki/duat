@@ -52,7 +52,7 @@ impl<C: CompletionKind> InnerList<C> {
 
 impl<C: CompletionKind> ErasedList for InnerList<C> {
     /// Get the indices of the matches.
-    fn match_indices(&self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>> {
+    fn match_indices(&mut self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>> {
         let main_byte = text.get_main_sel()?.cursor().byte();
 
         if main_byte < self.start_byte {
@@ -137,7 +137,7 @@ struct InnerExhaustiveList {
 }
 
 impl ErasedList for InnerExhaustiveList {
-    fn match_indices(&self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>> {
+    fn match_indices(&mut self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>> {
         let main_byte = text.main_sel().cursor().byte();
 
         let yet_to_be_typed = Vec::from_iter(

@@ -65,7 +65,7 @@ struct InnerWordCompletions {
 }
 
 impl ErasedList for InnerWordCompletions {
-    fn match_indices(&self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>> {
+    fn match_indices(&mut self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>> {
         let main_byte = text.get_main_sel()?.cursor().byte();
         let suffix = &text[text.search(r"\A\w*").range(main_byte..).next().unwrap()];
 

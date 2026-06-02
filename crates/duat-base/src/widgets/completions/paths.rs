@@ -14,7 +14,17 @@ use duat_core::{
     utils::expand_path,
 };
 
-use crate::widgets::CompletionsProvider;
+use crate::widgets::completions::{CompletionKind, ErasedList, Sealed};
+
+impl CompletionKind for PathBuf {
+    fn value(&self) -> String {
+        self.to_string_lossy().to_string()
+    }
+
+    fn default_fmt(&self) -> Text {
+        txt!("[completion.path]{self}[]{Spacer}")
+    }
+}
 
 /// Completions for [`Path`]s.
 ///
@@ -22,54 +32,98 @@ use crate::widgets::CompletionsProvider;
 /// [`PromptLine`], it adds support for quoted paths.
 ///
 /// [`PromptLine`]: crate::widgets::PromptLine
-#[derive(Clone)]
-pub struct PathCompletions {
-    for_parameters: bool,
-}
+pub struct PathCompletions;
 
 impl PathCompletions {
-    /// Returns a new `PathCompletions`
+    /// Get the start of the `Path` being completed.
     ///
-    /// If `for_parameters` is `false`, then in order for the
-    /// completions to show up, a `/` must be part of the string (or
-    /// `\` on Windows). This makes this completion more flexible when
-    /// working with multiple completions at once.
-    pub fn new(for_parameters: bool) -> Self {
-        Self { for_parameters }
+    /// Usually won't be the start of the current word, since
+    /// it has to start in a valid path initializer.
+    ///
+    /// However, if `for_parameters` is set to `true`, this becomes
+    /// more permissive, and the path will start matching without
+    /// a leading forward slash, for example.
+    pub fn get_start(&self, text: &Text, for_parameters: bool) -> Option<usize> {
+        #[cfg(not(target_os = "windows"))]
+        fn get_start(text: &Text, cursor: Point, for_parameters: bool) -> Option<usize> {
+            use duat_core::text::RegexHaystack;
+
+            if for_parameters {
+                text.search([" '([^']|\\')*", "[^ \n]*"])
+                    .range(..cursor)
+                    .next_back()
+                    .map(|(pat_id, range)| range.start + (pat_id == 0) as usize)
+            } else {
+                text.search("[^ /\n\t]*/[^\n]*\\z")
+                    .range(..cursor)
+                    .next_back()
+                    .map(|range| range.start)
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        fn get_start(&self, text: &Text, cursor: Point, for_parameters: bool) -> Option<usize> {
+            use duat_core::text::RegexHaystack;
+
+            if self.for_parameters {
+                text.search(["[^ \n]*", " '([^']|\\')*"])
+                    .range(..cursor)
+                    .next_back()
+                    .map(|(pat_id, range)| range.start + 2 * (pat_id == 1) as usize)
+            } else {
+                text.search("[^ /\\\n\t]*(/|\\\\)[^\n]*\\z")
+                    .range(..cursor)
+                    .next_back()
+                    .map(|range| range.start)
+            }
+        }
+
+        get_start(text, for_parameters)
     }
 }
 
-impl CompletionsProvider for PathCompletions {
-    type Entry = String;
+impl Sealed<String> for PathCompletions {
+    fn into_erased(self, start_byte: usize) -> Box<dyn ErasedList> {
+        Box::new(InnerPathCompletions { start_byte, list: Vec::new() })
+    }
+}
 
-    const ALLOW_WITH_MULTIPLE_SELECTIONS: bool = true;
+struct InnerPathCompletions {
+    start_byte: usize,
+    list: Vec<(String, PathBuf)>,
+}
 
-    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<Self::Entry> {
-        let prefix = match prefix.strip_prefix("'") {
-            Some(prefix) => prefix,
-            None => prefix,
+impl ErasedList for InnerPathCompletions {
+    fn match_indices(&mut self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>> {
+        let main_byte = text.get_main_sel()?.cursor().byte();
+
+        let prefix = {
+            let prefix = text.get(self.start_byte..main_byte)?;
+            match prefix.strip_prefix("'") {
+                Some(prefix) => prefix,
+                None => prefix,
+            }
         };
 
-        let Some((cur_dir, prefix, entries)) = get_entries(prefix, self.for_parameters) else {
+        let Some((cur_dir, prefix, entries)) = get_entries(prefix) else {
             return Vec::new();
         };
 
         let (prefix, case_insensitive) =
-            if self.case_insensitive && prefix.chars().all(|char| !char.is_uppercase()) {
+            if case_insensitive && !prefix.chars().any(|char| char.is_uppercase()) {
                 (prefix.to_uppercase(), true)
             } else {
                 (prefix.to_string(), false)
             };
 
-        let mut entries: Vec<String> = entries
-            .filter_map(|entry| entry.ok())
-            .filter_map(|entry| {
-                let path = entry.path();
+        let mut entries =
+            Vec::from_iter(entries.filter_map(|entry| entry.ok()).filter_map(|entry| {
+                let pathbuf = entry.path();
 
                 let mut path = if let Some(cur_dir) = &cur_dir {
-                    path.strip_prefix(cur_dir).unwrap().to_string_lossy()
+                    pathbuf.strip_prefix(cur_dir).unwrap().to_string_lossy()
                 } else {
-                    path.to_string_lossy()
+                    pathbuf.to_string_lossy()
                 };
 
                 if entry.path().is_dir() {
@@ -82,15 +136,14 @@ impl CompletionsProvider for PathCompletions {
 
                 if case_insensitive {
                     let upper = path.to_uppercase();
-                    super::string_cmp(&prefix, &upper).map(|_| path.to_string())
+                    super::string_cmp(&prefix, &upper).map(|_| (path.to_string(), pathbuf))
                 } else {
-                    super::string_cmp(&prefix, &path).map(|_| path.to_string())
+                    super::string_cmp(&prefix, &path).map(|_| (path.to_string(), pathbuf))
                 }
-            })
-            .collect();
+            }));
 
         entries.sort();
-        entries.sort_by_key(|path| {
+        entries.sort_by_key(|(path, _)| {
             let similarity = if case_insensitive {
                 let upper = path.to_uppercase();
                 super::string_cmp(&prefix, &upper).unwrap()
@@ -101,53 +154,33 @@ impl CompletionsProvider for PathCompletions {
             (!path.ends_with(possible_separators()), similarity)
         });
 
-        entries
+        self.list = entries;
+
+        (!self.list.is_empty()).then(|| (0..self.list.len()).collect())
     }
 
-    #[cfg(not(target_os = "windows"))]
-    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
-        use duat_core::text::RegexHaystack;
-
-        if self.for_parameters {
-            text.search([" '([^']|\\')*", "[^ \n]*"])
-                .range(..cursor)
-                .next_back()
-                .map(|(pat_id, range)| range.start + (pat_id == 0) as usize)
-        } else {
-            text.search("[^ /\n\t]*/[^\n]*\\z")
-                .range(..cursor)
-                .next_back()
-                .map(|range| range.start)
-        }
+    fn start_byte(&self) -> usize {
+        self.start_byte
     }
 
-    #[cfg(target_os = "windows")]
-    fn get_start(&self, text: &Text, cursor: Point) -> Option<usize> {
-        use duat_core::text::RegexHaystack;
-
-        if self.for_parameters {
-            text.search(["[^ \n]*", " '([^']|\\')*"])
-                .range(..cursor)
-                .next_back()
-                .map(|(pat_id, range)| range.start + 2 * (pat_id == 1) as usize)
-        } else {
-            text.search("[^ /\\\n\t]*(/|\\\\)[^\n]*\\z")
-                .range(..cursor)
-                .next_back()
-                .map(|range| range.start)
-        }
+    fn value_for_index(&self, i: usize) -> String {
+        self.list[i].0.clone()
     }
 
-    fn default_fmt(entry: &Self::Entry) -> Text {
-        txt!("[completion.path]{entry}[]{Spacer}")
+    fn text_for_index(&self, i: usize) -> Text {
+        self.list[i].1.default_fmt()
     }
 
-    fn word(entry: &Self::Entry) -> &str {
-        entry
+    fn info_for_index(&self, i: usize) -> Option<Text> {
+        None
+    }
+
+    fn get(&self, i: usize) -> Box<dyn std::any::Any + Send + 'static> {
+        Box::new(self.list[i].1.clone())
     }
 }
 
-fn get_entries(prefix: &str, for_parameters: bool) -> Option<(Option<PathBuf>, String, ReadDir)> {
+fn get_entries(prefix: &str) -> Option<(Option<PathBuf>, String, ReadDir)> {
     let expanded = expand_path(prefix).ok()?.to_string();
     let path = Path::new(&expanded);
 
@@ -159,12 +192,10 @@ fn get_entries(prefix: &str, for_parameters: bool) -> Option<(Option<PathBuf>, S
     {
         let read_dir = parent.read_dir().ok()?;
         Some((None, expanded, read_dir))
-    } else if for_parameters {
+    } else {
         let current_dir = std::env::current_dir().ok()?;
         let read_dir = current_dir.read_dir().ok()?;
         Some((Some(current_dir), expanded, read_dir))
-    } else {
-        None
     }
 }
 
