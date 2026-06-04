@@ -169,6 +169,7 @@ impl ErasedList for InnerWordCompletions {
         self.matches[i].word.clone()
     }
 
+    #[track_caller]
     fn text_for_index(&mut self, i: usize) -> Text {
         self.matches[i].word.default_fmt()
     }

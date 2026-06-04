@@ -114,7 +114,7 @@ impl PathCompletions {
         fn get_start(text: &Text, cursor: Point, for_parameters: bool) -> Option<usize> {
             use duat_core::text::RegexHaystack;
 
-            if self.for_parameters {
+            if for_parameters {
                 text.search(["[^ \n]*", " '([^']|\\')*"])
                     .range(..cursor)
                     .next_back()

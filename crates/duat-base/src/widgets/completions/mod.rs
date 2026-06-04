@@ -312,13 +312,16 @@ impl Completions {
                 && let Some(list) = erased.match_indices(master.text(pa), true)
             {
                 completions.write(pa).matches = Some(Matches { list_idx, list, selected: None });
+            } else if let Some(matches) = &mut completions.write(pa).matches
+                && matches.list_idx >= list_idx
+            {
+                matches.list_idx += 1;
             }
 
             let comp = completions.write(pa);
             comp.lists.insert(list_idx, (priority, erased, ns));
 
             Completions::scroll_and_update(pa, &completions, 0);
-            
         } else {
             let comp = Completions {
                 lists: vec![(priority, entries.into_erased(start_byte), ns)],
@@ -473,7 +476,6 @@ impl Completions {
         context::handle_of::<Completions>(pa).is_some()
     }
 
-    #[track_caller]
     fn scroll_and_update(
         pa: &mut Pass,
         completions: &Handle<Self>,
@@ -691,7 +693,6 @@ impl Completions {
             let mut entries = Text::builder();
             let mut sidebar = Text::builder();
 
-            context::debug!("{matches.list_idx}");
             let list = &mut completions.write(pa).lists[matches.list_idx].1;
 
             if let Some(new_idx) = new_idx {
@@ -796,6 +797,7 @@ trait ErasedList: Send {
 
     fn value_for_index(&self, i: usize) -> String;
 
+    #[track_caller]
     fn text_for_index(&mut self, i: usize) -> Text;
 
     fn info_for_index(&self, i: usize) -> Option<(Text, Orientation)>;
