@@ -1,7 +1,7 @@
 //! Access the state of Duat.
 use std::{
     sync::{
-        atomic::{AtomicUsize, Ordering::Relaxed},
+        atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
         mpsc,
     },
     time::{Duration, Instant},
@@ -33,7 +33,11 @@ mod global {
 
     use super::DynBuffer;
     use crate::{
-        buffer::Buffer, context::{DuatReceiver, DuatSender, Handle}, data::{Pass, RwData}, session::DuatEvent, ui::{Widget, Window, Windows}
+        buffer::Buffer,
+        context::{DuatReceiver, DuatSender, Handle},
+        data::{Pass, RwData},
+        session::DuatEvent,
+        ui::{Widget, Window, Windows},
     };
 
     static WINDOWS: OnceLock<&Windows> = OnceLock::new();
@@ -46,7 +50,11 @@ mod global {
         LazyLock::new(|| {
             let (sender, receiver) = mpsc::channel();
             let sender = DuatSender(sender, &NEW_EVENT_COUNT);
-            let receiver = DuatReceiver(receiver, &NEW_EVENT_COUNT);
+            let receiver = DuatReceiver {
+                rx: receiver,
+                events_left: &NEW_EVENT_COUNT,
+                sent_idle: AtomicBool::new(false),
+            };
             Mutex::new((sender, Some(receiver)))
         });
 
@@ -314,7 +322,11 @@ impl DuatSender {
 
 /// A receiver for [`DuatEvent`]s.
 #[doc(hidden)]
-pub struct DuatReceiver(mpsc::Receiver<DuatEvent>, &'static AtomicUsize);
+pub struct DuatReceiver {
+    rx: mpsc::Receiver<DuatEvent>,
+    events_left: &'static AtomicUsize,
+    sent_idle: AtomicBool,
+}
 
 impl DuatReceiver {
     /// Receive a [`DuatEvent`].
@@ -325,21 +337,32 @@ impl DuatReceiver {
     ///
     /// Otherwise, it will wait until an event shows up.
     pub(crate) fn recv(&self, chain_instant: &mut Option<Instant>) -> Option<DuatEvent> {
+        let on_event = |_: &DuatEvent| {
+            self.sent_idle.store(false, Relaxed);
+            _ = self.events_left.fetch_sub(1, Relaxed)
+        };
+
         if let Some(instant) = chain_instant {
             if let Some(duration) = Duration::from_micros(500).checked_sub(instant.elapsed()) {
-                self.0
-                    .recv_timeout(duration)
-                    .inspect(|_| _ = self.1.fetch_sub(1, Relaxed))
-                    .ok()
+                self.rx.recv_timeout(duration).inspect(on_event).ok()
             } else {
                 *chain_instant = None;
                 None
             }
+        } else if !self.sent_idle.load(Relaxed) {
+            match self
+                .rx
+                .recv_timeout(Duration::from_millis(150))
+                .inspect(on_event)
+            {
+                Ok(event) => Some(event),
+                Err(_) => {
+                    self.sent_idle.store(true, Relaxed);
+                    Some(DuatEvent::DuatIdled)
+                }
+            }
         } else {
-            self.0
-                .recv()
-                .inspect(|_| _ = self.1.fetch_sub(1, Relaxed))
-                .ok()
+            self.rx.recv().inspect(on_event).ok()
         }
     }
 }

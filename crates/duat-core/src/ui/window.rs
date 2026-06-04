@@ -177,16 +177,28 @@ impl Windows {
     pub(crate) fn spawn_on_text<W: Widget>(
         &self,
         pa: &mut Pass,
-        (id, specs): (SpawnId, DynSpawnSpecs),
-        widget: W,
-        win: usize,
-        master: Handle,
-        is_closed: Arc<AtomicBool>,
-    ) -> Handle<W> {
+        (target, specs): (&RwArea, DynSpawnSpecs),
+        (id, widget, is_closed): (SpawnId, W, Arc<AtomicBool>),
+    ) -> Option<Handle<W>> {
         let widget = RwData::new(widget);
         let path = widget
             .read_as::<Buffer>(pa)
             .and_then(|buffer| buffer.path_set());
+
+        let (win, master) =
+            self.inner
+                .read(pa)
+                .list
+                .iter()
+                .enumerate()
+                .find_map(|(win, window)| {
+                    let master = window.nodes(pa).find_map(|node| {
+                        node.area().is_eq(pa, target).then(|| node.handle().clone())
+                    })?;
+
+                    Some((win, master))
+                })?;
+
         let spawned = self
             .ui
             .new_dyn_spawned(path.as_ref().map(|p| p.as_ref()), id, specs, win);
@@ -199,7 +211,7 @@ impl Windows {
 
         hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
 
-        node.handle().get_as().unwrap()
+        node.handle().get_as()
     }
 
     /// Spawn a static floating `Widget`.
@@ -269,16 +281,12 @@ impl Windows {
         master: Option<&RwArea>,
     ) -> Option<Node> {
         let inner = self.inner.read(pa);
-        let win = inner
-            .list
-            .iter()
-            .position(|window| {
-                window.0.read(pa).master_area.is_master_of(pa, target)
-                    || window
-                        .nodes(pa)
-                        .any(|node| node.area().is_master_of(pa, target))
-            })
-            .unwrap();
+        let win = inner.list.iter().position(|window| {
+            window.0.read(pa).master_area.is_master_of(pa, target)
+                || window
+                    .nodes(pa)
+                    .any(|node| node.area().is_master_of(pa, target))
+        })?;
 
         let inner_window = inner.list[win].0.read(pa);
         let target_is_on_buffers = inner_window.buffers_area.is_master_of(pa, target);

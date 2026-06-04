@@ -634,7 +634,7 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hook::{
             self, BufferClosed, BufferOpened, BufferSaved, BufferSwitched, BufferUpdated,
-            ColorschemeSet, CompletionSelected, CompletionFocused, ConfigLoaded, ConfigUnloaded,
+            ColorschemeSet, CompletionFocused, CompletionSelected, ConfigLoaded, ConfigUnloaded,
             FocusedOnDuat, FormSet, Hookable, KeySent, KeyTyped, ModeSwitched, OnMouseEvent,
             SearchPerformed, SearchUpdated, UnfocusedFromDuat, WidgetClosed, WidgetOpened,
             WidgetSwitched, WindowOpened,
@@ -647,8 +647,7 @@ pub mod prelude {
         plug, setup_duat,
         state::*,
         text::{
-            self, Conceal, Inlay, Mask, Overlay, Point, RegexHaystack, Spacer, Spawn, Strs, Text,
-            txt,
+            self, Conceal, Inlay, Mask, Overlay, Point, RegexHaystack, Spacer, Strs, Text, txt,
         },
         ui::{self, Area, Widget},
         widgets::{self, status},

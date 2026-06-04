@@ -19,7 +19,7 @@ use duat_core::{
     hook::{self, MsgLogged, OnMouseEvent, WidgetSwitched},
     mode::{self, MouseButton, TwoPointsPlace},
     opts::PrintOpts,
-    text::{Point, Spawn, Text, TextMut, txt},
+    text::{Point, Text, TextMut, txt},
     ui::{DynSpawnSpecs, Orientation, PushSpecs, PushTarget, Side, Widget},
 };
 
@@ -93,14 +93,17 @@ pub fn logbook_setup() {
                 .binary_search_by(|(end, _)| end.cmp(&points.real));
 
             if let Some((_, location)) = logs.location_ranges.get(i) {
-                let spawn = Spawn::new(
+                let location = location.clone();
+                event.handle.spawn_on_text(
+                    pa,
                     Info::new(txt!("[log_book.location]{location}")),
+                    points.real,
+                    location_ns,
                     DynSpawnSpecs {
                         orientation: Orientation::VerLeftBelow,
                         ..DynSpawnSpecs::default()
                     },
                 );
-                logs.text.insert_tag(location_ns, points.real, spawn);
             }
         }
         Down(MouseButton::Left) => {

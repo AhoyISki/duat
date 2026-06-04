@@ -89,7 +89,7 @@ impl Info {
         } else {
             let orientation = *ORIENTATION.lock().unwrap();
             let buffer = context::current_buffer(pa);
-            let Some(info) = buffer.spawn_widget(
+            let Some(info) = buffer.spawn_on_widget(
                 pa,
                 Info { text, is_corner: true },
                 DynSpawnSpecs {

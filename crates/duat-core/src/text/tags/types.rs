@@ -25,7 +25,7 @@ use crate::{
         Point, Text, TextIndex, TextRange,
         tags::{Ghost, reflist_insert, reflist_pos},
     },
-    ui::{DynSpawnSpecs, Widget},
+    ui::{DynSpawnSpecs, RwArea, Widget},
 };
 
 /// [`Tag`]s are used for every visual modification to [`Text`].
@@ -50,9 +50,6 @@ use crate::{
 ///   the [`Buffer`] [`Widget`].
 /// - [`Toggle`]: Creates a region that can be interacted with through
 ///   the mouse pointer.
-/// - [`Spawn`]: Spawns a floating `Widget` on a position in `Text`.
-///   Said floating widget will move around as the position does the
-///   same.
 /// - [`Mask`]: Maps all [`Form`]s in a region, given a certain `&str`
 ///   suffix.
 ///
@@ -541,11 +538,7 @@ impl std::fmt::Debug for Toggle {
 /// The [`Widget`] will be placed according to the [`DynSpawnSpecs`],
 /// and should move automatically as the `Spawn` moves around the
 /// screen.
-pub struct Spawn {
-    id: SpawnId,
-    spawn_fn: Box<dyn FnOnce(&mut Pass, usize, Handle) + Send>,
-    is_closed: Arc<AtomicBool>,
-}
+pub(crate) struct Spawn(SpawnId, Arc<AtomicBool>);
 
 impl Spawn {
     /// Returns a new instance of `Spawn`.
@@ -570,26 +563,21 @@ impl Spawn {
     /// > be removed.
     ///
     /// [`Tags::insert`]: super::Tags::insert
-    pub fn new(widget: impl Widget, specs: DynSpawnSpecs) -> Self {
+    pub fn new<W: Widget>(
+        pa: &mut Pass,
+        target: &RwArea,
+        widget: W,
+        specs: DynSpawnSpecs,
+    ) -> Option<(Self, Handle<W>)> {
         let id = SpawnId::new();
         let is_closed = Arc::new(AtomicBool::new(false));
-        Self {
-            id,
-            spawn_fn: Box::new({
-                let is_closed = is_closed.clone();
-                move |pa, win, master| {
-                    context::windows().spawn_on_text(
-                        pa,
-                        (id, specs),
-                        widget,
-                        win,
-                        master,
-                        is_closed,
-                    );
-                }
-            }),
-            is_closed,
-        }
+        let widget = context::windows().spawn_on_text(
+            pa,
+            (target, specs),
+            (id, widget, is_closed.clone()),
+        )?;
+
+        Some((Self(id, is_closed), widget))
     }
 }
 
@@ -604,12 +592,11 @@ impl<I: TextIndex> Sealed<I> for Spawn {
         ns: Ns,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         let byte = index.to_byte_index().min(max);
-        ((byte, RawTag::SpawnedWidget(ns, self.id)), None)
+        ((byte, RawTag::SpawnedWidget(ns, self.0)), None)
     }
 
     fn on_insertion(self, tags: &mut InnerTags) {
-        tags.spawns.push(super::SpawnCell(self.id, self.is_closed));
-        tags.spawn_fns.0.push((self.id, self.spawn_fn));
+        tags.spawns.push(super::SpawnCell(self.0, self.1));
     }
 }
 impl<I: TextIndex> Tag<I> for Spawn {}

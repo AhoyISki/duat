@@ -19,12 +19,11 @@ use RawTag::*;
 
 pub(super) use crate::text::tags::types::RawTag;
 pub use crate::text::tags::types::{
-    Conceal, FormTag, Inlay, Mask, Overlay, Spacer, Spawn, Tag, TagPart, Toggle, ToggleFn,
+    Conceal, FormTag, Inlay, Mask, Overlay, Spacer, Tag, TagPart, Toggle, ToggleFn,
 };
+pub(crate) use crate::text::tags::types::Spawn;
 use crate::{
     Ns,
-    context::Handle,
-    data::Pass,
     text::{
         Point, Text, TextRangeOrIndex,
         shift_list::{Shift, ShiftList, Shiftable},
@@ -172,7 +171,6 @@ pub struct InnerTags {
     ghosts: Vec<Option<(Ghost, usize)>>,
     toggles: Vec<Option<(Toggle, usize)>>,
     spawns: Vec<SpawnCell>,
-    pub(super) spawn_fns: SpawnFns,
     bounds: Bounds,
     extents: NsExtents,
     tags_version: u64,
@@ -192,7 +190,6 @@ impl InnerTags {
             ghosts: Vec::new(),
             toggles: Vec::new(),
             spawns: Vec::new(),
-            spawn_fns: SpawnFns(Vec::new()),
             bounds: Bounds::new(max),
             extents: NsExtents::new(max),
             tags_version: 0,
@@ -502,7 +499,6 @@ impl InnerTags {
                     }
                 } else if let RawTag::SpawnedWidget(_, spawn_id) = tag {
                     self.spawns.retain(|spawn_cell| spawn_cell.0 != spawn_id);
-                    self.spawn_fns.0.retain(|(id, _)| *id != spawn_id);
                 }
             });
 
@@ -769,7 +765,6 @@ impl Clone for InnerTags {
             ghosts: self.ghosts.clone(),
             toggles: self.toggles.clone(),
             spawns: Vec::new(),
-            spawn_fns: SpawnFns(Vec::new()),
             bounds: self.bounds.clone(),
             extents: self.extents.clone(),
             tags_version: self.tags_version,
@@ -956,15 +951,6 @@ impl Drop for SpawnCell {
         crate::context::windows().queue_close_spawned(self.0);
     }
 }
-
-pub(super) struct SpawnFns(
-    pub(super) Vec<(SpawnId, Box<dyn FnOnce(&mut Pass, usize, Handle) + Send>)>,
-);
-
-/// SAFETY: The function are only ever used when there's access to a
-/// Pass Besides, does Sync even apply to FnOnce? isn't it impossible
-/// to do anything with an &FnOnce value?
-unsafe impl Sync for SpawnFns {}
 
 /// Either an [`Inlay`] or an [`Overlay`].
 #[derive(Clone, Debug, PartialEq, Eq)]

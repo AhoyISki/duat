@@ -272,7 +272,7 @@ impl Node {
     }
 
     /// Updates and prints this [`Node`]
-    pub(crate) fn print(&self, pa: &mut Pass, win: usize) {
+    pub(crate) fn print(&self, pa: &mut Pass) {
         self.handle.update_requested.store(false, Ordering::Relaxed);
 
         crate::context::windows().cleanup_despawned(pa);
@@ -285,11 +285,6 @@ impl Node {
 
         if print_info != PrintInfo::default() {
             text.update_bounds();
-        }
-
-        let widgets_to_spawn = text.get_widget_spawns();
-        for (_, spawn) in widgets_to_spawn {
-            spawn(pa, win, self.handle.clone());
         }
 
         (self.print)(pa, &self.handle);

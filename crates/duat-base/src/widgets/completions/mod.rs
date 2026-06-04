@@ -29,7 +29,7 @@ use duat_core::{
     data::{Pass, RwData},
     hook::{self, BufferUpdated, KeySent, OnMouseEvent, WidgetOpened, WidgetSwitched},
     mode::{KeyCode, MouseEventKind, event},
-    text::{RegexHaystack, Spawn, Text, TextIndex, TextMut, txt},
+    text::{RegexHaystack, Text, TextIndex, TextMut, txt},
     ui::{DynSpawnSpecs, Orientation, Side, Widget},
 };
 use duat_term::Frame;
@@ -318,6 +318,7 @@ impl Completions {
             comp.lists.insert(list_idx, (priority, erased, ns));
 
             Completions::scroll_and_update(pa, &completions, 0);
+            
         } else {
             let comp = Completions {
                 lists: vec![(priority, entries.into_erased(start_byte), ns)],
@@ -331,9 +332,7 @@ impl Completions {
                 info: None,
             };
 
-            master
-                .text_mut(pa)
-                .insert_tag(*WIDGET_NS, start_byte, Spawn::new(comp, SPAWN_SPECS));
+            master.spawn_on_text(pa, comp, start_byte, *WIDGET_NS, SPAWN_SPECS);
         };
     }
 
@@ -446,9 +445,7 @@ impl Completions {
             info: None,
         };
 
-        master
-            .text_mut(pa)
-            .insert_tag(*WIDGET_NS, start_byte, Spawn::new(comp, SPAWN_SPECS));
+        master.spawn_on_text(pa, comp, start_byte, *WIDGET_NS, SPAWN_SPECS);
     }
 
     /// Closes the `Completions` list
@@ -628,7 +625,7 @@ impl Completions {
             } else {
                 let specs = DynSpawnSpecs { orientation, ..Default::default() };
 
-                let info_handle = completions.spawn_widget(pa, Info::new(info_text), specs);
+                let info_handle = completions.spawn_on_widget(pa, Info::new(info_text), specs);
                 completions.write(pa).info = info_handle.clone().map(|info| (info, orientation));
                 info_handle
             };
@@ -662,7 +659,7 @@ impl Completions {
             let comp = completions.write(pa);
             let lists = std::mem::take(&mut comp.lists);
             let list = &lists[matches.list_idx].1;
-            
+
             let start_byte = list.start_byte();
             let selected = new_idx.map(|idx| Selected {
                 idx,
@@ -684,8 +681,7 @@ impl Completions {
                 matches: Some(Matches { selected, ..matches }),
             };
 
-            let mut text = master.text_mut(pa);
-            text.insert_tag(*WIDGET_NS, start_byte, Spawn::new(new_comp, SPAWN_SPECS));
+            master.spawn_on_text(pa, new_comp, start_byte, *WIDGET_NS, SPAWN_SPECS);
 
             _ = completions.close(pa);
             return Some(original).zip(replacement);
@@ -695,6 +691,7 @@ impl Completions {
             let mut entries = Text::builder();
             let mut sidebar = Text::builder();
 
+            context::debug!("{matches.list_idx}");
             let list = &mut completions.write(pa).lists[matches.list_idx].1;
 
             if let Some(new_idx) = new_idx {

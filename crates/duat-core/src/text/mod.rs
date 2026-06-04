@@ -84,12 +84,10 @@
 //! [`Mode`]: crate::mode::Mode
 use std::ops::Range;
 
-pub(crate) use crate::text::{strs::StrsBuf, tags::ToggleFn};
+pub(crate) use crate::text::{strs::StrsBuf, tags::{ToggleFn, Spawn}};
 use crate::{
     Ns,
     buffer::{Change, History},
-    context::Handle,
-    data::Pass,
     mode::{Selection, Selections},
     text::{
         tags::{FwdTags, InnerTags, RevTags},
@@ -104,7 +102,7 @@ pub use crate::{
         iter::{FwdIter, RevIter, TextPart, TextPlace},
         search::{Matches, RegexHaystack, RegexPattern},
         strs::{Lines, SearchStep, Strs, StrsDoubleEndedSearcher, StrsPattern, StrsSearcher},
-        tags::{Conceal, FormTag, Inlay, Mask, Overlay, Spacer, Spawn, Tag, TagPart, Tags, Toggle},
+        tags::{Conceal, FormTag, Inlay, Mask, Overlay, Spacer, Tag, TagPart, Tags, Toggle},
         utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     },
     txt,
@@ -983,20 +981,6 @@ impl<'t> TextMut<'t> {
     /// [`Form`]: crate::form::Form
     pub(crate) fn update_bounds(&mut self) {
         self.text.0.tags.update_bounds();
-    }
-
-    /// Functions to add  all [`Widget`]s that were spawned in this
-    /// `Text`.
-    ///
-    /// This function should only be called right before printing,
-    /// where it is "known" that `Widget`s can no longer get rid of
-    /// the [`Spawn`]s
-    ///
-    /// [`Widget`]: crate::ui::Widget
-    pub(crate) fn get_widget_spawns(
-        &mut self,
-    ) -> Vec<(SpawnId, Box<dyn FnOnce(&mut Pass, usize, Handle) + Send>)> {
-        std::mem::take(&mut self.text.0.tags.spawn_fns.0)
     }
 
     ////////// History functions

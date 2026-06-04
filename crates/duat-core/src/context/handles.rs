@@ -11,12 +11,13 @@ use std::{
 };
 
 use crate::{
+    Ns,
     buffer::{Buffer, Change},
     context,
     data::{HandleFns, Pass, RwData, RwText, WriteableTuple},
     mode::{ModSelection, SelectionMut, Selections},
     opts::PrintOpts,
-    text::{Text, TextMut, TextParts, TwoPoints},
+    text::{Spawn, Text, TextIndex, TextMut, TextParts, TwoPoints},
     ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, SpawnId, Widget, Window},
 };
 
@@ -796,7 +797,7 @@ fn populate<'p, 't>(text: &'t mut TextMut<'p>) -> &'t mut Selections {
     selections
 }
 
-impl<W: Widget> Handle<W> {
+impl<W: Widget + ?Sized> Handle<W> {
     /// Pushes a [`Widget`] around this one.
     ///
     /// This `Widget` will be placed internally, i.e., around the
@@ -839,6 +840,7 @@ impl<W: Widget> Handle<W> {
     ///
     /// Note that `new` was pushed _around_ other clustered widgets in
     /// the second case, not just around `self`.
+    #[track_caller]
     pub fn push_inner_widget<PW: Widget>(
         &self,
         pa: &mut Pass,
@@ -853,7 +855,10 @@ impl<W: Widget> Handle<W> {
         {
             main.clone()
         } else {
-            self.to_dyn()
+            context::windows()
+                .handles(pa)
+                .find(|handle| handle.ptr_eq(&self.widget))
+                .unwrap()
         };
 
         let handle = context::windows()
@@ -923,7 +928,10 @@ impl<W: Widget> Handle<W> {
         {
             main.clone()
         } else {
-            self.to_dyn()
+            context::windows()
+                .handles(pa)
+                .find(|handle| handle.ptr_eq(&self.widget))
+                .unwrap()
         };
 
         let handle = if let Some(master) = self.area.get_cluster_master(pa) {
@@ -943,14 +951,18 @@ impl<W: Widget> Handle<W> {
         handle
     }
 
-    /// Spawns a floating [`Widget`].
-    pub fn spawn_widget<SW: Widget>(
+    /// Spawns a floating [`Widget`] on the `Handle`.
+    pub fn spawn_on_widget<SW: Widget>(
         &self,
         pa: &mut Pass,
         widget: SW,
         specs: DynSpawnSpecs,
     ) -> Option<Handle<SW>> {
-        let self_handle = self.to_dyn();
+        let self_handle = context::windows()
+            .handles(pa)
+            .find(|handle| handle.ptr_eq(&self.widget))
+            .unwrap();
+
         context::windows().spawn_on_widget(pa, (&self.area, specs), widget, move |pa, handle| {
             let related = self_handle.related.write(pa);
 
@@ -974,6 +986,30 @@ impl<W: Widget> Handle<W> {
         })
     }
 
+    /// Spawns a floating [`Widget`] on the `Text`.
+    pub fn spawn_on_text<SW: Widget>(
+        &self,
+        pa: &mut Pass,
+        widget: SW,
+        index: impl TextIndex,
+        ns: Ns,
+        specs: DynSpawnSpecs,
+    ) -> Option<Handle<SW>> {
+        let byte_index = index.to_byte_index();
+        if self.text(pa).len() < byte_index {
+            context::warn!("Tried spawning a widget beyond the end of the Text");
+            return None;
+        }
+
+        let (spawn, widget) = Spawn::new(pa, &self.area, widget, specs)?;
+
+        self.text_mut(pa).insert_tag(ns, index, spawn);
+
+        Some(widget)
+    }
+}
+
+impl<W: Widget> Handle<W> {
     /// Transforms this [`Handle`] into a [`Handle`].
     pub fn to_dyn(&self) -> Handle {
         Handle {
