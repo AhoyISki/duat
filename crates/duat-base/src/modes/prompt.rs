@@ -43,7 +43,7 @@ use duat_core::{
     ui::RwArea,
 };
 
-use crate::widgets::{CommandsCompletions, Completions, PromptLine};
+use crate::widgets::{Completions, PromptLine};
 
 static HISTORY: Mutex<Vec<(TypeId, Vec<String>)>> = Mutex::new(Vec::new());
 static NS: LazyLock<Ns> = LazyLock::new(Ns::new);
@@ -496,10 +496,16 @@ impl RunCommands {
             };
 
             if completions.as_ref() != Some(&new_completion) {
+                let cmd_docs =
+                    Vec::from_iter(duat_core::cmd::cmd_list(pa).into_iter().filter_map(|doc| {
+                        match doc {
+                            cmd::Description::Command(cmd_doc) => Some(cmd_doc),
+                            cmd::Description::Alias(_) => None,
+                        }
+                    }));
+
                 match &new_completion {
-                    Completion::Caller => Completions::builder()
-                        .with_provider(CommandsCompletions::new(pa))
-                        .open(pa),
+                    Completion::Caller => Completions::add_list(pa, cmd_docs, 0, 100, Ns::basic()),
                     Completion::Parameters(params) => Completions::open_for(pa, params),
                 }
             }

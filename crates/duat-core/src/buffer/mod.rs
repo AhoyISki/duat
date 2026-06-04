@@ -30,7 +30,7 @@ pub use crate::buffer::{
 use crate::{
     context::{self, Handle, cache},
     data::{Pass, RwData, WriteableTuple},
-    hook::{self, BufferRenamed, BufferSaved, BufferUpdated, OnMouseEvent},
+    hook::{self, BufferRenamed, BufferSaved, FocusedUpdated, OnMouseEvent},
     mode::{Selections, TwoPointsPlace},
     opts::PrintOpts,
     text::{Point, Strs, StrsBuf, Text, TextMut, TextParts, TextVersion, txt},
@@ -450,7 +450,7 @@ impl Buffer {
     }
 
     /// The update function for [`Buffer`]s.
-    pub(crate) fn update(pa: &mut Pass, buffer: &Handle<Self>) {
+    pub(crate) fn update(pa: &mut Pass, buffer: &Handle<Self>, dyn_widget: &Handle) {
         // Asynchronous updating of opts
         let (buf, area) = buffer.write_with_area(pa);
 
@@ -464,7 +464,8 @@ impl Buffer {
 
         drop(buf.reset_print_info_if_needed(area));
 
-        hook::trigger(pa, BufferUpdated(buffer.clone()));
+        hook::trigger(pa, FocusedUpdated(buffer.clone()));
+        hook::trigger(pa, FocusedUpdated(dyn_widget.clone()));
 
         buffer.text_mut(pa).update_bounds();
     }

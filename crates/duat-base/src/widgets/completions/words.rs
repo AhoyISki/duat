@@ -14,7 +14,7 @@
 use std::{
     collections::BTreeMap,
     ops::Range,
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
 };
 
 use duat_core::{
@@ -22,11 +22,12 @@ use duat_core::{
     buffer::{Buffer, Change},
     context::Handle,
     data::Pass,
-    hook::{self, BufferOpened, BufferUpdated},
+    hook::{self, BufferOpened, BufferUpdated, FocusedUpdated},
     text::{RegexHaystack, Spacer, Strs, Text, txt},
+    ui::Orientation,
 };
 
-use crate::widgets::completions::{CompletionKind, ErasedList, Sealed, string_cmp};
+use crate::widgets::completions::{CompletionKind, Completions, ErasedList, Sealed, string_cmp};
 
 impl CompletionKind for WordInfo {
     fn value(&self) -> String {
@@ -54,14 +55,66 @@ pub struct WordInfo {
 /// Word completions provider.
 pub struct WordCompletions;
 
+impl WordCompletions {
+    /// Enables word completions for the current `Widget`.
+    ///
+    /// Note that this is different from explicitely calling
+    /// [`Completions::add_list`], since that function will add
+    /// a list of word completions once, at a specific location in
+    /// the [`Text`].
+    ///
+    /// The purpose of this function is instead to add a "subscription"
+    /// to the `Completions`, which will be receiving new word lists
+    /// as is deemed necessary.
+    ///
+    /// You can disable this via [`WordCompletions::disable`].
+    ///
+    /// [`Completions::add_list`]: super::Completions::add_list
+    pub fn enable() {
+        let mut start_byte = None;
+
+        hook::add::<FocusedUpdated>(move |pa, widget| {
+            let text = widget.text(pa);
+
+            let Some(main_byte) = text.get_main_sel().map(|s| s.cursor().byte()) else {
+                return;
+            };
+
+            let range = text
+                .search(r"\w*\z")
+                .range(..main_byte)
+                .next_back()
+                .unwrap();
+
+            if let Some(start_byte) = &start_byte
+                && (range.start == *start_byte)
+            {
+                return;
+            }
+
+            start_byte = Some(range.start);
+
+            Completions::add_list(pa, WordCompletions, range.start, 50, *NS);
+        })
+        .grouped(*NS)
+        .lateness(usize::MAX);
+    }
+
+    /// Disables word completions for the current `Widget`.
+    pub fn disable() {
+        hook::remove(*NS)
+    }
+}
+
 impl Sealed<WordInfo> for WordCompletions {
     fn into_erased(self, start_byte: usize) -> Box<dyn ErasedList> {
-        Box::new(InnerWordCompletions { start_byte })
+        Box::new(InnerWordCompletions { start_byte, matches: Vec::new() })
     }
 }
 
 struct InnerWordCompletions {
     start_byte: usize,
+    matches: Vec<WordInfo>,
 }
 
 impl ErasedList for InnerWordCompletions {
@@ -82,8 +135,7 @@ impl ErasedList for InnerWordCompletions {
             .try_lock()
             .ok()?
             .iter()
-            .enumerate()
-            .filter_map(|(i, (word, entry))| {
+            .filter_map(|(word, entry)| {
                 let cmp = if case_insensitive { &entry.upper } else { word };
                 if let Some(difference) = string_cmp(&prefix, cmp) {
                     (!(difference == 0 && entry.count == 1 && cmp[prefix.len()..] == suffix))
@@ -92,6 +144,7 @@ impl ErasedList for InnerWordCompletions {
                     None
                 }
             })
+            .take(200)
             .collect();
 
         matches.sort_by_key(|entry| {
@@ -103,7 +156,9 @@ impl ErasedList for InnerWordCompletions {
             (string_cmp(&prefix, cmp), cmp.len())
         });
 
-        (!matches.is_empty()).then(|| matches.into_iter().map(|(idx, _)| idx).collect())
+        self.matches = matches;
+
+        (!self.matches.is_empty()).then(|| (0..self.matches.len()).collect())
     }
 
     fn start_byte(&self) -> usize {
@@ -111,22 +166,19 @@ impl ErasedList for InnerWordCompletions {
     }
 
     fn value_for_index(&self, i: usize) -> String {
-        let (_, info) = BUFFER_WORDS.lock().unwrap().iter().nth(i).unwrap();
-        info.word.clone()
+        self.matches[i].word.clone()
     }
 
-    fn text_for_index(&self, i: usize) -> Text {
-        let (_, info) = BUFFER_WORDS.lock().unwrap().iter().nth(i).unwrap();
-        info.default_fmt()
+    fn text_for_index(&mut self, i: usize) -> Text {
+        self.matches[i].word.default_fmt()
     }
 
-    fn info_for_index(&self, i: usize) -> Option<Text> {
+    fn info_for_index(&self, _: usize) -> Option<(Text, Orientation)> {
         None
     }
 
     fn get(&self, i: usize) -> Box<dyn std::any::Any + Send + 'static> {
-        let (_, info) = BUFFER_WORDS.lock().unwrap().iter().nth(i).unwrap();
-        Box::new(info)
+        Box::new(self.matches[i].clone())
     }
 }
 
@@ -291,3 +343,4 @@ fn update_counts(pa: &mut Pass, buffer: &Handle<Buffer>, ns: Ns) {
 }
 
 static BUFFER_WORDS: Mutex<BTreeMap<Arc<str>, WordInfo>> = Mutex::new(BTreeMap::new());
+static NS: LazyLock<Ns> = Ns::new_lazy();

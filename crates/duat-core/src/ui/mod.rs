@@ -496,7 +496,7 @@ impl Side {
 ///
 /// [`HorCenterRight`]: Orientation::HorCenterRight
 /// [`HorBottomRight`]: Orientation::HorBottomRight
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Orientation {
     /// Place the [`Widget`] vertically, prioritizing the left edge
     /// above.

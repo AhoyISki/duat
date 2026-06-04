@@ -26,8 +26,8 @@ use lsp_types::{
     request::{CodeActionRequest, GotoDefinition, GotoTypeDefinition, HoverRequest, References},
 };
 
+pub use crate::parser::LspBuffer;
 use crate::parser::diagnostics;
-pub use crate::parser::{LspBuffer, LspCompletions};
 
 mod config;
 mod hover;

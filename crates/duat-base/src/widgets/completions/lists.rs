@@ -3,7 +3,7 @@ use std::any::Any;
 use crate::widgets::completions::{CompletionKind, ErasedList, Sealed, string_cmp};
 use duat_core::{
     cmd::CmdDoc,
-    text::{RegexHaystack, Spacer, Text, txt},
+    text::{Spacer, Text, txt},
     ui::Orientation,
 };
 
@@ -117,7 +117,7 @@ impl<C: CompletionKind> ErasedList for InnerList<C> {
                 let word = entry.value().to_uppercase();
                 string_cmp(&prefix, &word).and(Some(i))
             } else {
-                string_cmp(&prefix, entry.value()).and(Some(i))
+                string_cmp(&prefix, &entry.value()).and(Some(i))
             }
         }));
 
@@ -126,15 +126,15 @@ impl<C: CompletionKind> ErasedList for InnerList<C> {
                 let word = self.list[*i].value().to_uppercase();
                 string_cmp(&prefix, &word).unwrap()
             } else {
-                string_cmp(&prefix, self.list[*i].value()).unwrap()
+                string_cmp(&prefix, &self.list[*i].value()).unwrap()
             }
         });
 
         (!list.is_empty()).then_some(list)
     }
 
-    fn text_for_index(&self, i: usize) -> Text {
-        self.fmt(&self.list[i])
+    fn text_for_index(&mut self, i: usize) -> Text {
+        (self.fmt)(&self.list[i])
     }
 
     fn value_for_index(&self, i: usize) -> String {
@@ -145,7 +145,7 @@ impl<C: CompletionKind> ErasedList for InnerList<C> {
         self.start_byte
     }
 
-    fn info_for_index(&self, i: usize) -> Option<Text> {
+    fn info_for_index(&self, i: usize) -> Option<(Text, Orientation)> {
         self.list[i].default_info()
     }
 
@@ -168,7 +168,11 @@ pub struct ExhaustiveCompletionsList<S> {
 impl<S: AsRef<str> + Send + 'static> Sealed<S> for ExhaustiveCompletionsList<S> {
     fn into_erased(self, start_byte: usize) -> Box<dyn super::ErasedList> {
         Box::new(InnerExhaustiveList {
-            list: self.list.into_iter().map(String::from).collect(),
+            list: self
+                .list
+                .into_iter()
+                .map(|str| str.as_ref().to_string())
+                .collect(),
             start_byte,
         })
     }
@@ -186,23 +190,43 @@ impl ErasedList for InnerExhaustiveList {
         let yet_to_be_typed = Vec::from_iter(
             self.list
                 .iter()
-                .filter(|word| !text[..main_byte].contains_pat(word.as_ref()).unwrap()),
+                .filter(|word| !text[..main_byte].rfind(*word).is_some()),
         );
 
         if yet_to_be_typed.len() < self.list.len() {
             return None;
         }
 
-        let prefix = text.get(self.start_byte..main_byte)?;
+        let prefix = text.get(self.start_byte..main_byte)?.to_string();
+        let (prefix, case_insensitive) =
+            if case_insensitive && !prefix.chars().any(|c| c.is_uppercase()) {
+                (prefix.to_uppercase(), true)
+            } else {
+                (prefix, false)
+            };
 
-        let mut entries = Vec::from_iter(yet_to_be_typed.into_iter().filter_map(|entry| {
-            string_cmp(prefix, entry.as_ref()).map(|_| entry.as_ref().to_string())
-        }));
+        let mut entries = Vec::from_iter(yet_to_be_typed.into_iter().enumerate().filter_map(
+            |(i, entry)| {
+                if case_insensitive {
+                    string_cmp(&prefix, &entry.to_uppercase()).map(|_| i)
+                } else {
+                    string_cmp(&prefix, &entry).map(|_| i)
+                }
+            },
+        ));
 
         entries.sort_by(|lhs, rhs| {
-            string_cmp(prefix, lhs)
-                .unwrap()
-                .cmp(&string_cmp(prefix, rhs).unwrap())
+            if case_insensitive {
+                let lhs_entry = self.list[*lhs].to_uppercase();
+                let rhs_entry = self.list[*rhs].to_uppercase();
+                string_cmp(&prefix, &lhs_entry)
+                    .unwrap()
+                    .cmp(&string_cmp(&prefix, &rhs_entry).unwrap())
+            } else {
+                string_cmp(&prefix, &self.list[*lhs])
+                    .unwrap()
+                    .cmp(&string_cmp(&prefix, &self.list[*rhs]).unwrap())
+            }
         });
 
         Some(entries)
@@ -216,15 +240,15 @@ impl ErasedList for InnerExhaustiveList {
         self.list[i].as_str().to_string()
     }
 
-    fn text_for_index(&self, i: usize) -> Text {
+    fn text_for_index(&mut self, i: usize) -> Text {
         self.list[i].default_fmt()
     }
 
-    fn info_for_index(&self, i: usize) -> Option<Text> {
-        todo!()
+    fn info_for_index(&self, _: usize) -> Option<(Text, Orientation)> {
+        None
     }
 
     fn get(&self, i: usize) -> Box<dyn Any + Send + 'static> {
-        todo!()
+        Box::new(self.list[i].clone())
     }
 }

@@ -110,7 +110,7 @@ pub trait Widget: Send + 'static {
 pub(crate) struct Node {
     handle: Handle,
     update: Arc<dyn Fn(&mut Pass) + Send + Sync>,
-    print: Arc<dyn Fn(&mut Pass) + Send + Sync>,
+    print: fn(&mut Pass, &Handle),
     on_mouse_event: Arc<dyn Fn(&mut Pass, UiMouseEvent) + Send + Sync>,
     on_close: fn(&mut Pass, &Handle),
     last_printed: RwData<Option<(TextVersion, TextId)>>,
@@ -133,42 +133,25 @@ impl Node {
         Self {
             handle: handle.to_dyn(),
             update: if let Some(buffer) = handle.get_as::<Buffer>() {
-                Arc::new(move |pa| Buffer::update(pa, &buffer))
+                let dyn_handle = handle.to_dyn();
+                Arc::new(move |pa| Buffer::update(pa, &buffer, &dyn_handle))
             } else {
                 let handle = handle.clone();
+                let dyn_handle = handle.to_dyn();
                 Arc::new(move |pa| {
                     if handle == crate::context::current_widget(pa) {
                         hook::trigger(pa, FocusedUpdated(handle.clone()));
+                        hook::trigger(pa, FocusedUpdated(dyn_handle.clone()));
                     }
                 })
             },
-            print: if let Some(buffer) = handle.get_as::<Buffer>() {
-                let handle = handle.clone();
-
-                Arc::new(move |pa| {
-                    Buffer::update(pa, &buffer);
-
-                    handle.area.print(
-                        pa,
-                        handle.text(pa),
-                        handle.opts(pa),
-                        form::painter_with_widget::<W>(),
-                    );
-                })
-            } else {
-                let handle = handle.clone();
-                Arc::new(move |pa| {
-                    if handle == crate::context::current_widget(pa) {
-                        hook::trigger(pa, FocusedUpdated(handle.clone()));
-                    }
-
-                    handle.area.print(
-                        pa,
-                        handle.text(pa),
-                        handle.opts(pa),
-                        form::painter_with_widget::<W>(),
-                    );
-                })
+            print: |pa, handle| {
+                handle.area.print(
+                    pa,
+                    handle.text(pa),
+                    handle.opts(pa),
+                    form::painter_with_widget::<W>(),
+                );
             },
             on_mouse_event: Arc::new({
                 let handle = handle.clone();
@@ -309,7 +292,7 @@ impl Node {
             spawn(pa, win, self.handle.clone());
         }
 
-        (self.print)(pa);
+        (self.print)(pa, &self.handle);
 
         self.handle.declare_as_read();
         self.handle.area().0.declare_as_read();

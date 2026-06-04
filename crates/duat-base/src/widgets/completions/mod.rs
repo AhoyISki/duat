@@ -35,8 +35,7 @@ use duat_core::{
 use duat_term::Frame;
 
 pub use crate::widgets::completions::{
-    commands::CommandsCompletions, lists::ExhaustiveCompletionsList, paths::PathCompletions,
-    words::WordCompletions,
+    lists::ExhaustiveCompletionsList, paths::PathCompletions, words::WordCompletions,
 };
 use crate::{
     hooks::{CompletionFocused, CompletionSelected},
@@ -54,9 +53,9 @@ static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (usize, ParamCompletions)>>> 
 /// Initial setup for completions
 pub fn completions_setup() {
     words::track_words();
-    Completions::set_for_parameter::<ValidFilePath>(75, |_, builder| PathCompletions::new(true));
+    Completions::set_for_parameter::<ValidFilePath, _>(75, |_| PathCompletions);
 
-    Completions::set_for_parameter::<Handle<Buffer>>(50, |pa, builder| {
+    Completions::set_for_parameter::<Handle<Buffer>, _>(50, |pa| {
         let mut list: Vec<String> = context::windows()
             .buffers(pa)
             .into_iter()
@@ -68,7 +67,7 @@ pub fn completions_setup() {
         list
     });
 
-    Completions::set_for_parameter::<OtherBuffer>(50, |pa, builder| {
+    Completions::set_for_parameter::<OtherBuffer, _>(50, |pa| {
         let current = context::current_buffer(pa).read(pa).name();
         let mut list: Vec<String> = context::windows()
             .buffers(pa)
@@ -82,22 +81,22 @@ pub fn completions_setup() {
         list
     });
 
-    Completions::set_for_parameter::<Existing>(25, |_, builder| ["--existing"]);
+    Completions::set_for_parameter::<Existing, _>(25, |_| ["--existing"]);
 
-    Completions::set_for_parameter::<CfgOrScratch>(30, |_, builder| {
+    Completions::set_for_parameter::<CfgOrScratch, _>(30, |_| {
         ["--cfg", "--cfg-manifest", "--scratch"]
     });
 
-    Completions::set_for_parameter::<ReloadOptions>(50, |_, builder| ExhaustiveCompletionsList {
+    Completions::set_for_parameter::<ReloadOptions, _>(50, |_| ExhaustiveCompletionsList {
         list: vec!["--clean", "--update"],
     });
 
-    Completions::set_for_parameter::<ColorSchemeArg>(50, |_, builder| {
+    Completions::set_for_parameter::<ColorSchemeArg, _>(50, |_| {
         duat_core::form::colorscheme_list()
     });
 
     hook::add::<WidgetOpened<Completions>>(move |pa, completions| {
-        Completions::set_frame(pa, completions);
+        Completions::scroll_and_update(pa, &completions, 0);
 
         let completions = completions.clone();
         let ns = Ns::new();
@@ -276,18 +275,18 @@ impl Completions {
     /// will be removed before the new one is added.
     ///
     /// This will also spawn the `Completions` if that is necessary.
-    pub fn add_list(
+    pub fn add_list<C>(
         pa: &mut Pass,
-        entries: impl CompletionEntries,
+        entries: impl CompletionEntries<C>,
         start: impl TextIndex,
         priority: usize,
         ns: Ns,
     ) {
         let master = context::current_widget(pa);
         let text = master.text(pa);
-        let start_byte = start.to_byte_index(text.len());
+        let start_byte = start.to_byte_index();
 
-        let Some(main_byte) = text.get_main_sel() else {
+        let Some(main_byte) = text.get_main_sel().map(|s| s.cursor().byte()) else {
             context::error!("Tried spawning completions on a widget with no selections");
             return;
         };
@@ -301,7 +300,7 @@ impl Completions {
             let comp = completions.write(pa);
             comp.remove_ns(ns);
 
-            let mut erased = entries.into_erased();
+            let mut erased = entries.into_erased(start_byte);
 
             let (Ok(list_idx) | Err(list_idx)) = comp
                 .lists
@@ -320,7 +319,7 @@ impl Completions {
             Completions::scroll_and_update(pa, &completions, 0);
         } else {
             let comp = Completions {
-                lists: vec![(priority, entries.into_erased(), ns)],
+                lists: vec![(priority, entries.into_erased(start_byte), ns)],
                 text: Text::new(),
                 max_height: 20,
                 cur_min_prefix: 0,
@@ -351,7 +350,7 @@ impl Completions {
     fn remove_ns(&mut self, ns: Ns) {
         let mut idx = 0;
         self.lists.retain(|(.., other)| {
-            if other == ns {
+            if *other == ns {
                 if let Some(matches) = &self.matches
                     && matches.list_idx == idx
                 {
@@ -368,15 +367,15 @@ impl Completions {
     }
 
     /// Sets the [`CompletionEntries`] for a [`Parameter`].
-    pub fn set_for_parameter<P: Parameter, C: CompletionEntries>(
+    pub fn set_for_parameter<P: Parameter, C: CompletionEntries<impl Any>>(
         priority: usize,
-        entries_fn: impl FnMut(&Pass) -> C,
+        mut entries_fn: impl FnMut(&Pass) -> C + Send + Sync + 'static,
     ) {
         COMPLETIONS.lock().unwrap().insert(
             TypeId::of::<P>(),
             (
                 priority,
-                Box::new(Mutex::new(|pa, start_byte| {
+                Box::new(Mutex::new(move |pa: &Pass, start_byte| {
                     entries_fn(pa).into_erased(start_byte)
                 })),
             ),
@@ -394,7 +393,7 @@ impl Completions {
         let master = context::current_widget(pa);
         let text = master.text(pa);
 
-        let Some(main_byte) = text.get_main_sel() else {
+        let Some(main_byte) = text.get_main_sel().map(|s| s.cursor().byte()) else {
             context::error!("Tried spawning completions on a widget with no selections");
             return;
         };
@@ -408,18 +407,29 @@ impl Completions {
 
         let completions = COMPLETIONS.lock().unwrap();
 
-        let mut lists: Vec<_> = param_type_ids
-            .iter()
-            .filter_map(|ty| completions.get(ty))
-            .map(|(prio, entries_fn)| (prio, entries_fn(pa), Ns::basic()))
-            .collect();
+        let Some(mut lists) = duat_core::utils::catch_panic(|| {
+            Vec::from_iter(
+                param_type_ids
+                    .iter()
+                    .filter_map(|ty| completions.get(ty))
+                    .map(|(prio, entries_fn)| {
+                        (
+                            *prio,
+                            entries_fn.lock().unwrap()(pa, start_byte),
+                            Ns::basic(),
+                        )
+                    }),
+            )
+        }) else {
+            return;
+        };
 
         if lists.is_empty() {
             Completions::close(pa);
             return;
         }
 
-        lists.sort_by_key(|(prio, ..)| prio);
+        lists.sort_by_key(|(prio, ..)| *prio);
 
         let comp = Completions {
             lists,
@@ -470,12 +480,13 @@ impl Completions {
         scroll: i32,
     ) -> Option<(String, String)> {
         let master = completions.master(pa).unwrap();
-        let (text, comp, area) = pa.write_many((master.rw_text(), completions, completions.area()));
 
-        let Some(main_byte) = text.get_main_sel() else {
+        let Some(main_byte) = master.text(pa).get_main_sel().map(|s| s.cursor().byte()) else {
             completions.close(pa);
             return None;
         };
+
+        let (text, comp, area) = pa.write_many((master.rw_text(), completions, completions.area()));
 
         let matches = {
             // If the user types anything, or anything has changed in the text,
@@ -487,7 +498,7 @@ impl Completions {
                         .as_ref()
                         .is_some_and(|sel| sel.value == strs)
                         || (matches.selected.is_none() && comp.orig_typed == strs)
-                });
+                })
             });
 
             if let Some(matches) = still_valid_matches {
@@ -497,7 +508,7 @@ impl Completions {
                     .lists
                     .iter_mut()
                     .enumerate()
-                    .find_map(|(i, (_, list))| list.match_indices(text, true).zip(Some(i)))
+                    .find_map(|(i, (_, list, _))| list.match_indices(&text, true).zip(Some(i)))
                 else {
                     comp.text = Text::default();
                     area.hide();
@@ -510,42 +521,46 @@ impl Completions {
             }
         };
 
-        let (_, list) = &comp.lists[matches.list_idx];
+        macro_rules! list {
+            () => {
+                &completions.read(pa).lists[matches.list_idx].1
+            };
+        }
 
         let original = if let Some(selected) = &matches.selected {
-            &selected.value
+            selected.value.clone()
         } else {
-            &comp.orig_typed
+            comp.orig_typed.clone()
         };
 
         let (new_idx, replacement) = {
             let new_idx = if let Some(selected) = &matches.selected {
                 let len = matches.list.len() as i32;
                 let idx = (selected.idx as i32 + scroll).rem_euclid(len + 1) as usize;
-                (idx != len).then_some(idx)
+                (idx != len as usize).then_some(idx)
             } else if scroll != 0 {
                 let len = matches.list.len() as i32;
                 let idx = scroll.rem_euclid(len + 1) as usize;
-                (idx != len).then_some(idx)
+                (idx != len as usize).then_some(idx)
             } else {
                 None
             };
 
             let replacement = match (&matches.selected, new_idx) {
                 (None, None) => None,
-                (None, Some(new_idx)) => Some(list.value_for_index(new_idx)),
-                (Some(selected), None) => Some(comp.orig_typed.clone()),
+                (None, Some(new_idx)) => Some(list!().value_for_index(new_idx)),
+                (Some(_), None) => Some(comp.orig_typed.clone()),
                 (Some(selected), Some(new_idx)) => {
-                    let new_value = list.value_for_index(new_idx);
+                    let new_value = list!().value_for_index(new_idx);
                     (new_value != selected.value).then_some(new_value)
                 }
             };
 
-            if let Some(replacement) = replacement {
+            if let Some(replacement) = &replacement {
                 let mut master_has_changed = false;
 
                 master.edit_all(pa, |mut s| {
-                    if !s.text()[..s.cursor().byte()].ends_with(original) {
+                    if !s.text()[..s.cursor().byte()].ends_with(&original) {
                         return;
                     }
 
@@ -575,26 +590,26 @@ impl Completions {
         };
 
         // No try blocks on stable Rust 🤮.
-        let height = comp.max_height.min(matches.list.len());
-        let dist_from_top = if let Some(replacement) = &replacement {
+        let height = completions.read(pa).max_height.min(matches.list.len());
+        let dist_from_top = if replacement.is_some() {
             if let Some(selected) = &matches.selected {
                 selected
                     .dist_from_top
                     .saturating_add_signed(scroll as isize)
                     .min(height - 1)
             } else if scroll > 0 {
-                (scroll.unsigned_abs() as usize - 1).min(height - 1);
+                (scroll.unsigned_abs() as usize - 1).min(height - 1)
             } else {
-                height.saturating_sub(scroll.unsigned_abs())
+                height.saturating_sub(scroll.unsigned_abs() as usize)
             }
         } else {
             0
         };
 
         let info = if let Some(new_idx) = new_idx
-            && let Some(info_text, orientation) = list.info_for_index(new_idx)
+            && let Some((info_text, orientation)) = list!().info_for_index(new_idx)
         {
-            let info = if let Some((info, ori)) = comp.info.take()
+            let info = if let Some((info, ori)) = completions.write(pa).info.take()
                 && (!info.is_closed() && ori == orientation)
             {
                 Info::set_text(pa, &info, |text| *text = info_text);
@@ -603,59 +618,60 @@ impl Completions {
                 let specs = DynSpawnSpecs { orientation, ..Default::default() };
 
                 let info_handle = completions.spawn_widget(pa, Info::new(info_text), specs);
-                completions.write(pa).info = info_handle.clone();
+                completions.write(pa).info = info_handle.clone().map(|info| (info, orientation));
                 info_handle
             };
+
+            let value = list!().value_for_index(new_idx);
 
             if let Some(info_handle) = info.as_ref()
                 && let Some(area) = info_handle.area().write_as::<duat_term::Area>(pa)
             {
                 let mut frame = Frame::default();
                 frame.set_text(Side::Above, move |_| {
-                    txt!(
-                        "[terminal.border.Info]┤[]{}[terminal.border.Info]├",
-                        list.value_for_index(new_idx)
-                    )
+                    txt!("[terminal.border.Info]┤[]{value}[terminal.border.Info]├",)
                 });
                 area.set_frame(frame);
             }
 
             info.zip(Some(orientation))
-        } else if let Some((info, _)) = comp.info.take() {
-            info.close(pa);
+        } else {
+            if let Some((info, _)) = completions.write(pa).info.take() {
+                info.close(pa);
+            }
 
             None
         };
 
         // In this case, don't update the Text, and close the Completions instead.
         // Let the Text be updated on the new Completions when it shows up.
-        if list.start_byte() != comp.start_byte {
+        if list!().start_byte() != completions.read(pa).start_byte {
+            let orig_typed = master.text(pa)[list!().start_byte()..main_byte].to_string();
+
+            let comp = completions.write(pa);
+            let lists = std::mem::take(&mut comp.lists);
+            let list = &lists[matches.list_idx].1;
+            let (value, start_byte) = (list.value_for_index(matches.list_idx), list.start_byte());
+
             let new_comp = Self {
-                lists: std::mem::take(&mut comp.lists),
+                lists,
                 text: Text::new(),
                 max_height: comp.max_height,
 
-                start_byte: list.start_byte(),
+                start_byte,
+                orig_typed,
                 cur_min_prefix: comp.min_prefix,
                 min_prefix: comp.min_prefix,
                 info: comp.info.take(),
 
                 matches: Some(Matches {
-                    selected: Some(Selected {
-                        idx: new_idx,
-                        dist_from_top,
-                        value: list.value_for_index(new_idx),
-                    }),
+                    selected: new_idx.map(|idx| Selected { idx, dist_from_top, value }),
                     ..matches
                 }),
             };
 
             let mut text = master.text_mut(pa);
-            text.insert_tag(
-                *WIDGET_NS,
-                list.start_byte(),
-                Spawn::new(new_comp, SPAWN_SPECS),
-            );
+            text.insert_tag(*WIDGET_NS, start_byte, Spawn::new(new_comp, SPAWN_SPECS));
 
             _ = completions.close(pa);
             return Some(original).zip(replacement);
@@ -665,9 +681,11 @@ impl Completions {
             let mut entries = Text::builder();
             let mut sidebar = Text::builder();
 
+            let list = &mut completions.write(pa).lists[matches.list_idx].1;
+
             if let Some(new_idx) = new_idx {
                 let top_i = new_idx.saturating_sub(dist_from_top);
-                for idx in matches.list.iter().skip(top_i).take(height) {
+                for &idx in matches.list.iter().skip(top_i).take(height) {
                     if idx == new_idx {
                         entries.push(txt!("[selected.Completions]{}\n", list.text_for_index(idx)));
                         sidebar.push(txt!("[selected.Completions] \n"));
@@ -677,11 +695,13 @@ impl Completions {
                     }
                 }
             } else {
-                for idx in matches.list.iter().take(height) {
+                for &idx in matches.list.iter().take(height) {
                     entries.push(txt!("{}\n", list.text_for_index(idx)));
                     sidebar.push(txt!("[default.Completions] \n"));
                 }
             }
+
+            (entries.build(), sidebar.build())
         };
 
         if scroll != 0
@@ -690,22 +710,24 @@ impl Completions {
             let comp = completions.read(pa);
             let entry = CompletionEntry {
                 index,
-                orig_range: todo!(),
-                orig_typed: todo!(),
-                replacement: todo!(),
-                entry: comp.lists[matches.list_idx].1.get(new_idx),
+                orig_range: comp.start_byte..comp.start_byte + comp.orig_typed.len(),
+                orig_typed: comp.orig_typed.clone(),
+                replacement: comp.lists[matches.list_idx].1.value_for_index(index),
+                entry: comp.lists[matches.list_idx].1.get(index),
             };
 
-            let result = hook::trigger(pa, CompletionFocused(entry));
+            _ = hook::trigger(pa, CompletionFocused(entry));
         }
 
-        completions.write(pa).matches = Some(Matches {
+        let comp = completions.write(pa);
+
+        comp.text = text;
+        comp.info = info;
+        comp.matches = Some(Matches {
             selected: new_idx.map(|idx| Selected {
                 idx,
                 dist_from_top,
-                value: completions.read(pa).lists[matches.list_idx]
-                    .1
-                    .value_for_index(idx),
+                value: comp.lists[matches.list_idx].1.value_for_index(idx),
             }),
             ..matches
         });
@@ -763,9 +785,9 @@ trait ErasedList: Send {
 
     fn value_for_index(&self, i: usize) -> String;
 
-    fn text_for_index(&self, i: usize) -> Text;
+    fn text_for_index(&mut self, i: usize) -> Text;
 
-    fn info_for_index(&self, i: usize) -> Option<Text>;
+    fn info_for_index(&self, i: usize) -> Option<(Text, Orientation)>;
 
     fn get(&self, i: usize) -> Box<dyn Any + Send + 'static>;
 }
@@ -817,4 +839,4 @@ struct Selected {
     value: String,
 }
 
-type ParamCompletions = Box<Mutex<dyn FnMut(&Pass, usize) -> Box<dyn ErasedList> + Send + Sync>>;
+type ParamCompletions = Box<Mutex<dyn FnMut(&Pass, usize) -> Box<dyn ErasedList> + Send>>;

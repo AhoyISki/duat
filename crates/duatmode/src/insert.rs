@@ -1,6 +1,9 @@
 use std::sync::{Mutex, atomic::Ordering};
 
-use duat_base::{BaseBuffer, widgets::Completions};
+use duat_base::{
+    BaseBuffer,
+    widgets::{Completions, WordCompletions},
+};
 use duat_core::{
     Ns,
     buffer::Buffer,
@@ -23,7 +26,7 @@ pub fn setup_hooks() {
 
         if switch.new.is::<Insert>() {
             INSERT_EVENTS.lock().unwrap().clear();
-            Completions::open_default(pa);
+            WordCompletions::enable();
 
             let mask = Mask("Insert");
             buffer.text_parts(pa).tags.insert(mask_ns, .., mask);

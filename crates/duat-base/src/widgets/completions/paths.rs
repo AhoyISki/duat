@@ -11,6 +11,7 @@ use std::{
 
 use duat_core::{
     text::{Point, Spacer, Text, txt},
+    ui::Orientation,
     utils::expand_path,
 };
 
@@ -78,7 +79,8 @@ impl PathCompletions {
             }
         }
 
-        get_start(text, for_parameters)
+        let main_cursor = text.get_main_sel()?.cursor();
+        get_start(text, main_cursor, for_parameters)
     }
 }
 
@@ -97,17 +99,13 @@ impl ErasedList for InnerPathCompletions {
     fn match_indices(&mut self, text: &Text, case_insensitive: bool) -> Option<Vec<usize>> {
         let main_byte = text.get_main_sel()?.cursor().byte();
 
-        let prefix = {
-            let prefix = text.get(self.start_byte..main_byte)?;
-            match prefix.strip_prefix("'") {
-                Some(prefix) => prefix,
-                None => prefix,
-            }
+        let prefix = text.get(self.start_byte..main_byte)?.to_string();
+        let prefix = match prefix.strip_prefix("'") {
+            Some(prefix) => prefix,
+            None => &prefix,
         };
 
-        let Some((cur_dir, prefix, entries)) = get_entries(prefix) else {
-            return Vec::new();
-        };
+        let (cur_dir, prefix, entries) = get_entries(&prefix)?;
 
         let (prefix, case_insensitive) =
             if case_insensitive && !prefix.chars().any(|char| char.is_uppercase()) {
@@ -121,17 +119,21 @@ impl ErasedList for InnerPathCompletions {
                 let pathbuf = entry.path();
 
                 let mut path = if let Some(cur_dir) = &cur_dir {
-                    pathbuf.strip_prefix(cur_dir).unwrap().to_string_lossy()
+                    pathbuf
+                        .strip_prefix(cur_dir)
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string()
                 } else {
-                    pathbuf.to_string_lossy()
+                    pathbuf.to_string_lossy().to_string()
                 };
 
                 if entry.path().is_dir() {
-                    path.to_mut().push(separator());
+                    path.push(separator());
                 }
 
                 if path.chars().any(|char| char.is_whitespace()) {
-                    path.to_mut().insert(0, '\'');
+                    path.insert(0, '\'');
                 }
 
                 if case_insensitive {
@@ -167,11 +169,11 @@ impl ErasedList for InnerPathCompletions {
         self.list[i].0.clone()
     }
 
-    fn text_for_index(&self, i: usize) -> Text {
+    fn text_for_index(&mut self, i: usize) -> Text {
         self.list[i].1.default_fmt()
     }
 
-    fn info_for_index(&self, i: usize) -> Option<Text> {
+    fn info_for_index(&self, _: usize) -> Option<(Text, Orientation)> {
         None
     }
 
