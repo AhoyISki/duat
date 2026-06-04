@@ -13,7 +13,7 @@ use std::{
 use duat_core::{
     Ns,
     hook::{self, FocusedUpdated},
-    text::{Point, RegexHaystack, Spacer, Text, txt},
+    text::{Point, Spacer, Text, txt},
     ui::Orientation,
     utils::expand_path,
 };

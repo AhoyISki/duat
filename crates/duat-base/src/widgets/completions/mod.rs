@@ -533,6 +533,8 @@ impl Completions {
             };
         }
 
+        let get_idx = |idx: usize| matches.list[idx];
+
         let original = if let Some(selected) = &matches.selected {
             selected.value.clone()
         } else {
@@ -554,10 +556,10 @@ impl Completions {
 
             let replacement = match (&matches.selected, new_idx) {
                 (None, None) => None,
-                (None, Some(new_idx)) => Some(list!().value_for_index(new_idx)),
+                (None, Some(new_idx)) => Some(list!().value_for_index(get_idx(new_idx))),
                 (Some(_), None) => Some(comp.orig_typed.clone()),
                 (Some(selected), Some(new_idx)) => {
-                    let new_value = list!().value_for_index(new_idx);
+                    let new_value = list!().value_for_index(get_idx(new_idx));
                     (new_value != selected.value).then_some(new_value)
                 }
             };
@@ -666,7 +668,7 @@ impl Completions {
             let selected = new_idx.map(|idx| Selected {
                 idx,
                 dist_from_top,
-                value: list.value_for_index(idx),
+                value: list.value_for_index(get_idx(idx)),
             });
 
             let new_comp = Self {
@@ -698,7 +700,7 @@ impl Completions {
             if let Some(new_idx) = new_idx {
                 let top_i = new_idx.saturating_sub(dist_from_top);
                 for &idx in matches.list.iter().skip(top_i).take(height) {
-                    if idx == new_idx {
+                    if idx == get_idx(new_idx) {
                         entries.push(txt!("[selected.Completions]{}\n", list.text_for_index(idx)));
                         sidebar.push(txt!("[selected.Completions] \n"));
                     } else {
@@ -724,7 +726,7 @@ impl Completions {
                 index,
                 orig_range: comp.start_byte..comp.start_byte + comp.orig_typed.len(),
                 orig_typed: comp.orig_typed.clone(),
-                replacement: list!().value_for_index(index),
+                replacement: list!().value_for_index(get_idx(index)),
                 entry: comp.lists[matches.list_idx].1.get(index),
             };
 
@@ -739,7 +741,7 @@ impl Completions {
             selected: new_idx.map(|idx| Selected {
                 idx,
                 dist_from_top,
-                value: comp.lists[matches.list_idx].1.value_for_index(idx),
+                value: comp.lists[matches.list_idx].1.value_for_index(get_idx(idx)),
             }),
             ..matches
         });
