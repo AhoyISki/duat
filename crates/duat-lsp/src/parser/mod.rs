@@ -267,8 +267,6 @@ pub fn setup_hooks() {
                     })
                     .collect(),
             };
-            
-            context::debug!("sent {notification.content_changes:#?}");
 
             server.send_notification::<DidChangeTextDocument>(notification);
 

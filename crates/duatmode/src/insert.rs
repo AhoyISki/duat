@@ -32,6 +32,7 @@ pub fn setup_hooks() {
             buffer.text_parts(pa).tags.insert(mask_ns, .., mask);
         } else if switch.old.is::<Insert>() {
             Completions::close(pa);
+            WordCompletions::disable();
         }
 
         if switch.new.is::<Normal>() {

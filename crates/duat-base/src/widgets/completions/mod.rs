@@ -214,6 +214,7 @@ impl CompletionEntry {
     }
 }
 
+#[allow(private_bounds)]
 pub trait CompletionEntries<C>: Sealed<C> {}
 impl<S: Sealed<C>, C> CompletionEntries<C> for S {}
 
@@ -296,7 +297,7 @@ impl Completions {
             return;
         }
 
-        let completions = if let Some(completions) = context::handle_of::<Completions>(pa) {
+        if let Some(completions) = context::handle_of::<Completions>(pa) {
             let comp = completions.write(pa);
             comp.remove_ns(ns);
 
@@ -390,6 +391,8 @@ impl Completions {
     /// Returns [`None`] if none of the `TypeId`s had completions set
     /// for them.
     pub fn open_for(pa: &mut Pass, param_type_ids: &[TypeId]) {
+        Completions::close(pa);
+
         let master = context::current_widget(pa);
         let text = master.text(pa);
 
@@ -425,11 +428,10 @@ impl Completions {
         };
 
         if lists.is_empty() {
-            Completions::close(pa);
             return;
         }
 
-        lists.sort_by_key(|(prio, ..)| *prio);
+        lists.sort_by(|(lprio, ..), (rprio, ..)| lprio.cmp(rprio).reverse());
 
         let comp = Completions {
             lists,
@@ -482,11 +484,11 @@ impl Completions {
         let master = completions.master(pa).unwrap();
 
         let Some(main_byte) = master.text(pa).get_main_sel().map(|s| s.cursor().byte()) else {
-            completions.close(pa);
+            _ = completions.close(pa);
             return None;
         };
 
-        let (text, comp, area) = pa.write_many((master.rw_text(), completions, completions.area()));
+        let (text, comp) = pa.write_many((master.rw_text(), completions));
 
         let matches = {
             // If the user types anything, or anything has changed in the text,
@@ -504,14 +506,18 @@ impl Completions {
             if let Some(matches) = still_valid_matches {
                 matches
             } else {
-                let Some((list, list_idx)) = comp
-                    .lists
-                    .iter_mut()
-                    .enumerate()
-                    .find_map(|(i, (_, list, _))| list.match_indices(&text, true).zip(Some(i)))
+                let Some((list, list_idx)) =
+                    comp.lists
+                        .iter_mut()
+                        .enumerate()
+                        .find_map(|(i, (_, list, _))| {
+                            list.match_indices(&text, true)
+                                .filter(|list| !list.is_empty())
+                                .zip(Some(i))
+                        })
                 else {
                     comp.text = Text::default();
-                    area.hide();
+                    _ = completions.area().set_height(pa, 0.0);
                     return None;
                 };
 
@@ -540,7 +546,7 @@ impl Completions {
                 (idx != len as usize).then_some(idx)
             } else if scroll != 0 {
                 let len = matches.list.len() as i32;
-                let idx = scroll.rem_euclid(len + 1) as usize;
+                let idx = (scroll - 1).rem_euclid(len + 1) as usize;
                 (idx != len as usize).then_some(idx)
             } else {
                 None
@@ -603,7 +609,11 @@ impl Completions {
                 height.saturating_sub(scroll.unsigned_abs() as usize)
             }
         } else {
-            0
+            matches
+                .selected
+                .as_ref()
+                .map(|sel| sel.dist_from_top)
+                .unwrap_or(0)
         };
 
         let info = if let Some(new_idx) = new_idx
@@ -637,7 +647,7 @@ impl Completions {
             info.zip(Some(orientation))
         } else {
             if let Some((info, _)) = completions.write(pa).info.take() {
-                info.close(pa);
+                _ = info.close(pa);
             }
 
             None
@@ -821,18 +831,20 @@ fn string_cmp(target: &str, entry: &str) -> Option<usize> {
 
 const SPAWN_SPECS: DynSpawnSpecs = DynSpawnSpecs {
     orientation: Orientation::VerLeftBelow,
-    height: Some(20.0),
-    width: Some(50.0),
-    hidden: true,
+    height: None,
+    width: None,
+    hidden: false,
     inside: false,
 };
 
+#[derive(Debug)]
 struct Matches {
     list_idx: usize,
     list: Vec<usize>,
     selected: Option<Selected>,
 }
 
+#[derive(Debug)]
 struct Selected {
     idx: usize,
     dist_from_top: usize,

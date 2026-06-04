@@ -144,7 +144,7 @@ impl Area {
                 )
             })
             .unwrap();
-
+        
         if coords.width() == 0 || coords.height() == 0 {
             return;
         }
@@ -243,7 +243,7 @@ impl RawArea for Area {
     fn set_width(&self, _: UiPass, width: f32) -> Result<(), Text> {
         if self
             .layouts
-            .set_constraints(self.id, Some(width), None, None)
+            .set_constraints(self.id, Some(width), None, None, None)
         {
             Ok(())
         } else {
@@ -254,7 +254,7 @@ impl RawArea for Area {
     fn set_height(&self, _: UiPass, height: f32) -> Result<(), Text> {
         if self
             .layouts
-            .set_constraints(self.id, None, Some(height), None)
+            .set_constraints(self.id, None, Some(height), None, None)
         {
             Ok(())
         } else {
@@ -265,7 +265,7 @@ impl RawArea for Area {
     fn hide(&self, _: UiPass) -> Result<(), Text> {
         if self
             .layouts
-            .set_constraints(self.id, None, None, Some(true))
+            .set_constraints(self.id, None, None, Some(true), None)
         {
             Ok(())
         } else {
@@ -276,7 +276,7 @@ impl RawArea for Area {
     fn reveal(&self, _: UiPass) -> Result<(), Text> {
         if self
             .layouts
-            .set_constraints(self.id, None, None, Some(false))
+            .set_constraints(self.id, None, None, Some(false), None)
         {
             Ok(())
         } else {

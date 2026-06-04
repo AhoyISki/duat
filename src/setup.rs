@@ -76,21 +76,21 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
     let min_prefix = opts.completions.min_prefix;
     let cmd_min_prefix = opts.completions.cmd_min_prefix;
 
-    Completions::set_default(move |pa| {
-        let builder = Completions::builder()
-            .with_provider(WordCompletions::new(true))
-            .with_provider(PathCompletions::new(true, false));
+    // Completions::set_default(move |pa| {
+    //     let builder = Completions::builder()
+    //         .with_provider(WordCompletions::new(true))
+    //         .with_provider(PathCompletions::new(true, false));
 
-        let mut builder = if let Some(lsp_completions) = duat_lsp::LspCompletions::new(pa, true) {
-            builder.with_provider(lsp_completions)
-        } else {
-            builder
-        };
+    //     let mut builder = if let Some(lsp_completions) = duat_lsp::LspCompletions::new(pa, true) {
+    //         builder.with_provider(lsp_completions)
+    //     } else {
+    //         builder
+    //     };
 
-        builder.min_prefix = min_prefix;
-        builder.cmd_min_prefix = cmd_min_prefix;
-        builder
-    });
+    //     builder.min_prefix = min_prefix;
+    //     builder.cmd_min_prefix = cmd_min_prefix;
+    //     builder
+    // });
 
     // Layout hooks
 

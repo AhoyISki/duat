@@ -233,12 +233,13 @@ impl Layouts {
         width: Option<f32>,
         height: Option<f32>,
         is_hidden: Option<bool>,
+        is_offscreen: Option<bool>,
     ) -> bool {
         self.0
             .borrow_mut()
             .list
             .iter_mut()
-            .any(|layout| layout.set_constraints(id, width, height, is_hidden))
+            .any(|layout| layout.set_constraints(id, width, height, is_hidden, is_offscreen))
     }
 
     /// Just updates the [`Printer`] for the [`AreaId`] in question
@@ -323,9 +324,9 @@ impl Layouts {
         let mut revealed_at_least_one = false;
         for spawn_id in spawns {
             if let Some((_, rect)) = layout.spawned.iter().find(|(info, _)| info.id == spawn_id) {
-                let hidden = !observed_spawns.iter().any(|(id, ..)| id == &spawn_id);
-                recurse_set_hidden(layout, rect.id(), hidden);
-                revealed_at_least_one = !hidden;
+                let offscreen = !observed_spawns.iter().any(|(id, ..)| id == &spawn_id);
+                recurse_set_offscreen(layout, rect.id(), offscreen);
+                revealed_at_least_one = !offscreen;
             }
         }
 
@@ -338,9 +339,11 @@ impl Layouts {
             .iter()
             .find(|(_, rect)| rect.get(area_id).is_some())
         {
-            layout
-                .printer
-                .send_spawn_lines(area_id, info.id, lines, &info.frame);
+            if !info.cons.is_offscreen && !info.cons.is_hidden {
+                layout
+                    .printer
+                    .send_spawn_lines(area_id, info.id, lines, &info.frame);
+            }
         } else {
             layout.printer.send_lines(lines);
         }
@@ -698,21 +701,24 @@ impl Layout {
     ///
     /// Returns `false` if this `Layout` does not contain the
     /// [`AreaId`]'s [`Rect`].
+    #[track_caller]
     pub fn set_constraints(
         &mut self,
         id: AreaId,
         width: Option<f32>,
         height: Option<f32>,
         is_hidden: Option<bool>,
+        is_offscreen: Option<bool>,
     ) -> bool {
         let is_eq = |cons: &mut Constraints| {
             width.is_none_or(|w| Some(w) == cons.on(Axis::Horizontal))
                 && height.is_none_or(|h| Some(h) == cons.on(Axis::Vertical))
                 && is_hidden.is_none_or(|ih| ih == cons.is_hidden)
+                && is_offscreen.is_none_or(|ih| ih == cons.is_offscreen)
         };
 
         let get_new_cons = |main: &Rect, mut cons: Constraints| {
-            let old_eqs = cons.replace(width, height, is_hidden);
+            let old_eqs = cons.replace(width, height, is_hidden, is_offscreen);
 
             let rect = main.get(id).unwrap();
             let (_, parent) = main.get_parent(id).unzip();
@@ -753,7 +759,10 @@ impl Layout {
                 *main.get_constraints_mut(id).unwrap() = get_new_cons(main, cons);
             }
 
-            if is_hidden == Some(true) || [width, height].contains(&Some(0.0)) {
+            if is_hidden == Some(true)
+                || is_offscreen == Some(true)
+                || [width, height].contains(&Some(0.0))
+            {
                 self.printer.clear_spawn(id);
             }
 
@@ -910,6 +919,7 @@ pub struct Constraints {
     width: Option<(f32, bool)>,
     height: Option<(f32, bool)>,
     is_hidden: bool,
+    is_offscreen: bool,
 }
 
 impl Constraints {
@@ -940,6 +950,7 @@ impl Constraints {
             width,
             height,
             is_hidden,
+            is_offscreen: false,
         }
     }
 
@@ -949,6 +960,7 @@ impl Constraints {
         width: Option<f32>,
         height: Option<f32>,
         is_hidden: Option<bool>,
+        is_offscreen: Option<bool>,
     ) -> Vec<Constraint> {
         let hor_con = self.hor_con.take();
         let ver_con = self.ver_con.take();
@@ -957,6 +969,7 @@ impl Constraints {
         self.width = width.map(|w| (w, true)).or(self.width);
         self.height = height.map(|h| (h, true)).or(self.height);
         self.is_hidden = is_hidden.unwrap_or(self.is_hidden);
+        self.is_offscreen = is_offscreen.unwrap_or(self.is_offscreen);
 
         hor_con.into_iter().chain(ver_con).collect()
     }
@@ -1491,7 +1504,7 @@ fn remove_dependents(
 
 /// Sets a [`Rect`], as well as all of its children, to be hidden or
 /// revealed
-fn recurse_set_hidden(layout: &mut Layout, id: AreaId, hidden: bool) {
+fn recurse_set_offscreen(layout: &mut Layout, id: AreaId, is_offscreen: bool) {
     let Some(rect) = layout.get(id) else { return };
 
     if layout.get_parent(id).is_none() {
@@ -1502,7 +1515,7 @@ fn recurse_set_hidden(layout: &mut Layout, id: AreaId, hidden: bool) {
             if let Some((_, [tl_x, _], _)) = layout.printer.get_spawn_info(info.id)
                 && tl_x.terms.iter().any(|term| term.variable == tl.x())
             {
-                recurse_set_hidden(layout, rect.id(), hidden);
+                recurse_set_offscreen(layout, rect.id(), is_offscreen);
             }
         }
     }
@@ -1512,14 +1525,14 @@ fn recurse_set_hidden(layout: &mut Layout, id: AreaId, hidden: bool) {
     if let Some(children) = rect.children() {
         let children: Vec<_> = children.iter().map(|(rect, _)| rect.id()).collect();
         for child_id in children {
-            recurse_set_hidden(layout, child_id, hidden);
+            recurse_set_offscreen(layout, child_id, is_offscreen);
         }
     }
 
-    if hidden {
+    if is_offscreen {
         layout.printer.clear_spawn(id);
     }
-    layout.set_constraints(id, None, None, Some(hidden));
+    layout.set_constraints(id, None, None, None, Some(is_offscreen));
 }
 
 static DEFAULT_FRAME_STYLE: Mutex<FrameStyle> = Mutex::new(FrameStyle::Regular);

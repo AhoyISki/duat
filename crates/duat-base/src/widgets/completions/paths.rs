@@ -138,9 +138,11 @@ impl ErasedList for InnerPathCompletions {
 
                 if case_insensitive {
                     let upper = path.to_uppercase();
-                    super::string_cmp(&prefix, &upper).map(|_| (path.to_string(), pathbuf))
+                    super::string_cmp(&prefix, &upper)
+                        .map(|_| (path.to_string(), PathBuf::from(path)))
                 } else {
-                    super::string_cmp(&prefix, &path).map(|_| (path.to_string(), pathbuf))
+                    super::string_cmp(&prefix, &path)
+                        .map(|_| (path.to_string(), PathBuf::from(path)))
                 }
             }));
 
