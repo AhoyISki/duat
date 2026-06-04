@@ -7,15 +7,18 @@
 use std::{
     fs::ReadDir,
     path::{Path, PathBuf},
+    sync::LazyLock,
 };
 
 use duat_core::{
-    text::{Point, Spacer, Text, txt},
+    Ns,
+    hook::{self, FocusedUpdated},
+    text::{Point, RegexHaystack, Spacer, Text, txt},
     ui::Orientation,
     utils::expand_path,
 };
 
-use crate::widgets::completions::{CompletionKind, ErasedList, Sealed};
+use crate::widgets::completions::{CompletionKind, Completions, ErasedList, Sealed};
 
 impl CompletionKind for PathBuf {
     fn value(&self) -> String {
@@ -36,6 +39,51 @@ impl CompletionKind for PathBuf {
 pub struct PathCompletions;
 
 impl PathCompletions {
+    /// Enables word completions for the current `Widget`.
+    ///
+    /// Note that this is different from explicitely calling
+    /// [`Completions::add_list`], since that function will add
+    /// a list of word completions once, at a specific location in
+    /// the [`Text`].
+    ///
+    /// The purpose of this function is instead to add a "subscription"
+    /// to the `Completions`, which will be receiving new word lists
+    /// as is deemed necessary.
+    ///
+    /// You can disable this via [`WordCompletions::disable`].
+    ///
+    /// [`Completions::add_list`]: super::Completions::add_list
+    pub fn enable() {
+        let mut start_byte = None;
+
+        hook::add::<FocusedUpdated>(move |pa, widget| {
+            let text = widget.text(pa);
+
+            let Some(new_start) = PathCompletions::get_start(text, false) else {
+                return;
+            };
+
+            if let Some(start_byte) = &start_byte
+                && new_start == *start_byte
+            {
+                return;
+            }
+
+            start_byte = Some(new_start);
+
+            Completions::add_list(pa, PathCompletions, new_start, 75, *NS);
+        })
+        .grouped(*NS)
+        .lateness(usize::MAX);
+    }
+
+    /// Disables word completions for the current `Widget`.
+    pub fn disable() {
+        hook::remove(*NS)
+    }
+}
+
+impl PathCompletions {
     /// Get the start of the `Path` being completed.
     ///
     /// Usually won't be the start of the current word, since
@@ -44,7 +92,7 @@ impl PathCompletions {
     /// However, if `for_parameters` is set to `true`, this becomes
     /// more permissive, and the path will start matching without
     /// a leading forward slash, for example.
-    pub fn get_start(&self, text: &Text, for_parameters: bool) -> Option<usize> {
+    pub fn get_start(text: &Text, for_parameters: bool) -> Option<usize> {
         #[cfg(not(target_os = "windows"))]
         fn get_start(text: &Text, cursor: Point, for_parameters: bool) -> Option<usize> {
             use duat_core::text::RegexHaystack;
@@ -63,7 +111,7 @@ impl PathCompletions {
         }
 
         #[cfg(target_os = "windows")]
-        fn get_start(&self, text: &Text, cursor: Point, for_parameters: bool) -> Option<usize> {
+        fn get_start(text: &Text, cursor: Point, for_parameters: bool) -> Option<usize> {
             use duat_core::text::RegexHaystack;
 
             if self.for_parameters {
@@ -222,3 +270,5 @@ fn separator() -> char {
 fn separator() -> char {
     '\\'
 }
+
+static NS: LazyLock<Ns> = Ns::new_lazy();

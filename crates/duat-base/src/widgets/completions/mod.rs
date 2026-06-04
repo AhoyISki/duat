@@ -352,13 +352,14 @@ impl Completions {
         let mut idx = 0;
         self.lists.retain(|(.., other)| {
             if *other == ns {
-                if let Some(matches) = &self.matches
-                    && matches.list_idx == idx
-                {
-                    self.matches = None;
+                if let Some(matches) = &mut self.matches {
+                    if matches.list_idx == idx {
+                        self.matches = None;
+                    } else if matches.list_idx > idx {
+                        matches.list_idx -= 1;
+                    }
                 };
 
-                idx += 1;
                 false
             } else {
                 idx += 1;
@@ -661,7 +662,13 @@ impl Completions {
             let comp = completions.write(pa);
             let lists = std::mem::take(&mut comp.lists);
             let list = &lists[matches.list_idx].1;
-            let (value, start_byte) = (list.value_for_index(matches.list_idx), list.start_byte());
+            
+            let start_byte = list.start_byte();
+            let selected = new_idx.map(|idx| Selected {
+                idx,
+                dist_from_top,
+                value: list.value_for_index(idx),
+            });
 
             let new_comp = Self {
                 lists,
@@ -674,10 +681,7 @@ impl Completions {
                 min_prefix: comp.min_prefix,
                 info: comp.info.take(),
 
-                matches: Some(Matches {
-                    selected: new_idx.map(|idx| Selected { idx, dist_from_top, value }),
-                    ..matches
-                }),
+                matches: Some(Matches { selected, ..matches }),
             };
 
             let mut text = master.text_mut(pa);
@@ -722,7 +726,7 @@ impl Completions {
                 index,
                 orig_range: comp.start_byte..comp.start_byte + comp.orig_typed.len(),
                 orig_typed: comp.orig_typed.clone(),
-                replacement: comp.lists[matches.list_idx].1.value_for_index(index),
+                replacement: list!().value_for_index(index),
                 entry: comp.lists[matches.list_idx].1.get(index),
             };
 

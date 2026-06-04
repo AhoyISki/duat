@@ -2,7 +2,7 @@ use std::sync::{Mutex, atomic::Ordering};
 
 use duat_base::{
     BaseBuffer,
-    widgets::{Completions, WordCompletions},
+    widgets::{Completions, WordCompletions, PathCompletions},
 };
 use duat_core::{
     Ns,
@@ -27,12 +27,15 @@ pub fn setup_hooks() {
         if switch.new.is::<Insert>() {
             INSERT_EVENTS.lock().unwrap().clear();
             WordCompletions::enable();
+            PathCompletions::enable();
 
             let mask = Mask("Insert");
             buffer.text_parts(pa).tags.insert(mask_ns, .., mask);
         } else if switch.old.is::<Insert>() {
             Completions::close(pa);
             WordCompletions::disable();
+            
+            PathCompletions::disable();
         }
 
         if switch.new.is::<Normal>() {
