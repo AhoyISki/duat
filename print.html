@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-846be38c.js";
+            window.path_to_searchindex_js = "searchindex-a07adfc5.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-261cd8e4.js"></script>
@@ -2371,14 +2371,12 @@ fn setup(opts: &amp;mut Opts) {
                     }
                 }
 
-                let mut parts = event.handle.text_parts(pa);
-                parts.tags.insert(
-                    showing_forms_ns,
+                event.handle.spawn_on_text(
+                    pa,
+                    widgets::Info::new(builder.build()),
                     tp.real,
-                    Spawn::new(
-                        widgets::Info::new(builder.build()),
-                        ui::DynSpawnSpecs::default(),
-                    ),
+                    showing_forms_ns,
+                    ui::DynSpawnSpecs::default()
                 );
             }
         })
