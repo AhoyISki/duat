@@ -17,7 +17,7 @@ use duat_core::{
     opts::PrintOpts,
     text::{Point, Text, TextPart, TextPlace, TwoPoints, txt},
     ui::{
-        self, Columns, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId,
+        self, Axis, Columns, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId,
         traits::{RawArea, UiPass},
     },
 };
@@ -136,15 +136,23 @@ impl Area {
             .inspect(self.id, |_, layout| {
                 let master_id = layout.get_cluster_master(self.id).unwrap();
                 let master_coords = self.layouts.coords_of(master_id, true).unwrap();
-                let master_has_edge = layout.get(master_id).unwrap().edge().is_some();
+                let is_leftmost = master_coords.br.x == coords.br.x;
+
+                let master_has_edge = || layout.get(master_id).unwrap().edge().is_some();
+
+                let parent_is_horizontal = || {
+                    layout
+                        .get_parent(master_id)
+                        .is_some_and(|(_, rect)| rect.aligns_with(Axis::Horizontal))
+                };
 
                 (
-                    master_has_edge && master_coords.br.x == coords.br.x,
+                    is_leftmost && master_has_edge() && parent_is_horizontal(),
                     layout.max_value(),
                 )
             })
             .unwrap();
-        
+
         if coords.width() == 0 || coords.height() == 0 {
             return;
         }
