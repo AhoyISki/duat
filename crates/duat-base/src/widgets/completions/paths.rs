@@ -5,6 +5,7 @@
 //! character. In practice, this means that path completions
 //! only ever show up if you want them to.
 use std::{
+    any::Any,
     fs::ReadDir,
     path::{Path, PathBuf},
     sync::LazyLock,
@@ -12,6 +13,8 @@ use std::{
 
 use duat_core::{
     Ns,
+    context::{self, Handle},
+    data::Pass,
     hook::{self, FocusedUpdated},
     text::{Point, Spacer, Text, txt},
     ui::Orientation,
@@ -53,37 +56,23 @@ impl PathCompletions {
     /// You can disable this via [`WordCompletions::disable`].
     ///
     /// [`Completions::add_list`]: super::Completions::add_list
-    pub fn enable() {
+    pub fn enable(pa: &mut Pass) {
         let mut start_byte = None;
 
-        hook::add::<FocusedUpdated>(move |pa, widget| {
-            let text = widget.text(pa);
+        let widget = context::current_widget(pa);
+        add_list(pa, &widget, &mut start_byte);
 
-            let Some(new_start) = PathCompletions::get_start(text, false) else {
-                return;
-            };
-
-            if let Some(start_byte) = &start_byte
-                && new_start == *start_byte
-            {
-                return;
-            }
-
-            start_byte = Some(new_start);
-
-            Completions::add_list(pa, PathCompletions, new_start, 75, *NS);
-        })
-        .grouped(*NS)
-        .lateness(usize::MAX);
+        hook::add::<FocusedUpdated>(move |pa, widget| add_list(pa, widget, &mut start_byte))
+            .grouped(*NS)
+            .lateness(usize::MAX);
     }
 
     /// Disables word completions for the current `Widget`.
-    pub fn disable() {
+    pub fn disable(pa: &mut Pass) {
+        Completions::remove_list(pa, *NS);
         hook::remove(*NS)
     }
-}
 
-impl PathCompletions {
     /// Get the start of the `Path` being completed.
     ///
     /// Usually won't be the start of the current word, since
@@ -130,6 +119,24 @@ impl PathCompletions {
         let main_cursor = text.get_main_sel()?.cursor();
         get_start(text, main_cursor, for_parameters)
     }
+}
+
+fn add_list(pa: &mut Pass, widget: &Handle, start_byte: &mut Option<usize>) {
+    let text = widget.text(pa);
+
+    let Some(new_start) = PathCompletions::get_start(text, false) else {
+        return;
+    };
+
+    if let Some(start_byte) = &start_byte
+        && new_start == *start_byte
+    {
+        return;
+    }
+
+    *start_byte = Some(new_start);
+
+    Completions::add_list(pa, PathCompletions, new_start, 75, *NS);
 }
 
 impl Sealed<String> for PathCompletions {
@@ -227,8 +234,16 @@ impl ErasedList for InnerPathCompletions {
         None
     }
 
-    fn get(&self, i: usize) -> Box<dyn std::any::Any + Send + 'static> {
+    fn get(&self, i: usize) -> Box<dyn Any + Send + 'static> {
         Box::new(self.list[i].1.clone())
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

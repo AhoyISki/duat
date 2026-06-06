@@ -26,8 +26,8 @@ use lsp_types::{
     request::{CodeActionRequest, GotoDefinition, GotoTypeDefinition, HoverRequest, References},
 };
 
-pub use crate::parser::LspBuffer;
 use crate::parser::diagnostics;
+pub use crate::parser::{LspBuffer, LspCompletions};
 
 mod config;
 mod hover;
@@ -709,3 +709,4 @@ fn apply_edit(text: &mut TextMut, edit: TextEdit, encoding: Encoding) {
         text.replace_range(start..end, edit.new_text);
     }
 }
+

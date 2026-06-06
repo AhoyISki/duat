@@ -39,7 +39,7 @@ pub use crate::widgets::completions::{
 };
 use crate::{
     hooks::{CompletionFocused, CompletionSelected},
-    widgets::Info,
+    widgets::{Info, completions::lists::InnerList},
 };
 
 mod lists;
@@ -119,12 +119,13 @@ pub fn completions_setup() {
                     && let Some(matches) = &comp.matches
                     && let Some(selected) = &matches.selected
                 {
+                    let index = matches.list[selected.idx];
                     let entry = CompletionEntry {
-                        index: selected.idx,
+                        index,
                         orig_range: comp.start_byte..comp.start_byte + comp.orig_typed.len(),
                         orig_typed: comp.orig_typed.clone(),
                         replacement: selected.value.clone(),
-                        entry: comp.lists[matches.list_idx].1.get(selected.idx),
+                        entry: comp.lists[matches.list_idx].1.get(index),
                     };
                     hook::trigger(pa, CompletionSelected(entry));
                 }
@@ -305,7 +306,7 @@ impl Completions {
 
             let (Ok(list_idx) | Err(list_idx)) = comp
                 .lists
-                .binary_search_by(|(prio, ..)| priority.cmp(prio).reverse());
+                .binary_search_by(|(prio, ..)| prio.cmp(&priority).reverse());
 
             if let Some(matches) = &comp.matches
                 && comp.lists[matches.list_idx].0 <= priority
@@ -476,6 +477,84 @@ impl Completions {
         context::handle_of::<Completions>(pa).is_some()
     }
 
+    /// Wether or not an entry is selected.
+    ///
+    /// You should use this if you care about wether or not
+    /// the user is completing text right now, so you don't
+    /// alter the `Completions`.
+    pub fn is_selecting(pa: &Pass) -> bool {
+        if let Some(completions) = context::handle_of::<Completions>(pa)
+            && let Some(matches) = &completions.read(pa).matches
+            && matches.selected.is_some()
+        {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Updates a list of [`CompletionKind`]s.
+    ///
+    /// This function can be used to add more elements, or to change things
+    /// in specific elements, by for example adding documentation to an
+    /// item on demand.
+    ///
+    /// Does not do anything if there was no list to update, or if
+    /// `Completions` was closed. Returns `true` if it has updated a list.
+    pub fn update_list<C: CompletionKind>(
+        pa: &mut Pass,
+        ns: Ns,
+        func: impl FnOnce(&mut Vec<C>),
+    ) -> bool {
+        let Some(completions) = context::handle_of::<Completions>(pa) else {
+            return false;
+        };
+
+        let comp = completions.write(pa);
+
+        if let Some((i, inner)) =
+            comp.lists
+                .iter_mut()
+                .enumerate()
+                .find_map(|(i, (_, list, other_ns))| {
+                    if *other_ns == ns {
+                        Some(i).zip(list.as_any_mut().downcast_mut::<InnerList<C>>())
+                    } else {
+                        None
+                    }
+                })
+        {
+            func(&mut inner.list);
+
+            if let Some(matches) = &comp.matches
+                && matches.list_idx == i
+                && matches.list.iter().any(|idx| *idx >= inner.list.len())
+            {
+                comp.matches = None;
+            }
+
+            Completions::scroll_and_update(pa, &completions, 0);
+
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Wether there is a list of a specific [`CompletionKind`] with a specific
+    /// [`Ns`].
+    pub fn has_list<C: CompletionKind>(pa: &Pass, ns: Ns) -> bool {
+        let Some(completions) = context::handle_of::<Completions>(pa) else {
+            return false;
+        };
+
+        completions
+            .read(pa)
+            .lists
+            .iter()
+            .any(|(_, list, other_ns)| *other_ns == ns && list.as_any().is::<Vec<C>>())
+    }
+
     fn scroll_and_update(
         pa: &mut Pass,
         completions: &Handle<Self>,
@@ -618,8 +697,8 @@ impl Completions {
                 .unwrap_or(0)
         };
 
-        let info = if let Some(new_idx) = new_idx
-            && let Some((info_text, orientation)) = list!().info_for_index(new_idx)
+        let info = if let Some(idx) = new_idx
+            && let Some((info_text, orientation)) = list!().info_for_index(get_idx(idx))
         {
             let info = if let Some((info, ori)) = completions.write(pa).info.take()
                 && (!info.is_closed() && ori == orientation)
@@ -634,7 +713,7 @@ impl Completions {
                 info_handle
             };
 
-            let value = list!().value_for_index(new_idx);
+            let value = list!().value_for_index(get_idx(idx));
 
             if let Some(info_handle) = info.as_ref()
                 && let Some(area) = info_handle.area().write_as::<duat_term::Area>(pa)
@@ -805,6 +884,10 @@ trait ErasedList: Send {
     fn info_for_index(&self, i: usize) -> Option<(Text, Orientation)>;
 
     fn get(&self, i: usize) -> Box<dyn Any + Send + 'static>;
+
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+
+    fn as_any(&self) -> &dyn Any;
 }
 
 /// A simple [`String`] comparison function, which prioritizes matched

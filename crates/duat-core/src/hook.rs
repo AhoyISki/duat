@@ -52,6 +52,7 @@
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ColorschemeSet`] triggers whenever a [colorscheme is set].
 //! - [`MsgLogged`] triggers after logginng macros like [`debug!`].
+//! - [`Idled`] triggers after Duat spends some time with no events.
 //!
 //! # Basic makeout
 //!
@@ -1125,6 +1126,20 @@ impl Hookable for MsgLogged {
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         self.0.clone()
     }
+}
+
+/// [`Hookable`]: Triggers after some time with no events.
+///
+/// # Arguments
+///
+/// None
+#[non_exhaustive]
+pub struct Idled;
+
+impl Hookable for Idled {
+    type Input<'h> = ();
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
 }
 
 /// A hookable struct, for hooks taking [`Hookable::Input`].

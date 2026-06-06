@@ -31,10 +31,10 @@ use crate::{
     server::{self, Server, on_servers_list},
 };
 
-// mod completions;
+mod completions;
 pub mod diagnostics;
 mod semantic_tokens;
-// pub use completions::LspCompletions;
+pub use completions::LspCompletions;
 
 /// LSP functions for a [`Buffer`].
 pub trait LspBuffer {
@@ -171,7 +171,7 @@ pub fn setup_hooks() {
     static OPENED_BUFFERS: LazyLock<Mutex<HashSet<PathBuf>>> =
         LazyLock::new(|| Mutex::new(storage::get_if(|_| true).unwrap_or_default()));
 
-    // completions::setup_hooks();
+    completions::setup_hooks();
 
     hook::add::<ConfigUnloaded>(|pa, is_quitting| {
         if !is_quitting {

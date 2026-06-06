@@ -337,8 +337,10 @@ impl DuatReceiver {
     ///
     /// Otherwise, it will wait until an event shows up.
     pub(crate) fn recv(&self, chain_instant: &mut Option<Instant>) -> Option<DuatEvent> {
-        let on_event = |_: &DuatEvent| {
-            self.sent_idle.store(false, Relaxed);
+        let on_event = |event: &DuatEvent| {
+            if let DuatEvent::KeyEventSent(..) = event {
+                self.sent_idle.store(false, Relaxed);
+            }
             _ = self.events_left.fetch_sub(1, Relaxed)
         };
 

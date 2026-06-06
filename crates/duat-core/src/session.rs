@@ -187,6 +187,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
 
                 let cur_win = context::current_win_index(pa);
                 for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
+                    node.update(pa);
                     node.print(pa);
                 }
 
@@ -274,7 +275,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
                     reprint_screen = true;
                     continue;
                 }
-                DuatEvent::DuatIdled => {}
+                DuatEvent::DuatIdled => _ = hook::trigger(pa, hook::Idled),
                 DuatEvent::FocusedOnDuat => _ = hook::trigger(pa, FocusedOnDuat(())),
                 DuatEvent::UnfocusedFromDuat => _ = hook::trigger(pa, UnfocusedFromDuat(())),
                 DuatEvent::RequestReload(request) => match reload_requested {

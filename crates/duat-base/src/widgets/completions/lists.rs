@@ -76,9 +76,8 @@ impl<I: IntoIterator<Item = C>, C: CompletionKind> Sealed<C> for I {
     }
 }
 
-#[allow(clippy::type_complexity)]
-struct InnerList<C: CompletionKind> {
-    list: Vec<C>,
+pub struct InnerList<C: CompletionKind> {
+    pub list: Vec<C>,
     fmt: Box<dyn FnMut(&C) -> Text + Send>,
     start_byte: usize,
 }
@@ -105,6 +104,11 @@ impl<C: CompletionKind> ErasedList for InnerList<C> {
         }
 
         let prefix = &text[self.start_byte..main_byte];
+
+        if prefix.chars().all(|char| char.is_whitespace()) {
+            return None;
+        }
+
         let (prefix, case_insensitive) =
             if case_insensitive && !prefix.chars().any(|char| char.is_uppercase()) {
                 (prefix.to_string().to_uppercase(), true)
@@ -151,6 +155,14 @@ impl<C: CompletionKind> ErasedList for InnerList<C> {
 
     fn get(&self, i: usize) -> Box<dyn Any + Send + 'static> {
         Box::new(self.list[i].clone())
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -250,5 +262,13 @@ impl ErasedList for InnerExhaustiveList {
 
     fn get(&self, i: usize) -> Box<dyn Any + Send + 'static> {
         Box::new(self.list[i].clone())
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }

@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use duat_base::{
     hooks::{CompletionFocused, CompletionSelected},
@@ -12,7 +9,7 @@ use duat_core::{
     Ns, context,
     data::Pass,
     form, hook, mode,
-    text::{Point, RegexHaystack, Spacer, Text},
+    text::{RegexHaystack, Spacer, Text},
     txt,
     ui::RwArea,
 };

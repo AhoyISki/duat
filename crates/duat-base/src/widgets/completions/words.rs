@@ -12,6 +12,7 @@
 //!
 //! [`Buffer`]: duat_core::buffer::Buffer
 use std::{
+    any::Any,
     collections::BTreeMap,
     ops::Range,
     sync::{Arc, LazyLock, Mutex},
@@ -20,7 +21,7 @@ use std::{
 use duat_core::{
     Ns,
     buffer::{Buffer, Change},
-    context::Handle,
+    context::{self, Handle},
     data::Pass,
     hook::{self, BufferOpened, BufferUpdated, FocusedUpdated},
     text::{RegexHaystack, Spacer, Strs, Text, txt},
@@ -70,40 +71,46 @@ impl WordCompletions {
     /// You can disable this via [`WordCompletions::disable`].
     ///
     /// [`Completions::add_list`]: super::Completions::add_list
-    pub fn enable() {
+    pub fn enable(pa: &mut Pass) {
         let mut start_byte = None;
 
-        hook::add::<FocusedUpdated>(move |pa, widget| {
-            let text = widget.text(pa);
+        let widget = context::current_widget(pa);
+        add_list(pa, &widget, &mut start_byte);
 
-            let Some(main_byte) = text.get_main_sel().map(|s| s.cursor().byte()) else {
-                return;
-            };
-
-            let range = text
-                .search(r"\w*\z")
-                .range(..main_byte)
-                .next_back()
-                .unwrap();
-
-            if let Some(start_byte) = &start_byte
-                && (range.start == *start_byte)
-            {
-                return;
-            }
-
-            start_byte = Some(range.start);
-
-            Completions::add_list(pa, WordCompletions, range.start, 50, *NS);
-        })
-        .grouped(*NS)
-        .lateness(usize::MAX);
+        hook::add::<FocusedUpdated>(move |pa, widget| add_list(pa, widget, &mut start_byte))
+            .grouped(*NS)
+            .lateness(usize::MAX);
     }
 
     /// Disables word completions for the current `Widget`.
-    pub fn disable() {
+    pub fn disable(pa: &mut Pass) {
+        Completions::remove_list(pa, *NS);
         hook::remove(*NS)
     }
+}
+
+fn add_list(pa: &mut Pass, widget: &Handle, start_byte: &mut Option<usize>) {
+    let text = widget.text(pa);
+
+    let Some(main_byte) = text.get_main_sel().map(|s| s.cursor().byte()) else {
+        return;
+    };
+
+    let range = text
+        .search(r"\w*\z")
+        .range(..main_byte)
+        .next_back()
+        .unwrap();
+
+    if let Some(start_byte) = &start_byte
+        && (range.start == *start_byte)
+    {
+        return;
+    }
+
+    *start_byte = Some(range.start);
+
+    Completions::add_list(pa, WordCompletions, range.start, 50, *NS);
 }
 
 impl Sealed<WordInfo> for WordCompletions {
@@ -178,8 +185,16 @@ impl ErasedList for InnerWordCompletions {
         None
     }
 
-    fn get(&self, i: usize) -> Box<dyn std::any::Any + Send + 'static> {
+    fn get(&self, i: usize) -> Box<dyn Any + Send + 'static> {
         Box::new(self.matches[i].clone())
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

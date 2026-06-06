@@ -9,25 +9,26 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
+use duat_base::widgets::{FooterWidgets, PathCompletions, WhichKey, WordCompletions, status};
 #[cfg(feature = "term-ui")]
-use duat_base::widgets::{Completions, PathCompletions, WordCompletions};
-use duat_base::widgets::{FooterWidgets, WhichKey, status};
 use duat_core::{
     buffer::{BufferOpts, PathKind},
     context::{self, cache},
     data::Pass,
-    hook::{BufferOpened, KeyTyped, ModeSwitched},
+    hook::{self, BufferOpened, KeyTyped, ModeSwitched},
     notify::{FromDuat, Watcher},
     text::txt,
     ui::{DynSpawnSpecs, Orientation, Ui},
 };
 use duat_filetype::FileType;
+use duat_lsp::LspCompletions;
 #[cfg(feature = "term-ui")]
 use duat_term::VertRule;
+use duatmode::Insert;
 
 use crate::{
     form,
-    hook::{self, BufferClosed, WindowOpened},
+    hook::{BufferClosed, WindowOpened},
     mode,
     opts::Opts,
     prelude::BufferSaved,
@@ -73,24 +74,18 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
     enable_whichkey_hooks(&opts);
     enable_layout_hooks(&mut opts);
     enable_buffer_hooks(&opts);
-    let min_prefix = opts.completions.min_prefix;
-    let cmd_min_prefix = opts.completions.cmd_min_prefix;
 
-    // Completions::set_default(move |pa| {
-    //     let builder = Completions::builder()
-    //         .with_provider(WordCompletions::new(true))
-    //         .with_provider(PathCompletions::new(true, false));
-
-    //     let mut builder = if let Some(lsp_completions) = duat_lsp::LspCompletions::new(pa, true) {
-    //         builder.with_provider(lsp_completions)
-    //     } else {
-    //         builder
-    //     };
-
-    //     builder.min_prefix = min_prefix;
-    //     builder.cmd_min_prefix = cmd_min_prefix;
-    //     builder
-    // });
+    hook::add::<ModeSwitched>(|pa, switch| {
+        if switch.new.is::<Insert>() {
+            WordCompletions::enable(pa);
+            PathCompletions::enable(pa);
+            LspCompletions::enable(pa);
+        } else if switch.old.is::<Insert>() {
+            WordCompletions::disable(pa);
+            PathCompletions::disable(pa);
+            LspCompletions::disable(pa);
+        }
+    });
 
     // Layout hooks
 
@@ -366,3 +361,4 @@ static BUFFER_WATCHER: LazyLock<Watcher> = LazyLock::new(|| {
     })
     .unwrap()
 });
+
