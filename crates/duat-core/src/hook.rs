@@ -553,7 +553,21 @@ impl PartialEq<Handle<Buffer>> for BufferSaved {
 /// [`Text::parts`]: crate::text::Text::parts
 /// [`Text::replace_range`]: crate::text::Text::replace_range
 /// [namespace]: crate::Ns
-pub type BufferUpdated = FocusedUpdated<Buffer>;
+pub struct BufferUpdated(pub(crate) Handle<Buffer>);
+
+impl Hookable for BufferUpdated {
+    type Input<'h> = &'h Handle<Buffer>;
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        &self.0
+    }
+}
+
+impl PartialEq<Handle<Buffer>> for BufferUpdated {
+    fn eq(&self, other: &Handle<Buffer>) -> bool {
+        self.0.ptr_eq(other.widget())
+    }
+}
 
 /// [`Hookable`]: Triggers whenever the active [`Buffer`] changes.
 ///

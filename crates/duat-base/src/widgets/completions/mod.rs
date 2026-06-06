@@ -277,6 +277,7 @@ impl Completions {
     /// will be removed before the new one is added.
     ///
     /// This will also spawn the `Completions` if that is necessary.
+    #[track_caller]
     pub fn add_list<C>(
         pa: &mut Pass,
         entries: impl CompletionEntries<C>,

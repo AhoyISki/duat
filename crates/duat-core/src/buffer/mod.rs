@@ -30,7 +30,7 @@ pub use crate::buffer::{
 use crate::{
     context::{self, Handle, cache},
     data::{Pass, RwData, WriteableTuple},
-    hook::{self, BufferRenamed, BufferSaved, FocusedUpdated, OnMouseEvent},
+    hook::{self, BufferRenamed, BufferSaved, BufferUpdated, FocusedUpdated, OnMouseEvent},
     mode::{Selections, TwoPointsPlace},
     opts::PrintOpts,
     text::{Point, Strs, StrsBuf, Text, TextMut, TextParts, TextVersion, txt},
@@ -464,8 +464,10 @@ impl Buffer {
 
         drop(buf.reset_print_info_if_needed(area));
 
-        hook::trigger(pa, FocusedUpdated(buffer.clone()));
-        hook::trigger(pa, FocusedUpdated(dyn_widget.clone()));
+        hook::trigger(pa, BufferUpdated(buffer.clone()));
+        if dyn_widget.area().is_active(pa) {
+            hook::trigger(pa, FocusedUpdated(dyn_widget.clone()));
+        }
 
         buffer.text_mut(pa).update_bounds();
     }

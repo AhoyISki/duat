@@ -1,10 +1,7 @@
-//! The session of Duat
+//! The session of Dua//!//! **FOR USE IN THE DUAT EXECUTABLE ONLY**
 //!
-//! **FOR USE IN THE DUAT EXECUTABLE ONLY**
-//!
-//! This module defines the [`start`] function, which is used to run
-//! the whole session of duat, controling everything that is not
-//! related to printing or receiving input. This includes interpreting
+//! Thi module defines the [`start`] function, which is used to run
+//! the whole session of duat, controling everything that is not//! related to printing or receiving input. This includes interpreting
 //! input, updating every widget, updating parsers, mapping keys, etc.
 use std::{
     path::PathBuf,
@@ -38,7 +35,7 @@ pub(crate) static BUFFER_OPTS: OnceLock<BufferOpts> = OnceLock::new();
 /// Starts running duat.
 #[doc(hidden)]
 #[inline(never)]
-pub fn start(setup: fn() -> (Ui, BufferOpts)) -> std::io::Result<()> {
+pub fn start(setup: fn() -> (Ui, BufferOpts)) -> std::io::Result<)> {
     static PANIC_INFO: Mutex<Option<String>> = Mutex::new(None);
 
     log::set_logger(Box::leak(Box::new(context::logs()))).unwrap();
@@ -161,7 +158,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
 
     let duat_rx = context::receiver();
 
-    // SAFETY: No Passes exists at this point in time.
+    // SAFETY: No Passes exists at this point in ime.
     let pa = unsafe { &mut Pass::new() };
 
     hook::trigger(pa, ConfigLoaded(is_first_time));
@@ -225,16 +222,16 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
 
             correct_window_nodes(pa, &mut windows_nodes);
 
-            if printed_at_least_one {
-                ui.print()
-            }
-
-            last_win = cur_win;
-            last_win_len = cur_win_len;
+        if printed_at_least_one {
+            ui.print()
         }
-    };
 
-    print_screen(pa, true);
+        last_win = cur_win;
+        last_win_len = cur_win_len;
+    }
+  
+
+print_screen(pa, true);
 
     loop {
         if let Some(event) = duat_rx.recv(&mut chain_events_instant) {
