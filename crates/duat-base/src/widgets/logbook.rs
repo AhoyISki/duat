@@ -93,7 +93,7 @@ pub fn logbook_setup() {
                 .binary_search_by(|(end, _)| end.cmp(&points.real));
 
             if let Some((_, location)) = logs.location_ranges.get(i) {
-                let location = location.clone();
+                let location = *location;
                 event.handle.spawn_on_text(
                     pa,
                     Info::new(txt!("[log_book.location]{location}")),

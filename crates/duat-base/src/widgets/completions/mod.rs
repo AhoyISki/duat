@@ -96,7 +96,7 @@ pub fn completions_setup() {
     });
 
     hook::add::<WidgetOpened<Completions>>(move |pa, completions| {
-        Completions::scroll_and_update(pa, &completions, 0);
+        Completions::scroll_and_update(pa, completions, 0);
 
         let completions = completions.clone();
         let ns = Ns::new();
@@ -658,7 +658,7 @@ impl Completions {
 
                     s.move_to(start..s.cursor().byte());
 
-                    s.replace(&replacement);
+                    s.replace(replacement);
                     s.unset_anchor();
                     if !replacement.is_empty() {
                         s.move_hor(1);

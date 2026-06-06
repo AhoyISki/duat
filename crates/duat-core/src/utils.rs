@@ -480,8 +480,7 @@ macro_rules! doc_duat {
                         WidgetOpened, WindowOpened, WidgetSwitched
                     },
                     text::{
-                        self, Builder, Conceal, Inlay, Spacer, Spawn, Strs, Text, txt, Point, Mask,
-                        TextMut
+                        self, Builder, Conceal, Inlay, Spacer,Strs, Text, txt, Point, Mask, TextMut
                     },
                     ui::{self, Area, Widget},
                 };

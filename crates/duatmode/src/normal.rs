@@ -82,6 +82,12 @@ impl Normal {
     }
 }
 
+impl Default for Normal {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Mode for Normal {
     fn bindings() -> mode::Bindings {
         // Extracted to another module due to macro slowdowns in rust-analyzer.
@@ -261,7 +267,7 @@ impl Mode for Normal {
             ctrl!('i') | event!(Tab) if let Some(buffer) = widget.get_as() => {
                 jump_list::jump_by(pa, &buffer, 1)
             }
-            
+
             event!(Tab) if Picker::is_open(pa) => {
                 if Picker::is_on_preview(pa) {
                     Picker::unfocus_preview(pa);
@@ -362,7 +368,7 @@ pub mod fns {
         let (widget, _) = current_parts(pa);
         widget.edit_all(pa, |mut s| {
             set_anchor_if_needed(extend_selections, &mut s);
-            s.move_hor(count as i32);
+            s.move_hor(count);
         });
         *SEL_TYPE.lock().unwrap() = SelType::Normal;
     }
@@ -425,7 +431,7 @@ pub mod fns {
         let (widget, _) = current_parts(pa);
         widget.edit_all(pa, |mut s| {
             set_anchor_if_needed(extend_selections, &mut s);
-            s.move_ver_wrapped(count as i32);
+            s.move_ver_wrapped(count);
         })
     }
 

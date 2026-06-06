@@ -208,7 +208,7 @@ fn match_match(
         event!(char @ ('l' | 'm' | 'M')) => {
             let mut failed = false;
             let failed = &mut failed;
-            edit_or_destroy_all(pa, &widget, failed, |s| {
+            edit_or_destroy_all(pa, widget, failed, |s| {
                 let mut i = 0;
                 let object = Object::new(key_event, popts, opts.brackets).unwrap();
 
@@ -236,7 +236,7 @@ fn match_match(
         event!(char @ 'h') | alt!(char @ ('m' | 'M')) => {
             let mut failed = false;
             let failed = &mut failed;
-            edit_or_destroy_all(pa, &widget, failed, |s| {
+            edit_or_destroy_all(pa, widget, failed, |s| {
                 let mut i = 0;
                 let object = Object::new(key_event, popts, opts.brackets).unwrap();
 

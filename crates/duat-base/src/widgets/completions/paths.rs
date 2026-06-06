@@ -160,7 +160,7 @@ impl ErasedList for InnerPathCompletions {
             None => &prefix,
         };
 
-        let (cur_dir, prefix, entries) = get_entries(&prefix)?;
+        let (cur_dir, prefix, entries) = get_entries(prefix)?;
 
         let (prefix, case_insensitive) =
             if case_insensitive && !prefix.chars().any(|char| char.is_uppercase()) {

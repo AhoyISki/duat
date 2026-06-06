@@ -243,7 +243,7 @@ enum ActionOrCommand {
 
 fn title(ca_or_c: &ActionOrCommand) -> &str {
     match ca_or_c {
-        ActionOrCommand::Action(_, title) => &title,
+        ActionOrCommand::Action(_, title) => title,
         ActionOrCommand::Command(command) => &command.title,
     }
 }

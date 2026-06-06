@@ -35,7 +35,7 @@ pub(crate) static BUFFER_OPTS: OnceLock<BufferOpts> = OnceLock::new();
 /// Starts running duat.
 #[doc(hidden)]
 #[inline(never)]
-pub fn start(setup: fn() -> (Ui, BufferOpts)) -> std::io::Result<)> {
+pub fn start(setup: fn() -> (Ui, BufferOpts)) -> std::io::Result<()> {
     static PANIC_INFO: Mutex<Option<String>> = Mutex::new(None);
 
     log::set_logger(Box::leak(Box::new(context::logs()))).unwrap();
@@ -222,16 +222,16 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
 
             correct_window_nodes(pa, &mut windows_nodes);
 
-        if printed_at_least_one {
-            ui.print()
+            if printed_at_least_one {
+                ui.print()
+            }
+
+            last_win = cur_win;
+            last_win_len = cur_win_len;
         }
+    };
 
-        last_win = cur_win;
-        last_win_len = cur_win_len;
-    }
-  
-
-print_screen(pa, true);
+    print_screen(pa, true);
 
     loop {
         if let Some(event) = duat_rx.recv(&mut chain_events_instant) {

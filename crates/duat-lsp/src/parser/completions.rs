@@ -208,11 +208,7 @@ pub fn setup_hooks() {
             } else {
                 None
             }
-        } else if let Some(insert) = &lsp_entry.insert_text {
-            Some((entry.orig_range.clone(), insert))
-        } else {
-            None
-        };
+        } else { lsp_entry.insert_text.as_ref().map(|insert| (entry.orig_range.clone(), insert)) };
 
         if let Some((range, edit)) = replacement {
             let mut text = buffer.text_mut(pa);

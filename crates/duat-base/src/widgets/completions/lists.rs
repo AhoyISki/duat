@@ -202,7 +202,7 @@ impl ErasedList for InnerExhaustiveList {
         let yet_to_be_typed = Vec::from_iter(
             self.list
                 .iter()
-                .filter(|word| !text[..main_byte].rfind(*word).is_some()),
+                .filter(|word| text[..main_byte].rfind(*word).is_none()),
         );
 
         if yet_to_be_typed.len() < self.list.len() {
@@ -222,7 +222,7 @@ impl ErasedList for InnerExhaustiveList {
                 if case_insensitive {
                     string_cmp(&prefix, &entry.to_uppercase()).map(|_| i)
                 } else {
-                    string_cmp(&prefix, &entry).map(|_| i)
+                    string_cmp(&prefix, entry).map(|_| i)
                 }
             },
         ));

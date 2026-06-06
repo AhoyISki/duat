@@ -504,14 +504,12 @@ fn setup(opts: &mut Opts) {
                     }
                 }
 
-                let mut parts = event.handle.text_parts(pa);
-                parts.tags.insert(
-                    showing_forms_ns,
+                event.handle.spawn_on_text(
+                    pa,
+                    widgets::Info::new(builder.build()),
                     tp.real,
-                    Spawn::new(
-                        widgets::Info::new(builder.build()),
-                        ui::DynSpawnSpecs::default(),
-                    ),
+                    showing_forms_ns,
+                    ui::DynSpawnSpecs::default()
                 );
             }
         })
