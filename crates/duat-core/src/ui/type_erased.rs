@@ -378,15 +378,6 @@ impl RwArea {
         self.0.write(pa).reveal()
     }
 
-    /// Tells the [`RawUi`] that this [`RawArea`] is the one that is
-    /// currently focused.
-    ///
-    /// Should make `self` the active `RawArea` while deactivating
-    /// any other active `RawArea`.
-    pub fn set_as_active(&self, pa: &mut Pass) {
-        self.0.write(pa).set_as_active()
-    }
-
     /// What size the given [`Text`] would occupy, if unwrapped
     ///
     /// The x component represents the width needed to show the
@@ -638,7 +629,7 @@ impl Area {
     ///
     /// Should make `self` the active [`RawArea`] while deactivating
     /// any other active [`RawArea`].
-    pub fn set_as_active(&mut self) {
+    pub(crate) fn set_as_active(&mut self) {
         (self.fns.set_as_active)(self)
     }
 

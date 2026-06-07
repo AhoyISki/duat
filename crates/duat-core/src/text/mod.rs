@@ -382,6 +382,7 @@ impl Text {
 
     /// Merges `String`s with the body of text, given a range to
     /// replace.
+    #[track_caller]
     fn apply_change(&mut self, guess_i: usize, change: Change<&str>, before: bool) -> usize {
         self.0.buf.apply_change(change);
         self.0.tags.transform(

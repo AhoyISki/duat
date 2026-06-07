@@ -540,6 +540,7 @@ impl Windows {
         // Pass, and it is known that it only writes to other types.
         let internal_pass = &mut unsafe { Pass::new() };
 
+        node.area().write(pa).set_as_active();
         let win = self.handle_window(pa, node.handle())?;
         let inner = self.inner.write(pa);
         let old_node = std::mem::replace(inner.cur_node.write(internal_pass), node.clone());
