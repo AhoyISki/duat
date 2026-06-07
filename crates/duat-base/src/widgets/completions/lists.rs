@@ -71,8 +71,13 @@ impl CompletionKind for CmdDoc {
 }
 
 impl<I: IntoIterator<Item = C>, C: CompletionKind> Sealed<C> for I {
-    fn into_erased(self, start_byte: usize) -> Box<dyn ErasedList> {
-        Box::new(InnerList::new(self.into_iter().collect(), start_byte))
+    fn into_erased(self, start_byte: usize, min_prefix: usize) -> Box<dyn ErasedList> {
+        Box::new(InnerList {
+            list: self.into_iter().collect(),
+            fmt: Box::new(C::default_fmt),
+            start_byte,
+            min_prefix,
+        })
     }
 }
 
@@ -80,16 +85,7 @@ pub struct InnerList<C: CompletionKind> {
     pub list: Vec<C>,
     fmt: Box<dyn FnMut(&C) -> Text + Send>,
     start_byte: usize,
-}
-
-impl<C: CompletionKind> InnerList<C> {
-    fn new(list: Vec<C>, start_byte: usize) -> Self {
-        Self {
-            list,
-            fmt: Box::new(C::default_fmt),
-            start_byte,
-        }
-    }
+    min_prefix: usize,
 }
 
 impl<C: CompletionKind> ErasedList for InnerList<C> {
@@ -99,13 +95,15 @@ impl<C: CompletionKind> ErasedList for InnerList<C> {
 
         if main_byte < self.start_byte {
             return None;
-        } else if main_byte == self.start_byte {
+        } else if main_byte == self.start_byte  && self.min_prefix == 0 {
             return Some((0..self.list.len()).collect());
         }
 
         let prefix = &text[self.start_byte..main_byte];
 
-        if prefix.chars().all(|char| char.is_whitespace()) {
+        if prefix.chars().all(|char| char.is_whitespace())
+            || prefix.chars().count() < self.min_prefix
+        {
             return None;
         }
 
@@ -178,7 +176,7 @@ pub struct ExhaustiveCompletionsList<S> {
 }
 
 impl<S: AsRef<str> + Send + 'static> Sealed<S> for ExhaustiveCompletionsList<S> {
-    fn into_erased(self, start_byte: usize) -> Box<dyn super::ErasedList> {
+    fn into_erased(self, start_byte: usize, min_prefix: usize) -> Box<dyn super::ErasedList> {
         Box::new(InnerExhaustiveList {
             list: self
                 .list
@@ -186,6 +184,7 @@ impl<S: AsRef<str> + Send + 'static> Sealed<S> for ExhaustiveCompletionsList<S> 
                 .map(|str| str.as_ref().to_string())
                 .collect(),
             start_byte,
+            min_prefix,
         })
     }
 }
@@ -193,6 +192,7 @@ impl<S: AsRef<str> + Send + 'static> Sealed<S> for ExhaustiveCompletionsList<S> 
 struct InnerExhaustiveList {
     list: Vec<String>,
     start_byte: usize,
+    min_prefix: usize,
 }
 
 impl ErasedList for InnerExhaustiveList {
@@ -205,11 +205,12 @@ impl ErasedList for InnerExhaustiveList {
                 .filter(|word| text[..main_byte].rfind(*word).is_none()),
         );
 
-        if yet_to_be_typed.len() < self.list.len() {
+        let prefix = text.get(self.start_byte..main_byte)?.to_string();
+
+        if yet_to_be_typed.len() < self.list.len() || prefix.chars().count() < self.min_prefix {
             return None;
         }
 
-        let prefix = text.get(self.start_byte..main_byte)?.to_string();
         let (prefix, case_insensitive) =
             if case_insensitive && !prefix.chars().any(|c| c.is_uppercase()) {
                 (prefix.to_uppercase(), true)

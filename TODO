@@ -11,6 +11,7 @@ FOR NEXT UPDATE:
     [x] Info.
     [ ] Diagnostics.
   [ ] See all diagnostics.
+  [ ] Configuration.
 [x] Snippet support.
 [ ] More work on the Gutter.
   [x] Diferentiate hovering, cursoring, related and default display.
@@ -53,6 +54,7 @@ QoL TODO LIST:
 [ ] Highlight background of currently active Buffer.
 [ ] Allow going to specific coordinates on Buffers.
 [ ] Fix logs scrolling.
+[ ] Hover should get rid of links.
 
 KNOWN BUGS:
  HIGH PRIORITY:

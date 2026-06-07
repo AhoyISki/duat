@@ -140,14 +140,14 @@ fn add_list(pa: &mut Pass, widget: &Handle, start_byte: &mut Option<usize>) {
 }
 
 impl Sealed<String> for PathCompletions {
-    fn into_erased(self, start_byte: usize) -> Box<dyn ErasedList> {
-        Box::new(InnerPathCompletions { start_byte, list: Vec::new() })
+    fn into_erased(self, start_byte: usize, _: usize) -> Box<dyn ErasedList> {
+        Box::new(InnerPathCompletions { list: Vec::new(), start_byte })
     }
 }
 
 struct InnerPathCompletions {
-    start_byte: usize,
     list: Vec<(String, PathBuf)>,
+    start_byte: usize,
 }
 
 impl ErasedList for InnerPathCompletions {

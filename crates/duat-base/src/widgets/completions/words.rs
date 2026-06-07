@@ -54,7 +54,9 @@ pub struct WordInfo {
 }
 
 /// Word completions provider.
-pub struct WordCompletions;
+pub struct WordCompletions {
+    min_prefix: usize,
+}
 
 impl WordCompletions {
     /// Enables word completions for the current `Widget`.
@@ -71,15 +73,17 @@ impl WordCompletions {
     /// You can disable this via [`WordCompletions::disable`].
     ///
     /// [`Completions::add_list`]: super::Completions::add_list
-    pub fn enable(pa: &mut Pass) {
+    pub fn enable(pa: &mut Pass, min_prefix: usize) {
         let mut start_byte = None;
 
         let widget = context::current_widget(pa);
-        add_list(pa, &widget, &mut start_byte);
+        add_list(pa, &widget, min_prefix, &mut start_byte);
 
-        hook::add::<FocusedUpdated>(move |pa, widget| add_list(pa, widget, &mut start_byte))
-            .grouped(*NS)
-            .lateness(usize::MAX);
+        hook::add::<FocusedUpdated>(move |pa, widget| {
+            add_list(pa, widget, min_prefix, &mut start_byte)
+        })
+        .grouped(*NS)
+        .lateness(usize::MAX);
     }
 
     /// Disables word completions for the current `Widget`.
@@ -89,7 +93,7 @@ impl WordCompletions {
     }
 }
 
-fn add_list(pa: &mut Pass, widget: &Handle, start_byte: &mut Option<usize>) {
+fn add_list(pa: &mut Pass, widget: &Handle, min_prefix: usize, start_byte: &mut Option<usize>) {
     let text = widget.text(pa);
 
     let Some(main_byte) = text.get_main_sel().map(|s| s.cursor().byte()) else {
@@ -110,18 +114,23 @@ fn add_list(pa: &mut Pass, widget: &Handle, start_byte: &mut Option<usize>) {
 
     *start_byte = Some(range.start);
 
-    Completions::add_list(pa, WordCompletions, range.start, 50, *NS);
+    Completions::add_list(pa, WordCompletions { min_prefix }, range.start, 50, *NS);
 }
 
 impl Sealed<WordInfo> for WordCompletions {
-    fn into_erased(self, start_byte: usize) -> Box<dyn ErasedList> {
-        Box::new(InnerWordCompletions { start_byte, matches: Vec::new() })
+    fn into_erased(self, start_byte: usize, _: usize) -> Box<dyn ErasedList> {
+        Box::new(InnerWordCompletions {
+            matches: Vec::new(),
+            start_byte,
+            min_prefix: self.min_prefix,
+        })
     }
 }
 
 struct InnerWordCompletions {
-    start_byte: usize,
     matches: Vec<WordInfo>,
+    start_byte: usize,
+    min_prefix: usize,
 }
 
 impl ErasedList for InnerWordCompletions {
@@ -130,6 +139,10 @@ impl ErasedList for InnerWordCompletions {
         let suffix = &text[text.search(r"\A\w*").range(main_byte..).next().unwrap()];
 
         let prefix = text.get(self.start_byte..main_byte)?;
+
+        if prefix.chars().count() < self.min_prefix {
+            return None;
+        }
 
         let (prefix, case_insensitive) =
             if case_insensitive && !prefix.chars().any(|char| char.is_uppercase()) {

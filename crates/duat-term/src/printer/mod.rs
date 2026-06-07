@@ -298,6 +298,9 @@ impl Printer {
 
         let max = self.max_value();
 
+        // There may be old lines leftover that were cut off screen.
+        old_lines.retain(|lines| lines.coords.intersects(Coords::new(Coord::new(0, 0), max)));
+
         // If there are no more spawns, print everything at least one more
         // time, to clear the spawned areas.
         let print_old_lines = self.spawns_have_changed.load(Relaxed) || !spawned_lines.is_empty();
@@ -380,8 +383,6 @@ impl Printer {
         stdout.flush().unwrap();
 
         for info in new_lines {
-            old_lines.retain(|l| !l.coords.intersects(info.coords));
-
             let Err(i) = old_lines.binary_search_by_key(&info.coords, |lines| lines.coords) else {
                 unreachable!("Colliding Lines should have been removed already");
             };

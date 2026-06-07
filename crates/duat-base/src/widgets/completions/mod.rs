@@ -22,7 +22,7 @@ use duat_core::{
     Ns,
     buffer::Buffer,
     cmd::{
-        CfgOrScratch, ColorSchemeArg, Existing, OtherBuffer, Parameter, ReloadOptions,
+        CfgOrScratch, CmdDoc, ColorSchemeArg, Existing, OtherBuffer, Parameter, ReloadOptions,
         ValidFilePath,
     },
     context::{self, Handle},
@@ -45,10 +45,6 @@ use crate::{
 mod lists;
 mod paths;
 mod words;
-
-static WIDGET_NS: LazyLock<Ns> = Ns::new_lazy();
-static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (usize, ParamCompletions)>>> =
-    LazyLock::new(Mutex::default);
 
 /// Initial setup for completions
 pub fn completions_setup() {
@@ -220,7 +216,7 @@ pub trait CompletionEntries<C>: Sealed<C> {}
 impl<S: Sealed<C>, C> CompletionEntries<C> for S {}
 
 trait Sealed<C> {
-    fn into_erased(self, start_byte: usize) -> Box<dyn ErasedList>;
+    fn into_erased(self, start_byte: usize, min_prefix: usize) -> Box<dyn ErasedList>;
 }
 
 /// A type of object that can be completed and will show up in
@@ -255,6 +251,7 @@ pub struct Completions {
     max_height: usize,
     cur_min_prefix: usize,
     min_prefix: usize,
+    case_insensitive: bool,
 
     start_byte: usize,
     orig_typed: String,
@@ -278,7 +275,7 @@ impl Completions {
     ///
     /// This will also spawn the `Completions` if that is necessary.
     #[track_caller]
-    pub fn add_list<C>(
+    pub fn add_list<C: 'static>(
         pa: &mut Pass,
         entries: impl CompletionEntries<C>,
         start: impl TextIndex,
@@ -303,7 +300,7 @@ impl Completions {
             let comp = completions.write(pa);
             comp.remove_ns(ns);
 
-            let mut erased = entries.into_erased(start_byte);
+            let mut erased = entries.into_erased(start_byte, comp.min_prefix);
 
             let (Ok(list_idx) | Err(list_idx)) = comp
                 .lists
@@ -325,12 +322,21 @@ impl Completions {
 
             Completions::scroll_and_update(pa, &completions, 0);
         } else {
+            let opts = OPTS.lock().unwrap();
+
+            let min_prefix = if TypeId::of::<C>() == TypeId::of::<CmdDoc>() {
+                opts.cmd_min_prefix
+            } else {
+                opts.min_prefix
+            };
+
             let comp = Completions {
-                lists: vec![(priority, entries.into_erased(start_byte), ns)],
+                lists: vec![(priority, entries.into_erased(start_byte, min_prefix), ns)],
                 text: Text::new(),
                 max_height: 20,
                 cur_min_prefix: 0,
-                min_prefix: 0,
+                min_prefix,
+                case_insensitive: opts.case_insensitive,
                 start_byte,
                 orig_typed: text[start_byte..main_byte].to_string(),
                 matches: None,
@@ -377,12 +383,13 @@ impl Completions {
         priority: usize,
         mut entries_fn: impl FnMut(&Pass) -> C + Send + Sync + 'static,
     ) {
-        COMPLETIONS.lock().unwrap().insert(
+        PARAM_COMPLETIONS.lock().unwrap().insert(
             TypeId::of::<P>(),
             (
                 priority,
                 Box::new(Mutex::new(move |pa: &Pass, start_byte| {
-                    entries_fn(pa).into_erased(start_byte)
+                    let opts = OPTS.lock().unwrap();
+                    entries_fn(pa).into_erased(start_byte, opts.cmd_min_prefix)
                 })),
             ),
         );
@@ -413,7 +420,7 @@ impl Completions {
             .map(|(pat_id, range)| range.start + (pat_id == 0) as usize)
             .unwrap();
 
-        let completions = COMPLETIONS.lock().unwrap();
+        let completions = PARAM_COMPLETIONS.lock().unwrap();
 
         let Some(mut lists) = duat_core::utils::catch_panic(|| {
             Vec::from_iter(
@@ -438,12 +445,15 @@ impl Completions {
 
         lists.sort_by(|(lprio, ..), (rprio, ..)| lprio.cmp(rprio).reverse());
 
+        let opts = OPTS.lock().unwrap();
+
         let comp = Completions {
             lists,
             text: Text::new(),
             max_height: 20,
             cur_min_prefix: 0,
-            min_prefix: 0,
+            min_prefix: opts.cmd_min_prefix,
+            case_insensitive: opts.case_insensitive,
             start_byte,
             orig_typed: text[start_byte..main_byte].to_string(),
             matches: None,
@@ -554,6 +564,26 @@ impl Completions {
             .lists
             .iter()
             .any(|(_, list, other_ns)| *other_ns == ns && list.as_any().is::<Vec<C>>())
+    }
+
+    /// Sets options for `Completions`.
+    ///
+    /// `case_insensitive` determines how matching will take place. If
+    /// it is set to `true`, then unless the word being typed has an
+    /// uppercase letter, matching will ignore case.
+    ///
+    /// `min_prefix` is the amount of characters that should be typed
+    /// before completions shows up. This will only affect "list-like"
+    /// completions, that is, word and path completions will not be
+    /// affected.
+    ///
+    /// The default is `true` and `0`, respectively.
+    pub fn set_opts(case_insensitive: bool, min_prefix: usize, cmd_min_prefix: usize) {
+        *OPTS.lock().unwrap() = Opts {
+            case_insensitive,
+            min_prefix,
+            cmd_min_prefix,
+        }
     }
 
     fn scroll_and_update(
@@ -760,6 +790,7 @@ impl Completions {
                 orig_typed,
                 cur_min_prefix: comp.min_prefix,
                 min_prefix: comp.min_prefix,
+                case_insensitive: comp.case_insensitive,
                 info: comp.info.take(),
 
                 matches: Some(Matches { selected, ..matches }),
@@ -926,6 +957,15 @@ const SPAWN_SPECS: DynSpawnSpecs = DynSpawnSpecs {
     inside: false,
 };
 
+static OPTS: Mutex<Opts> = Mutex::new(Opts {
+    case_insensitive: true,
+    min_prefix: 0,
+    cmd_min_prefix: 0,
+});
+static WIDGET_NS: LazyLock<Ns> = Ns::new_lazy();
+static PARAM_COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (usize, ParamCompletions)>>> =
+    LazyLock::new(Mutex::default);
+
 #[derive(Debug)]
 struct Matches {
     list_idx: usize,
@@ -938,6 +978,12 @@ struct Selected {
     idx: usize,
     dist_from_top: usize,
     value: String,
+}
+
+struct Opts {
+    case_insensitive: bool,
+    min_prefix: usize,
+    cmd_min_prefix: usize,
 }
 
 type ParamCompletions = Box<Mutex<dyn FnMut(&Pass, usize) -> Box<dyn ErasedList> + Send>>;

@@ -830,6 +830,13 @@ pub struct CompletionsOpts {
     ///
     /// [`Completions`]: crate::widgets::Completions
     pub cmd_min_prefix: usize,
+    /// How many characters should preced the cursor before showing
+    /// _word_ completions.
+    ///
+    /// If this is [`None`], will follow `min_prefix`.
+    ///
+    /// The default is `None`
+    pub word_min_prefix: Option<usize>,
 }
 
 impl Default for CompletionsOpts {
@@ -838,6 +845,7 @@ impl Default for CompletionsOpts {
             case_insensitive: true,
             min_prefix: Default::default(),
             cmd_min_prefix: Default::default(),
+            word_min_prefix: None
         }
     }
 }

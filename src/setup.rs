@@ -9,7 +9,9 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use duat_base::widgets::{FooterWidgets, PathCompletions, WhichKey, WordCompletions, status};
+use duat_base::widgets::{
+    Completions, FooterWidgets, PathCompletions, WhichKey, WordCompletions, status,
+};
 #[cfg(feature = "term-ui")]
 use duat_core::{
     buffer::{BufferOpts, PathKind},
@@ -71,21 +73,10 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
 
     crate::plugins::finish(&mut opts);
 
+    enable_completions_hooks(&opts);
     enable_whichkey_hooks(&opts);
     enable_layout_hooks(&mut opts);
     enable_buffer_hooks(&opts);
-
-    hook::add::<ModeSwitched>(|pa, switch| {
-        if switch.new.is::<Insert>() {
-            WordCompletions::enable(pa);
-            PathCompletions::enable(pa);
-            LspCompletions::enable(pa);
-        } else if switch.old.is::<Insert>() {
-            WordCompletions::disable(pa);
-            PathCompletions::disable(pa);
-            LspCompletions::disable(pa);
-        }
-    });
 
     // Layout hooks
 
@@ -175,6 +166,31 @@ fn enable_layout_hooks(opts: &mut Opts) {
         };
 
         logs.push_on(pa, window);
+    });
+}
+
+fn enable_completions_hooks(opts: &Opts) {
+    Completions::set_opts(
+        opts.completions.case_insensitive,
+        opts.completions.min_prefix,
+        opts.completions.cmd_min_prefix,
+    );
+
+    let word_min_prefix = opts
+        .completions
+        .word_min_prefix
+        .unwrap_or(opts.completions.min_prefix);
+
+    hook::add::<ModeSwitched>(move |pa, switch| {
+        if switch.new.is::<Insert>() {
+            WordCompletions::enable(pa, word_min_prefix);
+            PathCompletions::enable(pa);
+            LspCompletions::enable(pa);
+        } else if switch.old.is::<Insert>() {
+            WordCompletions::disable(pa);
+            PathCompletions::disable(pa);
+            LspCompletions::disable(pa);
+        }
     });
 }
 
