@@ -172,6 +172,10 @@ fn setup(opts: &mut Opts) {
     opts.completions.min_prefix = 0;
     // Same, but while typing a command.
     opts.completions.cmd_min_prefix = 0;
+    // Same, but only for words. None means min_prefix is used.
+    opts.completions.word_min_prefix = None;
+    // Wether completions should be case insensitive
+    opts.completions.case_insensitive = true;
 
     // Notifications options:
     // Reformat the notifications messages.
