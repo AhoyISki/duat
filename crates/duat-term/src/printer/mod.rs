@@ -323,6 +323,7 @@ impl Printer {
                         None
                     }
                 })
+                .or_else(|| new_iter.next())
             {
                 if x != start {
                     queue!(stdout, MoveToColumn(start as u16)).unwrap();
@@ -393,6 +394,10 @@ impl Printer {
 
     /// Sends the finished [`Lines`], off to be printed.
     pub fn send_lines(&self, lines: Lines) {
+        let mut old_lines = self.old_lines.lock().unwrap();
+        old_lines.retain(|l| !l.coords.intersects(lines.coords));
+        drop(old_lines);
+
         let mut new_lines = self.new_lines.lock().unwrap();
         // Areas that intersect with this one came from a previous
         // organization of areas or are a previous version of itself, so they

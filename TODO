@@ -20,7 +20,6 @@ FOR NEXT UPDATE:
 [ ] Perfect print iterators.
   [ ] Perfect words iterator.
 [x] Fix pager search.
-[ ] Fix logs scrolling.
 [x] Fix commandline completion bs.
 [x] Additional wrap continuation characters.
 [ ] Add a donation splash screen.
@@ -35,27 +34,37 @@ FOR NEXT UPDATE:
 [x] Remove Widget argument from Modes.
 [x] Widget::text and Widget::text_mut have been amplified immensely.
 [x] Picker implementation.
-[ ] Expose duatmode keys as functions.
+[x] Expose duatmode keys as functions.
 [x] Improvements to duatmode:
   [x] `m` key like helix's.
   [x] composite `(` and `)` (and maybe `f` and `t`?).
+[ ] Reimplement the minimum prefix stuff.
+[ ] For now, on Windows, duat can only reload if there is only one instance open.
+[ ] Turn the History into a tree.
+  [x] Implementation.
+  [ ] Mapping onto keys.
+[x] Fix rendering issues with layout changes.
+[ ] Make Text spawning immediate.
+
+QoL TODO LIST:
+[ ] Fix jumps not being recorded or being too recorded.
+[ ] Reloading shouldn't change your active Buffer.
+[ ] The g key should record your current position.
+[ ] Highlight background of currently active Buffer.
+[ ] Allow going to specific coordinates on Buffers.
+[ ] Fix logs scrolling.
 
 KNOWN BUGS:
  HIGH PRIORITY:
-  [x] Get rid of Text::selections_mut.
   [ ] Indentation is inefficient because tree-sitter query results aren't cached.
   [ ] Stop eagerly merging Selections.
  LOW PRIORITY:
-  [ ] Selections struct that holds a reference to the Bytes.
+  [ ] Selections struct that holds a reference to the StrsBuf.
     [ ] Also make the Bytes-less version inaccessible.
   [ ] tree-sitter-duat-text is not being used.
-  [ ] For now, on Windows, duat can only reload if there is only one instance open.
   [ ] Overlays can't remove previous Forms early.
-  [ ] Sometimes the Completions randomly don't open right away on prompt line.
+  [ ] Sometimes Completions don't open immediately on PromptLine.
   [ ] Diagnostics randomly triggers an integer overflow probably.
-
-POSSIBLE NOW:
-[ ] Turn the History into a tree.
 
 FUTURE UPDATES:
 [ ] Add registers possibly.
