@@ -101,6 +101,10 @@ impl Mode for User {
     fn send_key(&mut self, pa: &mut Pass, _: KeyEvent) {
         reset::<Buffer>(pa);
     }
+
+    fn on_function(&mut self, pa: &mut Pass) {
+        reset::<Buffer>(pa);
+    }
 }
 
 static KEYS_WERE_SENT: AtomicUsize = AtomicUsize::new(0);
@@ -410,6 +414,10 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 pub trait Mode: Send + 'static {
     /// Sends a [`KeyEvent`] to this [`Mode`]
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent);
+
+    /// A function to trigger if keys are mapped to a function.
+    #[allow(unused_variables)]
+    fn on_function(&mut self, pa: &mut Pass) {}
 
     /// A list of all available keybindings for this `Mode`
     ///

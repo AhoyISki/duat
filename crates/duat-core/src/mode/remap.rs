@@ -690,6 +690,10 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
                         keys
                     }
                     MapsTo::Function(function) => {
+                        // It is imperative that I do this beforehand, so things
+                        // like mode setting take place in the correct order.
+                        crate::mode::send_function(pa);
+
                         let mut function = function.lock().unwrap();
                         crate::utils::catch_panic(|| function(pa));
                         drop(function);
@@ -700,6 +704,7 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
                             .unwrap()
                             .remaps
                             .insert(i, remap);
+
                         return;
                     }
                 }
@@ -832,10 +837,11 @@ impl MappedBindings {
                 text: Some(desc),
                 keys: KeyDescriptions {
                     seq,
-                    ty: DescriptionType::Binding(pats, pats.iter(), StripPrefix {
-                        seq,
-                        remaps: self.remaps.iter(),
-                    }),
+                    ty: DescriptionType::Binding(
+                        pats,
+                        pats.iter(),
+                        StripPrefix { seq, remaps: self.remaps.iter() },
+                    ),
                 },
             })
             .chain(

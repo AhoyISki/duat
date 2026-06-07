@@ -24,6 +24,7 @@ static MODE_NAME: Mutex<&str> = Mutex::new("");
 static MODE: LazyLock<RwData<Option<Box<dyn Any + Send>>>> =
     LazyLock::new(|| RwData::new(Some(Box::new(()))));
 static SEND_KEY: LazyLock<RwData<Option<KeyFn>>> = LazyLock::new(RwData::default);
+static SEND_FUNCTION: LazyLock<RwData<Option<fn(&mut Pass)>>> = LazyLock::new(RwData::default);
 static SET_DEFAULT: Mutex<Option<ResetFn>> = Mutex::new(None);
 static DEFERRED: LazyLock<RwData<Vec<Box<dyn FnOnce(&mut Pass) + Send>>>> =
     LazyLock::new(RwData::default);
@@ -73,7 +74,8 @@ pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
     // Things that happen before the switch, in order to signal that a
     // switch has happened.
     *MODE_NAME.lock().unwrap() = std::any::type_name::<M>();
-    *SEND_KEY.write(pa) = Some(|pa, keys| send_key_fn::<M>(pa, keys));
+    *SEND_KEY.write(pa) = Some(send_key_fn::<M>);
+    *SEND_FUNCTION.write(pa) = Some(send_function_fn::<M>);
     crate::mode::set_mode_for_remapper::<M>(pa);
 
     // This is the case if we're not in a send_key call.
@@ -145,9 +147,14 @@ pub fn reset_to(pa: &mut Pass, widget: &Handle<impl Widget + ?Sized>) {
     }
 }
 
-/// Sends the [`KeyEvent`] to the active [`Mode`]
+/// Sends the [`KeyEvent`] to the active [`Mode`].
 pub(super) fn send_final_key(pa: &mut Pass, key: KeyEvent) {
     SEND_KEY.read(pa).unwrap()(pa, key);
+}
+
+/// Sends a function to the active [`Mode`].
+pub(super) fn send_function(pa: &mut Pass) {
+    SEND_FUNCTION.read(pa).unwrap()(pa);
 }
 
 /// Static dispatch function that sends keys to a [`Mode`]
@@ -158,6 +165,20 @@ fn send_key_fn<M: Mode>(pa: &mut Pass, key_event: KeyEvent) {
     };
 
     catch_panic(|| mode.send_key(pa, key_event));
+
+    *MODE.write(pa) = Some(mode);
+    for deferred_set in std::mem::take(DEFERRED.write(pa)) {
+        deferred_set(pa);
+    }
+}
+
+fn send_function_fn<M: Mode>(pa: &mut Pass) {
+    let mut mode: Box<M> = {
+        let mode = MODE.write(pa).take().unwrap();
+        mode.downcast().unwrap()
+    };
+
+    catch_panic(|| mode.on_function(pa));
 
     *MODE.write(pa) = Some(mode);
     for deferred_set in std::mem::take(DEFERRED.write(pa)) {
