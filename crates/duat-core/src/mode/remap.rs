@@ -94,7 +94,9 @@ mod global {
         }
     }
 
-    /// Maps a sequence of keys to another
+    /// Maps a sequence of keys to another, or to a function.
+    ///
+    /// # Mapping to keys
     ///
     /// The keys follow the same rules as Vim, so regular, standalone
     /// characters are mapped verbatim, while "`<{mod}-{key}>`" and
@@ -120,16 +122,36 @@ mod global {
     ///
     /// And the following modifiers are available:
     ///
-    /// - `C => Control`,
-    /// - `A => Alt`,
-    /// - `S => Shift`,
-    /// - `M => Meta`,
+    /// - `c => Control`,
+    /// - `a => Alt`,
+    /// - `s => Shift`,
+    /// - `m => Meta`,
     /// - `super => Super`,
     /// - `hyper => Hyper`,
     ///
     /// If another sequence already exists on the same mode which
     /// would intersect with this one, the new sequence will not be
     /// added.
+    ///
+    /// # Mapping to function
+    ///
+    /// You can also map this to a function that takes in a [`&mut Pass`] directly.
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
+    ///
+    /// // You have to write the type of `pa` for it to compile.
+    /// map::<User>("qq", |pa: &mut Pass| {
+    ///     _ = context::current_buffer(pa).save(pa);
+    /// })
+    /// .doc("Save and quit");
+    /// ```
+    ///
+    /// Note that you will have to write `pa: &mut Pass` or `pa: &mut _` to get
+    /// the borrow checker to be happy.
+    ///
+    /// [`&mut Pass`]: crate::data::Pass
     pub fn map<M: Mode>(takes: &str, gives: impl IntoMapsTo) -> RemapBuilder {
         let takes = str_to_keys(takes);
         RemapBuilder {
@@ -143,16 +165,20 @@ mod global {
         }
     }
 
-    /// Aliases a sequence of keys to another
+    /// Aliases a sequence of keys to another, or to a function.
     ///
-    /// The difference between aliasing and mapping is that an alias
-    /// will be displayed on the text as a [ghost text], making it
-    /// seem like you are typing normally. This text will be printed
-    /// with the `Alias` [form].
+    /// This function is _identical_ to [`map`], with the caveat that
+    /// it will also display a ghost text on screen with the keys that
+    /// are typed in. This is to make it seem like you are typing
+    /// normally, when in reality this will be mapping the keys being
+    /// sent. This text will be printed with the `Alias` [form].
     ///
     /// If another sequence already exists on the same mode, which
     /// would intersect with this one, the new sequence will not be
     /// added.
+    ///
+    /// This function can take _both_ a `&str` _and_ a function that
+    /// takes a [`&mut Pass`] as argument, just like `map`.
     ///
     /// # Note
     ///
@@ -164,8 +190,8 @@ mod global {
     /// "insert like" modes. You can also use any key in the input or
     /// output of this `alias`
     ///
-    /// [ghost text]: crate::text::Inlay
     /// [form]: crate::form::Form
+    /// [`&mut Pass`]: crate::data::Pass
     pub fn alias<M: Mode>(takes: &str, gives: impl IntoMapsTo) -> RemapBuilder {
         let takes = str_to_keys(takes);
         RemapBuilder {
