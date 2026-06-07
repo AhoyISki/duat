@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a07adfc5.js";
+            window.path_to_searchindex_js = "searchindex-95777985.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-261cd8e4.js"></script>
@@ -740,6 +740,10 @@ fn setup(opts: &amp;mut Opts) {
     opts.completions.min_prefix = 0;
     // Same, but while typing a command.
     opts.completions.cmd_min_prefix = 0;
+    // Same, but only for words. None means min_prefix is used.
+    opts.completions.word_min_prefix = None;
+    // Wether completions should be case insensitive
+    opts.completions.case_insensitive = true;
 
     // Notifications options:
     // Reformat the notifications messages.
