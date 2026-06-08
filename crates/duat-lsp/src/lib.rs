@@ -26,8 +26,8 @@ use lsp_types::{
     request::{CodeActionRequest, GotoDefinition, GotoTypeDefinition, HoverRequest, References},
 };
 
-use crate::parser::diagnostics;
 pub use crate::parser::{LspBuffer, LspCompletions};
+use crate::{config::LanguageServerConfig, parser::diagnostics};
 
 mod config;
 mod hover;
@@ -35,6 +35,33 @@ mod modes;
 mod parser;
 mod server;
 
+/// Options for `duat-lsp`.
+#[derive(Default)]
+pub struct DuatLspOpts {
+    lang_configs: HashMap<&'static str, HashMap<String, LanguageServerConfig>>,
+}
+
+impl DuatLspOpts {
+    /// Sets the language server configuration for a given language.
+    pub fn set_for_language(&mut self, lang: &'static str, config: &str) {
+        let server_configs = duat_core::try_or_log_err! {
+            toml::from_str::<HashMap<_, _>>(&config)?
+        };
+
+        self.lang_configs.insert(lang, server_configs);
+    }
+}
+
+/// Sets the [`DuatLspOpts`].
+pub fn set_opts(lsp_opts: DuatLspOpts) {
+    for (lang, server_configs) in lsp_opts.lang_configs {
+        config::set_for(lang, server_configs)
+    }
+}
+
+/// The [`Plugin`] for `duat-lsp`
+///
+/// [`Plugin`]: https://docs.rs/duat/latest/trait.Plugin.html
 pub struct DuatLsp;
 
 impl DuatLsp {

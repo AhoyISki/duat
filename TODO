@@ -11,7 +11,7 @@ FOR NEXT UPDATE:
     [x] Info.
     [ ] Diagnostics.
   [ ] See all diagnostics.
-  [ ] Configuration.
+  [x] Configuration.
 [x] Snippet support.
 [ ] More work on the Gutter.
   [x] Diferentiate hovering, cursoring, related and default display.
@@ -39,13 +39,13 @@ FOR NEXT UPDATE:
 [x] Improvements to duatmode:
   [x] `m` key like helix's.
   [x] composite `(` and `)` (and maybe `f` and `t`?).
-[ ] Reimplement the minimum prefix stuff.
+[x] Reimplement the minimum prefix stuff.
 [ ] For now, on Windows, duat can only reload if there is only one instance open.
 [ ] Turn the History into a tree.
   [x] Implementation.
   [ ] Mapping onto keys.
 [x] Fix rendering issues with layout changes.
-[ ] Make Text spawning immediate.
+[x] Make Text spawning immediate.
 
 QoL TODO LIST:
 [ ] Fix jumps not being recorded or being too recorded.
@@ -66,7 +66,6 @@ KNOWN BUGS:
   [ ] tree-sitter-duat-text is not being used.
   [ ] Overlays can't remove previous Forms early.
   [ ] Sometimes Completions don't open immediately on PromptLine.
-  [ ] Diagnostics randomly triggers an integer overflow probably.
 
 FUTURE UPDATES:
 [ ] Add registers possibly.

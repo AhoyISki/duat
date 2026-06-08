@@ -370,7 +370,12 @@ fn format_message(msg: &str) -> Text {
     let tt_form = form::id_of!("lsp.tt").to_tag(100);
 
     for range in tt_ranges.into_iter().rev() {
-        msg.replace_range(range.end - 1..range.end, "");
+        let msg_before = msg.clone();
+        if duat_core::utils::catch_panic(|| {
+            msg.replace_range(range.end - 1..range.end, "");
+        }).is_none() {
+            context::debug!("{msg_before:#?}, {msg:#?}, {range:?}");
+        }
         msg.replace_range(range.start..range.start + 1, "");
 
         msg.insert_tag(Ns::basic(), range.start..range.end - 2, tt_form);

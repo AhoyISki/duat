@@ -78,7 +78,8 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
     enable_layout_hooks(&mut opts);
     enable_buffer_hooks(&opts);
 
-    // Layout hooks
+    duatmode::opts::set(|dmopts| *dmopts = opts.duatmode);
+    duat_lsp::set_opts(std::mem::take(&mut opts.lsp));
 
     let default_buffer_opts = {
         BufferOpts {

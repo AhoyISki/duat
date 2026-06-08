@@ -18,13 +18,14 @@ use lsp_types::{
     notification::{DidChangeWatchedFiles, Notification, PublishDiagnostics},
     request::{
         RegisterCapability, Request, SemanticTokensFullDeltaRequest, SemanticTokensFullRequest,
+        WorkspaceConfiguration,
     },
 };
 use serde_json::Value;
 
 use crate::{
     parser::{self, Parser},
-    server::bridge::ServerBridge,
+    server::{SERVERS, bridge::ServerBridge},
 };
 
 macro_rules! get_method_params {
@@ -131,6 +132,28 @@ pub fn handle_request(bridge: &ServerBridge, request: jsonrpc_lite::Request) {
             }
 
             bridge.send_success(request.id, Value::Null);
+        }
+        WorkspaceConfiguration::METHOD => {
+            let params = get_method_params!(WorkspaceConfiguration, request.params, Request);
+            let servers = SERVERS.lock().unwrap();
+            let server = servers
+                .iter()
+                .find(|server| server.ns() == bridge.ns())
+                .unwrap();
+
+            let response = Vec::from_iter(params.items.into_iter().filter_map(|param| {
+                Some(
+                    server
+                        .config
+                        .settings
+                        .as_ref()?
+                        .get(param.section?)
+                        .cloned()
+                        .unwrap_or_else(|| Value::Object(serde_json::Map::default())),
+                )
+            }));
+
+            bridge.send_success(request.id, Value::Array(response));
         }
         _ => bridge.send_success(request.id, Value::Null),
     }

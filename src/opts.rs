@@ -10,6 +10,7 @@ use std::any::TypeId;
 
 #[allow(unused_imports)]
 pub use duat_core::opts::*;
+use duat_lsp::DuatLspOpts;
 pub use duatmode::TabMode;
 use duatmode::opts::DuatModeOpts;
 
@@ -235,6 +236,8 @@ pub struct Opts {
     /// vim one, or a helix one), and these options may not apply to
     /// those.
     pub duatmode: DuatModeOpts,
+    /// Options concerning [`duat_lsp`].
+    pub lsp: DuatLspOpts,
     /// Makes the [`FooterWidgets`] take up one line instead of two.
     ///
     /// Normally, the [`StatusLine`] is placed in one line and the
@@ -779,6 +782,7 @@ impl Default for Opts {
             newline: ' ',
             newline_on_empty: None,
             newline_trailing: Some('↵'),
+            lsp: DuatLspOpts::default(),
             duatmode: DuatModeOpts::default(),
             one_line_footer: false,
             footer_on_top: false,
@@ -845,7 +849,7 @@ impl Default for CompletionsOpts {
             case_insensitive: true,
             min_prefix: Default::default(),
             cmd_min_prefix: Default::default(),
-            word_min_prefix: None
+            word_min_prefix: None,
         }
     }
 }

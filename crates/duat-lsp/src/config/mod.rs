@@ -14,7 +14,7 @@ use serde::{Deserialize, Deserializer, de::Visitor};
 use serde_json::Value;
 
 mod languages;
-pub use languages::get_for;
+pub use languages::{get_for, set_for};
 
 use crate::path_to_uri;
 
@@ -131,7 +131,7 @@ pub fn get_initialize_params(path: &Path, config: &LanguageServerConfig) -> Init
         root_path: Some(rootdir.to_str().unwrap().to_string()),
         #[allow(deprecated)]
         root_uri: Some(path_to_uri(&rootdir).unwrap()),
-        initialization_options: config.settings.clone(),
+        initialization_options: None, //config.settings.clone(),
         capabilities: ClientCapabilities {
             workspace: Some(WorkspaceClientCapabilities {
                 apply_edit: Some(true),
@@ -149,7 +149,7 @@ pub fn get_initialize_params(path: &Path, config: &LanguageServerConfig) -> Init
                     ),
                 }),
                 did_change_configuration: Some(DynamicRegistrationClientCapabilities {
-                    dynamic_registration: Some(true),
+                    dynamic_registration: Some(false),
                 }),
                 did_change_watched_files: None,
                 symbol: Some(WorkspaceSymbolClientCapabilities {
@@ -161,7 +161,7 @@ pub fn get_initialize_params(path: &Path, config: &LanguageServerConfig) -> Init
                     }),
                 }),
                 execute_command: Some(no_dynamic_registration),
-                workspace_folders: Some(true),
+                workspace_folders: Some(false),
                 configuration: Some(true),
                 semantic_tokens: Some(SemanticTokensWorkspaceClientCapabilities {
                     refresh_support: Some(true),
@@ -416,7 +416,7 @@ pub fn get_initialize_params(path: &Path, config: &LanguageServerConfig) -> Init
                 work_done_progress: Some(true),
                 show_message: Some(ShowMessageRequestClientCapabilities {
                     message_action_item: Some(MessageActionItemCapabilities {
-                        additional_properties_support: Some(false),
+                        additional_properties_support: Some(true),
                     }),
                 }),
                 show_document: Some(ShowDocumentClientCapabilities { support: true }),
@@ -431,17 +431,14 @@ pub fn get_initialize_params(path: &Path, config: &LanguageServerConfig) -> Init
                     version: Some("0.4.0".to_string()),
                     allowed_tags: None,
                 }),
-                stale_request_support: Some(StaleRequestSupportClientCapabilities {
-                    cancel: true,
-                    retry_on_content_modified: Vec::new(),
-                }),
+                stale_request_support: None,
                 position_encodings: Some(vec![
                     PositionEncodingKind::UTF8,
                     PositionEncodingKind::UTF16,
                 ]),
             }),
-            offset_encoding: None,
-            experimental: None,
+            offset_encoding: Some(["utf-8", "utf-16"].map(String::from).to_vec()),
+            experimental: config.experimental.clone(),
         },
         trace: Some(TraceValue::Off),
         workspace_folders: Some(vec![WorkspaceFolder {

@@ -326,8 +326,10 @@ impl Completions {
 
             let min_prefix = if TypeId::of::<C>() == TypeId::of::<CmdDoc>() {
                 opts.cmd_min_prefix
-            } else {
+            } else if master.widget().is::<Buffer>() {
                 opts.min_prefix
+            } else {
+                0
             };
 
             let comp = Completions {

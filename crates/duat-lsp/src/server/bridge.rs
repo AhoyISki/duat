@@ -417,9 +417,7 @@ fn stdout_loop(server_bridge: ServerBridge, stdout: &mut impl BufRead) -> std::i
                             let value = content.get_result().unwrap().clone();
                             match callback {
                                 Callback::Queued(func) => context::queue(move |pa| func(pa, value)),
-                                Callback::Immediate(func) => {
-                                    func(value)
-                                }
+                                Callback::Immediate(func) => func(value),
                             };
                         }
                     }
@@ -435,7 +433,7 @@ fn stdout_loop(server_bridge: ServerBridge, stdout: &mut impl BufRead) -> std::i
     }
 }
 
-fn method_id(method_name: &str) -> Option<Id> {
+pub(super) fn method_id(method_name: &str) -> Option<Id> {
     use lsp_types::request::*;
     match method_name {
         Initialize::METHOD => Some(Id::Num(0)),

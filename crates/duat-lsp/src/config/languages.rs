@@ -5,13 +5,18 @@ use std::{
 
 use crate::config::LanguageServerConfig;
 
-/// Get the [`LanguageServerConfig`] for a given language
+/// Get the [`LanguageServerConfig`] for a given language.
 pub fn get_for(language: &str) -> Option<(HashMap<String, LanguageServerConfig>, bool)> {
-    DEFAULT_CONFIGS.lock().unwrap().get(language).cloned()
+    CONFIGS.lock().unwrap().get(language).cloned()
+}
+
+/// Sets the language servers for a given language.
+pub fn set_for(language: &'static str, server_configs: HashMap<String, LanguageServerConfig>) {
+    CONFIGS.lock().unwrap().insert(language, (server_configs, true));
 }
 
 // Configuration for language servers, taken from kak-lsp.
-static DEFAULT_CONFIGS: LazyLock<Mutex<HashMap<&str, (LspList, bool)>>> = LazyLock::new(|| {
+static CONFIGS: LazyLock<Mutex<HashMap<&str, (LspList, bool)>>> = LazyLock::new(|| {
     let mut map = HashMap::new();
 
     // Doing it this way to avoid heavy macro recursion.

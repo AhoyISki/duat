@@ -17,8 +17,8 @@ use duat_core::{
 use duat_filetype::FileType;
 use jsonrpc_lite::Id;
 use lsp_types::{
-    ServerCapabilities, ServerInfo,
-    notification::{Exit, Notification},
+    DidChangeConfigurationParams, ServerCapabilities, ServerInfo,
+    notification::{DidChangeConfiguration, Exit, Notification},
     request::{Initialize, Request, Shutdown},
 };
 
@@ -138,6 +138,10 @@ impl Server {
                     .ok()
                     .unwrap();
             }
+        });
+
+        self.send_notification::<DidChangeConfiguration>(DidChangeConfigurationParams {
+            settings: serde_json::Value::Object(serde_json::Map::default()),
         });
     }
 
