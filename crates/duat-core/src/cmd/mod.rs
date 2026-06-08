@@ -718,7 +718,8 @@ impl Commands {
         let silent = call.len() > call.trim_start().len();
         let cmd = command.cmd.clone();
         Ok(move |pa: &mut Pass| {
-            let args = Args::new(&call);
+            let mut args = Args::new(&call);
+            _ = args.next();
 
             match catch_panic(move || cmd.lock().unwrap()(pa, args)) {
                 Some(result) => result
@@ -750,7 +751,9 @@ impl Commands {
             command.check_args
         };
 
-        Some(move |pa: &Pass| check_args(pa, &mut Args::new(call)))
+        let mut args = Args::new(call);
+        _ = args.next();
+        Some(move |pa: &Pass| check_args(pa, &mut args))
     }
 
     /// Gets the last parsed [`Parameter`] of a call
@@ -770,6 +773,7 @@ impl Commands {
 
         Some(move |pa: &Pass| {
             let mut args = Args::new(call);
+            _ = args.next();
             check_args(pa, &mut args);
             args
         })

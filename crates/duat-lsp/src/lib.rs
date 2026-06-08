@@ -45,7 +45,7 @@ impl DuatLspOpts {
     /// Sets the language server configuration for a given language.
     pub fn set_for_language(&mut self, lang: &'static str, config: &str) {
         let server_configs = duat_core::try_or_log_err! {
-            toml::from_str::<HashMap<_, _>>(&config)?
+            toml::from_str::<HashMap<_, _>>(config)?
         };
 
         self.lang_configs.insert(lang, server_configs);
@@ -522,17 +522,30 @@ fn goto_definitions(locations: Option<GotoDefinitionResponse>, pa: &mut Pass, en
     match locations {
         GotoDefinitionResponse::Scalar(location) => {
             let path = uri_to_path(location.uri);
-
-            if cmd::call(pa, format!("open {}", path.to_string_lossy())).is_ok() {
-                let buffer = context::current_buffer(pa);
-
-                let start = encoding.byte_from_pos(buffer.text(pa), location.range.start);
-                let end = encoding.byte_from_pos(buffer.text(pa), location.range.end);
-
-                if let (Some(start), Some(end)) = (start, end) {
-                    buffer.edit_main(pa, |mut s| s.move_to(start..end));
-                }
+            let Ok(text) = std::fs::read_to_string(&path).map(Text::from) else {
+                return;
             };
+
+            let range = {
+                let start = encoding.byte_from_pos(&text, location.range.start);
+                let end = encoding.byte_from_pos(&text, location.range.end);
+                let (Some(start), Some(end)) = (start, end) else {
+                    return;
+                };
+
+                let start = text.point_at_byte(start);
+                let end = text.point_at_byte(end);
+
+                format!(
+                    "{}:{}..{}:{}",
+                    start.line() + 1,
+                    start.char_col(&text) + 1,
+                    end.line() + 1,
+                    end.char_col(&text)
+                )
+            };
+
+            _ = cmd::call_notify(pa, format!("open {} {range}", path.to_string_lossy()));
         }
         GotoDefinitionResponse::Array(locations) => {
             spawn_picker(

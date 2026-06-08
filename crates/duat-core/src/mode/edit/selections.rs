@@ -19,7 +19,7 @@ use gap_buf::{GapBuffer, gap_buffer};
 pub use self::selection::{Selection, VPoint};
 use crate::{
     buffer::Change,
-    text::{Point, Strs, TextRange},
+    text::{Point, Strs, TextRange, TextRangeOrIndex},
     utils::{add_shifts, merging_range_by_guess_and_lazy_shift},
 };
 
@@ -73,6 +73,21 @@ impl Selections {
     /// Sets the main [`Selection`].
     pub fn set_main(&mut self, new: usize) {
         self.main_i = new.min(self.buf.len().saturating_sub(1));
+    }
+
+    /// Moves the main [`Selection`] to a position or range.
+    ///
+    /// Invariant: Expects there to be a main selection.
+    pub(crate) fn move_main(&mut self, strs: &Strs, range: impl TextRangeOrIndex) {
+        let mut range = range.to_range(strs.len());
+
+        range.start = range.start.min(strs.len() - 1);
+        range.end = range.end.min(strs.len() - 1);
+
+        self.buf[self.main_i] = Selection::new(
+            strs.point_at_byte(range.start),
+            (range.end > range.start).then(|| strs.point_at_byte(range.end)),
+        );
     }
 
     /// Rotates the main [`Selection`] by an amount.

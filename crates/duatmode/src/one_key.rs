@@ -99,11 +99,8 @@ fn match_goto(
     key_event: KeyEvent,
     mut sel_type: SelType,
 ) -> OneKeyOrResult {
-    let mut switch_and_register = |cmd| {
-        if cmd::call_notify(pa, cmd).is_ok() {
-            let handle = context::current_buffer(pa);
-            crate::normal::jump_list::register(pa, &handle, 5);
-        }
+    let mut switch = |cmd| {
+        _ = cmd::call_notify(pa, cmd);
     };
 
     match key_event {
@@ -140,9 +137,9 @@ fn match_goto(
         }),
 
         ////////// Buffer change keys
-        event!('a') => switch_and_register("last-switched-buffer"),
-        event!('n') => switch_and_register("next-buffer --global"),
-        event!('N') => switch_and_register("prev-buffer --global"),
+        event!('a') => switch("last-switched-buffer"),
+        event!('n') => switch("next-buffer --global"),
+        event!('N') => switch("prev-buffer --global"),
         event!('o') => _ = cmd::call(pa, "open"),
         _ => {}
     }

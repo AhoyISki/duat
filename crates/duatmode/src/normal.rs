@@ -15,14 +15,14 @@ use duat_core::{
     opts::PrintOpts,
     text::Strs,
 };
-use duat_jump_list::{BufferJumps, JumpListId};
+use duat_jump_list::BufferJumps;
+pub use fns::*;
 
 use crate::{
     SelType, escaped_regex,
     inc_searchers::{KeepMatching, Select, Split},
     one_key::{OneKey, OneKeyOrResult},
 };
-pub use fns::*;
 
 pub(crate) fn setup_hooks() {
     hook::add::<ModeSwitched>(|_, _| {
@@ -90,7 +90,8 @@ impl Default for Normal {
 
 impl Mode for Normal {
     fn bindings() -> mode::Bindings {
-        // Extracted to another module due to macro slowdowns in rust-analyzer.
+        // Extracted to another module due to macro slowdowns in
+        // rust-analyzer.
         crate::bindings::normal_bindings()
     }
 
@@ -135,6 +136,12 @@ impl Mode for Normal {
         } else {
             let (param, param_was_set) = crate::parameter::take_param(pa);
             (param as usize, param_was_set)
+        };
+
+        let register_jump = |pa: &mut Pass| {
+            if let Some(buffer) = widget.get_as() {
+                jump_list::register(pa, &buffer, 5);
+            }
         };
 
         match key_event {
@@ -255,18 +262,17 @@ impl Mode for Normal {
             event!('*') => fns::set_search_to_main_selection(pa),
 
             ////////// Jumping
-            alt!('u') => fns::jump_on_selection_history(pa, -(rec as i32)),
-            alt!('U') => fns::jump_on_selection_history(pa, rec as i32),
+            alt!('u') => fns::move_on_selection_changes(pa, -(rec as i32)),
+            alt!('U') => fns::move_on_selection_changes(pa, rec as i32),
 
             ////////// Macro keys
             alt!('q') => fns::play_macro(pa),
             alt!('Q') => fns::record_macro(pa),
 
             ////////// Jumping around
-            ctrl!('o') if let Some(buffer) = widget.get_as() => jump_list::jump_by(pa, &buffer, -1),
-            ctrl!('i') | event!(Tab) if let Some(buffer) = widget.get_as() => {
-                jump_list::jump_by(pa, &buffer, 1)
-            }
+            ctrl!('o') => fns::move_on_jump_list(pa, -(param as i32)),
+            ctrl!('i') | event!(Tab) => fns::move_on_jump_list(pa, param as i32),
+            ctrl!('j') => fns::save_on_jump_list(pa),
 
             event!(Tab) if Picker::is_open(pa) => {
                 if Picker::is_on_preview(pa) {
@@ -283,27 +289,25 @@ impl Mode for Normal {
             event!(':') => mode::set(pa, RunCommands::new()),
             event!('|') => mode::set(pa, PipeSelections::new()),
             event!('g') if param_was_set => {
+                register_jump(pa);
                 widget.remove_extra_selections(pa);
                 widget.edit_main(pa, |mut s| {
                     s.unset_anchor();
                     s.move_to_coords(param - 1, 0);
                 });
                 mode::reset_current_sequence(pa);
-                if let Some(buffer) = widget.get_as() {
-                    jump_list::register(pa, &buffer, 5);
-                }
+                register_jump(pa);
             }
             event!('g') => set_onekey(OneKey::GoTo(SelType::Normal)),
             event!('G') if param_was_set => {
+                register_jump(pa);
                 widget.remove_extra_selections(pa);
                 widget.edit_main(pa, |mut s| {
                     s.set_anchor_if_needed();
                     s.move_to_coords(param - 1, 0)
                 });
                 mode::reset_current_sequence(pa);
-                if let Some(buffer) = widget.get_as() {
-                    jump_list::register(pa, &buffer, 5);
-                }
+                register_jump(pa);
             }
             event!('G') => set_onekey(OneKey::GoTo(SelType::Extend)),
             event!(' ') => mode::set(pa, mode::User),
@@ -355,8 +359,8 @@ pub mod fns {
     /// `count` represents the amount of characters to move. Negative
     /// numbers move to the left, positive move to the right.
     ///
-    /// If `extend_selections` is set to `true`, will extend selections
-    /// instead of just moving them.
+    /// If `extend_selections` is set to `true`, will extend
+    /// selections instead of just moving them.
     ///
     /// # Key equivalents:
     ///
@@ -375,11 +379,11 @@ pub mod fns {
 
     /// [`Normal`] command: Move all selections vertically.
     ///
-    /// `count` represents the amount of lines to move. Negative numbers
-    /// move up, positive move down.
+    /// `count` represents the amount of lines to move. Negative
+    /// numbers move up, positive move down.
     ///
-    /// If `extend_selections` is set to `true`, will extend selections
-    /// instead of just moving them.
+    /// If `extend_selections` is set to `true`, will extend
+    /// selections instead of just moving them.
     ///
     /// # Key equivalents:
     ///
@@ -415,11 +419,11 @@ pub mod fns {
     /// Wrapped movement doesnt' move whole lines, but instead goes up
     /// or down depending on how the lines are wrapped.
     ///
-    /// `count` represents the amount of lines to move. Negative numbers
-    /// move up, positive move down.
+    /// `count` represents the amount of lines to move. Negative
+    /// numbers move up, positive move down.
     ///
-    /// If `extend_selections` is set to `true`, will extend selections
-    /// instead of just moving them.
+    /// If `extend_selections` is set to `true`, will extend
+    /// selections instead of just moving them.
     ///
     /// # Key equivalents:
     ///
@@ -437,11 +441,11 @@ pub mod fns {
 
     /// [`Normal`] command: Move all selections count word.
     ///
-    /// `count` represents the amount of words to move. Negative numbers
-    /// move left, positive move right.
+    /// `count` represents the amount of words to move. Negative
+    /// numbers move left, positive move right.
     ///
-    /// If `extend_selections` is set to `true`, will extend selections
-    /// instead of just moving them.
+    /// If `extend_selections` is set to `true`, will extend
+    /// selections instead of just moving them.
     ///
     /// # Key equivalents:
     ///
@@ -601,8 +605,8 @@ pub mod fns {
 
     /// [`Normal`] command: Select until end of line
     ///
-    /// If `extend_selections` is set to `true`, will extend selections
-    /// instead of just moving them.
+    /// If `extend_selections` is set to `true`, will extend
+    /// selections instead of just moving them.
     ///
     /// # Key equivalents:
     ///
@@ -623,8 +627,8 @@ pub mod fns {
 
     /// [`Normal`] command: Select until start of line.
     ///
-    /// If `extend_selections` is set to `true`, will extend selections
-    /// instead of just moving them.
+    /// If `extend_selections` is set to `true`, will extend
+    /// selections instead of just moving them.
     ///
     /// # Key equivalents:
     ///
@@ -647,7 +651,8 @@ pub mod fns {
     ///
     /// This key works similarly to `mm` on Helix or `m` on Kakoune.
     /// However, one major difference from those is that this one will
-    /// keep moving forwards/backwards, letting you quickly jump pairs.
+    /// keep moving forwards/backwards, letting you quickly jump
+    /// pairs.
     ///
     /// # Key equivalents:
     ///
@@ -985,11 +990,11 @@ pub mod fns {
 
     /// [`Normal`] command: Reindent lines in all selections.
     ///
-    /// `count` represents the amount of indents to add/remove. Negative
-    /// numbers dedent, positive indent.
+    /// `count` represents the amount of indents to add/remove.
+    /// Negative numbers dedent, positive indent.
     ///
-    /// If `extend_selections` is set to `true`, will extend selections
-    /// instead of just moving them.
+    /// If `extend_selections` is set to `true`, will extend
+    /// selections instead of just moving them.
     ///
     /// # Key equivalents:
     ///
@@ -1418,14 +1423,15 @@ pub mod fns {
         })
     }
 
-    /// [`Normal`] command: Jumps forward/backwards on the selection history.
+    /// [`Normal`] command: Jumps forward/backwards through selection
+    /// changes.
     ///
     /// # Key equivalents:
     ///
     /// - `<a-u>`, <a-U>.
     ///
     /// [`Normal`]: super::Normal
-    pub fn jump_on_selection_history(pa: &mut Pass, count: i32) {
+    pub fn move_on_selection_changes(pa: &mut Pass, count: i32) {
         if count == 0 {
             return;
         }
@@ -1435,6 +1441,36 @@ pub mod fns {
             && let Some(jump) = buffer.move_jumps_by(pa, *U_ALT_U_ID, count)
         {
             jump.apply(pa, &buffer);
+        }
+    }
+
+    /// [`Normal`] command: Jumps forward/backwards through jump list.
+    ///
+    /// # Key equivalent:
+    ///
+    /// - `<c-o>`, <c-i>.
+    ///
+    /// [`Normal`]: super::Normal
+    pub fn move_on_jump_list(pa: &mut Pass, count: i32) {
+        if count == 0 {
+            return;
+        }
+
+        let (widget, _) = current_parts(pa);
+        if let Some(buffer) = widget.get_as() {
+            super::jump_list::jump_by(pa, &buffer, count)
+        }
+    }
+
+    /// [`Normal`] command: Save selections to jump list.
+    ///
+    /// # Key equivalent:
+    ///
+    /// - `<c-j>`.
+    pub fn save_on_jump_list(pa: &mut Pass) {
+        let (widget, _) = current_parts(pa);
+        if let Some(buffer) = widget.get_as() {
+            super::jump_list::register(pa, &buffer, 5)
         }
     }
 
@@ -1561,7 +1597,7 @@ static ALT_DOT: Mutex<Option<(OneKey, KeyEvent)>> = Mutex::new(None);
 static MACRO: Mutex<Option<Vec<KeyEvent>>> = Mutex::new(None);
 static MACRO_NS: LazyLock<Ns> = Ns::new_lazy();
 
-static U_ALT_U_ID: LazyLock<JumpListId> = LazyLock::new(JumpListId::new);
+static U_ALT_U_ID: LazyLock<Ns> = Ns::new_lazy();
 
 pub(crate) mod jump_list {
     use std::sync::{LazyLock, Mutex};
@@ -1574,10 +1610,10 @@ pub(crate) mod jump_list {
         hook::{self, BufferSwitched},
         mode,
     };
-    use duat_jump_list::{BufferJumps, JumpId, JumpListId};
+    use duat_jump_list::{BufferJumps, JumpId};
 
     static JUMP_LIST: Mutex<JumpList> = Mutex::new(JumpList::new());
-    static JUMPS_ID: LazyLock<JumpListId> = LazyLock::new(JumpListId::new);
+    static NS: LazyLock<Ns> = Ns::new_lazy();
     static JUMPS_NS: LazyLock<Ns> = Ns::new_lazy();
 
     /// A list for jumping around [`Buffer`]s
@@ -1601,11 +1637,11 @@ pub(crate) mod jump_list {
     pub fn register(pa: &mut Pass, buffer: &Handle<Buffer>, eq_lookback: usize) {
         let mut jl = JUMP_LIST.lock().unwrap();
 
-        let jump_id = buffer.record_or_get_current_jump(pa, *JUMPS_ID);
+        let jump_id = buffer.record_or_get_current_jump(pa, *NS);
 
         for (jump_id, buffer_id) in jl.list[..jl.cur].iter().rev().take(eq_lookback) {
             if *buffer_id == buffer.read(pa).buffer_id()
-                && let Some(jump) = buffer.get_jump(pa, *JUMPS_ID, *jump_id)
+                && let Some(jump) = buffer.get_jump(pa, *NS, *jump_id)
                 && jump.is_eq(buffer.read(pa))
             {
                 return;
@@ -1653,7 +1689,7 @@ pub(crate) mod jump_list {
                 buffer.clone()
             };
 
-            if let Some(jump) = new_buffer.go_to_jump(pa, *JUMPS_ID, jump_id) {
+            if let Some(jump) = new_buffer.go_to_jump(pa, *NS, jump_id) {
                 if !new_buffer.ptr_eq(buffer.widget()) || !jump.is_eq(new_buffer.read(pa)) {
                     jump.apply(pa, &new_buffer);
                 } else if jl.cur > 0 {

@@ -13,13 +13,14 @@
 use std::fmt::Alignment;
 
 use duat_core::{
+    Ns,
     buffer::Buffer,
-    context::Handle,
+    context::{self, Handle},
     data::{Pass, RwData},
     form,
     hook::{self, BufferUpdated, OnMouseEvent},
     mode::{MouseButton, MouseEventKind},
-    text::{Builder, Spacer, Text, TextMut},
+    text::{Builder, Mask, Spacer, Text, TextMut},
     ui::{PushSpecs, Side, Widget},
 };
 

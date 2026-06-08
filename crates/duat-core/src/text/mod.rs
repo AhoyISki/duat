@@ -84,10 +84,14 @@
 //! [`Mode`]: crate::mode::Mode
 use std::ops::Range;
 
-pub(crate) use crate::text::{strs::StrsBuf, tags::{ToggleFn, Spawn}};
+pub(crate) use crate::text::{
+    strs::StrsBuf,
+    tags::{Spawn, ToggleFn},
+};
 use crate::{
     Ns,
     buffer::{Change, History},
+    cmd::BufferRangeOrIndex,
     mode::{Selection, Selections},
     text::{
         tags::{FwdTags, InnerTags, RevTags},
@@ -1040,18 +1044,35 @@ impl<'t> TextMut<'t> {
         self.text.replace_selections(saved);
     }
 
-    /// A mut reference to this `Text`'s [`Selections`] if they
-    /// exist.
-    pub(crate) fn selections_mut(&mut self) -> &mut Selections {
-        &mut self.text.0.selections
-    }
-
     /// Populates the [`Selections`] within.
     ///
     /// If there were [`Selection`]s before, do nothing. Otherwise,
     /// add a main selection on [`Point::default()`].
     pub fn populate_selections(&mut self) {
         self.text.populate_selections();
+    }
+
+    /// A mut reference to this `Text`'s [`Selections`] if they
+    /// exist.
+    pub(crate) fn selections_mut(&mut self) -> &mut Selections {
+        &mut self.text.0.selections
+    }
+
+    /// Moves the main selection.
+    pub(crate) fn move_main(&mut self, range_or_index: BufferRangeOrIndex) {
+        let range = match range_or_index {
+            BufferRangeOrIndex::Index(pos) => {
+                let pos = self.point_at_coords(pos.line, pos.column);
+                pos..pos
+            }
+            BufferRangeOrIndex::Range(range) => {
+                let start = self.point_at_coords(range.start.line, range.start.column);
+                let end = self.point_at_coords(range.end.line, range.end.column);
+                start..end
+            }
+        };
+        
+        self.text.0.selections.move_main(&self.text.0.buf, range);
     }
 }
 

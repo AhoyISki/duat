@@ -136,7 +136,7 @@ impl Jump {
 }
 
 #[derive(Debug)]
-struct Parser(HashMap<JumpListId, (GapBuffer<Saved>, usize)>, Ns);
+struct Parser(HashMap<Ns, (GapBuffer<Saved>, usize)>, Ns);
 
 impl Parser {
     fn new() -> Self {
@@ -206,12 +206,7 @@ pub trait BufferJumps {
     /// to jump to specific selections via [`Handle::go_to_jump`].
     ///
     /// [`Selections`]: duat_core::mode::Selections
-    fn record_jump(
-        &self,
-        pa: &mut Pass,
-        jump_list_id: JumpListId,
-        allow_duplicates: bool,
-    ) -> Option<JumpId>;
+    fn record_jump(&self, pa: &mut Pass, ns: Ns, allow_duplicates: bool) -> Option<JumpId>;
 
     /// Jumps forwards or backwards through the [`Jump`]s on the list
     ///
@@ -223,7 +218,7 @@ pub trait BufferJumps {
     /// This will return [`None`] if the [`JumpList`] plugin was not
     /// plugged, or if no jumps have been saved/all jumps have been
     /// removed.
-    fn move_jumps_by(&self, pa: &mut Pass, jump_list_id: JumpListId, by: i32) -> Option<Jump>;
+    fn move_jumps_by(&self, pa: &mut Pass, ns: Ns, by: i32) -> Option<Jump>;
 
     /// Jumps to the [`Jump`] specified by a [`JumpId`]
     ///
@@ -238,7 +233,7 @@ pub trait BufferJumps {
     ///
     /// If you want the `Jump` without actually jumping, see
     /// [`Handle::get_jump`].
-    fn go_to_jump(&self, pa: &mut Pass, jump_list_id: JumpListId, id: JumpId) -> Option<Jump>;
+    fn go_to_jump(&self, pa: &mut Pass, ns: Ns, id: JumpId) -> Option<Jump>;
 
     /// Gets the [`Jump`] specified by a [`JumpId`]
     ///
@@ -250,25 +245,20 @@ pub trait BufferJumps {
     /// This will return [`None`] if the [`JumpList`] plugin was not
     /// plugged, or if the [`JumpId`] in question doesn't belong to
     /// this [`Buffer`].
-    fn get_jump(&self, pa: &mut Pass, jump_list_id: JumpListId, id: JumpId) -> Option<Jump>;
+    fn get_jump(&self, pa: &mut Pass, ns: Ns, id: JumpId) -> Option<Jump>;
 
     /// Records a non duplicated selection if there is none, returning
     /// it if successful. Otherwise returns the current [`JumpId`]
-    fn record_or_get_current_jump(&self, pa: &mut Pass, jump_list_id: JumpListId) -> JumpId;
+    fn record_or_get_current_jump(&self, pa: &mut Pass, ns: Ns) -> JumpId;
 }
 
 impl BufferJumps for Handle<Buffer> {
-    fn record_jump(
-        &self,
-        pa: &mut Pass,
-        jump_list_id: JumpListId,
-        allow_duplicates: bool,
-    ) -> Option<JumpId> {
+    fn record_jump(&self, pa: &mut Pass, ns: Ns, allow_duplicates: bool) -> Option<JumpId> {
         let (parser, buf) = PARSERS.write(pa, self).unwrap();
         parser.update(buf);
 
         let selections = buf.selections();
-        let (list, cur) = parser.0.entry(jump_list_id).or_default();
+        let (list, cur) = parser.0.entry(ns).or_default();
 
         if !allow_duplicates {
             for i in [Some(*cur), cur.checked_sub(1)].into_iter().flatten() {
@@ -324,14 +314,14 @@ impl BufferJumps for Handle<Buffer> {
         Some(jump_id)
     }
 
-    fn move_jumps_by(&self, pa: &mut Pass, jump_list_id: JumpListId, mut by: i32) -> Option<Jump> {
+    fn move_jumps_by(&self, pa: &mut Pass, ns: Ns, mut by: i32) -> Option<Jump> {
         let (parser, buf) = PARSERS.write(pa, self).unwrap();
         parser.update(buf);
 
         let mut changes = Changes::default();
         let mut last_seen = None;
 
-        let (list, cur) = parser.0.entry(jump_list_id).or_default();
+        let (list, cur) = parser.0.entry(ns).or_default();
 
         let jump = if by >= 0 {
             loop {
@@ -400,22 +390,22 @@ impl BufferJumps for Handle<Buffer> {
         })
     }
 
-    fn go_to_jump(&self, pa: &mut Pass, jump_list_id: JumpListId, id: JumpId) -> Option<Jump> {
-        get_jump(self, pa, jump_list_id, id, true)
+    fn go_to_jump(&self, pa: &mut Pass, ns: Ns, id: JumpId) -> Option<Jump> {
+        get_jump(self, pa, ns, id, true)
     }
 
-    fn get_jump(&self, pa: &mut Pass, jump_list_id: JumpListId, id: JumpId) -> Option<Jump> {
-        get_jump(self, pa, jump_list_id, id, false)
+    fn get_jump(&self, pa: &mut Pass, ns: Ns, id: JumpId) -> Option<Jump> {
+        get_jump(self, pa, ns, id, false)
     }
 
-    fn record_or_get_current_jump(&self, pa: &mut Pass, jump_list_id: JumpListId) -> JumpId {
-        if let Some(jump_id) = self.record_jump(pa, jump_list_id, false) {
+    fn record_or_get_current_jump(&self, pa: &mut Pass, ns: Ns) -> JumpId {
+        if let Some(jump_id) = self.record_jump(pa, ns, false) {
             jump_id
         } else {
             let (parser, buf) = PARSERS.write(pa, self).unwrap();
             parser.update(buf);
 
-            let (list, cur) = parser.0.get_mut(&jump_list_id).unwrap();
+            let (list, cur) = parser.0.get_mut(&ns).unwrap();
 
             list.range(..(*cur + 1).min(list.len()))
                 .iter()
@@ -435,14 +425,14 @@ impl BufferJumps for Handle<Buffer> {
 fn get_jump(
     buffer: &Handle<Buffer>,
     pa: &mut Pass,
-    jump_list_id: JumpListId,
+    ns: Ns,
     id: JumpId,
     do_jump: bool,
 ) -> Option<Jump> {
     let (parser, buf) = PARSERS.write(pa, buffer).unwrap();
     parser.update(buf);
 
-    let (list, cur) = parser.0.entry(jump_list_id).or_default();
+    let (list, cur) = parser.0.entry(ns).or_default();
 
     let mut changes = Changes::default();
     let mut new_cur = *cur;
@@ -644,33 +634,5 @@ impl JumpId {
     fn new() -> Self {
         static COUNT: AtomicUsize = AtomicUsize::new(0);
         Self(COUNT.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
-/// A struct representing a list of jumps
-///
-/// You can use this to maintain multiple separate jump lists for a
-/// single [`Buffer`]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct JumpListId(usize);
-
-impl JumpListId {
-    /// Returns a new unique `JumpListId`
-    ///
-    /// Each id represents a unique sequence of [`Jump`] recordings
-    /// for a given [`Buffer`]. You can use this to modify jump lists
-    /// without invalidating other jumps. As an example, the
-    /// `duatmode` crate uses this feature to keep track of all
-    /// selection changes in a `Buffer`, as well as a separate list
-    /// for specific jumps with the `g` key.
-    pub fn new() -> Self {
-        static COUNT: AtomicUsize = AtomicUsize::new(0);
-        Self(COUNT.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
-impl Default for JumpListId {
-    fn default() -> Self {
-        Self::new()
     }
 }

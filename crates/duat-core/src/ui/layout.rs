@@ -39,7 +39,10 @@
 //! [`Buffer`]: crate::buffer::Buffer
 use super::PushSpecs;
 use crate::{
-    buffer::Buffer, context::{self, Handle}, data::Pass, ui::{Side, Window}
+    buffer::Buffer,
+    context::Handle,
+    data::Pass,
+    ui::{Side, Window},
 };
 
 /// A form of organizing opened [`Buffer`]s
@@ -49,20 +52,24 @@ use crate::{
 ///
 /// [`Buffer`]: crate::buffer::Buffer
 pub trait Layout: Send {
-    /// Opens a new [`Buffer`]
+    /// Opens a new [`Buffer`].
     ///
     /// The returned `(Handle<Buffer>, PushSpecs)` value
     /// represents the [`PushSpecs`] to use when pushing this new
     /// [`Buffer`], and the [`Handle<Buffer>`] representing which
     /// `Buffer` to push this `Buffer` to.
     ///
+    /// If this returned value is [`None`], then the [`Buffer`] will
+    /// be placed on a new window instead.
+    ///
     /// There will _always_ be at least one `Buffer` open, since the
     /// first opened `Buffer` doesn't follow layouts.
-    ///
-    /// [`Ok(Handle<Buffer>, PushSpecs)`]: Handle
-    ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    fn new_buffer(&mut self, pa: &Pass, windows: &[Window]) -> (Handle<Buffer>, PushSpecs);
+    fn new_buffer(
+        &mut self,
+        pa: &Pass,
+        windows: &[Window],
+        win: usize,
+    ) -> Option<(Handle<Buffer>, PushSpecs)>;
 }
 
 /// [`Layout`]: One [`Buffer`] on the left, others on the right
@@ -75,13 +82,17 @@ pub trait Layout: Send {
 pub struct MasterOnLeft;
 
 impl Layout for MasterOnLeft {
-    fn new_buffer(&mut self, pa: &Pass, windows: &[Window]) -> (Handle<Buffer>, PushSpecs) {
-        let cur_win = context::current_win_index(pa);
-        let last = windows[cur_win].buffers(pa).last().unwrap().clone();
-        if windows[cur_win].buffers(pa).len() == 1 {
+    fn new_buffer(
+        &mut self,
+        pa: &Pass,
+        windows: &[Window],
+        win: usize,
+    ) -> Option<(Handle<Buffer>, PushSpecs)> {
+        let last = windows[win].buffers(pa).last().unwrap().clone();
+        Some(if windows[win].buffers(pa).len() == 1 {
             (last, PushSpecs { side: Side::Right, ..Default::default() })
         } else {
             (last, PushSpecs { side: Side::Below, ..Default::default() })
-        }
+        })
     }
 }

@@ -1,7 +1,8 @@
 //! The session of Dua//!//! **FOR USE IN THE DUAT EXECUTABLE ONLY**
 //!
 //! Thi module defines the [`start`] function, which is used to run
-//! the whole session of duat, controling everything that is not//! related to printing or receiving input. This includes interpreting
+//! the whole session of duat, controling everything that is not//!
+//! related to printing or receiving input. This includes interpreting
 //! input, updating every widget, updating parsers, mapping keys, etc.
 use std::{
     path::PathBuf,
@@ -105,6 +106,7 @@ pub fn start(setup: fn() -> (Ui, BufferOpts)) -> std::io::Result<()> {
         let pa = unsafe { &mut Pass::new() };
 
         let layout = Box::new(Mutex::new(MasterOnLeft));
+
         setup_buffers(pa, buffers, ui, layout);
 
         if let Some(reload_start) = reload_start {
@@ -507,7 +509,7 @@ fn setup_buffers(
 ) {
     let mut layout = Some(layout);
 
-    for mut window_buffers in buffers.into_iter().map(|rb| rb.into_iter()) {
+    for (win, mut window_buffers) in buffers.into_iter().map(|rb| rb.into_iter()).enumerate() {
         let opts = *BUFFER_OPTS.get().unwrap();
         let (buffer, is_active) = window_buffers.next().unwrap().into_buffer(opts, 0);
 
@@ -524,7 +526,7 @@ fn setup_buffers(
             let opts = *BUFFER_OPTS.get().unwrap();
             let layout_order = i + 1;
             let (buffer, is_active) = reloaded_buffer.into_buffer(opts, layout_order);
-            let node = context::windows().new_buffer(pa, buffer);
+            let node = context::windows().new_buffer(pa, win, buffer);
             if is_active {
                 context::set_current_node(pa, node);
             }

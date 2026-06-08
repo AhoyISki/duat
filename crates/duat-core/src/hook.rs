@@ -201,7 +201,7 @@ mod global {
     use std::sync::LazyLock;
 
     use super::{Hookable, InnerHooks};
-    use crate::{Ns, data::Pass, hook::Callback};
+    use crate::{Ns, data::Pass, hook::{Callback, Lateness}};
 
     static HOOKS: LazyLock<InnerHooks> = LazyLock::new(InnerHooks::default);
 
@@ -224,7 +224,7 @@ mod global {
         callback: Option<Callback<H>>,
         ns: Option<Ns>,
         filter: Option<Box<dyn Fn(&H) -> bool + Send>>,
-        lateness: usize,
+        lateness: Lateness,
     }
 
     impl<H: Hookable> HookBuilder<H> {
@@ -295,7 +295,13 @@ mod global {
         /// [printed lines]: crate::context::Handle::printed_lines
         /// [`Buffer`]: crate::buffer::Buffer
         pub fn lateness(mut self, lateness: usize) -> Self {
-            self.lateness = lateness;
+            self.lateness = Lateness::Normal(lateness);
+            self
+        }
+
+        /// Makes this the absolutely last hook to trigger.
+        pub(crate) fn absolute_latest(mut self) -> Self {
+            self.lateness = Lateness::Latest;
             self
         }
     }
@@ -341,7 +347,7 @@ mod global {
             callback: Some(Callback::FnMut(Box::new(f))),
             ns: None,
             filter: None,
-            lateness: 100,
+            lateness: Lateness::Normal(100),
         }
     }
 
@@ -379,7 +385,7 @@ mod global {
             callback: Some(Callback::FnOnce(Some(Box::new(f)))),
             ns: None,
             filter: None,
-            lateness: 100,
+            lateness: Lateness::Normal(100),
         }
     }
 
@@ -1222,7 +1228,7 @@ impl InnerHooks {
         callback: Callback<H>,
         ns: Option<Ns>,
         filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
-        lateness: usize,
+        lateness: Lateness,
     ) {
         let mut map = self.types.lock().unwrap();
 
@@ -1396,10 +1402,16 @@ struct Hook<H: Hookable> {
     callback: Callback<H>,
     ns: Option<Ns>,
     filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
-    lateness: usize,
+    lateness: Lateness,
 }
 
 enum Callback<H: Hookable> {
     FnMut(Box<dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>)>),
     FnOnce(Option<Box<dyn FnOnce(&mut Pass, <H as Hookable>::Input<'_>)>>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Lateness {
+    Normal(usize),
+    Latest,
 }

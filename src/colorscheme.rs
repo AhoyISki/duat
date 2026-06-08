@@ -184,130 +184,118 @@ pub fn has_background() -> bool {
 pub(crate) fn add_default() {
     add_colorschemes!(
         [
-            (
-                "catppuccin-latte",
-                [
-                    (rosewater, "#dc8a78"),
-                    (flamingo, "#dd7878"),
-                    (pink, "#ea76cb"),
-                    (mauve, "#8839ef"),
-                    (red, "#d20f39"),
-                    (maroon, "#e64553"),
-                    (peach, "#fe640b"),
-                    (yellow, "#df8e1d"),
-                    (green, "#40a02b"),
-                    (teal, "#179299"),
-                    (sky, "#04a5e5"),
-                    (sapphire, "#209fb5"),
-                    (blue, "#1e66f5"),
-                    (lavender, "#7287fd"),
-                    (text, "#4c4f69"),
-                    (subtext1, "#5c5f77"),
-                    (subtext0, "#6c6f85"),
-                    (overlay2, "#7c7f93"),
-                    (overlay1, "#8c8fa1"),
-                    (overlay0, "#9ca0b0"),
-                    (surface2, "#acb0be"),
-                    (surface1, "#bcc0cc"),
-                    (surface0, "#ccd0da"),
-                    (base, "#eff1f5"),
-                    (mantle, "#e6e9ef"),
-                    (crust, "#dce0e8"),
-                ]
-            ),
-            (
-                "catppuccin-frappe",
-                [
-                    (rosewater, "#f2d5cf"),
-                    (flamingo, "#eebebe"),
-                    (pink, "#f4b8e4"),
-                    (mauve, "#ca9ee6"),
-                    (red, "#e78284"),
-                    (maroon, "#ea999c"),
-                    (peach, "#ef9f76"),
-                    (yellow, "#e5c890"),
-                    (green, "#a6d189"),
-                    (teal, "#81c8be"),
-                    (sky, "#99d1db"),
-                    (sapphire, "#85c1dc"),
-                    (blue, "#8caaee"),
-                    (lavender, "#babbf1"),
-                    (text, "#c6d0f5"),
-                    (subtext1, "#b5bfe2"),
-                    (subtext0, "#a5adce"),
-                    (overlay2, "#949cbb"),
-                    (overlay1, "#838ba7"),
-                    (overlay0, "#737994"),
-                    (surface2, "#626880"),
-                    (surface1, "#51576d"),
-                    (surface0, "#414559"),
-                    (base, "#303446"),
-                    (mantle, "#292c3c"),
-                    (crust, "#232634"),
-                ]
-            ),
-            (
-                "catppuccin-macchiato",
-                [
-                    (rosewater, "#f4dbd6"),
-                    (flamingo, "#f0c6c6"),
-                    (pink, "#f5bde6"),
-                    (mauve, "#c6a0f6"),
-                    (red, "#ed8796"),
-                    (maroon, "#ee99a0"),
-                    (peach, "#f5a97f"),
-                    (yellow, "#eed49f"),
-                    (green, "#a6da95"),
-                    (teal, "#8bd5ca"),
-                    (sky, "#91d7e3"),
-                    (sapphire, "#7dc4e4"),
-                    (blue, "#8aadf4"),
-                    (lavender, "#b7bdf8"),
-                    (text, "#cad3f5"),
-                    (subtext1, "#b8c0e0"),
-                    (subtext0, "#a5adcb"),
-                    (overlay2, "#939ab7"),
-                    (overlay1, "#8087a2"),
-                    (overlay0, "#6e738d"),
-                    (surface2, "#5b6078"),
-                    (surface1, "#494d64"),
-                    (surface0, "#363a4f"),
-                    (base, "#24273a"),
-                    (mantle, "#1e2030"),
-                    (crust, "#181926"),
-                ]
-            ),
-            (
-                "catppuccin-mocha",
-                [
-                    (rosewater, "#f5e0dc"),
-                    (flamingo, "#f2cdcd"),
-                    (pink, "#f5c2e7"),
-                    (mauve, "#cba6f7"),
-                    (red, "#f38ba8"),
-                    (maroon, "#eba0ac"),
-                    (peach, "#fab387"),
-                    (yellow, "#f9e2af"),
-                    (green, "#a6e3a1"),
-                    (teal, "#94e2d5"),
-                    (sky, "#89dceb"),
-                    (sapphire, "#74c7ec"),
-                    (blue, "#89b4fa"),
-                    (lavender, "#b4befe"),
-                    (text, "#cdd6f4"),
-                    (subtext1, "#bac2de"),
-                    (subtext0, "#a6adc8"),
-                    (overlay2, "#9399b2"),
-                    (overlay1, "#7f849c"),
-                    (overlay0, "#6c7086"),
-                    (surface2, "#585b70"),
-                    (surface1, "#45475a"),
-                    (surface0, "#313244"),
-                    (base, "#1e1e2e"),
-                    (mantle, "#181825"),
-                    (crust, "#11111b"),
-                ]
-            )
+            ("catppuccin-latte", [
+                (rosewater, "#dc8a78"),
+                (flamingo, "#dd7878"),
+                (pink, "#ea76cb"),
+                (mauve, "#8839ef"),
+                (red, "#d20f39"),
+                (maroon, "#e64553"),
+                (peach, "#fe640b"),
+                (yellow, "#df8e1d"),
+                (green, "#40a02b"),
+                (teal, "#179299"),
+                (sky, "#04a5e5"),
+                (sapphire, "#209fb5"),
+                (blue, "#1e66f5"),
+                (lavender, "#7287fd"),
+                (text, "#4c4f69"),
+                (subtext1, "#5c5f77"),
+                (subtext0, "#6c6f85"),
+                (overlay2, "#7c7f93"),
+                (overlay1, "#8c8fa1"),
+                (overlay0, "#9ca0b0"),
+                (surface2, "#acb0be"),
+                (surface1, "#bcc0cc"),
+                (surface0, "#ccd0da"),
+                (base, "#eff1f5"),
+                (mantle, "#e6e9ef"),
+                (crust, "#dce0e8"),
+            ]),
+            ("catppuccin-frappe", [
+                (rosewater, "#f2d5cf"),
+                (flamingo, "#eebebe"),
+                (pink, "#f4b8e4"),
+                (mauve, "#ca9ee6"),
+                (red, "#e78284"),
+                (maroon, "#ea999c"),
+                (peach, "#ef9f76"),
+                (yellow, "#e5c890"),
+                (green, "#a6d189"),
+                (teal, "#81c8be"),
+                (sky, "#99d1db"),
+                (sapphire, "#85c1dc"),
+                (blue, "#8caaee"),
+                (lavender, "#babbf1"),
+                (text, "#c6d0f5"),
+                (subtext1, "#b5bfe2"),
+                (subtext0, "#a5adce"),
+                (overlay2, "#949cbb"),
+                (overlay1, "#838ba7"),
+                (overlay0, "#737994"),
+                (surface2, "#626880"),
+                (surface1, "#51576d"),
+                (surface0, "#414559"),
+                (base, "#303446"),
+                (mantle, "#292c3c"),
+                (crust, "#232634"),
+            ]),
+            ("catppuccin-macchiato", [
+                (rosewater, "#f4dbd6"),
+                (flamingo, "#f0c6c6"),
+                (pink, "#f5bde6"),
+                (mauve, "#c6a0f6"),
+                (red, "#ed8796"),
+                (maroon, "#ee99a0"),
+                (peach, "#f5a97f"),
+                (yellow, "#eed49f"),
+                (green, "#a6da95"),
+                (teal, "#8bd5ca"),
+                (sky, "#91d7e3"),
+                (sapphire, "#7dc4e4"),
+                (blue, "#8aadf4"),
+                (lavender, "#b7bdf8"),
+                (text, "#cad3f5"),
+                (subtext1, "#b8c0e0"),
+                (subtext0, "#a5adcb"),
+                (overlay2, "#939ab7"),
+                (overlay1, "#8087a2"),
+                (overlay0, "#6e738d"),
+                (surface2, "#5b6078"),
+                (surface1, "#494d64"),
+                (surface0, "#363a4f"),
+                (base, "#24273a"),
+                (mantle, "#1e2030"),
+                (crust, "#181926"),
+            ]),
+            ("catppuccin-mocha", [
+                (rosewater, "#f5e0dc"),
+                (flamingo, "#f2cdcd"),
+                (pink, "#f5c2e7"),
+                (mauve, "#cba6f7"),
+                (red, "#f38ba8"),
+                (maroon, "#eba0ac"),
+                (peach, "#fab387"),
+                (yellow, "#f9e2af"),
+                (green, "#a6e3a1"),
+                (teal, "#94e2d5"),
+                (sky, "#89dceb"),
+                (sapphire, "#74c7ec"),
+                (blue, "#89b4fa"),
+                (lavender, "#b4befe"),
+                (text, "#cdd6f4"),
+                (subtext1, "#bac2de"),
+                (subtext0, "#a6adc8"),
+                (overlay2, "#9399b2"),
+                (overlay1, "#7f849c"),
+                (overlay0, "#6c7086"),
+                (surface2, "#585b70"),
+                (surface1, "#45475a"),
+                (surface0, "#313244"),
+                (base, "#1e1e2e"),
+                (mantle, "#181825"),
+                (crust, "#11111b"),
+            ])
         ],
         |c, has_background| {
             let default = if has_background {
@@ -315,6 +303,7 @@ pub(crate) fn add_default() {
             } else {
                 Form::new().with(c.text)
             };
+            let active = |form: Form| form.interpolate(Form::new().on(c.surface0), 80);
 
             [
                 // The default form, self explanatory.
@@ -388,6 +377,10 @@ pub(crate) fn add_default() {
                 ("default.VertRule", default.with(c.surface0)),
                 ("default.LineNumbers", default.with(c.overlay0)),
                 ("default.Completions", default.on(c.surface1)),
+                ("default.Buffer.active", active(default)),
+                ("default.VertRule.active", active(default.with(c.surface0))),
+                ("default.LineNumbers.active", active(default.with(c.overlay0))),
+                ("default.Gutter.active", active(default)),
                 // Used when the cursor is over parentheses pairs.
                 (
                     "matched_pair",
@@ -466,68 +459,61 @@ pub(crate) fn add_default() {
 
     add_colorschemes!(
         [
-            (
-                "tokyo-night",
-                [
-                    (red, "#f7768e"),
-                    (red1, "#db4b4b"),
-                    (orange, "#ff9e64"),
-                    (yellow, "#e0af68"),
-                    (green, "#9ece6a"),
-                    (green1, "#73daca"),
-                    (teal, "#1abc9c"),
-                    (cyan, "#7dcfff"),
-                    (blue, "#7aa2f7"),
-                    (blue0, "#3d59a1"),
-                    (blue1, "#2ac3de"),
-                    (blue5, "#89ddff"),
-                    (magenta, "#bb9af7"),
-                    (purple, "#9d7cd8"),
-                    (text, "#c0caf5"),
-                    // Additional LSP forms
-                    // 
-                    (fg_dark, "#a9b1d6"),
-                    (dark5, "#737aa2"),
-                    (comment, "#565f89"),
-                    (dark3, "#545c7e"),
-                    (terminal_black, "#414868"),
-                    (fg_gutter, "#3b4261"),
-                    (bg_highlight, "#292e42"),
-                    (bg, "#1a1b26"),
-                    (bg_dark, "#16161e"),
-                    (black, "#15161e"),
-                ]
-            ),
-            (
-                "tokyo-night-storm",
-                [
-                    (red, "#f7768e"),
-                    (red1, "#db4b4b"),
-                    (orange, "#ff9e64"),
-                    (yellow, "#e0af68"),
-                    (green, "#9ece6a"),
-                    (green1, "#73daca"),
-                    (teal, "#1abc9c"),
-                    (cyan, "#7dcfff"),
-                    (blue, "#7aa2f7"),
-                    (blue0, "#3d59a1"),
-                    (blue1, "#2ac3de"),
-                    (blue5, "#89ddff"),
-                    (magenta, "#bb9af7"),
-                    (purple, "#9d7cd8"),
-                    (text, "#c0caf5"),
-                    (fg_dark, "#a9b1d6"),
-                    (dark5, "#737aa2"),
-                    (comment, "#565f89"),
-                    (dark3, "#545c7e"),
-                    (terminal_black, "#414868"),
-                    (fg_gutter, "#3b4261"),
-                    (bg_highlight, "#292e42"),
-                    (bg, "#24283b"),
-                    (bg_dark, "#1f2335"),
-                    (black, "#1d202f"),
-                ]
-            ),
+            ("tokyo-night", [
+                (red, "#f7768e"),
+                (red1, "#db4b4b"),
+                (orange, "#ff9e64"),
+                (yellow, "#e0af68"),
+                (green, "#9ece6a"),
+                (green1, "#73daca"),
+                (teal, "#1abc9c"),
+                (cyan, "#7dcfff"),
+                (blue, "#7aa2f7"),
+                (blue0, "#3d59a1"),
+                (blue1, "#2ac3de"),
+                (blue5, "#89ddff"),
+                (magenta, "#bb9af7"),
+                (purple, "#9d7cd8"),
+                (text, "#c0caf5"),
+                // Additional LSP forms
+                (fg_dark, "#a9b1d6"),
+                (dark5, "#737aa2"),
+                (comment, "#565f89"),
+                (dark3, "#545c7e"),
+                (terminal_black, "#414868"),
+                (fg_gutter, "#3b4261"),
+                (bg_highlight, "#292e42"),
+                (bg, "#1a1b26"),
+                (bg_dark, "#16161e"),
+                (black, "#15161e"),
+            ]),
+            ("tokyo-night-storm", [
+                (red, "#f7768e"),
+                (red1, "#db4b4b"),
+                (orange, "#ff9e64"),
+                (yellow, "#e0af68"),
+                (green, "#9ece6a"),
+                (green1, "#73daca"),
+                (teal, "#1abc9c"),
+                (cyan, "#7dcfff"),
+                (blue, "#7aa2f7"),
+                (blue0, "#3d59a1"),
+                (blue1, "#2ac3de"),
+                (blue5, "#89ddff"),
+                (magenta, "#bb9af7"),
+                (purple, "#9d7cd8"),
+                (text, "#c0caf5"),
+                (fg_dark, "#a9b1d6"),
+                (dark5, "#737aa2"),
+                (comment, "#565f89"),
+                (dark3, "#545c7e"),
+                (terminal_black, "#414868"),
+                (fg_gutter, "#3b4261"),
+                (bg_highlight, "#292e42"),
+                (bg, "#24283b"),
+                (bg_dark, "#1f2335"),
+                (black, "#1d202f"),
+            ]),
         ],
         |c, has_background| {
             let default = if has_background {
@@ -535,6 +521,7 @@ pub(crate) fn add_default() {
             } else {
                 Form::new().with(c.text)
             };
+            let active = |form: Form| form.interpolate(Form::new().on(c.bg_highlight), 50);
 
             [
                 ("default", default),
@@ -580,8 +567,12 @@ pub(crate) fn add_default() {
                 ("key.special", Form::new().with(c.teal)),
                 ("default.StatusLine", default.on(c.bg_dark)),
                 ("default.LogBook", default.on(c.bg_dark)),
-                ("default.VertRule", default.with(c.bg_dark)),
+                ("default.VertRule", default.with(c.fg_gutter)),
                 ("default.LineNumbers", default.with(c.dark3)),
+                ("default.Buffer.active", active(default)),
+                ("default.VertRule.active", active(default.with(c.fg_gutter))),
+                ("default.LineNumbers.active", active(default.with(c.dark3))),
+                ("default.Gutter.active", active(default)),
                 (
                     "matched_pair",
                     Form::new().with(c.orange).on(c.terminal_black).bold(),
@@ -663,50 +654,43 @@ pub(crate) fn add_default() {
 
     add_colorschemes!(
         [
-            (
-                "github-dark",
-                [
-                    (bg, "#0d1117"),
-                    (bg_overlay, "#161b22"),
-                    (bg_subtle, "#21262d"),
-                    (text, "#e6edf3"),
-                    (text_muted, "#8b949e"),
-                    (text_subtle, "#6e7681"),
-                    (red, "#f85149"),
-                    (orange, "#ffa657"),
-                    (yellow, "#e3b341"),
-                    (green, "#3fb950"),
-                    (teal, "#39c5cf"),
-                    (blue, "#58a6ff"),
-                    (purple, "#d2a8ff"),
-                    (string_color, "#a5d6ff"),
-                    (number_color, "#79c0ff"),
-                    (keyword_color, "#ff7b72"),
-                    // Additional LSP forms
-                    // 
-                ]
-            ),
-            (
-                "github-light",
-                [
-                    (bg, "#ffffff"),
-                    (bg_overlay, "#f6f8fa"),
-                    (bg_subtle, "#eaeef2"),
-                    (text, "#24292f"),
-                    (text_muted, "#57606a"),
-                    (text_subtle, "#6e7781"),
-                    (red, "#cf222e"),
-                    (orange, "#953800"),
-                    (yellow, "#9a6700"),
-                    (green, "#1a7f37"),
-                    (teal, "#0969da"),
-                    (blue, "#0550ae"),
-                    (purple, "#8250df"),
-                    (string_color, "#0a3069"),
-                    (number_color, "#0550ae"),
-                    (keyword_color, "#cf222e"),
-                ]
-            ),
+            ("github-dark", [
+                (bg, "#0d1117"),
+                (bg_overlay, "#161b22"),
+                (bg_subtle, "#21262d"),
+                (text, "#e6edf3"),
+                (text_muted, "#8b949e"),
+                (text_subtle, "#6e7681"),
+                (red, "#f85149"),
+                (orange, "#ffa657"),
+                (yellow, "#e3b341"),
+                (green, "#3fb950"),
+                (teal, "#39c5cf"),
+                (blue, "#58a6ff"),
+                (purple, "#d2a8ff"),
+                (string_color, "#a5d6ff"),
+                (number_color, "#79c0ff"),
+                (keyword_color, "#ff7b72"),
+                // Additional LSP forms
+            ]),
+            ("github-light", [
+                (bg, "#ffffff"),
+                (bg_overlay, "#f6f8fa"),
+                (bg_subtle, "#eaeef2"),
+                (text, "#24292f"),
+                (text_muted, "#57606a"),
+                (text_subtle, "#6e7781"),
+                (red, "#cf222e"),
+                (orange, "#953800"),
+                (yellow, "#9a6700"),
+                (green, "#1a7f37"),
+                (teal, "#0969da"),
+                (blue, "#0550ae"),
+                (purple, "#8250df"),
+                (string_color, "#0a3069"),
+                (number_color, "#0550ae"),
+                (keyword_color, "#cf222e"),
+            ]),
         ],
         |c, has_background| {
             let default = if has_background {
@@ -714,6 +698,7 @@ pub(crate) fn add_default() {
             } else {
                 Form::new().with(c.text)
             };
+            let active = |form: Form| form.interpolate(Form::new().on(c.bg_overlay), 50);
 
             [
                 ("default", default),
@@ -761,6 +746,10 @@ pub(crate) fn add_default() {
                 ("default.LogBook", default.on(c.bg_subtle)),
                 ("default.VertRule", default.with(c.bg_subtle)),
                 ("default.LineNumbers", default.with(c.text_subtle)),
+                ("default.Buffer.active", active(default)),
+                ("default.VertRule.active", active(default.with(c.bg_subtle))),
+                ("default.LineNumbers.active", active(default.with(c.text_subtle))),
+                ("default.Gutter.active", active(default)),
                 (
                     "matched_pair",
                     Form::new().with(c.orange).on(c.bg_subtle).bold(),
@@ -845,38 +834,35 @@ pub(crate) fn add_default() {
 
     // Night Owl theme — https://github.com/sdras/night-owl-vscode-theme
     add_colorschemes!(
-        [(
-            "night-owl",
-            [
-                (bg, "#011627"),
-                (surface, "#0b253a"),
-                (surface_highlight, "#1d3b53"),
-                (surface_panel, "#202431"),
-                (surface_inactive, "#01111d"),
-                (text, "#d6deeb"),
-                (text_muted, "#5f7e97"),
-                (text_subtle, "#4b6479"),
-                (comment, "#637777"),
-                (red, "#EF5350"),
-                (orange, "#F78C6C"),
-                (yellow, "#ecc48d"),
-                (sand, "#ffcb8b"),
-                // Additional LSP forms
-                // 
-                (green, "#c5e478"),
-                (teal, "#7fdbca"),
-                (aqua, "#baebe2"),
-                (blue, "#82AAFF"),
-                (purple, "#c792ea"),
-                (gold, "#faf39f"),
-            ]
-        ),],
+        [("night-owl", [
+            (bg, "#011627"),
+            (surface, "#0b253a"),
+            (surface_highlight, "#1d3b53"),
+            (surface_panel, "#202431"),
+            (surface_inactive, "#01111d"),
+            (text, "#d6deeb"),
+            (text_muted, "#5f7e97"),
+            (text_subtle, "#4b6479"),
+            (comment, "#637777"),
+            (red, "#EF5350"),
+            (orange, "#F78C6C"),
+            (yellow, "#ecc48d"),
+            (sand, "#ffcb8b"),
+            // Additional LSP forms
+            (green, "#c5e478"),
+            (teal, "#7fdbca"),
+            (aqua, "#baebe2"),
+            (blue, "#82AAFF"),
+            (purple, "#c792ea"),
+            (gold, "#faf39f"),
+        ]),],
         |c, has_background| {
             let default = if has_background {
                 Form::new().with(c.text).on(c.bg)
             } else {
                 Form::new().with(c.text)
             };
+            let active = |form: Form| form.interpolate(Form::new().on(c.surface), 50);
 
             [
                 ("default", default),
@@ -927,6 +913,10 @@ pub(crate) fn add_default() {
                 ("default.LogBook", default.on(c.surface_panel)),
                 ("default.VertRule", default.with(c.surface)),
                 ("default.LineNumbers", default.with(c.text_subtle)),
+                ("default.Buffer.active", active(default)),
+                ("default.VertRule.active", active(default.with(c.surface))),
+                ("default.LineNumbers.active", active(default.with(c.text_subtle))),
+                ("default.Gutter.active", active(default)),
                 (
                     "matched_pair",
                     Form::new().with(c.orange).on(c.surface_highlight).bold(),
@@ -1015,42 +1005,35 @@ pub(crate) fn add_default() {
     // Dracula theme — https://github.com/dracula/dracula-theme
     add_colorschemes!(
         [
-            (
-                "dracula",
-                [
-                    (bg, "#282a36"),
-                    (current_line, "#44475a"),
-                    (selection, "#44475a"),
-                    (fg, "#f8f8f2"),
-                    (comment, "#6272a4"),
-                    (cyan, "#8be9fd"),
-                    (green, "#50fa7b"),
-                    (orange, "#ffb86c"),
-                    (pink, "#ff79c6"),
-                    (purple, "#bd93f9"),
-                    (red, "#ff5555"),
-                    (yellow, "#f1fa8c"),
-                    // Additional LSP forms
-                    // 
-                ]
-            ),
-            (
-                "dracula-alucard",
-                [
-                    (bg, "#fffbeb"),
-                    (current_line, "#6c664b"),
-                    (selection, "#cfcfde"),
-                    (fg, "#1f1f1f"),
-                    (comment, "#6c664b"),
-                    (cyan, "#036a96"),
-                    (green, "#14710a"),
-                    (orange, "#a34d14"),
-                    (pink, "#a3144d"),
-                    (purple, "#644ac9"),
-                    (red, "#cb3a2a"),
-                    (yellow, "#846e15"),
-                ]
-            )
+            ("dracula", [
+                (bg, "#282a36"),
+                (current_line, "#44475a"),
+                (selection, "#44475a"),
+                (fg, "#f8f8f2"),
+                (comment, "#6272a4"),
+                (cyan, "#8be9fd"),
+                (green, "#50fa7b"),
+                (orange, "#ffb86c"),
+                (pink, "#ff79c6"),
+                (purple, "#bd93f9"),
+                (red, "#ff5555"),
+                (yellow, "#f1fa8c"),
+                // Additional LSP forms
+            ]),
+            ("dracula-alucard", [
+                (bg, "#fffbeb"),
+                (current_line, "#6c664b"),
+                (selection, "#cfcfde"),
+                (fg, "#1f1f1f"),
+                (comment, "#6c664b"),
+                (cyan, "#036a96"),
+                (green, "#14710a"),
+                (orange, "#a34d14"),
+                (pink, "#a3144d"),
+                (purple, "#644ac9"),
+                (red, "#cb3a2a"),
+                (yellow, "#846e15"),
+            ])
         ],
         |c, has_background| {
             let default = if has_background {
@@ -1058,6 +1041,7 @@ pub(crate) fn add_default() {
             } else {
                 Form::new().with(c.fg)
             };
+            let active = |form: Form| form.interpolate(Form::new().on(c.selection), 80);
 
             [
                 ("default", default),
@@ -1111,6 +1095,10 @@ pub(crate) fn add_default() {
                 ("default.LogBook", default.on(c.current_line)),
                 ("default.VertRule", default.with(c.current_line)),
                 ("default.LineNumbers", default.with(c.comment)),
+                ("default.Buffer.active", active(default)),
+                ("default.VertRule.active", active(default.with(c.current_line))),
+                ("default.LineNumbers.active", active(default.with(c.comment))),
+                ("default.Gutter.active", active(default)),
                 (
                     "matched_pair",
                     Form::new().with(c.orange).on(c.current_line).bold(),
@@ -1192,39 +1180,36 @@ pub(crate) fn add_default() {
 
     // Nord theme — https://www.nordtheme.com/docs/colors-and-palettes
     add_colorschemes!(
-        [(
-            "nord",
-            [
-                // Polar Night
-                (nord0, "#2e3440"),
-                (nord1, "#3b4252"),
-                (nord2, "#434c5e"),
-                (nord3, "#4c566a"),
-                // Snow Storm
-                (nord4, "#d8dee9"),
-                (nord5, "#e5e9f0"),
-                (nord6, "#eceff4"),
-                // Frost
-                (nord7, "#8fbcbb"),
-                (nord8, "#88c0d0"),
-                (nord9, "#81a1c1"),
-                (nord10, "#5e81ac"),
-                // Aurora
-                (nord11, "#bf616a"),
-                // Additional LSP forms
-                // 
-                (nord12, "#d08770"),
-                (nord13, "#ebcb8b"),
-                (nord14, "#a3be8c"),
-                (nord15, "#b48ead"),
-            ]
-        ),],
+        [("nord", [
+            // Polar Night
+            (nord0, "#2e3440"),
+            (nord1, "#3b4252"),
+            (nord2, "#434c5e"),
+            (nord3, "#4c566a"),
+            // Snow Storm
+            (nord4, "#d8dee9"),
+            (nord5, "#e5e9f0"),
+            (nord6, "#eceff4"),
+            // Frost
+            (nord7, "#8fbcbb"),
+            (nord8, "#88c0d0"),
+            (nord9, "#81a1c1"),
+            (nord10, "#5e81ac"),
+            // Aurora
+            (nord11, "#bf616a"),
+            // Additional LSP forms
+            (nord12, "#d08770"),
+            (nord13, "#ebcb8b"),
+            (nord14, "#a3be8c"),
+            (nord15, "#b48ead"),
+        ]),],
         |c, has_background| {
             let default = if has_background {
                 Form::new().with(c.nord4).on(c.nord0)
             } else {
                 Form::new().with(c.nord4)
             };
+            let active = |form: Form| form.interpolate(Form::new().on(c.nord1), 80);
 
             [
                 ("default", default),
@@ -1271,6 +1256,10 @@ pub(crate) fn add_default() {
                 ("default.LogBook", default.on(c.nord1)),
                 ("default.VertRule", default.with(c.nord1)),
                 ("default.LineNumbers", default.with(c.nord3)),
+                ("default.Buffer.active", active(default)),
+                ("default.VertRule.active", active(default.with(c.nord1))),
+                ("default.LineNumbers.active", active(default.with(c.nord3))),
+                ("default.Gutter.active", active(default)),
                 (
                     "matched_pair",
                     Form::new().with(c.nord12).on(c.nord2).bold(),
@@ -1362,80 +1351,70 @@ pub(crate) fn add_default() {
     // Ayu theme — https://github.com/ayu-theme/ayu-vim
     add_colorschemes!(
         [
-            (
-                "ayu-dark",
-                [
-                    (bg, "#0F1419"),
-                    (panel, "#14191F"),
-                    (line, "#151A1E"),
-                    (selection, "#253340"),
-                    (guide, "#2D3640"),
-                    (fg_idle, "#3E4B59"),
-                    (fg, "#E6E1CF"),
-                    (comment, "#5C6773"),
-                    (tag, "#36A3D9"),
-                    (string, "#B8CC52"),
-                    (regexp, "#95E6CB"),
-                    (markup, "#F07178"),
-                    // Additional LSP forms
-                    // 
-                    (keyword, "#FF7733"),
-                    (special, "#E6B673"),
-                    (func, "#FFB454"),
-                    (constant, "#FFEE99"),
-                    (operator, "#E7C547"),
-                    (accent, "#F29718"),
-                    (error, "#FF3333"),
-                ]
-            ),
-            (
-                "ayu-light",
-                [
-                    (bg, "#FAFAFA"),
-                    (panel, "#FFFFFF"),
-                    (line, "#F3F3F3"),
-                    (selection, "#F0EEE4"),
-                    (guide, "#D9D8D7"),
-                    (fg_idle, "#828C99"),
-                    (fg, "#5C6773"),
-                    (comment, "#ABB0B6"),
-                    (tag, "#36A3D9"),
-                    (string, "#86B300"),
-                    (regexp, "#4CBF99"),
-                    (markup, "#F07178"),
-                    (keyword, "#FF7733"),
-                    (special, "#E6B673"),
-                    (func, "#F29718"),
-                    (constant, "#A37ACC"),
-                    (operator, "#E7C547"),
-                    (accent, "#FF6A00"),
-                    (error, "#FF3333"),
-                ]
-            ),
-            (
-                "ayu-mirage",
-                [
-                    (bg, "#212733"),
-                    (panel, "#272D38"),
-                    (line, "#242B38"),
-                    (selection, "#343F4C"),
-                    (guide, "#3D4751"),
-                    (fg_idle, "#607080"),
-                    (fg, "#D9D7CE"),
-                    (comment, "#5C6773"),
-                    (tag, "#5CCFE6"),
-                    (string, "#BBE67E"),
-                    (regexp, "#95E6CB"),
-                    (markup, "#F07178"),
-                    (keyword, "#FFAE57"),
-                    (special, "#FFC44C"),
-                    (func, "#FFD57F"),
-                    (constant, "#D4BFFF"),
-                    (operator, "#80D4FF"),
-                    (accent, "#FFCC66"),
-                    (error, "#FF3333"),
-                ]
-            )
+            ("ayu-dark", [
+                (bg, "#0F1419"),
+                (panel, "#14191F"),
+                (line, "#151A1E"),
+                (selection, "#253340"),
+                (guide, "#2D3640"),
+                (fg_idle, "#3E4B59"),
+                (fg, "#E6E1CF"),
+                (comment, "#5C6773"),
+                (tag, "#36A3D9"),
+                (string, "#B8CC52"),
+                (regexp, "#95E6CB"),
+                (markup, "#F07178"),
+                // Additional LSP forms
+                (keyword, "#FF7733"),
+                (special, "#E6B673"),
+                (func, "#FFB454"),
+                (constant, "#FFEE99"),
+                (operator, "#E7C547"),
+                (accent, "#F29718"),
+                (error, "#FF3333"),
+            ]),
+            ("ayu-light", [
+                (bg, "#FAFAFA"),
+                (panel, "#FFFFFF"),
+                (line, "#F3F3F3"),
+                (selection, "#F0EEE4"),
+                (guide, "#D9D8D7"),
+                (fg_idle, "#828C99"),
+                (fg, "#5C6773"),
+                (comment, "#ABB0B6"),
+                (tag, "#36A3D9"),
+                (string, "#86B300"),
+                (regexp, "#4CBF99"),
+                (markup, "#F07178"),
+                (keyword, "#FF7733"),
+                (special, "#E6B673"),
+                (func, "#F29718"),
+                (constant, "#A37ACC"),
+                (operator, "#E7C547"),
+                (accent, "#FF6A00"),
+                (error, "#FF3333"),
+            ]),
+            ("ayu-mirage", [
+                (bg, "#212733"),
+                (panel, "#272D38"),
+                (line, "#242B38"),
+                (selection, "#343F4C"),
+                (guide, "#3D4751"),
+                (fg_idle, "#607080"),
+                (fg, "#D9D7CE"),
+                (comment, "#5C6773"),
+                (tag, "#5CCFE6"),
+                (string, "#BBE67E"),
+                (regexp, "#95E6CB"),
+                (markup, "#F07178"),
+                (keyword, "#FFAE57"),
+                (special, "#FFC44C"),
+                (func, "#FFD57F"),
+                (constant, "#D4BFFF"),
+                (operator, "#80D4FF"),
+                (accent, "#FFCC66"),
+                (error, "#FF3333"),
+            ])
         ],
         |c, has_background| {
             let default = if has_background {
@@ -1443,6 +1422,7 @@ pub(crate) fn add_default() {
             } else {
                 Form::new().with(c.fg)
             };
+            let active = |form: Form| form.interpolate(Form::new().on(c.panel), 50);
 
             [
                 ("default", default),
@@ -1490,6 +1470,10 @@ pub(crate) fn add_default() {
                 ("default.LogBook", default.on(c.panel)),
                 ("default.VertRule", default.with(c.guide)),
                 ("default.LineNumbers", default.with(c.fg_idle)),
+                ("default.Buffer.active", active(default)),
+                ("default.VertRule.active", active(default.with(c.guide))),
+                ("default.LineNumbers.active", active(default.with(c.fg_idle))),
+                ("default.Gutter.active", active(default)),
                 (
                     "matched_pair",
                     Form::new().with(c.accent).on(c.selection).bold(),
@@ -1571,61 +1555,58 @@ pub(crate) fn add_default() {
 
     // Kanagawa by rebelot: https://github.com/rebelot/kanagawa.nvim
     add_colorschemes!(
-        [(
-            "kanagawa",
-            [
-                (old_white, "#C8C093"),
-                (fuji_white, "#DCD7BA"),
-                (fuji_gray, "#727169"),
-                (sumi_ink0, "#16161D"),
-                (sumi_ink1, "#181820"),
-                (sumi_ink2, "#1A1A22"),
-                (sumi_ink3, "#1F1F28"),
-                (sumi_ink4, "#2A2A37"),
-                (sumi_ink5, "#363646"),
-                (sumi_ink6, "#54546D"),
-                (wave_blue1, "#223249"),
-                (wave_blue2, "#2D4F67"),
-                (winter_green, "#2B3328"),
-                (winter_yellow, "#49443C"),
-                (winter_red, "#43242B"),
-                (winter_blue, "#252535"),
-                // Additional LSP forms
-                // 
-                (autumn_green, "#76946A"),
-                (autumn_red, "#C34043"),
-                (autumn_yellow, "#DCA561"),
-                (samurai_red, "#E82424"),
-                (ronin_yellow, "#FF9E3B"),
-                (wave_aqua1, "#6A9589"),
-                (dragon_blue, "#658594"),
-                (oni_violet, "#957FB8"),
-                (oni_violet2, "#B8B4D0"),
-                (crystal_blue, "#7E9CD8"),
-                (spring_violet1, "#938AA9"),
-                (spring_violet2, "#9CABCA"),
-                (spring_blue, "#7FB4CA"),
-                (wave_aqua2, "#7AA89F"),
-                (wave_aqua3, "#68AD99"),
-                (wave_aqua4, "#7AA880"),
-                (wave_aqua5, "#6CAF95"),
-                (spring_green, "#98BB6C"),
-                (boat_yellow1, "#938056"),
-                (boat_yellow2, "#C0A36E"),
-                (carp_yellow, "#E6C384"),
-                (sakura_pink, "#D27E99"),
-                (wave_red, "#E46876"),
-                (peach_red, "#FF5D62"),
-                (surimi_orange, "#FFA066"),
-                (katana_gray, "#717C7C"),
-            ]
-        )],
+        [("kanagawa", [
+            (old_white, "#C8C093"),
+            (fuji_white, "#DCD7BA"),
+            (fuji_gray, "#727169"),
+            (sumi_ink0, "#16161D"),
+            (sumi_ink1, "#181820"),
+            (sumi_ink2, "#1A1A22"),
+            (sumi_ink3, "#1F1F28"),
+            (sumi_ink4, "#2A2A37"),
+            (sumi_ink5, "#363646"),
+            (sumi_ink6, "#54546D"),
+            (wave_blue1, "#223249"),
+            (wave_blue2, "#2D4F67"),
+            (winter_green, "#2B3328"),
+            (winter_yellow, "#49443C"),
+            (winter_red, "#43242B"),
+            (winter_blue, "#252535"),
+            // Additional LSP forms
+            (autumn_green, "#76946A"),
+            (autumn_red, "#C34043"),
+            (autumn_yellow, "#DCA561"),
+            (samurai_red, "#E82424"),
+            (ronin_yellow, "#FF9E3B"),
+            (wave_aqua1, "#6A9589"),
+            (dragon_blue, "#658594"),
+            (oni_violet, "#957FB8"),
+            (oni_violet2, "#B8B4D0"),
+            (crystal_blue, "#7E9CD8"),
+            (spring_violet1, "#938AA9"),
+            (spring_violet2, "#9CABCA"),
+            (spring_blue, "#7FB4CA"),
+            (wave_aqua2, "#7AA89F"),
+            (wave_aqua3, "#68AD99"),
+            (wave_aqua4, "#7AA880"),
+            (wave_aqua5, "#6CAF95"),
+            (spring_green, "#98BB6C"),
+            (boat_yellow1, "#938056"),
+            (boat_yellow2, "#C0A36E"),
+            (carp_yellow, "#E6C384"),
+            (sakura_pink, "#D27E99"),
+            (wave_red, "#E46876"),
+            (peach_red, "#FF5D62"),
+            (surimi_orange, "#FFA066"),
+            (katana_gray, "#717C7C"),
+        ])],
         |c, has_background| {
             let default = if has_background {
                 Form::new().with(c.fuji_white).on(c.sumi_ink3)
             } else {
                 Form::new().with(c.fuji_white)
             };
+            let active = |form: Form| form.interpolate(Form::new().on(c.sumi_ink4), 80);
 
             [
                 ("default", default),
@@ -1700,6 +1681,10 @@ pub(crate) fn add_default() {
                 ("default.LogBook", default.on(c.sumi_ink3)),
                 ("default.VertRule", default.with(c.sumi_ink3)),
                 ("default.LineNumbers", default.with(c.sumi_ink6)),
+                ("default.Buffer.active", active(default)),
+                ("default.VertRule.active", active(default.with(c.sumi_ink3))),
+                ("default.LineNumbers.active", active(default.with(c.sumi_ink6))),
+                ("default.Gutter.active", active(default)),
                 (
                     "matched_pair",
                     Form::new().with(c.wave_aqua5).on(c.sumi_ink3).bold(),

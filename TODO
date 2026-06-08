@@ -49,10 +49,10 @@ FOR NEXT UPDATE:
 
 QoL TODO LIST:
 [ ] Fix jumps not being recorded or being too recorded.
-[ ] Reloading shouldn't change your active Buffer.
-[ ] The g key should record your current position.
-[ ] Highlight background of currently active Buffer.
-[ ] Allow going to specific coordinates on Buffers.
+[x] Reloading shouldn't change your active Buffer.
+[x] The g key should record your current position.
+[x] Highlight background of currently active Buffer.
+[x] Allow going to specific coordinates on Buffers.
 [ ] Fix logs scrolling.
 [ ] Hover should get rid of links.
 

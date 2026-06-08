@@ -11,6 +11,7 @@
 //! desynchronized global state accessibility.
 use std::{
     iter::Chain,
+    ops::Range,
     path::Path,
     sync::{Arc, Mutex, atomic::AtomicBool},
 };
@@ -18,6 +19,7 @@ use std::{
 use super::{Node, Widget, layout::Layout};
 use crate::{
     buffer::{Buffer, BufferOpts, PathKind},
+    cmd::BufferRangeOrIndex,
     context::{self, Handle},
     data::{Pass, RwData},
     hook::{self, BufferSwitched, WidgetOpened, WidgetSwitched, WindowOpened},
@@ -247,24 +249,32 @@ impl Windows {
         node.handle().get_as()
     }
 
-    /// Pushes a [`Buffer`] to the buffer's parent.
+    /// Places a new `Buffer` in the layout.
     ///
-    /// This function will push to the edge of `self.buffers_parent`
-    /// This is an area, usually in the center, that contains all
-    /// [`Buffer`]s, and their associated [`Widget`]s,
-    /// with others being at the perifery of this area.
-    pub(crate) fn new_buffer(&self, pa: &mut Pass, buffer: Buffer) -> Node {
+    /// This can either be in the same `win`, that is, on the window
+    /// index to which it was called. Or on another window, which is
+    /// the case if the [`Layout`] returns [`None`].
+    pub(crate) fn new_buffer(&self, pa: &mut Pass, win: usize, buffer: Buffer) -> Node {
         let inner = self.inner.read(pa);
-        let (handle, specs) = inner.layout.lock().unwrap().new_buffer(pa, &inner.list);
+        let target_and_specs = inner
+            .layout
+            .lock()
+            .unwrap()
+            .new_buffer(pa, &inner.list, win);
 
-        let specs = PushSpecs { cluster: false, ..specs };
+        match target_and_specs {
+            Some((target, specs)) => {
+                let specs = PushSpecs { cluster: false, ..specs };
 
-        if let Some(master) = handle.area().get_cluster_master(pa) {
-            self.push(pa, (&master, Some(true), specs), buffer, None)
-                .unwrap()
-        } else {
-            self.push(pa, (&handle.area, Some(true), specs), buffer, None)
-                .unwrap()
+                if let Some(master) = target.area().get_cluster_master(pa) {
+                    self.push(pa, (&master, Some(true), specs), buffer, None)
+                        .unwrap()
+                } else {
+                    self.push(pa, (&target.area, Some(true), specs), buffer, None)
+                        .unwrap()
+                }
+            }
+            None => self.new_window(pa, buffer),
         }
     }
 
@@ -468,28 +478,33 @@ impl Windows {
         pa: &mut Pass,
         pk: PathKind,
         default_buffer_opts: BufferOpts,
+        range_or_index: Option<BufferRangeOrIndex>,
     ) -> Node {
         let node = match self.buffer_entry(pa, pk.clone()) {
-            Ok((win, handle)) if self.get(pa, win).unwrap().buffers(pa).len() > 1 => {
+            Ok((win, buffer)) if self.get(pa, win).unwrap().buffers(pa).len() > 1 => {
                 // Take the nodes in the original Window
-                handle.write(pa).layout_order = 0;
+                let buf = buffer.write(pa);
+                buf.layout_order = 0;
+                if let Some(range_or_index) = range_or_index {
+                    buf.text_mut().move_main(range_or_index);
+                }
 
                 let nodes = {
                     let old_window = self.inner.write(pa).list.remove(win);
-                    let nodes = old_window.take_with_related_nodes(pa, &handle.to_dyn());
+                    let nodes = old_window.take_with_related_nodes(pa, &buffer.to_dyn());
                     self.inner.write(pa).list.insert(win, old_window);
 
                     nodes
                 };
 
                 // Create a new Window Swapping the new root with buffers_area
-                let path = handle.read(pa).path_set();
+                let path = buffer.read(pa).path_set();
                 let new_root = self.ui.new_root(path.as_ref().map(|p| p.as_ref()));
-                handle.area().swap(pa, &new_root);
+                buffer.area().swap(pa, &new_root);
                 let window = Window::new_from_raw(
                     pa,
                     win,
-                    handle.area.clone(),
+                    buffer.area.clone(),
                     nodes,
                     self.inner.read(pa).new_additions.clone(),
                 );
@@ -499,7 +514,7 @@ impl Windows {
                 hook::trigger(pa, WindowOpened(window));
 
                 // Swap the Buffers ahead of the swapped new_root
-                let lo = handle.read(pa).layout_order;
+                let lo = buffer.read(pa).layout_order;
 
                 for handle in &self.inner.read(pa).list[win].buffers(pa)[lo..] {
                     new_root.swap(pa, handle.area());
@@ -516,12 +531,26 @@ impl Windows {
                     .unwrap()
                     .get_or_insert_default();
 
-                Node::from_handle(handle)
+                Node::from_handle(buffer)
             }
             // The Handle<Buffer> in question is already in its own window, so no need
             // to move it to another one.
-            Ok((.., handle)) => Node::from_handle(handle),
-            Err(_) => self.new_window(pa, Buffer::new(pk.clone(), default_buffer_opts)),
+            Ok((.., buffer)) => {
+                if let Some(range_or_index) = range_or_index {
+                    buffer.text_mut(pa).move_main(range_or_index);
+                }
+
+                Node::from_handle(buffer)
+            }
+            Err(_) => self.new_window(pa, {
+                let mut buffer = Buffer::new(pk.clone(), default_buffer_opts);
+
+                if let Some(range_or_index) = range_or_index {
+                    buffer.text_mut().move_main(range_or_index);
+                }
+
+                buffer
+            }),
         };
 
         if context::current_buffer(pa).read(pa).path_kind() != pk {

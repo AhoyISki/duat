@@ -1,4 +1,4 @@
-//! Defines the processing of parameters in commands
+//! Defines the processing of parameters in commands.
 //!
 //! This processing first separates the [`Args`] of the call and then
 //! transforms the list of arguments into a list of [`Parameter`]s, as
@@ -7,13 +7,13 @@
 //! multiple branching paths on how to read the arguments, all from
 //! the same command.
 use std::{
-    any::TypeId,
-    iter::Peekable,
+    num::NonZeroUsize,
     ops::Range,
     path::PathBuf,
     sync::atomic::{AtomicBool, Ordering},
 };
 
+pub use args::*;
 use crossterm::style::Color;
 
 use crate::{
@@ -42,7 +42,7 @@ macro_rules! implDeref {
     }
 }
 
-/// A parameter for commands that can be called
+/// A parameter for commands that can be called.
 ///
 /// This parameter must be parseable from [`Args`], which come from a
 /// `&str`. It can take multiple words, and can be composed of other
@@ -76,7 +76,7 @@ pub trait Parameter: Sized + 'static {
     }
 }
 
-/// Command [`Parameter`]: A flag passed to the command
+/// Command [`Parameter`]: A flag passed to the command.
 ///
 /// `Flag`s in duat differ from those of UNIX like operating system
 /// commands, since a flag can show up anywhere, not just before some
@@ -88,14 +88,14 @@ pub trait Parameter: Sized + 'static {
 /// mycmd --this-is-a-flag "--this-is not a flag" -blobflag -- --flag
 /// ```
 pub enum Flag<S: AsRef<str> = String> {
-    /// A word flag is prefixed by `--` and represents only one thing
+    /// A word flag is prefixed by `--` and represents only one thing.
     ///
     /// Examples of this are the `--cfg` and `--cfg-manifest`, which
     /// are used by the `edit` and `open` commands to open Duat
     /// configuration files.
     Word(S),
     /// A blob flag is prefixed by `-` and represents one thing per
-    /// `char`
+    /// `char`.
     ///
     /// An example, coming from UNIX like operating systems is `rm
     /// -rf`, witch will forcefully (`f`) remove files recursively
@@ -135,7 +135,7 @@ impl Parameter for Flag {
 }
 
 impl<S: AsRef<str>> Flag<S> {
-    /// Returns `Ok` only if the `Flag` is of type [`Flag::Word`]
+    /// Returns `Ok` only if the `Flag` is of type [`Flag::Word`].
     pub fn as_word(self) -> Result<S, Text> {
         match self {
             Flag::Word(word) => Ok(word),
@@ -145,12 +145,12 @@ impl<S: AsRef<str>> Flag<S> {
         }
     }
 
-    /// Returns true if this `Flag` is a `Flag::Word(word)`
+    /// Returns true if this `Flag` is a `Flag::Word(word)`.
     pub fn is_word(&self, word: &str) -> bool {
         self.as_str().as_word().ok().is_some_and(|w| w == word)
     }
 
-    /// Returns `Ok` only if the `Flag` is of type [`Flag::Blob`]
+    /// Returns `Ok` only if the `Flag` is of type [`Flag::Blob`].
     pub fn as_blob(self) -> Result<S, Text> {
         match self {
             Flag::Blob(blob) => Ok(blob),
@@ -161,7 +161,7 @@ impl<S: AsRef<str>> Flag<S> {
     }
 
     /// Returns true if this `Flag` is a [`Flag::Blob`] with all
-    /// characters in `blob`
+    /// characters in `blob`.
     pub fn has_blob(&self, blob: &str) -> bool {
         self.as_str()
             .as_blob()
@@ -170,7 +170,7 @@ impl<S: AsRef<str>> Flag<S> {
     }
 
     /// Returns an [`Err`] if the `Flag` is a blob or doesn't belong
-    /// on the list
+    /// on the list.
     ///
     /// this is useful for quickly matching against a fixed list of
     /// possible words, while having a "catchall `_ => {}`, which will
@@ -184,7 +184,7 @@ impl<S: AsRef<str>> Flag<S> {
         }
     }
 
-    /// Returns a new `Flag<&str>`
+    /// Returns a new `Flag<&str>`.
     ///
     /// This is particularly useful in pattern matching.
     pub fn as_str(&self) -> Flag<&str> {
@@ -195,7 +195,7 @@ impl<S: AsRef<str>> Flag<S> {
     }
 }
 
-/// Command [`Parameter`]: A list of [`Flag`]s passed to the command
+/// Command [`Parameter`]: A list of [`Flag`]s passed to the command.
 ///
 /// This `Parameter` will capture all following arguments, until it
 /// finds one that can't be parsed as a `Flag` (i.e. not starting with
@@ -224,7 +224,7 @@ impl Parameter for Flags {
 
 impl Flags {
     /// Returns `true` if the `Flags` contains a [`Flag::Word`] with
-    /// the given word
+    /// the given word.
     pub fn has_word(&self, word: &str) -> bool {
         self.0
             .iter()
@@ -232,7 +232,7 @@ impl Flags {
     }
 
     /// Returns `true` if the `Flags` contains [`Flag::Blob`]s with
-    /// all `char`s in the given blob
+    /// all `char`s in the given blob.
     pub fn has_blob(&self, blob: &str) -> bool {
         blob.chars().all(|char| {
             self.0
@@ -257,7 +257,7 @@ impl std::ops::DerefMut for Flags {
     }
 }
 
-/// Command [`Parameter`]: Global or local scope for commands
+/// Command [`Parameter`]: Global or local scope for commands.
 ///
 /// This struct captures a [`Flag`] if it exists, if it is `--global`,
 /// then the scope is global. If the flag is something else, it
@@ -265,7 +265,7 @@ impl std::ops::DerefMut for Flags {
 /// [`Scope::Local`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Scope {
-    /// The scope of this command is meant to be local
+    /// The scope of this command is meant to be local.
     ///
     /// This is a loose definition. Usually, it means it should affect
     /// stuff related only to the current [`Buffer`], but you can
@@ -273,7 +273,7 @@ pub enum Scope {
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     Local,
-    /// The scope of this command is meant to be global
+    /// The scope of this command is meant to be global.
     ///
     /// This is a loose definition. Usually, it means it should affect
     /// stuff related to _all_ [`Buffer`]s, but you decide what it
@@ -302,12 +302,12 @@ impl Parameter for Scope {
 }
 
 impl<P: Parameter> Parameter for Option<P> {
-    /// Will match either [`Parameter`] given, or nothing
+    /// Will match either [`Parameter`] given, or nothing.
     ///
-    /// This, like other lists, _has_ to be the final argument in the
-    /// [`Parameter`] list, as it will either match correcly, finish
-    /// matching, or match incorrectly in order to give accurate
-    /// feedback.
+    /// If this isn't the last argument on the list, all subsequent
+    /// arguments will also "be in the superposition" of this
+    /// argument. That is, arguments following this `P` are only
+    /// allowed to match if `P` matches as well.
     fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         match args.next_as::<P>(pa) {
             Ok(arg) => Ok((Some(arg), None)),
@@ -322,7 +322,7 @@ impl<P: Parameter> Parameter for Option<P> {
 }
 
 impl<P: Parameter> Parameter for Vec<P> {
-    /// Will match a list of [`Parameter`]s
+    /// Will match a list of [`Parameter`]s.
     ///
     /// This, like other lists, _has_ to be the final argument in the
     /// [`Parameter`] list, as it will either match correcly, finish
@@ -346,7 +346,7 @@ impl<P: Parameter> Parameter for Vec<P> {
 }
 
 impl<const N: usize, P: Parameter> Parameter for [P; N] {
-    /// Will match either the argument given, or nothing
+    /// Will match either the argument given, or nothing.
     ///
     /// This, like other lists, _has_ to be the final argument in the
     /// [`Parameter`] list, as it will either match correcly, finish
@@ -375,7 +375,7 @@ impl<const N: usize, P: Parameter> Parameter for [P; N] {
     }
 }
 
-/// Command [`Parameter`]: A list of between `MIN` and `MAX` items
+/// Command [`Parameter`]: A list of between `MIN` and `MAX` items.
 ///
 /// This, like other lists, _has_ to be the final argument in the
 /// [`Parameter`] list, as it will either match correcly, finish
@@ -384,7 +384,7 @@ impl<const N: usize, P: Parameter> Parameter for [P; N] {
 pub struct Between<const MIN: usize, const MAX: usize, P>(pub Vec<P>);
 
 impl<const MIN: usize, const MAX: usize, P: Parameter> Parameter for Between<MIN, MAX, P> {
-    /// Will match between `MIN` and `MAX` [`Parameter`]s
+    /// Will match between `MIN` and `MAX` [`Parameter`]s.
     ///
     /// This, like other lists, _has_ to be the final argument in the
     /// [`Parameter`] list, as it will either match correcly, finish
@@ -446,7 +446,8 @@ impl Parameter for String {
     }
 }
 
-/// Command [`Parameter`]: The remaining arguments, divided by a space
+/// Command [`Parameter`]: The remaining arguments, divided by a
+/// space.
 ///
 /// Fails if the [`String`] would be empty.
 pub struct Remainder(pub String);
@@ -489,7 +490,7 @@ impl Parameter for Handle<Buffer> {
 }
 
 /// Command [`Parameter`]: An open [`Buffer`]'s name, except the
-/// current
+/// current.
 ///
 /// [`Buffer`]: crate::buffer::Buffer
 pub struct OtherBuffer(pub Handle<Buffer>);
@@ -511,7 +512,7 @@ impl Parameter for OtherBuffer {
 }
 implDeref!(OtherBuffer, Handle<Buffer>);
 
-/// Command [`Parameter`]: A file that _could_ exist
+/// Command [`Parameter`]: A file that _could_ exist.
 ///
 /// This is the case if the file's path has a parent that exists,
 /// or if the file itself exists.
@@ -575,7 +576,7 @@ implDeref!(ValidFilePath, PathBuf);
 /////////// Command specific parameters
 
 /// Comand [`Parameter`]: A [`ValidFilePath`], [`Handle`], `--cfg` or
-/// `--cfg-manifest`
+/// `--cfg-manifest`.
 ///
 /// This is a generalized way of switching to a [`Handle<Buffer`] on
 /// the `edit` and `open` commands.
@@ -630,7 +631,7 @@ impl Parameter for PathOrBufferOrCfg {
 
 static ONLY_EXISTING: AtomicBool = AtomicBool::new(false);
 
-/// Command [`Parameter`]: The `--existing` flag
+/// Command [`Parameter`]: The `--existing` flag.
 pub struct Existing;
 
 impl Parameter for Existing {
@@ -654,14 +655,14 @@ impl Parameter for Existing {
     }
 }
 
-/// Command [`Parameter`]: `--cfg` or `--cfg-manifest`
+/// Command [`Parameter`]: `--cfg` or `--cfg-manifest`.
 ///
 /// This is a quick shorthand to get `{duat_config}/src/main.rs` or
-/// `{duat_config}/Cargo.toml`, respectively
+/// `{duat_config}/Cargo.toml`, respectively.
 pub enum CfgOrScratch {
-    /// Represents `{duat_config}/src/main.rs`
+    /// Represents `{duat_config}/src/main.rs`.
     Cfg,
-    /// Represents `{duat_config}/Cargo.toml`
+    /// Represents `{duat_config}/Cargo.toml`.
     Manifest,
     /// Represents a scratch buffer.
     Scratch,
@@ -690,7 +691,87 @@ impl Parameter for CfgOrScratch {
     }
 }
 
-/// Command [`Parameter`]: An [`f32`] from a [`u8`] or a percentage
+/// Command [`Parameter`]: A [`Buffer`] position.
+///
+/// This represents a place in a `Buffer`, and is composed of a line
+/// and column coordinates, indexed by utf-8 character (not
+/// codepoint).
+///
+/// Both of these values are passed as 1-indexed, but the provided
+/// `BufferPosition`'s fields will be converted to 0-indexed.
+///
+/// The formatting is like this: `{line}:{column}`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BufferPosition {
+    /// The line argument. Converted to 0-indexed.
+    pub line: usize,
+    /// The column argument in utf-8 characters. Converted to
+    /// 0-indexed.
+    pub column: usize,
+}
+
+impl BufferPosition {
+    fn get(value: &str) -> Result<Self, Text> {
+        let (line, column) = value
+            .split_once(":")
+            .ok_or_else(|| txt!("expected two numbers split by [a]:"))?;
+
+        let line: NonZeroUsize = line.parse()?;
+        let column: NonZeroUsize = column.parse()?;
+
+        Ok(Self {
+            line: line.get() - 1,
+            column: column.get() - 1,
+        })
+    }
+}
+
+impl Parameter for BufferPosition {
+    fn from_args(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+        Ok((Self::get(args.next()?.value)?, None))
+    }
+
+    fn arg_name() -> Text {
+        txt!("[param]line[param.punctuation]:[param]column")
+    }
+}
+
+/// Command [`Parameter`]: A [`Buffer`] range or index.
+///
+/// This is one or two [`BufferPosition`]s, representing either an
+/// index or a range in a `Buffer`.
+///
+/// The formatting is like this: `{line}:{column}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BufferRangeOrIndex {
+    /// A single index position on a [`Buffer`].
+    Index(BufferPosition),
+    /// A range of positions on a [`Buffer`].
+    Range(Range<BufferPosition>),
+}
+
+impl Parameter for BufferRangeOrIndex {
+    fn from_args(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+        let arg = args.next()?;
+
+        if let Some((start, end)) = arg.value.split_once("..") {
+            Ok((
+                Self::Range(BufferPosition::get(start)?..BufferPosition::get(end)?),
+                None,
+            ))
+        } else {
+            Ok((Self::Index(BufferPosition::get(&arg)?), None))
+        }
+    }
+
+    fn arg_name() -> Text {
+        let pos_text = BufferPosition::arg_name();
+        let punct = form::id_of!("param.punctuation");
+        txt!("{pos_text}{punct}/{pos_text}{punct}..{pos_text}")
+    }
+}
+
+/// Command [`Parameter`]: An [`f32`] from a [`u8`] or a percentage.
 ///
 /// The percentage is of whole divisions of 100, 100 being equivalent
 /// to 255 in [`u8`].
@@ -717,8 +798,7 @@ impl Parameter for F32PercentOfU8 {
     }
 
     fn arg_name() -> Text {
-        let punct = form::id_of!("param.punctuation");
-        txt!("[param]u8{punct}/[param]0..=100%")
+        txt!("[param]u8[param.punctuation]/[param]0..=100%")
     }
 }
 implDeref!(F32PercentOfU8, f32);
@@ -808,7 +888,7 @@ impl Parameter for FormName {
 
 implDeref!(FormName, String);
 
-/// Command [`Parameter`]: An existing colorscheme's name
+/// Command [`Parameter`]: An existing colorscheme's name.
 pub struct ColorSchemeArg(pub String);
 
 impl Parameter for ColorSchemeArg {
@@ -827,7 +907,7 @@ impl Parameter for ColorSchemeArg {
 }
 implDeref!(ColorSchemeArg, String);
 
-/// Command [`Parameter`]: Options for reloading
+/// Command [`Parameter`]: Options for reloading.
 #[doc(hidden)]
 pub struct ReloadOptions {
     /// Wether to clean
@@ -859,246 +939,6 @@ impl Parameter for ReloadOptions {
     fn arg_name() -> Text {
         let punct = form::id_of!("param.punctuation");
         txt!("[param.flag]--clean{punct}? [param.flag]--update{punct}?")
-    }
-}
-
-/// The list of arguments passed to a command
-#[derive(Clone)]
-pub struct Args<'a> {
-    iter: Peekable<ArgsIter<'a>>,
-    param_range: Range<usize>,
-    has_to_start_param: bool,
-    is_forming_param: bool,
-    // For figuring out what's being parsed atm
-    /// The argument index is used to keep parameters in the
-    /// last_parsed list, even if they failed parsing and another
-    /// parameter was parsed with the same argument instead.
-    arg_n: usize,
-    /// This list will have the TypeId of `T` within the
-    /// `self.next_as::<T>()` call. It serves the purpose of keeping
-    /// track of when a type is done being parsed.
-    currently_parsing: Vec<TypeId>,
-    /// This list will have the TypeId of `T` while `T` is within
-    /// currently_parsing or we haven't succesfully moved on to the
-    /// next argument.
-    /// This is used to aid completion, by keeping track of when we
-    /// have moved on to parsing a new argument.
-    last_parsed: Vec<(usize, TypeId)>,
-}
-
-impl<'arg> Args<'arg> {
-    /// Returns a new instance of `Args`
-    pub(super) fn new(command: &'arg str) -> Self {
-        Self {
-            iter: ArgsIter::new(command).peekable(),
-            param_range: 0..0,
-            has_to_start_param: false,
-            is_forming_param: false,
-            arg_n: 0,
-            currently_parsing: Vec::new(),
-            last_parsed: Vec::new(),
-        }
-    }
-
-    /// Returns the next word or quoted argument
-    #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> Result<Arg<'arg>, Text> {
-        match self.iter.next() {
-            Some((value, range, is_quoted)) => {
-                self.param_range = range.clone();
-                if self.has_to_start_param {
-                    self.has_to_start_param = false;
-                    self.is_forming_param = true;
-                }
-
-                self.last_parsed.retain(|(start_n, ty)| {
-                    self.currently_parsing.contains(ty) || self.arg_n == *start_n
-                });
-
-                self.arg_n += 1;
-
-                Ok(Arg { value, is_quoted })
-            }
-            None => Err(txt!("Wrong argument count")),
-        }
-    }
-
-    /// Tries to parse the next argument as `P`
-    ///
-    /// If parsing fails, [`Args`] will be reset as if this function
-    /// wasn't called.
-    pub fn next_as<P: Parameter>(&mut self, pa: &Pass) -> Result<P, Text> {
-        self.next_as_with_form(pa).map(|(param, _)| param)
-    }
-
-    /// Tries to parse the next argument as `P`, also returning the
-    /// [`Option<Form>`]
-    ///
-    /// If parsing fails, [`Args`] will be reset as if this function
-    /// wasn't called.
-    pub fn next_as_with_form<P: Parameter>(
-        &mut self,
-        pa: &Pass,
-    ) -> Result<(P, Option<FormId>), Text> {
-        self.currently_parsing.push(TypeId::of::<P>());
-
-        let initial = (
-            self.iter.clone(),
-            self.param_range.clone(),
-            self.has_to_start_param,
-            self.is_forming_param,
-            self.arg_n,
-        );
-
-        self.has_to_start_param = true;
-        let ret = P::from_args(pa, self);
-        if ret.is_ok() {
-            self.is_forming_param = false;
-        } else {
-            self.iter = initial.0;
-            self.param_range = initial.1;
-            self.has_to_start_param = initial.2;
-            self.is_forming_param = initial.3;
-            self.arg_n = initial.4;
-        }
-
-        self.currently_parsing.retain(|&ty| ty != TypeId::of::<P>());
-
-        ret
-    }
-
-    /// Tries to get the next argument, otherwise returns a [`Text`]
-    pub fn next_else<T: Into<Text>>(&mut self, to_text: T) -> Result<&'arg str, Text> {
-        match self.next() {
-            Ok(arg) => Ok(arg.value),
-            Err(_) => Err(to_text.into()),
-        }
-    }
-
-    /// Returns the char position of the next argument
-    ///
-    /// Mostly used for error feedback by the [`PromptLine`]
-    ///
-    /// [`PromptLine`]: docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
-    pub fn next_start(&mut self) -> Option<usize> {
-        self.iter.peek().map(|(_, r, _)| r.start)
-    }
-
-    /// The range of the previous [`Parameter`]
-    ///
-    /// Mostly used for error feedback by the [`PromptLine`]
-    ///
-    /// [`PromptLine`]: docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
-    pub fn param_range(&self) -> Range<usize> {
-        self.param_range.clone()
-    }
-
-    /// The last [`Parameter`] type that was parsed
-    ///
-    /// This can/should be used for argument completion.
-    pub fn last_parsed(&self) -> Vec<TypeId> {
-        self.last_parsed.iter().map(|(_, ty)| *ty).collect()
-    }
-
-    /// Declare that you are trying to parse the given [`Parameter`]
-    /// type
-    ///
-    /// This is used on completions, where multiple pools of choices
-    /// may be selected from in order to get the completions list to
-    /// show.
-    pub fn use_completions_for<P: Parameter>(&mut self) {
-        self.last_parsed.push((self.arg_n, TypeId::of::<P>()));
-    }
-}
-
-/// An arguemnt that was passed to a command
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Arg<'arg> {
-    /// The `&str` of that argument
-    pub value: &'arg str,
-    /// Wether said argument was quoted
-    ///
-    /// This is useful for the [`Flag`] parameter, since it lets you
-    /// distinguish between `--flag` and `"--flag"`, treating the
-    /// latter as not a `Flag`
-    pub is_quoted: bool,
-}
-
-impl<'arg> std::ops::Deref for Arg<'arg> {
-    type Target = &'arg str;
-
-    fn deref(&self) -> &Self::Target {
-        &self.value
-    }
-}
-
-impl<'arg, 'other> PartialEq<&'other str> for Arg<'arg> {
-    fn eq(&self, other: &&'other str) -> bool {
-        &self.value == other
-    }
-}
-
-/// A iterator over arguments in a `&str`, useful for the [`cmd`]
-/// module
-///
-/// [`cmd`]: super
-#[derive(Clone)]
-pub struct ArgsIter<'a> {
-    command: &'a str,
-    chars: std::str::CharIndices<'a>,
-    start: Option<usize>,
-    end: Option<usize>,
-    is_quoting: bool,
-    last_char: char,
-}
-
-impl<'a> ArgsIter<'a> {
-    /// Returns a new iterator over arguments in a `&str`
-    pub fn new(command: &'a str) -> Self {
-        let mut args_iter = Self {
-            command,
-            chars: command.char_indices(),
-            start: None,
-            end: None,
-            is_quoting: false,
-            // Initial value doesn't matter, as long as it's not '\' or '"'
-            last_char: 'a',
-        };
-
-        args_iter.next();
-        args_iter
-    }
-}
-
-impl<'a> Iterator for ArgsIter<'a> {
-    type Item = (&'a str, Range<usize>, bool);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut is_quoted = false;
-        while let Some((b, char)) = self.chars.next() {
-            let lc = self.last_char;
-            self.last_char = char;
-            if self.start.is_some() && char.is_whitespace() && !self.is_quoting {
-                self.end = Some(b);
-                break;
-            } else if char == '\'' && lc != '\\' {
-                self.is_quoting = !self.is_quoting;
-                if !self.is_quoting {
-                    is_quoted = true;
-                    self.end = Some(b);
-                    break;
-                } else {
-                    self.start = Some(b + 1);
-                }
-            } else if !char.is_whitespace() && self.start.is_none() {
-                self.start = Some(b);
-            }
-        }
-
-        let e = self.end.take().unwrap_or(self.command.len());
-        self.start
-            .take()
-            .map(|s| (&self.command[s..e], s..e, is_quoted))
     }
 }
 
@@ -1142,3 +982,251 @@ parse_impl!(path, Some(&[]));
 
 #[allow(non_camel_case_types)]
 type path = std::path::PathBuf;
+
+mod args {
+    use std::{any::TypeId, iter::Peekable, ops::Range};
+
+    use crate::{cmd::Parameter, data::Pass, form::FormId, text::Text, txt};
+
+    /// The list of arguments passed to a command.
+    #[derive(Clone)]
+    pub struct Args<'a> {
+        iter: Peekable<ArgsIter<'a>>,
+        param_range: Range<usize>,
+        has_to_start_param: bool,
+        pub(super) is_forming_param: bool,
+        // For figuring out what's being parsed atm
+        /// The argument index is used to keep parameters in the
+        /// last_parsed list, even if they failed parsing and another
+        /// parameter was parsed with the same argument instead.
+        arg_n: usize,
+        /// This list will have the TypeId of `T` within the
+        /// `self.next_as::<T>()` call. It serves the purpose of
+        /// keeping track of when a type is done being parsed.
+        currently_parsing: Vec<TypeId>,
+        /// This list will have the TypeId of `T` while `T` is within
+        /// currently_parsing or we haven't succesfully moved on to
+        /// the next argument.
+        /// This is used to aid completion, by keeping track of when
+        /// we have moved on to parsing a new argument.
+        last_parsed: Vec<(usize, TypeId)>,
+    }
+
+    impl<'arg> Args<'arg> {
+        /// Returns a new instance of `Args`
+        ///
+        /// This _does not_ skip the calling command.
+        pub fn new(command: &'arg str) -> Self {
+            Self {
+                iter: ArgsIter::new(command).peekable(),
+                param_range: 0..0,
+                has_to_start_param: false,
+                is_forming_param: false,
+                arg_n: 0,
+                currently_parsing: Vec::new(),
+                last_parsed: Vec::new(),
+            }
+        }
+
+        /// Returns the next word or quoted argument
+        #[allow(clippy::should_implement_trait)]
+        pub fn next(&mut self) -> Result<Arg<'arg>, Text> {
+            match self.iter.next() {
+                Some((value, range, is_quoted)) => {
+                    self.param_range = range.clone();
+                    if self.has_to_start_param {
+                        self.has_to_start_param = false;
+                        self.is_forming_param = true;
+                    }
+
+                    self.last_parsed.retain(|(start_n, ty)| {
+                        self.currently_parsing.contains(ty) || self.arg_n == *start_n
+                    });
+
+                    self.arg_n += 1;
+
+                    Ok(Arg { value, is_quoted })
+                }
+                None => Err(txt!("Wrong argument count")),
+            }
+        }
+
+        /// Tries to parse the next argument as `P`.
+        ///
+        /// If parsing fails, [`Args`] will be reset as if this
+        /// function wasn't called.
+        pub fn next_as<P: Parameter>(&mut self, pa: &Pass) -> Result<P, Text> {
+            self.next_as_with_form(pa).map(|(param, _)| param)
+        }
+
+        /// Tries to parse the next argument as `P`, also returning
+        /// the [`Option<Form>`].
+        ///
+        /// If parsing fails, [`Args`] will be reset as if this
+        /// function wasn't called.
+        pub fn next_as_with_form<P: Parameter>(
+            &mut self,
+            pa: &Pass,
+        ) -> Result<(P, Option<FormId>), Text> {
+            self.currently_parsing.push(TypeId::of::<P>());
+
+            let initial = (
+                self.iter.clone(),
+                self.param_range.clone(),
+                self.has_to_start_param,
+                self.is_forming_param,
+                self.arg_n,
+            );
+
+            self.has_to_start_param = true;
+            let ret = P::from_args(pa, self);
+            if ret.is_ok() {
+                self.is_forming_param = false;
+            } else {
+                self.iter = initial.0;
+                self.param_range = initial.1;
+                self.has_to_start_param = initial.2;
+                self.is_forming_param = initial.3;
+                self.arg_n = initial.4;
+            }
+
+            self.currently_parsing.retain(|&ty| ty != TypeId::of::<P>());
+
+            ret
+        }
+
+        /// Tries to get the next argument, otherwise returns a
+        /// [`Text`].
+        pub fn next_else<T: Into<Text>>(&mut self, to_text: T) -> Result<&'arg str, Text> {
+            match self.next() {
+                Ok(arg) => Ok(arg.value),
+                Err(_) => Err(to_text.into()),
+            }
+        }
+
+        /// Returns the char position of the next argument.
+        ///
+        /// Mostly used for error feedback by the [`PromptLine`].
+        ///
+        /// [`PromptLine`]: docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
+        pub fn next_start(&mut self) -> Option<usize> {
+            self.iter.peek().map(|(_, r, _)| r.start)
+        }
+
+        /// The range of the previous [`Parameter`].
+        ///
+        /// Mostly used for error feedback by the [`PromptLine`].
+        ///
+        /// [`PromptLine`]: docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
+        pub fn param_range(&self) -> Range<usize> {
+            self.param_range.clone()
+        }
+
+        /// The last [`Parameter`] type that was parsed.
+        ///
+        /// This can/should be used for argument completion.
+        pub fn last_parsed(&self) -> Vec<TypeId> {
+            self.last_parsed.iter().map(|(_, ty)| *ty).collect()
+        }
+
+        /// Declare that you are trying to parse the given
+        /// [`Parameter`] type.
+        ///
+        /// This is used on completions, where multiple pools of
+        /// choices may be selected from in order to get the
+        /// completions list to show.
+        pub fn use_completions_for<P: Parameter>(&mut self) {
+            self.last_parsed.push((self.arg_n, TypeId::of::<P>()));
+        }
+    }
+
+    /// An argument that was passed to a command.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct Arg<'arg> {
+        /// The `&str` of that argument.
+        pub value: &'arg str,
+        /// Wether said argument was quoted.
+        ///
+        /// This is useful for the [`Flag`] parameter, since it lets
+        /// you distinguish between `--flag` and `"--flag"`,
+        /// treating the latter as not a `Flag`
+        pub is_quoted: bool,
+    }
+
+    impl<'arg> std::ops::Deref for Arg<'arg> {
+        type Target = &'arg str;
+
+        fn deref(&self) -> &Self::Target {
+            &self.value
+        }
+    }
+
+    impl<'arg, 'other> PartialEq<&'other str> for Arg<'arg> {
+        fn eq(&self, other: &&'other str) -> bool {
+            &self.value == other
+        }
+    }
+
+    /// A iterator over arguments in a `&str`, useful for the [`cmd`]
+    /// module.
+    ///
+    /// [`cmd`]: super
+    #[derive(Clone)]
+    pub struct ArgsIter<'a> {
+        command: &'a str,
+        chars: std::str::CharIndices<'a>,
+        start: Option<usize>,
+        end: Option<usize>,
+        is_quoting: bool,
+        last_char: char,
+    }
+
+    impl<'a> ArgsIter<'a> {
+        /// Returns a new iterator over arguments in a `&str`.
+        ///
+        /// This _does not_ skip the calling command.
+        pub fn new(command: &'a str) -> Self {
+            Self {
+                command,
+                chars: command.char_indices(),
+                start: None,
+                end: None,
+                is_quoting: false,
+                // Initial value doesn't matter, as long as it's not '\' or '"'
+                last_char: 'a',
+            }
+        }
+    }
+
+    impl<'a> Iterator for ArgsIter<'a> {
+        type Item = (&'a str, Range<usize>, bool);
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let mut is_quoted = false;
+            while let Some((b, char)) = self.chars.next() {
+                let lc = self.last_char;
+                self.last_char = char;
+                if self.start.is_some() && char.is_whitespace() && !self.is_quoting {
+                    self.end = Some(b);
+                    break;
+                } else if char == '\'' && lc != '\\' {
+                    self.is_quoting = !self.is_quoting;
+                    if !self.is_quoting {
+                        is_quoted = true;
+                        self.end = Some(b);
+                        break;
+                    } else {
+                        self.start = Some(b + 1);
+                    }
+                } else if !char.is_whitespace() && self.start.is_none() {
+                    self.start = Some(b);
+                }
+            }
+
+            let e = self.end.take().unwrap_or(self.command.len());
+            self.start
+                .take()
+                .map(|s| (&self.command[s..e], s..e, is_quoted))
+        }
+    }
+}

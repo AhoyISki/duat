@@ -242,16 +242,16 @@ impl Picker {
         let pv = picker.write_then(pa, |pkr| &pkr.preview);
         match pv.modes.remove(pv.current) {
             Some(PreviewMode::BufferMirror(buffer, range)) => {
-                mode::reset_to(pa, &buffer);
-                buffer.remove_extra_selections(pa);
                 buffer.edit_main(pa, |mut s| s.move_to(range.clone()));
+                buffer.remove_extra_selections(pa);
+                mode::reset_to(pa, &buffer);
             }
             Some(PreviewMode::BufferPreview(path, text, range, _)) => {
                 if let Some(buffer) = context::buffer_from_path(pa, &path) {
                     buffer.text_mut(pa).replace_range(.., text.to_string());
-                    mode::reset_to(pa, &buffer);
-                    buffer.remove_extra_selections(pa);
                     buffer.edit_main(pa, |mut s| s.move_to(range.clone()));
+                    buffer.remove_extra_selections(pa);
+                    mode::reset_to(pa, &buffer);
                 } else {
                     duat_core::try_or_log_err! {
                         let file = std::fs::OpenOptions::new()
@@ -262,8 +262,22 @@ impl Picker {
                         text.save_on(file)?;
                     };
 
-                    let call = if on_new_window { "open" } else { "edit" };
-                    if cmd::call_notify(pa, format!("{call} {}", path.to_string_lossy())).is_ok() {
+                    let cmd = if on_new_window { "open" } else { "edit" };
+                    let path = path.to_string_lossy();
+
+                    let coords = {
+                        let start = text.point_at_byte(range.start);
+                        let end = text.point_at_byte(range.end);
+                        format!(
+                            "{}:{}..{}:{}",
+                            start.line() + 1,
+                            start.char_col(&text) + 1,
+                            end.line() + 1,
+                            end.char_col(&text)
+                        )
+                    };
+
+                    if cmd::call_notify(pa, format!("{cmd} {path} {coords}",)).is_ok() {
                         let buffer = context::current_buffer(pa);
                         buffer.remove_extra_selections(pa);
                         buffer.edit_main(pa, |mut s| s.move_to(range.clone()));

@@ -3,8 +3,8 @@ use crossterm::style::Color;
 use crate::{
     buffer::{Buffer, PathKind},
     cmd::{
-        Between, ColorSchemeArg, Existing, FormName, OtherBuffer, PathOrBufferOrCfg, ReloadOptions,
-        Remainder, Scope, ValidFilePath, add, alias,
+        Between, BufferRangeOrIndex, ColorSchemeArg, Existing, FormName, OtherBuffer,
+        PathOrBufferOrCfg, ReloadOptions, Remainder, Scope, ValidFilePath, add, alias,
     },
     context::{self, Handle, sender},
     data::Pass,
@@ -308,7 +308,7 @@ pub fn add_defalt_commands() {
 
     add(
         "edit",
-        |pa: &mut Pass, _: Existing, arg: PathOrBufferOrCfg| {
+        |pa: &mut Pass, _: Existing, arg: PathOrBufferOrCfg, pos: Option<BufferRangeOrIndex>| {
             let windows = context::windows();
 
             let pk = match arg {
@@ -332,8 +332,14 @@ pub fn add_defalt_commands() {
             {
                 buffer.to_dyn()
             } else {
-                let buffer = Buffer::new(pk.clone(), *session::BUFFER_OPTS.get().unwrap());
-                windows.new_buffer(pa, buffer).handle().clone()
+                let win = context::current_win_index(pa);
+                let mut buffer = Buffer::new(pk.clone(), *session::BUFFER_OPTS.get().unwrap());
+
+                if let Some(range_or_index) = pos {
+                    buffer.text_mut().move_main(range_or_index);
+                }
+
+                windows.new_buffer(pa, win, buffer).handle().clone()
             };
 
             mode::reset_to(pa, &buffer);
@@ -356,12 +362,16 @@ pub fn add_defalt_commands() {
              configuration crate files"
         )),
         None,
-    );
+    )
+    .doc_param(txt!("The position/range to move to. 1-indexed"), None, None);
     alias("e", "edit");
 
     add(
         "open",
-        |pa: &mut Pass, _: Existing, arg: Option<PathOrBufferOrCfg>| {
+        |pa: &mut Pass,
+         _: Existing,
+         arg: Option<PathOrBufferOrCfg>,
+         pos: Option<BufferRangeOrIndex>| {
             let windows = context::windows();
 
             let (pk, msg) = match arg {
@@ -391,7 +401,7 @@ pub fn add_defalt_commands() {
             };
 
             let buffer_opts = *session::BUFFER_OPTS.get().unwrap();
-            windows.open_or_move_to_new_window(pa, pk.clone(), buffer_opts);
+            windows.open_or_move_to_new_window(pa, pk.clone(), buffer_opts, pos);
 
             Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window"))))
         },
@@ -413,7 +423,8 @@ pub fn add_defalt_commands() {
              instead"
         )),
         None,
-    );
+    )
+    .doc_param(txt!("The position/range to move to. 1-indexed"), None, None);
     alias("o", "open");
 
     add("buffer", |pa: &mut Pass, buffer: OtherBuffer| {

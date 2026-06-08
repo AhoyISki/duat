@@ -458,7 +458,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
         ]),
         LanguageOptions::pair_const(
             "haskell",
-            "https://github.com/tree-sitter/tree-sitter-haskell",
+            "https://github.com/tree-sitter-grammars/tree-sitter-haskell",
             &["@mrcjkb"],
         ),
         LanguageOptions::pair_const(

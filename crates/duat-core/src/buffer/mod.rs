@@ -28,12 +28,14 @@ pub use crate::buffer::{
     opts::BufferOpts,
 };
 use crate::{
+    Ns,
+    cmd::BufferPosition,
     context::{self, Handle, cache},
     data::{Pass, RwData, WriteableTuple},
     hook::{self, BufferRenamed, BufferSaved, BufferUpdated, FocusedUpdated, OnMouseEvent},
     mode::{Selections, TwoPointsPlace},
     opts::PrintOpts,
-    text::{Point, Strs, StrsBuf, Text, TextMut, TextParts, TextVersion, txt},
+    text::{Mask, Point, Strs, StrsBuf, Text, TextMut, TextParts, TextVersion, txt},
     ui::{Area, Coord, PrintInfo, PrintedLine, Widget},
 };
 
@@ -92,6 +94,27 @@ pub(crate) fn add_buffer_hooks() {
         MouseEventKind::ScrollLeft => {}
         MouseEventKind::ScrollRight => {}
     });
+
+    crate::form::enable_mask("active");
+    let ns = Ns::new();
+    let active = Mask("active");
+
+    hook::add::<BufferUpdated>(move |pa, buffer| {
+        if context::current_buffer(pa) == *buffer {
+            buffer.text_mut(pa).insert_tag(ns, .., active);
+            let related = buffer.related().read(pa).clone();
+            for (widget, _) in related {
+                widget.text_mut(pa).insert_tag(ns, .., active);
+            }
+        } else {
+            buffer.text_mut(pa).remove_tags(ns, ..);
+            let related = buffer.related().read(pa).clone();
+            for (widget, _) in related {
+                widget.text_mut(pa).remove_tags(ns, ..);
+            }
+        }
+    })
+    .absolute_latest();
 }
 
 /// The widget that is used to print and edit buffers.

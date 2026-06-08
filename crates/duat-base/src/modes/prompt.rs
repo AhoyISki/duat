@@ -599,7 +599,8 @@ impl PromptMode for PipeSelections {
             return text;
         };
 
-        let args = cmd::ArgsIter::new(&command);
+        let mut args = cmd::ArgsIter::new(&command);
+        _ = args.next();
 
         let (caller_id, args_id) = if is_in_path(caller) {
             (form::id_of!("caller.info"), form::id_of!("param.info"))
@@ -628,7 +629,7 @@ impl PromptMode for PipeSelections {
         let handle = context::current_buffer(pa);
         handle.edit_all(pa, |mut s| {
             let Ok(mut child) = Command::new(caller)
-                .args(cmd::ArgsIter::new(&command).map(|(a, ..)| a))
+                .args(cmd::ArgsIter::new(&command).skip(1).map(|(a, ..)| a))
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .spawn()
