@@ -11,7 +11,7 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     hook::{self, ModeSwitched},
-    mode::{self, KeyEvent, KeyMod, Mode, alt, ctrl, event, shift},
+    mode::{self, KeyEvent, Mode, alt, ctrl, event, shift},
     opts::PrintOpts,
     text::Strs,
 };

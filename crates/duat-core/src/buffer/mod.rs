@@ -29,7 +29,6 @@ pub use crate::buffer::{
 };
 use crate::{
     Ns,
-    cmd::BufferPosition,
     context::{self, Handle, cache},
     data::{Pass, RwData, WriteableTuple},
     hook::{self, BufferRenamed, BufferSaved, BufferUpdated, FocusedUpdated, OnMouseEvent},

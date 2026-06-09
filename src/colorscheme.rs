@@ -11,38 +11,49 @@ pub use duat_core::form::{
 /// inner details, and just lets you declaratively create a new
 /// colorscheme.
 ///
-/// Here'c how it works:
+/// Here's how it works:
 ///
-/// - The first item will be an array of variants. Each variant will
-///   be a tuple, where the first element will be the name of the
-///   colorscheme, and the second element will be an array of tuples,
-///   the first element being an identifier for the color, and the
-///   second being a color string ([rgb or hsl]).
+/// This macro should take the following:
 ///
-/// Here'c an example:
+/// - A module identifier.
+/// - A list of tuples, each representing a colorscheme, containing:
+///   - A function name for the colors of the colorscheme.
+///   - A string literal to name the colorscheme.
+///   - A list of pairs, with the first element being the color name
+///     and the second a string literal with its hex value.
+///
+/// This will declare any number of colorschemes, as well as a
+/// `$module::add_colorschemes` function, which _must_ be called in
+/// order to add the colorschemes to Duat (the code won't compile if
+/// you forget to do that).
+///
+/// Here's an example:
 ///
 /// ```rust
+/// duat::add_colorschemes!(
+///     mycolors,
+///     [
+///         (mycolors_light, "mycolors-light", [
+///             (background, "#ffffff"),
+///             (foreground, "#000000"),
+///             (red, "#ff0000"),
+///             (blue, "#0000ff"),
+///             // ...
+///         ]),
+///         (mycolors_dark, "mycolors-dark", [
+///             (background, "#000000"),
+///             (foreground, "#ffffff"),
+///             (red, "#ff0000"),
+///             (blue, "#0000ff"),
+///             // ...
+///         ]),
+///     ],
+///     // todo the rest
+///     # |_, _| []
+/// );
+///
 /// fn add_my_colorschemes() {
-///     duat::add_colorschemes!(
-///         [
-///             ("mycolors-light", [
-///                 (background, "#ffffff"),
-///                 (foreground, "#000000"),
-///                 (red, "#ff0000"),
-///                 (blue, "#0000ff"),
-///                 // ...
-///             ]),
-///             ("mycolors-dark", [
-///                 (background, "#000000"),
-///                 (foreground, "#ffffff"),
-///                 (red, "#ff0000"),
-///                 (blue, "#0000ff"),
-///                 // ...
-///             ]),
-///         ],
-///         // todo the rest
-///         # |_, _| []
-///     );
+///     mycolors::add_colorschemes();
 /// }
 /// ```
 ///
@@ -55,8 +66,6 @@ pub use duat_core::form::{
 /// argument the `Colors` struct, and as the second argument, a `bool`
 /// which tells you wether or not the default background should be
 /// set.
-///
-/// This function should return an array of name-form tuples, which
 ///
 /// ```rust
 /// use duat::form::Form;
@@ -106,9 +115,12 @@ pub use duat_core::form::{
 /// multiple different variants, and the setup is fairly simple to do.
 ///
 /// Additionally this macro will also add the `mycolors_dark` and
-/// `mycolors_light` free functions, which will return a struct
+/// `mycolors_light` free functions, which will return the struct
 /// `Colors` containing each of the specified colors in the
 /// colorscheme.
+///
+/// This can be used by the end user, so they may set forms while
+/// making use of the colorscheme's colors.
 ///
 /// # Note
 ///
@@ -180,53 +192,6 @@ macro_rules! add_colorschemes {
         }
     };
 
-    (
-        ($func_name:ident, $var_name:literal, [
-            $(($color_name:ident, $color_value:literal $(,)?)),* $(,)?
-        ]),
-        $pairs:expr $(,)?
-    ) => {
-        pub use $func_name::$func_name;
-        mod $func_name {
-            use $crate::form::Form;
-
-            #[doc = concat!("The colors for the ", $var_name, " colorscheme.")]
-            #[must_use = concat!(
-                "This doesn't set the ",
-                $var_name,
-                " colorscheme.\nIt merely gives you the colors from it.\n",
-                "If you want to apply this colorscheme, call `colorscheme::set(\"",
-                $var_name,
-                "\");`."
-            )]
-            pub fn $func_name() -> &'static Colors {
-                COLORS
-            }
-
-            $crate::add_colorschemes!(@Colors Colors, $var_name: { $($color_name),* });
-
-            const COLORS: &Colors = &Colors {
-                variant_name: $var_name,
-                $($color_name: $color_value),*
-            };
-
-            #[deny(dead_code, reason = "remember to call this function on the add_default function")]
-            pub(super) fn add_colorscheme() {
-                fn pairs() -> Vec<(String, Form)> {
-                    type PairsFn<const N: usize> = fn(&Colors, bool) -> [(&'static str, Form); N];
-
-                    let pairs_fn: PairsFn<_> = $pairs;
-                    let pairs = pairs_fn(COLORS, $crate::colorscheme::has_background());
-
-                    pairs.map(|(name, form)| (name.to_string(), form)).to_vec()
-                }
-
-                #[allow(unused_variables)]
-                $crate::colorscheme::add($var_name, pairs);
-            }
-        }
-    };
-
     (@Colors $struct:ident, $_variant:literal: { $($color_name:ident),* } $($_rest:tt)*) => {
         /// Color fields.
         #[allow(dead_code)]
@@ -253,17 +218,15 @@ pub fn has_background() -> bool {
     WITH_BACKGRUND.load(Relaxed)
 }
 
-#[allow(unused_assignments)]
-#[cfg(feature = "term-ui")]
 pub(crate) fn add_default() {
     catppuccin::add_colorschemes();
     tokyo_night::add_colorschemes();
     github::add_colorschemes();
     dracula::add_colorschemes();
     ayu::add_colorschemes();
-    nord::add_colorscheme();
-    kanagawa::add_colorscheme();
-    night_owl::add_colorscheme();
+    nord::add_colorschemes();
+    kanagawa::add_colorschemes();
+    night_owl::add_colorschemes();
 }
 
 add_colorschemes!(
@@ -1319,7 +1282,8 @@ add_colorschemes!(
 
 // Nord theme — https://www.nordtheme.com/docs/colors-and-palettes
 add_colorschemes!(
-    (nord, "nord", [
+    nord,
+    [(nord, "nord", [
         // Polar Night
         (nord0, "#2e3440"),
         (nord1, "#3b4252"),
@@ -1341,7 +1305,7 @@ add_colorschemes!(
         (nord13, "#ebcb8b"),
         (nord14, "#a3be8c"),
         (nord15, "#b48ead"),
-    ]),
+    ])],
     |c, has_background| {
         let default = if has_background {
             Form::new().with(c.nord4).on(c.nord0)
@@ -1489,7 +1453,8 @@ add_colorschemes!(
 
 // Kanagawa by rebelot: https://github.com/rebelot/kanagawa.nvim
 add_colorschemes!(
-    (kanagawa, "kanagawa", [
+    kanagawa,
+    [(kanagawa, "kanagawa", [
         (old_white, "#C8C093"),
         (fuji_white, "#DCD7BA"),
         (fuji_gray, "#727169"),
@@ -1533,7 +1498,7 @@ add_colorschemes!(
         (peach_red, "#FF5D62"),
         (surimi_orange, "#FFA066"),
         (katana_gray, "#717C7C"),
-    ]),
+    ])],
     |c, has_background| {
         let default = if has_background {
             Form::new().with(c.fuji_white).on(c.sumi_ink3)
@@ -1714,7 +1679,8 @@ add_colorschemes!(
 
 // Night Owl theme — https://github.com/sdras/night-owl-vscode-theme
 add_colorschemes!(
-    (night_owl, "night-owl", [
+    night_owl,
+    [(night_owl, "night-owl", [
         (bg, "#011627"),
         (surface, "#0b253a"),
         (surface_highlight, "#1d3b53"),
@@ -1735,7 +1701,7 @@ add_colorschemes!(
         (blue, "#82AAFF"),
         (purple, "#c792ea"),
         (gold, "#faf39f"),
-    ]),
+    ])],
     |c, has_background| {
         let default = if has_background {
             Form::new().with(c.text).on(c.bg)

@@ -7,8 +7,7 @@ use std::{
 
 use duat_base::{modes::Prompt, widgets::FilePlace};
 use duat_core::{
-    buffer::Buffer,
-    cmd, context,
+    buffer::Buffer, context,
     data::Pass,
     form::{self, Form},
     mode::{self, KeyEvent, Mode, User, event},

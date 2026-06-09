@@ -11,7 +11,6 @@
 //! desynchronized global state accessibility.
 use std::{
     iter::Chain,
-    ops::Range,
     path::Path,
     sync::{Arc, Mutex, atomic::AtomicBool},
 };
