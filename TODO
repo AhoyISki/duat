@@ -48,7 +48,7 @@ FOR NEXT UPDATE:
 [x] Make Text spawning immediate.
 
 QoL TODO LIST:
-[ ] Fix jumps not being recorded or being too recorded.
+[x] Fix jumps not being recorded or being too recorded.
 [x] Reloading shouldn't change your active Buffer.
 [x] The g key should record your current position.
 [x] Highlight background of currently active Buffer.

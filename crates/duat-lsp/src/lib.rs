@@ -521,31 +521,7 @@ fn goto_definitions(locations: Option<GotoDefinitionResponse>, pa: &mut Pass, en
 
     match locations {
         GotoDefinitionResponse::Scalar(location) => {
-            let path = uri_to_path(location.uri);
-            let Ok(text) = std::fs::read_to_string(&path).map(Text::from) else {
-                return;
-            };
-
-            let range = {
-                let start = encoding.byte_from_pos(&text, location.range.start);
-                let end = encoding.byte_from_pos(&text, location.range.end);
-                let (Some(start), Some(end)) = (start, end) else {
-                    return;
-                };
-
-                let start = text.point_at_byte(start);
-                let end = text.point_at_byte(end);
-
-                format!(
-                    "{}:{}..{}:{}",
-                    start.line() + 1,
-                    start.char_col(&text) + 1,
-                    end.line() + 1,
-                    end.char_col(&text)
-                )
-            };
-
-            _ = cmd::call_notify(pa, format!("open {} {range}", path.to_string_lossy()));
+            spawn_picker(pa, encoding, [(location.uri, location.range)]);
         }
         GotoDefinitionResponse::Array(locations) => {
             spawn_picker(

@@ -25,7 +25,7 @@ use gap_buf::GapBuffer;
 
 static PARSERS: PerBuffer<Parser> = PerBuffer::new();
 
-/// [`Plugin`]: Adds a `Jumps` parser to every [`Buffer`]
+/// [`Plugin`]: Adds a `Jumps` parser to every [`Buffer`].
 ///
 /// This `Jumps` parser can be used to retrieve previous
 /// [`Selections`] values, "jumping" around in the history.
@@ -47,7 +47,7 @@ impl JumpList {
     }
 }
 
-/// The state of the [`Selections`] at some point in time
+/// The state of the [`Selections`] at some point in time.
 ///
 /// It can either be a single selection, represented by an exclusive
 /// [`Range<usize>`] of bytes, or a list of selections, also
@@ -63,7 +63,7 @@ pub enum Jump {
 
 impl Jump {
     /// Wether the `Jump`'s selections are the same as those of the
-    /// [`Selections`]
+    /// [`Selections`].
     ///
     /// [`Selections`]: duat_core::mode::Selections
     pub fn is_eq(&self, buf: &Buffer) -> bool {
@@ -83,7 +83,7 @@ impl Jump {
         }
     }
 
-    /// Applies the `Jump` to the [`Selections`] of a [`Buffer`]
+    /// Applies the `Jump` to the [`Selections`] of a [`Buffer`].
     ///
     /// [`Selections`]: duat_core::mode::Selections
     pub fn apply(&self, pa: &mut Pass, buffer: &Handle<Buffer>) {
@@ -187,7 +187,7 @@ enum Saved {
     Changes(Box<Changes>),
 }
 
-/// A trait for recording and jumping [`Selections`]
+/// A trait for recording and jumping [`Selections`].
 ///
 /// This trait automatically takes into consideration any [`Change`]s
 /// that may have taken place in between jumps.
@@ -195,7 +195,7 @@ enum Saved {
 /// [`Selections`]: duat_core::mode::Selections
 /// [`Change`]: duat_core::buffer::Change
 pub trait BufferJumps {
-    /// Record the [`Buffer`]'s [`Selections`]
+    /// Record the [`Buffer`]'s [`Selections`].
     ///
     /// If `allow_duplicates` is set to `false`, then the selections
     /// will not be recorded if that would mean two identical jumps in
@@ -206,9 +206,10 @@ pub trait BufferJumps {
     /// to jump to specific selections via [`Handle::go_to_jump`].
     ///
     /// [`Selections`]: duat_core::mode::Selections
+    /// [`Handle::go_to_jump`]: BufferJumps::go_to_jump
     fn record_jump(&self, pa: &mut Pass, ns: Ns, allow_duplicates: bool) -> Option<JumpId>;
 
-    /// Jumps forwards or backwards through the [`Jump`]s on the list
+    /// Jumps forwards or backwards through the [`Jump`]s on the list.
     ///
     /// The `Jump` can either be a single selection, represented by
     /// an exclusive [`Range<usize>`], or it can be multiple
@@ -220,7 +221,7 @@ pub trait BufferJumps {
     /// removed.
     fn move_jumps_by(&self, pa: &mut Pass, ns: Ns, by: i32) -> Option<Jump>;
 
-    /// Jumps to the [`Jump`] specified by a [`JumpId`]
+    /// Jumps to the [`Jump`] specified by a [`JumpId`].
     ///
     /// The `Jump` can either be a single selection, represented by
     /// an exclusive [`Range<usize>`], or it can be multiple
@@ -235,7 +236,7 @@ pub trait BufferJumps {
     /// [`Handle::get_jump`].
     fn go_to_jump(&self, pa: &mut Pass, ns: Ns, id: JumpId) -> Option<Jump>;
 
-    /// Gets the [`Jump`] specified by a [`JumpId`]
+    /// Gets the [`Jump`] specified by a [`JumpId`].
     ///
     /// The `Jump` can either be a single selection, represented by
     /// an exclusive [`Range<usize>`], or it can be multiple
@@ -248,7 +249,7 @@ pub trait BufferJumps {
     fn get_jump(&self, pa: &mut Pass, ns: Ns, id: JumpId) -> Option<Jump>;
 
     /// Records a non duplicated selection if there is none, returning
-    /// it if successful. Otherwise returns the current [`JumpId`]
+    /// it if successful. Otherwise returns the current [`JumpId`].
     fn record_or_get_current_jump(&self, pa: &mut Pass, ns: Ns) -> JumpId;
 }
 
@@ -267,23 +268,23 @@ impl BufferJumps for Handle<Buffer> {
                 };
 
                 match jump {
-                    Jump::Single(sel) => {
-                        if selections.len() == 1 && selections.main().byte_range(buf.text()) == *sel
-                        {
-                            return None;
-                        }
+                    Jump::Single(sel)
+                        if selections.len() == 1
+                            && selections.main().byte_range(buf.text()) == *sel =>
+                    {
+                        return None;
                     }
-                    Jump::Multiple(sels, main) => {
+                    Jump::Multiple(sels, main)
                         if *main == selections.main_index()
                             && sels.len() == selections.len()
                             && sels
                                 .iter()
                                 .zip(selections.iter())
-                                .all(|(lhs, (rhs, _))| *lhs == rhs.byte_range(buf.text()))
-                        {
-                            return None;
-                        }
+                                .all(|(lhs, (rhs, _))| *lhs == rhs.byte_range(buf.text())) =>
+                    {
+                        return None;
                     }
+                    _ => {}
                 }
             }
         }
@@ -383,7 +384,7 @@ impl BufferJumps for Handle<Buffer> {
         jump.or_else(|| {
             last_seen.map(|i| {
                 let Some(Saved::Jump(jump, _)) = list.get(i) else {
-                    unreachable!();
+                    unreachable!()
                 };
                 jump.clone()
             })

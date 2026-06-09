@@ -2,7 +2,7 @@ use duat_core::{
     cmd,
     context::{self, Handle},
     data::Pass,
-    mode::{self, KeyCode, KeyEvent, alt, event},
+    mode::{self, KeyCode, KeyEvent, SelectionMut, alt, event},
 };
 
 use crate::{
@@ -103,17 +103,27 @@ fn match_goto(
         _ = cmd::call_notify(pa, cmd);
     };
 
+    fn register_and_move(pa: &mut Pass, widget: &Handle, func: impl FnMut(SelectionMut)) {
+        if let Some(buffer) = widget.get_as() {
+            crate::normal::jump_list::register(pa, &buffer, 5);
+            widget.edit_all(pa, func);
+            crate::normal::jump_list::register(pa, &buffer, 5);
+        } else {
+            widget.edit_all(pa, func)
+        }
+    }
+
     match key_event {
         event!('h') => widget.edit_all(pa, |mut s| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
             let range = s.search("\n").to_cursor().next_back();
             s.move_to(range.unwrap_or_default().end);
         }),
-        event!('j') => widget.edit_all(pa, |mut s| {
+        event!('j') => register_and_move(pa, widget, |mut s| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
             s.move_ver(i32::MAX);
         }),
-        event!('k' | 'g') => widget.edit_all(pa, |mut s| {
+        event!('k' | 'g') => register_and_move(pa, widget, |mut s| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
             s.move_to_coords(0, 0)
         }),

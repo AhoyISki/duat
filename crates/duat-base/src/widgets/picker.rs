@@ -11,7 +11,7 @@ use duat_core::{
     cmd,
     context::{self, Handle},
     data::{Pass, RwData},
-    hook::{self, FocusedUpdated, WidgetOpened, WidgetSwitched},
+    hook::{self, FocusedUpdated, WidgetSwitched},
     mode,
     opts::PrintOpts,
     text::{Text, TextMut},
@@ -24,34 +24,30 @@ use crate::hooks::{PickerEntryFocused, PickerEntrySelected};
 /// Setup for the [`Picker`] widget.
 pub(crate) fn picker_setup() {
     hook::add::<WidgetSwitched>(|pa, (old, new)| {
-        if (old.widget().is::<Picker>() && !new.widget().is::<Preview>())
-            || (old.widget().is::<Preview>() && !new.widget().is::<Picker>())
+        if let Some(picker) = context::handle_of::<Picker>(pa)
+            && new.widget().is::<Buffer>()
         {
-            _ = old.close(pa);
+            _ = picker.close(pa);
         } else if let Some(preview) = old.get_as::<Preview>()
-            && let pv = preview.read(pa)
-            && let Some(PreviewMode::BufferPreview(path, .., Some(filetype))) =
-                &pv.modes[pv.current]
+            && let pv = preview.write(pa)
+            && let Some(PreviewMode::BufferPreview(idx, .., filetype)) = &pv.modes[pv.current]
         {
-            let (path, filetype) = (path.clone(), *filetype);
-            let mut text = preview.text_mut(pa);
+            let (path, text) = &mut pv.preview_texts[*idx];
 
             duat_core::try_or_log_err! {
                 let file = std::fs::OpenOptions::new()
                     .write(true)
                     .truncate(true)
                     .create(true)
-                    .open(&path)?;
+                    .open(path)?;
                 text.save_on(file)?;
             }
 
             text.clear_tags();
-            duat_treesitter::highlight_as(text, .., filetype);
+            if let Some(filetype) = filetype {
+                duat_treesitter::highlight_as(text.as_mut(), .., filetype);
+            }
         }
-    });
-
-    hook::add::<WidgetOpened<Picker>>(|pa, picker| {
-        mode::reset_to(pa, picker);
     });
 
     hook::add::<FocusedUpdated<Picker>>(|pa, picker| {
@@ -111,6 +107,76 @@ pub(crate) fn picker_setup() {
     hook::add::<PickerEntryFocused<FilePlace>>(|pa, (place, preview)| {
         preview.set_place(pa, place.clone());
     });
+
+    hook::add::<PickerEntrySelected<FilePlace>>(|pa, place| {
+        let coords = |text: &Text| {
+            let start = text.point_at_byte(place.range.start);
+            let end = text.point_at_byte(place.range.end);
+            format!(
+                "{}:{}..{}:{}",
+                start.line() + 1,
+                start.char_col(text) + 1,
+                end.line() + 1,
+                end.char_col(text)
+            )
+        };
+
+        let Some(preview) = context::handle_of::<Preview>(pa) else {
+            let text = match std::fs::read_to_string(&place.path).map(Text::from) {
+                Ok(text) => text,
+                Err(err) => {
+                    context::error!("couldn't read {place.path}: {err}");
+                    return;
+                }
+            };
+
+            let coords = coords(&text);
+            _ = cmd::call_notify(
+                pa,
+                format!("open '{}' {coords}", place.path.to_string_lossy()),
+            );
+
+            return;
+        };
+
+        let pv = preview.write(pa);
+        let on_new_window = pv.on_new_window;
+
+        match pv.modes.remove(pv.current) {
+            Some(PreviewMode::BufferMirror(buffer, range)) => {
+                buffer.edit_main(pa, |mut s| s.move_to(range.clone()));
+                buffer.remove_extra_selections(pa);
+                mode::reset_to(pa, &buffer);
+            }
+            Some(PreviewMode::BufferPreview(idx, range, _)) => {
+                let (path, text) = pv.preview_texts.remove(idx);
+
+                if let Some(buffer) = context::buffer_from_path(pa, &path) {
+                    buffer.text_mut(pa).replace_range(.., text.to_string());
+                    buffer.edit_main(pa, |mut s| s.move_to(range.clone()));
+                    buffer.remove_extra_selections(pa);
+                    mode::reset_to(pa, &buffer);
+                } else {
+                    duat_core::try_or_log_err! {
+                        let file = std::fs::OpenOptions::new()
+                            .write(true)
+                            .truncate(true)
+                            .create(true)
+                            .open(&path)?;
+                        text.save_on(file)?;
+                    };
+
+                    let cmd = if on_new_window { "open" } else { "edit" };
+                    let path = path.to_string_lossy();
+
+                    let coords = coords(&text);
+                    _ = cmd::call_notify(pa, format!("{cmd} '{path}' {coords}",));
+                }
+            }
+            Some(PreviewMode::Text(..)) | None => {}
+        }
+    })
+    .lateness(50);
 }
 
 /// A [`Widget`] that is mostly used to jump to locations in
@@ -128,7 +194,9 @@ pub struct Picker {
 impl Picker {
     /// Spawn a new picker for jumping to [`Buffer`] locations.
     ///
-    /// If the list is empty, does nothing.
+    /// If the list is empty, does nothing. If the list has only one
+    /// element, then the `Picker` won't be spawned, but instead that
+    /// one element will be picked automatically.
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
     #[track_caller]
@@ -159,10 +227,12 @@ impl Picker {
             empty: Text::new(),
             modes: vec![None],
             current: 0,
+            on_new_window: true,
+            preview_texts: Vec::new(),
         };
 
         let mut builder = Text::builder();
-        let maps = Vec::from_iter(
+        let mut maps = Vec::from_iter(
             [first_place]
                 .into_iter()
                 .chain(iter.inspect(|_| pv.modes.push(None)))
@@ -177,6 +247,13 @@ impl Picker {
                     )
                 }),
         );
+
+        if maps.len() == 1
+            && let Some((_, first)) = maps.pop()
+        {
+            hook::trigger(pa, PickerEntrySelected::<FilePlace>((first, PhantomData)));
+            return;
+        }
 
         let preview = window.spawn(pa, pv, specs);
 
@@ -209,6 +286,8 @@ impl Picker {
             },
         );
 
+        mode::reset_to(pa, &picker);
+
         if let Some(area) = picker.area().write_as::<duat_term::Area>(pa) {
             let frame = Frame {
                 left: true,
@@ -226,7 +305,7 @@ impl Picker {
     ///
     /// If this is supposet to take place on a new `Window`, then
     /// set `on_new_window` to `true`.
-    pub fn select_current(pa: &mut Pass, on_new_window: bool) {
+    pub fn select_current(pa: &mut Pass) {
         let Some(picker) = context::handle_of::<Picker>(pa) else {
             context::warn!("Tried selecting the [a]Picker[] entry, but there was no Picker open");
             return;
@@ -238,54 +317,6 @@ impl Picker {
 
         let (_, entry) = pkr.maps.remove(current);
         (pkr.selected_fn)(pa, entry);
-
-        let pv = picker.write_then(pa, |pkr| &pkr.preview);
-        match pv.modes.remove(pv.current) {
-            Some(PreviewMode::BufferMirror(buffer, range)) => {
-                buffer.edit_main(pa, |mut s| s.move_to(range.clone()));
-                buffer.remove_extra_selections(pa);
-                mode::reset_to(pa, &buffer);
-            }
-            Some(PreviewMode::BufferPreview(path, text, range, _)) => {
-                if let Some(buffer) = context::buffer_from_path(pa, &path) {
-                    buffer.text_mut(pa).replace_range(.., text.to_string());
-                    buffer.edit_main(pa, |mut s| s.move_to(range.clone()));
-                    buffer.remove_extra_selections(pa);
-                    mode::reset_to(pa, &buffer);
-                } else {
-                    duat_core::try_or_log_err! {
-                        let file = std::fs::OpenOptions::new()
-                            .write(true)
-                            .truncate(true)
-                            .create(true)
-                            .open(&path)?;
-                        text.save_on(file)?;
-                    };
-
-                    let cmd = if on_new_window { "open" } else { "edit" };
-                    let path = path.to_string_lossy();
-
-                    let coords = {
-                        let start = text.point_at_byte(range.start);
-                        let end = text.point_at_byte(range.end);
-                        format!(
-                            "{}:{}..{}:{}",
-                            start.line() + 1,
-                            start.char_col(&text) + 1,
-                            end.line() + 1,
-                            end.char_col(&text)
-                        )
-                    };
-
-                    if cmd::call_notify(pa, format!("{cmd} {path} {coords}",)).is_ok() {
-                        let buffer = context::current_buffer(pa);
-                        buffer.remove_extra_selections(pa);
-                        buffer.edit_main(pa, |mut s| s.move_to(range.clone()));
-                    }
-                }
-            }
-            Some(PreviewMode::Text(..)) | None => {}
-        }
     }
 
     /// Focus on the [`Picker`]'s preview pane.
@@ -389,6 +420,15 @@ impl PickerPreview {
     pub fn set_place(&self, pa: &mut Pass, place: FilePlace) {
         let mode = if let Some(buffer) = context::buffer_from_path(pa, &place.path) {
             PreviewMode::BufferMirror(buffer, place.range.clone())
+        } else if let Some(idx) = self
+            .0
+            .read(pa)
+            .preview_texts
+            .iter()
+            .position(|(path, _)| *path == place.path)
+        {
+            let filetype = duat_filetype::from_filename(&place.path);
+            PreviewMode::BufferPreview(idx, place.range.clone(), filetype)
         } else {
             let content = match std::fs::read_to_string(&place.path) {
                 Ok(content) => content,
@@ -404,12 +444,10 @@ impl PickerPreview {
                 None
             };
 
-            PreviewMode::BufferPreview(
-                PathBuf::from(&place.path),
-                text,
-                place.range.clone(),
-                filetype,
-            )
+            let pv = self.0.write(pa);
+            pv.preview_texts.push((place.path, text));
+
+            PreviewMode::BufferPreview(pv.preview_texts.len() - 1, place.range.clone(), filetype)
         };
 
         let pv = self.0.write(pa);
@@ -430,6 +468,8 @@ struct Preview {
     empty: Text,
     modes: Vec<Option<PreviewMode>>,
     current: usize,
+    on_new_window: bool,
+    preview_texts: Vec<(PathBuf, Text)>,
 }
 
 impl Widget for Preview {
@@ -437,7 +477,7 @@ impl Widget for Preview {
         let pv = widget.read(pa);
         match pv.modes[pv.current].as_ref() {
             Some(PreviewMode::BufferMirror(buffer, _)) => buffer.text(pa),
-            Some(PreviewMode::BufferPreview(_, text, ..)) => text,
+            Some(PreviewMode::BufferPreview(idx, ..)) => &pv.preview_texts[*idx].1,
             Some(PreviewMode::Text(text, _)) => text,
             None => &pv.empty,
         }
@@ -446,7 +486,13 @@ impl Widget for Preview {
     fn text_mut<'p>(widget: &'p RwData<Self>, pa: &'p mut Pass) -> TextMut<'p> {
         let pv = widget.write(pa);
         match &mut pv.modes[pv.current].as_mut() {
-            Some(PreviewMode::BufferPreview(_, text, ..) | PreviewMode::Text(text, _)) => {
+            Some(PreviewMode::BufferPreview(idx, ..)) => {
+                // SAFETY: Doing this to circumvent current borrow checking
+                // limitations.
+                let ptr = &raw mut pv.preview_texts[*idx].1;
+                unsafe { ptr.as_mut_unchecked() }.as_mut_with_strs_mutation()
+            }
+            Some(PreviewMode::Text(text, _)) => {
                 // SAFETY: Doing this to circumvent current borrow checking
                 // limitations.
                 let ptr = text as *mut Text;
@@ -474,7 +520,7 @@ impl Widget for Preview {
 
 pub enum PreviewMode {
     BufferMirror(Handle<Buffer>, Range<usize>),
-    BufferPreview(PathBuf, Text, Range<usize>, Option<&'static str>),
+    BufferPreview(usize, Range<usize>, Option<&'static str>),
     Text(Text, Range<usize>),
 }
 

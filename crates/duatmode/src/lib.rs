@@ -313,7 +313,7 @@ impl DuatMode {
 
         hook::add::<SearchPerformed>(|_, search| *SEARCH.lock().unwrap() = search.to_string());
 
-        normal::jump_list::add_jump_hook();
+        normal::jump_list::add_jump_hooks();
         normal::setup_hooks();
         insert::setup_hooks();
 

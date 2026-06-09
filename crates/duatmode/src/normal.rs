@@ -277,13 +277,11 @@ impl Mode for Normal {
             event!(Tab) if Picker::is_open(pa) => {
                 if Picker::is_on_preview(pa) {
                     Picker::unfocus_preview(pa);
-                } else {
+                } else if widget.widget().is::<Picker>() {
                     Picker::focus_preview(pa);
                 }
             }
-            shift!(Enter) | event!(Enter) if Picker::is_open(pa) && !Picker::is_on_preview(pa) => {
-                Picker::select_current(pa, key_event.modifiers.contains(KeyMod::SHIFT));
-            }
+            event!(Enter) if widget.widget().is::<Picker>() => Picker::select_current(pa),
 
             ////////// Other mode changing keys
             event!(':') => mode::set(pa, RunCommands::new()),
@@ -1602,6 +1600,7 @@ static U_ALT_U_ID: LazyLock<Ns> = Ns::new_lazy();
 pub(crate) mod jump_list {
     use std::sync::{LazyLock, Mutex};
 
+    use duat_base::{hooks::PickerEntrySelected, widgets::FilePlace};
     use duat_core::{
         Ns,
         buffer::{Buffer, BufferId},
@@ -1677,7 +1676,7 @@ pub(crate) mod jump_list {
                 } {
                     hook::remove(*JUMPS_NS);
                     mode::reset_to(pa, &buffer);
-                    add_jump_hook();
+                    add_jump_hooks();
 
                     buffer.clone()
                 } else {
@@ -1705,7 +1704,7 @@ pub(crate) mod jump_list {
     }
 
     /// Add the hook for automatic insertion of jumps
-    pub fn add_jump_hook() {
+    pub fn add_jump_hooks() {
         hook::add::<BufferSwitched>(|pa, (former, current)| {
             if !former.is_closed() {
                 register(pa, former, 5);
@@ -1713,5 +1712,17 @@ pub(crate) mod jump_list {
             register(pa, current, 5);
         })
         .grouped(*JUMPS_NS);
+
+        hook::add::<PickerEntrySelected<FilePlace>>(|pa, _| {
+            let buffer = context::current_buffer(pa);
+            register(pa, &buffer, 5);
+        })
+        .lateness(49);
+
+        hook::add::<PickerEntrySelected<FilePlace>>(|pa, _| {
+            let buffer = context::current_buffer(pa);
+            register(pa, &buffer, 5);
+        })
+        .lateness(51);
     }
 }

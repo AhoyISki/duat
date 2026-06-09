@@ -536,12 +536,20 @@ pub mod hooks {
 
     /// [`Hookable`]: Triggers when a [`Picker`] entry is selected.
     ///
+    /// For the [`FilePlace`] picker entry type, the jump to the new
+    /// location will happen with a [lateness] of `50`. This means
+    /// that if you add hooks with a lateness smaller than `50`,
+    /// these hooks will take place before jumping to the new
+    /// location.
+    ///
     /// # Arguments
     ///
     /// - The entry in question.
     ///
     /// [`Picker`]: crate::widgets::Picker
     /// [`Text`]: duat_core::text::Text
+    /// [`FilePlace`]: crate::widgets::FilePlace
+    /// [lateness]: duat_core::hook::HookBuilder::lateness
     pub struct PickerEntrySelected<T>(pub(crate) (Box<dyn Any + Send>, PhantomData<T>));
 
     impl<T: 'static> Hookable for PickerEntrySelected<T> {
