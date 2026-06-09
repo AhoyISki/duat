@@ -17,18 +17,22 @@
 //! pub struct Spiraled;
 //!
 //! impl Layout for Spiraled {
-//!     fn new_buffer(&mut self, pa: &Pass, windows: &[Window]) -> (Handle<Buffer>, PushSpecs) {
-//!         let cur_win = context::current_win_index(pa);
-//!         let buffers = windows[cur_win].buffers(pa);
+//!     fn new_buffer(
+//!         &mut self,
+//!         pa: &Pass,
+//!         windows: &[Window],
+//!         win: usize,
+//!     ) -> Option<(Handle<Buffer>, PushSpecs)> {
+//!         let buffers = windows[win].buffers(pa);
 //!         let last = buffers.iter().last().unwrap().clone();
 //!
-//!         match buffers.len() % 4 {
+//!         Some(match buffers.len() % 4 {
 //!             0 => (last, PushSpecs { side: Side::Right, ..Default::default() }),
 //!             1 => (last, PushSpecs { side: Side::Below, ..Default::default() }),
 //!             2 => (last, PushSpecs { side: Side::Left, ..Default::default() }),
 //!             3 => (last, PushSpecs { side: Side::Above, ..Default::default() }),
 //!             _ => unreachable!("That's not how math works, man!"),
-//!         }
+//!         })
 //!     }
 //! }
 //! ```
