@@ -61,46 +61,54 @@ pub use duat_core::form::{
 /// ```rust
 /// use duat::form::Form;
 ///
-/// fn add_my_colorschemes() {
-///     duat::add_colorschemes!(
-///         [
-///             ("mycolors-light", [
-///                 (background, "#ffffff"),
-///                 (foreground, "#000000"),
-///                 (red, "#ff0000"),
-///                 (blue, "#0000ff"),
-///                 // ...
-///             ]),
-///             ("mycolors-dark", [
-///                 (background, "#000000"),
-///                 (foreground, "#ffffff"),
-///                 (red, "#ff0000"),
-///                 (blue, "#0000ff"),
-///                 // ...
-///             ]),
-///         ],
-///         |c, has_background| {
-///             let default = if has_background {
-///                 Form::new().with(c.foreground)
-///             } else {
-///                 Form::new().with(c.foreground).on(c.background)
-///             };
+/// duat::add_colorschemes!(
+///     mycolors,
+///     [
+///         (mycolors_light, "mycolors-light", [
+///             (background, "#ffffff"),
+///             (foreground, "#000000"),
+///             (red, "#ff0000"),
+///             (blue, "#0000ff"),
+///             // ...
+///         ]),
+///         (mycolors_dark, "mycolors-dark", [
+///             (background, "#000000"),
+///             (foreground, "#ffffff"),
+///             (red, "#ff0000"),
+///             (blue, "#0000ff"),
+///             // ...
+///         ]),
+///     ],
+///     |c, has_background| {
+///         let default = if has_background {
+///             Form::new().with(c.foreground)
+///         } else {
+///             Form::new().with(c.foreground).on(c.background)
+///         };
 ///
-///             [
-///                 ("default", default),
-///                 ("accent", Form::new().with(c.foreground).bold()),
-///                 ("default.error", Form::new().with(c.red)),
-///                 ("accent.error", Form::new().with(c.red).underlined().bold()),
-///                 ("function", Form::new().with(c.blue)),
-///                 // ...
-///             ]
-///         }
-///     );
+///         [
+///             ("default", default),
+///             ("accent", Form::new().with(c.foreground).bold()),
+///             ("default.error", Form::new().with(c.red)),
+///             ("accent.error", Form::new().with(c.red).underlined().bold()),
+///             ("function", Form::new().with(c.blue)),
+///             // ...
+///         ]
+///     }
+/// );
+///
+/// fn add_my_colorschemes() {
+///     mycolors::add_colorschemes()
 /// }
 /// ```
 ///
 /// This way, you can use just one function to set the colors of
 /// multiple different variants, and the setup is fairly simple to do.
+///
+/// Additionally this macro will also add the `mycolors_dark` and
+/// `mycolors_light` free functions, which will return a struct
+/// `Colors` containing each of the specified colors in the
+/// colorscheme.
 ///
 /// # Note
 ///
@@ -116,52 +124,118 @@ pub use duat_core::form::{
 #[macro_export]
 macro_rules! add_colorschemes {
     (
+        $module:ident,
         [
             $(
-                ($variant:literal, [
+                ($func_name:ident, $var_name:literal, [
                     $(($color_name:ident, $color_value:literal $(,)?)),* $(,)?
                 ])
             ),+ $(,)?
         ],
         $pairs:expr $(,)?
-    ) => {{
-        use $crate::form::Form;
-
-        $crate::add_colorschemes!(@Colors Colors, $($variant: { $($color_name),* }),+);
-
-        const VARIANTS: &[&Colors] = &[
-            $(&Colors {
-                variant_name: $variant,
-                $($color_name: $color_value),*
-            }),+
-        ];
-
-        fn pairs(variant: usize) -> Vec<(String, Form)> {
-            type PairsFn<const N: usize> = fn(&Colors, bool) -> [(&'static str, Form); N];
-
-            let pairs_fn: PairsFn<_> = $pairs;
-            let pairs = pairs_fn(VARIANTS[variant], $crate::colorscheme::has_background());
-
-            pairs.map(|(name, form)| (name.to_string(), form)).to_vec()
-        }
-
-        #[allow(unused_variables)]
-		let mut variant_num = 0;
-		$(
-            $crate::colorscheme::add($variant, move || pairs(variant_num));
-            variant_num += 1;
-		)+
-    }};
-
-    (@Colors $struct:ident, $_variant:literal: { $($color_name:ident),* } $($_rest:tt)*
     ) => {
+        $(
+            pub use $module::$func_name;
+        )+
+        mod $module {
+            use $crate::form::Form;
+
+            $crate::add_colorschemes!(@Colors Colors, $($var_name: { $($color_name),* }),+);
+
+            $(
+                #[doc = concat!("The colors for the ", $var_name, " colorscheme.")]
+                #[must_use = concat!(
+                    "This doesn't set the ",
+                    $var_name,
+                    " colorscheme.\nIt merely gives you the colors from it.\n",
+                    "If you want to apply this colorscheme, call `colorscheme::set(\"",
+                    $var_name,
+                    "\");`."
+                )]
+                pub fn $func_name() -> &'static Colors {
+                    const COLORS: &Colors = &Colors {
+                        variant_name: $var_name,
+                        $($color_name: $color_value),*
+                    };
+
+                    COLORS
+                }
+            )+
+
+            #[deny(dead_code, reason = "remember to call this function on the add_default function")]
+            pub(super) fn add_colorschemes() {
+                fn pairs(colors: &Colors) -> Vec<(String, Form)> {
+                    type PairsFn<const N: usize> = fn(&Colors, bool) -> [(&'static str, Form); N];
+
+                    let pairs_fn: PairsFn<_> = $pairs;
+                    let pairs = pairs_fn(colors, $crate::colorscheme::has_background());
+
+                    pairs.map(|(name, form)| (name.to_string(), form)).to_vec()
+                }
+
+                $(
+                    $crate::colorscheme::add($var_name, || pairs($func_name()));
+                )+
+            }
+        }
+    };
+
+    (
+        ($func_name:ident, $var_name:literal, [
+            $(($color_name:ident, $color_value:literal $(,)?)),* $(,)?
+        ]),
+        $pairs:expr $(,)?
+    ) => {
+        pub use $func_name::$func_name;
+        mod $func_name {
+            use $crate::form::Form;
+
+            #[doc = concat!("The colors for the ", $var_name, " colorscheme.")]
+            #[must_use = concat!(
+                "This doesn't set the ",
+                $var_name,
+                " colorscheme.\nIt merely gives you the colors from it.\n",
+                "If you want to apply this colorscheme, call `colorscheme::set(\"",
+                $var_name,
+                "\");`."
+            )]
+            pub fn $func_name() -> &'static Colors {
+                COLORS
+            }
+
+            $crate::add_colorschemes!(@Colors Colors, $var_name: { $($color_name),* });
+
+            const COLORS: &Colors = &Colors {
+                variant_name: $var_name,
+                $($color_name: $color_value),*
+            };
+
+            #[deny(dead_code, reason = "remember to call this function on the add_default function")]
+            pub(super) fn add_colorscheme() {
+                fn pairs() -> Vec<(String, Form)> {
+                    type PairsFn<const N: usize> = fn(&Colors, bool) -> [(&'static str, Form); N];
+
+                    let pairs_fn: PairsFn<_> = $pairs;
+                    let pairs = pairs_fn(COLORS, $crate::colorscheme::has_background());
+
+                    pairs.map(|(name, form)| (name.to_string(), form)).to_vec()
+                }
+
+                #[allow(unused_variables)]
+                $crate::colorscheme::add($var_name, pairs);
+            }
+        }
+    };
+
+    (@Colors $struct:ident, $_variant:literal: { $($color_name:ident),* } $($_rest:tt)*) => {
+        /// Color fields.
         #[allow(dead_code)]
         #[derive(Clone, Copy)]
-        struct $struct {
-            variant_name: &'static str,
-            $($color_name: &'static str),*
+        pub struct $struct {
+            pub variant_name: &'static str,
+            $(pub $color_name: &'static str),*
         }
-    }
+    };
 }
 
 static WITH_BACKGRUND: AtomicBool = AtomicBool::new(true);
@@ -182,1596 +256,1631 @@ pub fn has_background() -> bool {
 #[allow(unused_assignments)]
 #[cfg(feature = "term-ui")]
 pub(crate) fn add_default() {
-    add_colorschemes!(
-        [
-            ("catppuccin-latte", [
-                (rosewater, "#dc8a78"),
-                (flamingo, "#dd7878"),
-                (pink, "#ea76cb"),
-                (mauve, "#8839ef"),
-                (red, "#d20f39"),
-                (maroon, "#e64553"),
-                (peach, "#fe640b"),
-                (yellow, "#df8e1d"),
-                (green, "#40a02b"),
-                (teal, "#179299"),
-                (sky, "#04a5e5"),
-                (sapphire, "#209fb5"),
-                (blue, "#1e66f5"),
-                (lavender, "#7287fd"),
-                (text, "#4c4f69"),
-                (subtext1, "#5c5f77"),
-                (subtext0, "#6c6f85"),
-                (overlay2, "#7c7f93"),
-                (overlay1, "#8c8fa1"),
-                (overlay0, "#9ca0b0"),
-                (surface2, "#acb0be"),
-                (surface1, "#bcc0cc"),
-                (surface0, "#ccd0da"),
-                (base, "#eff1f5"),
-                (mantle, "#e6e9ef"),
-                (crust, "#dce0e8"),
-            ]),
-            ("catppuccin-frappe", [
-                (rosewater, "#f2d5cf"),
-                (flamingo, "#eebebe"),
-                (pink, "#f4b8e4"),
-                (mauve, "#ca9ee6"),
-                (red, "#e78284"),
-                (maroon, "#ea999c"),
-                (peach, "#ef9f76"),
-                (yellow, "#e5c890"),
-                (green, "#a6d189"),
-                (teal, "#81c8be"),
-                (sky, "#99d1db"),
-                (sapphire, "#85c1dc"),
-                (blue, "#8caaee"),
-                (lavender, "#babbf1"),
-                (text, "#c6d0f5"),
-                (subtext1, "#b5bfe2"),
-                (subtext0, "#a5adce"),
-                (overlay2, "#949cbb"),
-                (overlay1, "#838ba7"),
-                (overlay0, "#737994"),
-                (surface2, "#626880"),
-                (surface1, "#51576d"),
-                (surface0, "#414559"),
-                (base, "#303446"),
-                (mantle, "#292c3c"),
-                (crust, "#232634"),
-            ]),
-            ("catppuccin-macchiato", [
-                (rosewater, "#f4dbd6"),
-                (flamingo, "#f0c6c6"),
-                (pink, "#f5bde6"),
-                (mauve, "#c6a0f6"),
-                (red, "#ed8796"),
-                (maroon, "#ee99a0"),
-                (peach, "#f5a97f"),
-                (yellow, "#eed49f"),
-                (green, "#a6da95"),
-                (teal, "#8bd5ca"),
-                (sky, "#91d7e3"),
-                (sapphire, "#7dc4e4"),
-                (blue, "#8aadf4"),
-                (lavender, "#b7bdf8"),
-                (text, "#cad3f5"),
-                (subtext1, "#b8c0e0"),
-                (subtext0, "#a5adcb"),
-                (overlay2, "#939ab7"),
-                (overlay1, "#8087a2"),
-                (overlay0, "#6e738d"),
-                (surface2, "#5b6078"),
-                (surface1, "#494d64"),
-                (surface0, "#363a4f"),
-                (base, "#24273a"),
-                (mantle, "#1e2030"),
-                (crust, "#181926"),
-            ]),
-            ("catppuccin-mocha", [
-                (rosewater, "#f5e0dc"),
-                (flamingo, "#f2cdcd"),
-                (pink, "#f5c2e7"),
-                (mauve, "#cba6f7"),
-                (red, "#f38ba8"),
-                (maroon, "#eba0ac"),
-                (peach, "#fab387"),
-                (yellow, "#f9e2af"),
-                (green, "#a6e3a1"),
-                (teal, "#94e2d5"),
-                (sky, "#89dceb"),
-                (sapphire, "#74c7ec"),
-                (blue, "#89b4fa"),
-                (lavender, "#b4befe"),
-                (text, "#cdd6f4"),
-                (subtext1, "#bac2de"),
-                (subtext0, "#a6adc8"),
-                (overlay2, "#9399b2"),
-                (overlay1, "#7f849c"),
-                (overlay0, "#6c7086"),
-                (surface2, "#585b70"),
-                (surface1, "#45475a"),
-                (surface0, "#313244"),
-                (base, "#1e1e2e"),
-                (mantle, "#181825"),
-                (crust, "#11111b"),
-            ])
-        ],
-        |c, has_background| {
-            let default = if has_background {
-                Form::new().with(c.text).on(c.base)
-            } else {
-                Form::new().with(c.text)
-            };
-            let active = |form: Form| form.interpolate(Form::new().on(c.surface0), 80);
-
-            [
-                // The default form, self explanatory.
-                ("default", default),
-                // A form to "accent" text, highlighting things.
-                ("accent", Form::new().with(c.rosewater).bold()),
-                // Variations of the above two for different scenarios.
-                ("default.error", Form::new().with(c.maroon)),
-                ("accent.error", Form::new().with(c.flamingo)),
-                ("default.warn", Form::new().with(c.yellow)),
-                ("accent.warn", Form::new().with(c.rosewater)),
-                ("default.info", Form::new().with(c.sapphire)),
-                ("accent.info", Form::new().with(c.text)),
-                ("default.debug", Form::new().with(c.subtext1)),
-                ("accent.debug", Form::new().with(c.lavender).bold()),
-                // In duat, the cursor is the blinking bit.
-                ("cursor.main", Form::new().with(c.base).on(c.rosewater)),
-                ("cursor.extra", Form::new().with(c.base).on(c.teal)),
-                // And the selection is the rest.
-                ("selection.main", Form::new().on(c.surface1)),
-                ("selection.extra", Form::new().on(c.surface0)),
-                // This is to hide selected indent guides.
-                ("cursor.main.indent", Form::new().with_on(c.rosewater)),
-                ("cursor.extra.indent", Form::new().with_on(c.teal)),
-                ("selection.main.indent", Form::new().with_on(c.surface1)),
-                ("selection.extra.indent", Form::new().with_on(c.surface0)),
-                // A utility form, mostly used to cover all other forms on screen.
-                ("cloak", Form::new().reset().with(c.overlay1).on(c.base)),
-                // Form for replacement characters (like indent guides).
-                ("replace", Form::new().with(c.surface0)),
-                // Same, but only for trailing newlines.
-                (
-                    "replace.newline.trailing",
-                    Form::new().with(c.red).on(c.surface1),
-                ),
-                // Forms for hovered and clicked Toggles.
-                ("toggle.hover", Form::new().on(c.surface0)),
-                ("toggle.click", Form::new().on(c.surface1)),
-                // Forms for the line numbers.
-                ("linenum.main", Form::new().with(c.yellow)),
-                ("linenum.wrapped", Form::new().with(c.teal)),
-                // Various forms for the StatusLine parts.
-                ("buffer", Form::new().with(c.yellow)),
-                ("selections", Form::new().with(c.blue)),
-                ("coord", Form::new().with(c.peach)),
-                ("separator", Form::mimic("punctuation.delimiter")),
-                ("mode", Form::new().with(c.green)),
-                // Borders separate Buffers.
-                ("terminal.border", Form::new().with(c.surface0).on(c.base)),
-                // Frames surround spawned widgets.
-                ("terminal.frame", Form::new().with(c.text).on(c.base)),
-                ("notifs.colon", Form::new().with(c.subtext0)),
-                // The prompt in a promptline (like `reverse search`).
-                ("prompt", Form::new().with(c.green)),
-                // The colon that separates the prompt from the input.
-                ("prompt.colon", Form::new().with(c.subtext0)),
-                // Used in the `mapped_txt` StatusLine part.
-                ("key", Form::new().with(c.peach)),
-                ("key.special", Form::new().with(c.teal)),
-                // Various default forms for specific Widgets.
-                (
-                    "default.Buffer.current_line",
-                    default.on(c.surface0).interpolate(default, 50),
-                ),
-                (
-                    "default.Buffer.diagnostic",
-                    default.on(c.mantle).interpolate(default, 50),
-                ),
-                ("default.StatusLine", default.on(c.mantle)),
-                ("default.LogBook", default.on(c.mantle)),
-                ("default.VertRule", default.with(c.surface0)),
-                ("default.LineNumbers", default.with(c.overlay0)),
-                ("default.Completions", default.on(c.surface1)),
-                ("default.Buffer.active", active(default)),
-                ("default.VertRule.active", active(default.with(c.surface0))),
-                ("default.LineNumbers.active", active(default.with(c.overlay0))),
-                ("default.Gutter.active", active(default)),
-                // Used when the cursor is over parentheses pairs.
-                (
-                    "matched_pair",
-                    Form::new().with(c.peach).on(c.surface1).bold(),
-                ),
-                // Form used on the location a log message came from.
-                ("logbook.location", Form::new().with(c.subtext1)),
-                (
-                    "selected.Completions",
-                    Form::new().with(c.base).on(c.overlay0),
-                ),
-                // Same as before, but on specific Modes.
-                ("cursor.main.Insert", Form::new().with(c.base).on(c.mauve)),
-                ("cursor.extra.Insert", Form::new().with(c.base).on(c.yellow)),
-                // Used when typing arguments to commands.
-                ("param", Form::new().with(c.lavender)),
-                ("param.flag", Form::new().on(c.base).with(c.pink)),
-                ("snippet", Form::new().with(c.base).on(c.yellow)),
-                // AST token forms
-                ("variable", Form::new().with(c.text)),
-                ("variable.builtin", Form::new().with(c.peach)),
-                ("variable.member", Form::new().with(c.lavender)),
-                ("constant", Form::new().with(c.peach).reset()),
-                ("constant.builtin", Form::new().with(c.peach).reset()),
-                ("static", Form::new().with(c.peach).reset()),
-                ("module", Form::new().with(c.blue).italic()),
-                ("label", Form::new().with(c.green)),
-                ("string", Form::new().with(c.green)),
-                ("string.escape", Form::new().with(c.peach)),
-                ("string.special.path", Form::new().with(c.sky).underlined()),
-                ("character", Form::new().with(c.peach)),
-                ("boolean", Form::new().with(c.peach)),
-                ("number", Form::new().with(c.peach)),
-                ("type", Form::new().with(c.yellow).italic()),
-                ("type.builtin", Form::new().with(c.yellow).reset()),
-                ("type.enum", Form::new().with(c.yellow).reset()),
-                ("type.enum.variant", Form::new().with(c.peach).italic()),
-                ("interface", Form::new().with(c.text).bold().reset()),
-                ("attribute", Form::new().with(c.green)),
-                ("property", Form::new().with(c.lavender)),
-                ("function", Form::new().with(c.blue).reset()),
-                ("function.macro", Form::new().with(c.lavender).italic()),
-                ("constructor", Form::new().with(c.peach)),
-                ("operator", Form::new().with(c.sapphire)),
-                ("keyword", Form::new().with(c.mauve)),
-                ("punctuation.bracket", Form::new().with(c.subtext0)),
-                ("punctuation.delimiter", Form::new().with(c.subtext0)),
-                ("comment", Form::new().with(c.overlay1)),
-                ("comment.documentation", Form::new().with(c.overlay1).bold()),
-                ("markup", Form::new()),
-                ("markup.strong", Form::new().with(c.maroon).bold()),
-                ("markup.italic", Form::new().with(c.maroon).italic()),
-                ("markup.strikethrough", Form::new().crossed_out()),
-                ("markup.underline", Form::new().underlined()),
-                ("markup.heading", Form::new().with(c.blue).bold()),
-                ("markup.math", Form::new().with(c.yellow)),
-                ("markup.quote", Form::new().with(c.maroon).bold()),
-                ("markup.environment", Form::new().with(c.pink)),
-                ("markup.environment.name", Form::new().with(c.blue)),
-                ("markup.link", Form::new().with(c.lavender).underlined()),
-                ("markup.raw", Form::new().with(c.teal)),
-                ("markup.list", Form::new().with(c.yellow)),
-                ("markup.list.checked", Form::new().with(c.green)),
-                ("markup.list.unchecked", Form::new().with(c.overlay1)),
-                ("diff.plus", Form::new().with(c.green)),
-                ("diff.delta", Form::new().with(c.blue)),
-                ("diff.delta.renamed", Form::new().with(c.yellow)),
-                ("diff.minus", Form::new().with(c.red)),
-                ("unresolved", Form::new().underlined().underline(c.red)),
-                ("completion.lsp.detail", Form::new().with(c.teal)),
-                ("completion.lsp.description", Form::new().with(c.subtext1)),
-                ("completion.lsp.kind", Form::new().with(c.blue)),
-            ]
-        }
-    );
-
-    add_colorschemes!(
-        [
-            ("tokyo-night", [
-                (red, "#f7768e"),
-                (red1, "#db4b4b"),
-                (orange, "#ff9e64"),
-                (yellow, "#e0af68"),
-                (green, "#9ece6a"),
-                (green1, "#73daca"),
-                (teal, "#1abc9c"),
-                (cyan, "#7dcfff"),
-                (blue, "#7aa2f7"),
-                (blue0, "#3d59a1"),
-                (blue1, "#2ac3de"),
-                (blue5, "#89ddff"),
-                (magenta, "#bb9af7"),
-                (purple, "#9d7cd8"),
-                (text, "#c0caf5"),
-                // Additional LSP forms
-                (fg_dark, "#a9b1d6"),
-                (dark5, "#737aa2"),
-                (comment, "#565f89"),
-                (dark3, "#545c7e"),
-                (terminal_black, "#414868"),
-                (fg_gutter, "#3b4261"),
-                (bg_highlight, "#292e42"),
-                (bg, "#1a1b26"),
-                (bg_dark, "#16161e"),
-                (black, "#15161e"),
-            ]),
-            ("tokyo-night-storm", [
-                (red, "#f7768e"),
-                (red1, "#db4b4b"),
-                (orange, "#ff9e64"),
-                (yellow, "#e0af68"),
-                (green, "#9ece6a"),
-                (green1, "#73daca"),
-                (teal, "#1abc9c"),
-                (cyan, "#7dcfff"),
-                (blue, "#7aa2f7"),
-                (blue0, "#3d59a1"),
-                (blue1, "#2ac3de"),
-                (blue5, "#89ddff"),
-                (magenta, "#bb9af7"),
-                (purple, "#9d7cd8"),
-                (text, "#c0caf5"),
-                (fg_dark, "#a9b1d6"),
-                (dark5, "#737aa2"),
-                (comment, "#565f89"),
-                (dark3, "#545c7e"),
-                (terminal_black, "#414868"),
-                (fg_gutter, "#3b4261"),
-                (bg_highlight, "#292e42"),
-                (bg, "#24283b"),
-                (bg_dark, "#1f2335"),
-                (black, "#1d202f"),
-            ]),
-        ],
-        |c, has_background| {
-            let default = if has_background {
-                Form::new().with(c.text).on(c.bg)
-            } else {
-                Form::new().with(c.text)
-            };
-            let active = |form: Form| form.interpolate(Form::new().on(c.bg_highlight), 50);
-
-            [
-                ("default", default),
-                ("accent", Form::new().with(c.cyan).bold()),
-                ("default.error", Form::new().with(c.red1)),
-                ("accent.error", Form::new().with(c.red).bold()),
-                ("default.warn", Form::new().with(c.yellow)),
-                ("accent.warn", Form::new().with(c.orange).bold()),
-                ("default.info", Form::new().with(c.blue1)),
-                ("accent.info", Form::new().with(c.cyan).bold()),
-                ("default.debug", Form::new().with(c.fg_dark)),
-                ("accent.debug", Form::new().with(c.purple).bold()),
-                ("cursor.main", Form::new().with(c.bg).on(c.text)),
-                ("cursor.extra", Form::new().with(c.bg).on(c.teal)),
-                ("selection.main", Form::new().on(c.blue0)),
-                ("selection.extra", Form::new().on(c.fg_gutter)),
-                ("cursor.main.indent", Form::new().with_on(c.text)),
-                ("cursor.extra.indent", Form::new().with_on(c.teal)),
-                ("selection.main.indent", Form::new().with_on(c.blue0)),
-                ("selection.extra.indent", Form::new().with_on(c.fg_gutter)),
-                ("cloak", Form::new().reset().with(c.dark5).on(c.bg)),
-                ("replace", Form::new().with(c.bg_highlight)),
-                (
-                    "replace.newline.trailing",
-                    Form::new().with(c.red).on(c.terminal_black),
-                ),
-                ("toggle.hover", Form::new().on(c.bg_highlight)),
-                ("toggle.click", Form::new().on(c.terminal_black)),
-                // duat-base forms
-                ("linenum.main", Form::new().with(c.yellow)),
-                ("linenum.wrapped", Form::new().with(c.teal)),
-                ("buffer", Form::new().with(c.yellow)),
-                ("selections", Form::new().with(c.blue)),
-                ("coord", Form::new().with(c.orange)),
-                ("separator", Form::mimic("punctuation.delimiter")),
-                ("mode", Form::new().with(c.green)),
-                ("terminal.border", Form::new().with(c.bg_highlight).on(c.bg)),
-                ("terminal.frame", Form::new().with(c.text).on(c.bg)),
-                ("notifs.colon", Form::new().with(c.dark3)),
-                ("prompt", Form::new().with(c.green)),
-                ("prompt.colon", Form::new().with(c.dark3)),
-                ("key", Form::new().with(c.orange)),
-                ("key.special", Form::new().with(c.teal)),
-                ("default.StatusLine", default.on(c.bg_dark)),
-                ("default.LogBook", default.on(c.bg_dark)),
-                ("default.VertRule", default.with(c.fg_gutter)),
-                ("default.LineNumbers", default.with(c.dark3)),
-                ("default.Buffer.active", active(default)),
-                ("default.VertRule.active", active(default.with(c.fg_gutter))),
-                ("default.LineNumbers.active", active(default.with(c.dark3))),
-                ("default.Gutter.active", active(default)),
-                (
-                    "matched_pair",
-                    Form::new().with(c.orange).on(c.terminal_black).bold(),
-                ),
-                ("logbook.location", Form::new().with(c.fg_dark)),
-                (
-                    "default.Buffer.current_line",
-                    default.on(c.bg_highlight).interpolate(default, 50),
-                ),
-                (
-                    "default.Buffer.diagnostic",
-                    default.on(c.bg_dark).interpolate(default, 50),
-                ),
-                ("default.Completions", default.on(c.terminal_black)),
-                ("selected.Completions", Form::new().with(c.bg).on(c.dark5)),
-                ("default.WhichKey", default.with(c.text)),
-                // For duatmode
-                ("cursor.main.Insert", Form::new().with(c.bg).on(c.magenta)),
-                ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
-                ("param", Form::new().with(c.purple)),
-                ("param.flag", Form::new().with(c.cyan)),
-                ("snippet", Form::new().with(c.bg).on(c.yellow)),
-                // AST token forms
-                ("variable", Form::new().with(c.text)),
-                ("variable.builtin", Form::new().with(c.orange)),
-                ("variable.member", Form::new().with(c.green1)),
-                ("constant", Form::new().with(c.orange)),
-                ("constant.builtin", Form::new().with(c.orange)),
-                ("static", Form::new().with(c.orange).reset()),
-                ("module", Form::new().with(c.blue).italic()),
-                ("label", Form::new().with(c.blue)),
-                ("string", Form::new().with(c.green)),
-                ("string.escape", Form::new().with(c.orange)),
-                ("string.special.path", Form::new().with(c.cyan).underlined()),
-                ("character", Form::new().with(c.orange)),
-                ("boolean", Form::new().with(c.orange)),
-                ("number", Form::new().with(c.orange)),
-                ("type", Form::new().with(c.blue1).italic()),
-                ("type.builtin", Form::new().with(c.blue1).reset()),
-                ("type.enum", Form::new().with(c.blue1).reset()),
-                ("type.enum.variant", Form::new().with(c.orange).italic()),
-                ("attribute", Form::new().with(c.yellow)),
-                ("property", Form::new().with(c.green1)),
-                ("function", Form::new().with(c.blue).reset()),
-                ("function.macro", Form::new().with(c.blue).italic()),
-                ("constructor", Form::new().with(c.orange)),
-                ("operator", Form::new().with(c.blue5)),
-                ("keyword", Form::new().with(c.magenta)),
-                ("punctuation.bracket", Form::new().with(c.dark5)),
-                ("punctuation.delimiter", Form::new().with(c.blue5)),
-                ("comment", Form::new().with(c.comment)),
-                ("comment.documentation", Form::new().with(c.comment).bold()),
-                ("markup", Form::new()),
-                ("markup.strong", Form::new().with(c.red).bold()),
-                ("markup.italic", Form::new().with(c.red).italic()),
-                ("markup.strikethrough", Form::new().crossed_out()),
-                ("markup.underline", Form::new().underlined()),
-                ("markup.heading", Form::new().with(c.blue).bold()),
-                ("markup.math", Form::new().with(c.yellow)),
-                ("markup.quote", Form::new().with(c.green).bold()),
-                ("markup.environment", Form::new().with(c.magenta)),
-                ("markup.environment.name", Form::new().with(c.blue)),
-                ("markup.link", Form::new().with(c.cyan).underlined()),
-                ("markup.raw", Form::new().with(c.teal)),
-                ("markup.list", Form::new().with(c.yellow)),
-                ("markup.list.checked", Form::new().with(c.green)),
-                ("markup.list.unchecked", Form::new().with(c.dark5)),
-                ("diff.plus", Form::new().with(c.green)),
-                ("diff.delta", Form::new().with(c.blue)),
-                ("diff.delta.renamed", Form::new().with(c.yellow)),
-                ("diff.minus", Form::new().with(c.red)),
-                ("unresolved", Form::new().underlined().underline(c.red)),
-                ("completion.lsp.detail", Form::new().with(c.teal)),
-                ("completion.lsp.description", Form::new().with(c.fg_dark)),
-                ("completion.lsp.kind", Form::new().with(c.blue)),
-            ]
-        }
-    );
-
-    add_colorschemes!(
-        [
-            ("github-dark", [
-                (bg, "#0d1117"),
-                (bg_overlay, "#161b22"),
-                (bg_subtle, "#21262d"),
-                (text, "#e6edf3"),
-                (text_muted, "#8b949e"),
-                (text_subtle, "#6e7681"),
-                (red, "#f85149"),
-                (orange, "#ffa657"),
-                (yellow, "#e3b341"),
-                (green, "#3fb950"),
-                (teal, "#39c5cf"),
-                (blue, "#58a6ff"),
-                (purple, "#d2a8ff"),
-                (string_color, "#a5d6ff"),
-                (number_color, "#79c0ff"),
-                (keyword_color, "#ff7b72"),
-                // Additional LSP forms
-            ]),
-            ("github-light", [
-                (bg, "#ffffff"),
-                (bg_overlay, "#f6f8fa"),
-                (bg_subtle, "#eaeef2"),
-                (text, "#24292f"),
-                (text_muted, "#57606a"),
-                (text_subtle, "#6e7781"),
-                (red, "#cf222e"),
-                (orange, "#953800"),
-                (yellow, "#9a6700"),
-                (green, "#1a7f37"),
-                (teal, "#0969da"),
-                (blue, "#0550ae"),
-                (purple, "#8250df"),
-                (string_color, "#0a3069"),
-                (number_color, "#0550ae"),
-                (keyword_color, "#cf222e"),
-            ]),
-        ],
-        |c, has_background| {
-            let default = if has_background {
-                Form::new().with(c.text).on(c.bg)
-            } else {
-                Form::new().with(c.text)
-            };
-            let active = |form: Form| form.interpolate(Form::new().on(c.bg_overlay), 50);
-
-            [
-                ("default", default),
-                ("accent", Form::new().with(c.blue).bold()),
-                ("default.error", Form::new().with(c.red)),
-                ("accent.error", Form::new().with(c.red).bold()),
-                ("default.warn", Form::new().with(c.yellow)),
-                ("accent.warn", Form::new().with(c.orange).bold()),
-                ("default.info", Form::new().with(c.teal)),
-                ("accent.info", Form::new().with(c.teal).bold()),
-                ("default.debug", Form::new().with(c.text_muted)),
-                ("accent.debug", Form::new().with(c.purple).bold()),
-                ("cursor.main", Form::new().with(c.bg).on(c.text)),
-                ("cursor.extra", Form::new().with(c.bg).on(c.text_muted)),
-                ("selection.main", Form::new().on(c.bg_subtle)),
-                ("selection.extra", Form::new().on(c.bg_overlay)),
-                ("cursor.main.indent", Form::new().with_on(c.text)),
-                ("cursor.extra.indent", Form::new().with_on(c.text_muted)),
-                ("selection.main.indent", Form::new().with_on(c.bg_subtle)),
-                ("selection.extra.indent", Form::new().with_on(c.bg_overlay)),
-                ("cloak", Form::new().reset().with(c.text_subtle).on(c.bg)),
-                ("replace", Form::new().with(c.bg_subtle)),
-                (
-                    "replace.newline.trailing",
-                    Form::new().with(c.red).on(c.bg_subtle),
-                ),
-                ("toggle.hover", Form::new().on(c.bg_overlay)),
-                ("toggle.click", Form::new().on(c.bg_subtle)),
-                // duat-base forms
-                ("linenum.main", Form::new().with(c.yellow)),
-                ("linenum.wrapped", Form::new().with(c.teal)),
-                ("buffer", Form::new().with(c.yellow)),
-                ("selections", Form::new().with(c.blue)),
-                ("coord", Form::new().with(c.orange)),
-                ("separator", Form::mimic("punctuation.delimiter")),
-                ("mode", Form::new().with(c.green)),
-                ("terminal.border", Form::new().with(c.bg_subtle).on(c.bg)),
-                ("terminal.frame", Form::new().with(c.text).on(c.bg)),
-                ("notifs.colon", Form::new().with(c.text_muted)),
-                ("prompt", Form::new().with(c.green)),
-                ("prompt.colon", Form::new().with(c.text_muted)),
-                ("key", Form::new().with(c.orange)),
-                ("key.special", Form::new().with(c.teal)),
-                ("default.StatusLine", default.on(c.bg_subtle)),
-                ("default.LogBook", default.on(c.bg_subtle)),
-                ("default.VertRule", default.with(c.bg_subtle)),
-                ("default.LineNumbers", default.with(c.text_subtle)),
-                ("default.Buffer.active", active(default)),
-                ("default.VertRule.active", active(default.with(c.bg_subtle))),
-                ("default.LineNumbers.active", active(default.with(c.text_subtle))),
-                ("default.Gutter.active", active(default)),
-                (
-                    "matched_pair",
-                    Form::new().with(c.orange).on(c.bg_subtle).bold(),
-                ),
-                ("logbook.location", Form::new().with(c.text_muted)),
-                (
-                    "default.Buffer.current_line",
-                    default.on(c.bg_subtle).interpolate(default, 50),
-                ),
-                (
-                    "default.Buffer.diagnostic",
-                    default.on(c.bg_overlay).interpolate(default, 50),
-                ),
-                ("default.Completions", default.on(c.bg_overlay)),
-                ("selected.Completions", Form::new().with(c.bg).on(c.blue)),
-                ("default.WhichKey", default.with(c.text)),
-                // For duatmode
-                ("cursor.main.Insert", Form::new().with(c.bg).on(c.purple)),
-                ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
-                ("param", Form::new().with(c.purple)),
-                ("param.flag", Form::new().with(c.teal)),
-                ("snippet", Form::new().with(c.bg).on(c.yellow)),
-                // AST token forms
-                ("variable", Form::new().with(c.text)),
-                ("variable.builtin", Form::new().with(c.orange)),
-                ("variable.member", Form::new().with(c.blue)),
-                ("constant", Form::new().with(c.number_color)),
-                ("constant.builtin", Form::new().with(c.number_color)),
-                ("static", Form::new().with(c.number_color).reset()),
-                ("module", Form::new().with(c.blue).italic()),
-                ("label", Form::new().with(c.green)),
-                ("string", Form::new().with(c.string_color)),
-                ("string.escape", Form::new().with(c.orange)),
-                ("string.special.path", Form::new().with(c.teal).underlined()),
-                ("character", Form::new().with(c.number_color)),
-                ("boolean", Form::new().with(c.number_color)),
-                ("number", Form::new().with(c.number_color)),
-                ("type", Form::new().with(c.teal).italic()),
-                ("type.builtin", Form::new().with(c.teal).reset()),
-                ("type.enum", Form::new().with(c.teal).reset()),
-                ("type.enum.variant", Form::new().with(c.orange).italic()),
-                ("attribute", Form::new().with(c.yellow)),
-                ("property", Form::new().with(c.text_muted)),
-                ("function", Form::new().with(c.purple).reset()),
-                ("function.macro", Form::new().with(c.purple).italic()),
-                ("constructor", Form::new().with(c.orange)),
-                ("operator", Form::new().with(c.keyword_color)),
-                ("keyword", Form::new().with(c.keyword_color)),
-                ("punctuation.bracket", Form::new().with(c.text_subtle)),
-                ("punctuation.delimiter", Form::new().with(c.text_subtle)),
-                ("comment", Form::new().with(c.text_muted)),
-                (
-                    "comment.documentation",
-                    Form::new().with(c.text_muted).bold(),
-                ),
-                ("markup", Form::new()),
-                ("markup.strong", Form::new().with(c.red).bold()),
-                ("markup.italic", Form::new().with(c.red).italic()),
-                ("markup.strikethrough", Form::new().crossed_out()),
-                ("markup.underline", Form::new().underlined()),
-                ("markup.heading", Form::new().with(c.blue).bold()),
-                ("markup.math", Form::new().with(c.yellow)),
-                ("markup.quote", Form::new().with(c.green).bold()),
-                ("markup.environment", Form::new().with(c.purple)),
-                ("markup.environment.name", Form::new().with(c.blue)),
-                ("markup.link", Form::new().with(c.teal).underlined()),
-                ("markup.raw", Form::new().with(c.string_color)),
-                ("markup.list", Form::new().with(c.yellow)),
-                ("markup.list.checked", Form::new().with(c.green)),
-                ("markup.list.unchecked", Form::new().with(c.text_subtle)),
-                ("diff.plus", Form::new().with(c.green)),
-                ("diff.delta", Form::new().with(c.blue)),
-                ("diff.delta.renamed", Form::new().with(c.yellow)),
-                ("diff.minus", Form::new().with(c.red)),
-                ("unresolved", Form::new().underlined().underline(c.red)),
-                ("completion.lsp.detail", Form::new().with(c.teal)),
-                ("completion.lsp.description", Form::new().with(c.text_muted)),
-                ("completion.lsp.kind", Form::new().with(c.blue)),
-            ]
-        }
-    );
-
-    // Night Owl theme — https://github.com/sdras/night-owl-vscode-theme
-    add_colorschemes!(
-        [("night-owl", [
-            (bg, "#011627"),
-            (surface, "#0b253a"),
-            (surface_highlight, "#1d3b53"),
-            (surface_panel, "#202431"),
-            (surface_inactive, "#01111d"),
-            (text, "#d6deeb"),
-            (text_muted, "#5f7e97"),
-            (text_subtle, "#4b6479"),
-            (comment, "#637777"),
-            (red, "#EF5350"),
-            (orange, "#F78C6C"),
-            (yellow, "#ecc48d"),
-            (sand, "#ffcb8b"),
-            // Additional LSP forms
-            (green, "#c5e478"),
-            (teal, "#7fdbca"),
-            (aqua, "#baebe2"),
-            (blue, "#82AAFF"),
-            (purple, "#c792ea"),
-            (gold, "#faf39f"),
-        ]),],
-        |c, has_background| {
-            let default = if has_background {
-                Form::new().with(c.text).on(c.bg)
-            } else {
-                Form::new().with(c.text)
-            };
-            let active = |form: Form| form.interpolate(Form::new().on(c.surface), 50);
-
-            [
-                ("default", default),
-                ("accent", Form::new().with(c.teal).bold()),
-                ("default.error", Form::new().with(c.red)),
-                ("accent.error", Form::new().with(c.red).bold()),
-                ("default.warn", Form::new().with(c.yellow)),
-                ("accent.warn", Form::new().with(c.orange).bold()),
-                ("default.info", Form::new().with(c.blue)),
-                ("accent.info", Form::new().with(c.teal).bold()),
-                ("default.debug", Form::new().with(c.text_muted)),
-                ("accent.debug", Form::new().with(c.purple).bold()),
-                ("cursor.main", Form::new().with(c.bg).on(c.text)),
-                ("cursor.extra", Form::new().with(c.bg).on(c.teal)),
-                ("selection.main", Form::new().on(c.surface_highlight)),
-                ("selection.extra", Form::new().on(c.surface)),
-                ("cursor.main.indent", Form::new().with_on(c.text)),
-                ("cursor.extra.indent", Form::new().with_on(c.teal)),
-                (
-                    "selection.main.indent",
-                    Form::new().with_on(c.surface_highlight),
-                ),
-                ("selection.extra.indent", Form::new().with_on(c.surface)),
-                ("cloak", Form::new().reset().with(c.text_subtle).on(c.bg)),
-                ("replace", Form::new().with(c.surface)),
-                (
-                    "replace.newline.trailing",
-                    Form::new().with(c.red).on(c.surface_highlight),
-                ),
-                ("toggle.hover", Form::new().on(c.surface_inactive)),
-                ("toggle.click", Form::new().on(c.surface_highlight)),
-                // duat-base forms
-                ("linenum.main", Form::new().with(c.yellow)),
-                ("linenum.wrapped", Form::new().with(c.teal)),
-                ("buffer", Form::new().with(c.yellow)),
-                ("selections", Form::new().with(c.blue)),
-                ("coord", Form::new().with(c.orange)),
-                ("separator", Form::mimic("punctuation.delimiter")),
-                ("mode", Form::new().with(c.green)),
-                ("terminal.border", Form::new().with(c.surface).on(c.bg)),
-                ("terminal.frame", Form::new().with(c.text).on(c.bg)),
-                ("notifs.colon", Form::new().with(c.text_muted)),
-                ("prompt", Form::new().with(c.green)),
-                ("prompt.colon", Form::new().with(c.text_muted)),
-                ("key", Form::new().with(c.orange)),
-                ("key.special", Form::new().with(c.teal)),
-                ("default.StatusLine", default.on(c.surface_panel)),
-                ("default.LogBook", default.on(c.surface_panel)),
-                ("default.VertRule", default.with(c.surface)),
-                ("default.LineNumbers", default.with(c.text_subtle)),
-                ("default.Buffer.active", active(default)),
-                ("default.VertRule.active", active(default.with(c.surface))),
-                ("default.LineNumbers.active", active(default.with(c.text_subtle))),
-                ("default.Gutter.active", active(default)),
-                (
-                    "matched_pair",
-                    Form::new().with(c.orange).on(c.surface_highlight).bold(),
-                ),
-                ("logbook.location", Form::new().with(c.text_muted)),
-                (
-                    "default.Buffer.current_line",
-                    default.on(c.surface_highlight).interpolate(default, 50),
-                ),
-                (
-                    "default.Buffer.diagnostic",
-                    default.on(c.surface).interpolate(default, 50),
-                ),
-                ("default.Completions", default.on(c.surface_panel)),
-                (
-                    "selected.Completions",
-                    Form::new().with(c.text).on(c.surface_highlight),
-                ),
-                ("default.WhichKey", default.with(c.text)),
-                // For duatmode
-                ("cursor.main.Insert", Form::new().with(c.bg).on(c.purple)),
-                ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
-                ("param", Form::new().with(c.purple)),
-                ("param.flag", Form::new().with(c.teal)),
-                ("snippet", Form::new().with(c.bg).on(c.yellow)),
-                // AST token forms
-                ("variable", Form::new().with(c.text)),
-                ("variable.builtin", Form::new().with(c.teal)),
-                ("variable.member", Form::new().with(c.aqua)),
-                ("constant", Form::new().with(c.blue)),
-                ("constant.builtin", Form::new().with(c.blue)),
-                ("static", Form::new().with(c.blue).reset()),
-                ("module", Form::new().with(c.blue).italic()),
-                ("label", Form::new().with(c.teal)),
-                ("string", Form::new().with(c.yellow)),
-                ("string.escape", Form::new().with(c.orange)),
-                ("string.special.path", Form::new().with(c.blue).underlined()),
-                ("character", Form::new().with(c.orange)),
-                ("boolean", Form::new().with(c.blue)),
-                ("number", Form::new().with(c.orange)),
-                ("type", Form::new().with(c.green).italic()),
-                ("type.builtin", Form::new().with(c.green).reset()),
-                ("type.enum", Form::new().with(c.green).reset()),
-                ("type.enum.variant", Form::new().with(c.orange).italic()),
-                ("attribute", Form::new().with(c.green).italic()),
-                ("property", Form::new().with(c.gold).italic()),
-                ("function", Form::new().with(c.blue).reset()),
-                ("function.macro", Form::new().with(c.purple).italic()),
-                ("constructor", Form::new().with(c.sand)),
-                ("operator", Form::new().with(c.teal)),
-                ("keyword", Form::new().with(c.purple).italic()),
-                ("punctuation.bracket", Form::new().with(c.text_subtle)),
-                ("punctuation.delimiter", Form::new().with(c.text_subtle)),
-                ("comment", Form::new().with(c.comment).italic()),
-                (
-                    "comment.documentation",
-                    Form::new().with(c.comment).bold().italic(),
-                ),
-                ("markup", Form::new()),
-                ("markup.strong", Form::new().with(c.orange).bold()),
-                ("markup.italic", Form::new().with(c.yellow).italic()),
-                ("markup.strikethrough", Form::new().crossed_out()),
-                ("markup.underline", Form::new().underlined()),
-                ("markup.heading", Form::new().with(c.blue).bold()),
-                ("markup.math", Form::new().with(c.teal)),
-                ("markup.quote", Form::new().with(c.green).bold()),
-                ("markup.environment", Form::new().with(c.purple)),
-                ("markup.environment.name", Form::new().with(c.blue)),
-                ("markup.link", Form::new().with(c.teal).underlined()),
-                ("markup.raw", Form::new().with(c.yellow)),
-                ("markup.list", Form::new().with(c.yellow)),
-                ("markup.list.checked", Form::new().with(c.green)),
-                ("markup.list.unchecked", Form::new().with(c.text_subtle)),
-                ("diff.plus", Form::new().with(c.green)),
-                ("diff.delta", Form::new().with(c.blue)),
-                ("diff.delta.renamed", Form::new().with(c.yellow)),
-                ("diff.minus", Form::new().with(c.red)),
-                ("unresolved", Form::new().underlined().underline(c.red)),
-                ("completion.lsp.detail", Form::new().with(c.teal)),
-                ("completion.lsp.description", Form::new().with(c.comment)),
-                ("completion.lsp.kind", Form::new().with(c.blue)),
-            ]
-        }
-    );
-
-    // Dracula theme — https://github.com/dracula/dracula-theme
-    add_colorschemes!(
-        [
-            ("dracula", [
-                (bg, "#282a36"),
-                (current_line, "#44475a"),
-                (selection, "#44475a"),
-                (fg, "#f8f8f2"),
-                (comment, "#6272a4"),
-                (cyan, "#8be9fd"),
-                (green, "#50fa7b"),
-                (orange, "#ffb86c"),
-                (pink, "#ff79c6"),
-                (purple, "#bd93f9"),
-                (red, "#ff5555"),
-                (yellow, "#f1fa8c"),
-                // Additional LSP forms
-            ]),
-            ("dracula-alucard", [
-                (bg, "#fffbeb"),
-                (current_line, "#6c664b"),
-                (selection, "#cfcfde"),
-                (fg, "#1f1f1f"),
-                (comment, "#6c664b"),
-                (cyan, "#036a96"),
-                (green, "#14710a"),
-                (orange, "#a34d14"),
-                (pink, "#a3144d"),
-                (purple, "#644ac9"),
-                (red, "#cb3a2a"),
-                (yellow, "#846e15"),
-            ])
-        ],
-        |c, has_background| {
-            let default = if has_background {
-                Form::new().with(c.fg).on(c.bg)
-            } else {
-                Form::new().with(c.fg)
-            };
-            let active = |form: Form| form.interpolate(Form::new().on(c.selection), 80);
-
-            [
-                ("default", default),
-                ("accent", Form::new().with(c.cyan).bold()),
-                ("default.error", Form::new().with(c.red)),
-                ("accent.error", Form::new().with(c.red).bold()),
-                ("default.warn", Form::new().with(c.yellow)),
-                ("accent.warn", Form::new().with(c.orange).bold()),
-                ("default.info", Form::new().with(c.cyan)),
-                ("accent.info", Form::new().with(c.cyan).bold()),
-                ("default.debug", Form::new().with(c.comment)),
-                ("accent.debug", Form::new().with(c.purple).bold()),
-                ("cursor.main", Form::new().with(c.bg).on(c.yellow)),
-                ("cursor.extra", Form::new().with(c.bg).on(c.fg)),
-                ("selection.main", Form::new().on(c.selection)),
-                (
-                    "selection.extra",
-                    Form::new().on(c.selection).interpolate(default, 50),
-                ),
-                ("cursor.main.indent", Form::new().with_on(c.yellow)),
-                ("cursor.extra.indent", Form::new().with_on(c.fg)),
-                ("selection.main.indent", Form::new().with_on(c.selection)),
-                (
-                    "selection.extra.indent",
-                    Form::new().with_on(c.selection).interpolate(default, 50),
-                ),
-                ("cloak", Form::new().reset().with(c.comment).on(c.bg)),
-                ("replace", Form::new().with(c.current_line)),
-                (
-                    "replace.newline.trailing",
-                    Form::new().with(c.red).on(c.current_line),
-                ),
-                ("toggle.hover", Form::new().on(c.current_line)),
-                ("toggle.click", Form::new().on(c.comment)),
-                // duat-base forms
-                ("linenum.main", Form::new().with(c.current_line)),
-                ("linenum.wrapped", Form::new().with(c.cyan)),
-                ("buffer", Form::new().with(c.yellow)),
-                ("selections", Form::new().with(c.purple)),
-                ("coord", Form::new().with(c.orange)),
-                ("separator", Form::mimic("punctuation.delimiter")),
-                ("mode", Form::new().with(c.green)),
-                ("terminal.border", Form::new().with(c.current_line).on(c.bg)),
-                ("terminal.frame", Form::new().with(c.fg).on(c.bg)),
-                ("notifs.colon", Form::new().with(c.comment)),
-                ("prompt", Form::new().with(c.green)),
-                ("prompt.colon", Form::new().with(c.comment)),
-                ("key", Form::new().with(c.orange)),
-                ("key.special", Form::new().with(c.cyan)),
-                ("default.StatusLine", default.on(c.current_line)),
-                ("default.LogBook", default.on(c.current_line)),
-                ("default.VertRule", default.with(c.current_line)),
-                ("default.LineNumbers", default.with(c.comment)),
-                ("default.Buffer.active", active(default)),
-                ("default.VertRule.active", active(default.with(c.current_line))),
-                ("default.LineNumbers.active", active(default.with(c.comment))),
-                ("default.Gutter.active", active(default)),
-                (
-                    "matched_pair",
-                    Form::new().with(c.orange).on(c.current_line).bold(),
-                ),
-                ("logbook.location", Form::new().with(c.comment)),
-                (
-                    "default.Buffer.current_line",
-                    default.on(c.current_line).interpolate(default, 50),
-                ),
-                (
-                    "default.Buffer.diagnostic",
-                    default.on(c.current_line).interpolate(default, 80),
-                ),
-                ("default.Completions", default.on(c.current_line)),
-                ("selected.Completions", Form::new().with(c.bg).on(c.purple)),
-                ("default.WhichKey", default.with(c.fg)),
-                // For duatmode
-                ("cursor.main.Insert", Form::new().with(c.bg).on(c.pink)),
-                ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
-                ("param", Form::new().with(c.purple)),
-                ("param.flag", Form::new().with(c.pink)),
-                ("snippet", Form::new().with(c.bg).on(c.yellow)),
-                // AST token forms
-                ("variable", Form::new().with(c.fg)),
-                ("variable.builtin", Form::new().with(c.orange)),
-                ("variable.member", Form::new().with(c.fg)),
-                ("constant", Form::new().with(c.purple)),
-                ("constant.builtin", Form::new().with(c.purple)),
-                ("static", Form::new().with(c.purple).reset()),
-                ("module", Form::new().with(c.cyan).italic()),
-                ("label", Form::new().with(c.cyan)),
-                ("string", Form::new().with(c.yellow)),
-                ("string.escape", Form::new().with(c.pink)),
-                ("string.special.path", Form::new().with(c.cyan).underlined()),
-                ("character", Form::new().with(c.pink)),
-                ("boolean", Form::new().with(c.purple)),
-                ("number", Form::new().with(c.purple)),
-                ("type", Form::new().with(c.cyan).italic()),
-                ("type.builtin", Form::new().with(c.cyan).reset()),
-                ("type.enum", Form::new().with(c.cyan).reset()),
-                ("type.enum.variant", Form::new().with(c.purple).italic()),
-                ("attribute", Form::new().with(c.green)),
-                ("property", Form::new().with(c.fg)),
-                ("function", Form::new().with(c.green).reset()),
-                ("function.macro", Form::new().with(c.pink).italic()),
-                ("constructor", Form::new().with(c.cyan)),
-                ("operator", Form::new().with(c.pink)),
-                ("keyword", Form::new().with(c.pink)),
-                ("punctuation.bracket", Form::new().with(c.fg)),
-                ("punctuation.delimiter", Form::new().with(c.fg)),
-                ("comment", Form::new().with(c.comment)),
-                ("comment.documentation", Form::new().with(c.comment).bold()),
-                ("markup", Form::new()),
-                ("markup.strong", Form::new().with(c.orange).bold()),
-                ("markup.italic", Form::new().with(c.yellow).italic()),
-                ("markup.strikethrough", Form::new().crossed_out()),
-                ("markup.underline", Form::new().underlined()),
-                ("markup.heading", Form::new().with(c.purple).bold()),
-                ("markup.math", Form::new().with(c.cyan)),
-                ("markup.quote", Form::new().with(c.yellow).bold()),
-                ("markup.environment", Form::new().with(c.pink)),
-                ("markup.environment.name", Form::new().with(c.cyan)),
-                ("markup.link", Form::new().with(c.cyan).underlined()),
-                ("markup.raw", Form::new().with(c.green)),
-                ("markup.list", Form::new().with(c.pink)),
-                ("markup.list.checked", Form::new().with(c.green)),
-                ("markup.list.unchecked", Form::new().with(c.comment)),
-                ("diff.plus", Form::new().with(c.green)),
-                ("diff.delta", Form::new().with(c.cyan)),
-                ("diff.delta.renamed", Form::new().with(c.yellow)),
-                ("diff.minus", Form::new().with(c.red)),
-                ("unresolved", Form::new().underlined().underline(c.red)),
-                ("completion.lsp.detail", Form::new().with(c.cyan)),
-                ("completion.lsp.description", Form::new().with(c.comment)),
-                ("completion.lsp.kind", Form::new().with(c.yellow)),
-            ]
-        }
-    );
-
-    // Nord theme — https://www.nordtheme.com/docs/colors-and-palettes
-    add_colorschemes!(
-        [("nord", [
-            // Polar Night
-            (nord0, "#2e3440"),
-            (nord1, "#3b4252"),
-            (nord2, "#434c5e"),
-            (nord3, "#4c566a"),
-            // Snow Storm
-            (nord4, "#d8dee9"),
-            (nord5, "#e5e9f0"),
-            (nord6, "#eceff4"),
-            // Frost
-            (nord7, "#8fbcbb"),
-            (nord8, "#88c0d0"),
-            (nord9, "#81a1c1"),
-            (nord10, "#5e81ac"),
-            // Aurora
-            (nord11, "#bf616a"),
-            // Additional LSP forms
-            (nord12, "#d08770"),
-            (nord13, "#ebcb8b"),
-            (nord14, "#a3be8c"),
-            (nord15, "#b48ead"),
-        ]),],
-        |c, has_background| {
-            let default = if has_background {
-                Form::new().with(c.nord4).on(c.nord0)
-            } else {
-                Form::new().with(c.nord4)
-            };
-            let active = |form: Form| form.interpolate(Form::new().on(c.nord1), 80);
-
-            [
-                ("default", default),
-                ("accent", Form::new().with(c.nord8).bold()),
-                ("default.error", Form::new().with(c.nord11)),
-                ("accent.error", Form::new().with(c.nord11).bold()),
-                ("default.warn", Form::new().with(c.nord13)),
-                ("accent.warn", Form::new().with(c.nord12).bold()),
-                ("default.info", Form::new().with(c.nord9)),
-                ("accent.info", Form::new().with(c.nord8).bold()),
-                ("default.debug", Form::new().with(c.nord3)),
-                ("accent.debug", Form::new().with(c.nord15).bold()),
-                ("cursor.main", Form::new().with(c.nord0).on(c.nord4)),
-                ("cursor.extra", Form::new().with(c.nord0).on(c.nord7)),
-                ("selection.main", Form::new().on(c.nord2)),
-                ("selection.extra", Form::new().on(c.nord1)),
-                ("cursor.main.indent", Form::new().with_on(c.nord4)),
-                ("cursor.extra.indent", Form::new().with_on(c.nord7)),
-                ("selection.main.indent", Form::new().with_on(c.nord2)),
-                ("selection.extra.indent", Form::new().with_on(c.nord1)),
-                ("cloak", Form::new().reset().with(c.nord3).on(c.nord0)),
-                ("replace", Form::new().with(c.nord1)),
-                (
-                    "replace.newline.trailing",
-                    Form::new().with(c.nord11).on(c.nord1),
-                ),
-                ("toggle.hover", Form::new().on(c.nord1)),
-                ("toggle.click", Form::new().on(c.nord2)),
-                ("linenum.main", Form::new().with(c.nord13)),
-                ("linenum.wrapped", Form::new().with(c.nord7)),
-                ("buffer", Form::new().with(c.nord13)),
-                ("selections", Form::new().with(c.nord9)),
-                ("coord", Form::new().with(c.nord12)),
-                ("separator", Form::mimic("punctuation.delimiter")),
-                ("mode", Form::new().with(c.nord14)),
-                ("terminal.border", Form::new().with(c.nord1).on(c.nord0)),
-                ("terminal.frame", Form::new().with(c.nord4).on(c.nord0)),
-                ("notifs.colon", Form::new().with(c.nord3)),
-                ("prompt", Form::new().with(c.nord14)),
-                ("prompt.colon", Form::new().with(c.nord3)),
-                ("key", Form::new().with(c.nord12)),
-                ("key.special", Form::new().with(c.nord7)),
-                ("default.StatusLine", default.on(c.nord1)),
-                ("default.LogBook", default.on(c.nord1)),
-                ("default.VertRule", default.with(c.nord1)),
-                ("default.LineNumbers", default.with(c.nord3)),
-                ("default.Buffer.active", active(default)),
-                ("default.VertRule.active", active(default.with(c.nord1))),
-                ("default.LineNumbers.active", active(default.with(c.nord3))),
-                ("default.Gutter.active", active(default)),
-                (
-                    "matched_pair",
-                    Form::new().with(c.nord12).on(c.nord2).bold(),
-                ),
-                ("logbook.location", Form::new().with(c.nord3)),
-                (
-                    "default.Buffer.current_line",
-                    default.on(c.nord1).interpolate(default, 50),
-                ),
-                (
-                    "default.Buffer.diagnostic",
-                    default.on(c.nord1).interpolate(default, 80),
-                ),
-                ("default.Completions", default.on(c.nord1)),
-                (
-                    "selected.Completions",
-                    Form::new().with(c.nord0).on(c.nord3),
-                ),
-                ("default.WhichKey", default.with(c.nord4)),
-                // For duatmode
-                ("cursor.main.Insert", Form::new().with(c.nord0).on(c.nord15)),
-                (
-                    "cursor.extra.Insert",
-                    Form::new().with(c.nord0).on(c.nord13),
-                ),
-                ("param", Form::new().with(c.nord15)),
-                ("param.flag", Form::new().with(c.nord8)),
-                ("snippet", Form::new().with(c.nord0).on(c.nord15)),
-                // AST token forms
-                ("variable", Form::new().with(c.nord4)),
-                ("variable.builtin", Form::new().with(c.nord12)),
-                ("variable.member", Form::new().with(c.nord4)),
-                ("constant", Form::new().with(c.nord12)),
-                ("constant.builtin", Form::new().with(c.nord12)),
-                ("static", Form::new().with(c.nord12).reset()),
-                ("module", Form::new().with(c.nord9).italic()),
-                ("label", Form::new().with(c.nord7)),
-                ("string", Form::new().with(c.nord14)),
-                ("string.escape", Form::new().with(c.nord13)),
-                (
-                    "string.special.path",
-                    Form::new().with(c.nord8).underlined(),
-                ),
-                ("character", Form::new().with(c.nord14)),
-                ("boolean", Form::new().with(c.nord12)),
-                ("number", Form::new().with(c.nord15)),
-                ("type", Form::new().with(c.nord7).italic()),
-                ("type.builtin", Form::new().with(c.nord7).reset()),
-                ("type.enum", Form::new().with(c.nord7).reset()),
-                ("type.enum.variant", Form::new().with(c.nord12).italic()),
-                ("attribute", Form::new().with(c.nord13)),
-                ("property", Form::new().with(c.nord4)),
-                ("function", Form::new().with(c.nord8).reset()),
-                ("function.macro", Form::new().with(c.nord8).italic()),
-                ("constructor", Form::new().with(c.nord7)),
-                ("operator", Form::new().with(c.nord9)),
-                ("keyword", Form::new().with(c.nord9)),
-                ("punctuation.bracket", Form::new().with(c.nord3)),
-                ("punctuation.delimiter", Form::new().with(c.nord4)),
-                ("comment", Form::new().with(c.nord3)),
-                ("comment.documentation", Form::new().with(c.nord3).bold()),
-                ("markup", Form::new()),
-                ("markup.strong", Form::new().with(c.nord12).bold()),
-                ("markup.italic", Form::new().with(c.nord13).italic()),
-                ("markup.strikethrough", Form::new().crossed_out()),
-                ("markup.underline", Form::new().underlined()),
-                ("markup.heading", Form::new().with(c.nord9).bold()),
-                ("markup.math", Form::new().with(c.nord8)),
-                ("markup.quote", Form::new().with(c.nord14).bold()),
-                ("markup.environment", Form::new().with(c.nord15)),
-                ("markup.environment.name", Form::new().with(c.nord9)),
-                ("markup.link", Form::new().with(c.nord8).underlined()),
-                ("markup.raw", Form::new().with(c.nord7)),
-                ("markup.list", Form::new().with(c.nord9)),
-                ("markup.list.checked", Form::new().with(c.nord14)),
-                ("markup.list.unchecked", Form::new().with(c.nord3)),
-                ("diff.plus", Form::new().with(c.nord14)),
-                ("diff.delta", Form::new().with(c.nord8)),
-                ("diff.delta.renamed", Form::new().with(c.nord13)),
-                ("diff.minus", Form::new().with(c.nord11)),
-                ("unresolved", Form::new().underlined().underline(c.nord11)),
-                ("completion.lsp.detail", Form::new().with(c.nord9)),
-                ("completion.lsp.description", Form::new().with(c.nord4)),
-                ("completion.lsp.kind", Form::new().with(c.nord8)),
-            ]
-        }
-    );
-
-    // Ayu theme — https://github.com/ayu-theme/ayu-vim
-    add_colorschemes!(
-        [
-            ("ayu-dark", [
-                (bg, "#0F1419"),
-                (panel, "#14191F"),
-                (line, "#151A1E"),
-                (selection, "#253340"),
-                (guide, "#2D3640"),
-                (fg_idle, "#3E4B59"),
-                (fg, "#E6E1CF"),
-                (comment, "#5C6773"),
-                (tag, "#36A3D9"),
-                (string, "#B8CC52"),
-                (regexp, "#95E6CB"),
-                (markup, "#F07178"),
-                // Additional LSP forms
-                (keyword, "#FF7733"),
-                (special, "#E6B673"),
-                (func, "#FFB454"),
-                (constant, "#FFEE99"),
-                (operator, "#E7C547"),
-                (accent, "#F29718"),
-                (error, "#FF3333"),
-            ]),
-            ("ayu-light", [
-                (bg, "#FAFAFA"),
-                (panel, "#FFFFFF"),
-                (line, "#F3F3F3"),
-                (selection, "#F0EEE4"),
-                (guide, "#D9D8D7"),
-                (fg_idle, "#828C99"),
-                (fg, "#5C6773"),
-                (comment, "#ABB0B6"),
-                (tag, "#36A3D9"),
-                (string, "#86B300"),
-                (regexp, "#4CBF99"),
-                (markup, "#F07178"),
-                (keyword, "#FF7733"),
-                (special, "#E6B673"),
-                (func, "#F29718"),
-                (constant, "#A37ACC"),
-                (operator, "#E7C547"),
-                (accent, "#FF6A00"),
-                (error, "#FF3333"),
-            ]),
-            ("ayu-mirage", [
-                (bg, "#212733"),
-                (panel, "#272D38"),
-                (line, "#242B38"),
-                (selection, "#343F4C"),
-                (guide, "#3D4751"),
-                (fg_idle, "#607080"),
-                (fg, "#D9D7CE"),
-                (comment, "#5C6773"),
-                (tag, "#5CCFE6"),
-                (string, "#BBE67E"),
-                (regexp, "#95E6CB"),
-                (markup, "#F07178"),
-                (keyword, "#FFAE57"),
-                (special, "#FFC44C"),
-                (func, "#FFD57F"),
-                (constant, "#D4BFFF"),
-                (operator, "#80D4FF"),
-                (accent, "#FFCC66"),
-                (error, "#FF3333"),
-            ])
-        ],
-        |c, has_background| {
-            let default = if has_background {
-                Form::new().with(c.fg).on(c.bg)
-            } else {
-                Form::new().with(c.fg)
-            };
-            let active = |form: Form| form.interpolate(Form::new().on(c.panel), 50);
-
-            [
-                ("default", default),
-                ("accent", Form::new().with(c.accent).bold()),
-                ("default.error", Form::new().with(c.error)),
-                ("accent.error", Form::new().with(c.error).bold()),
-                ("default.warn", Form::new().with(c.operator)),
-                ("accent.warn", Form::new().with(c.special).bold()),
-                ("default.info", Form::new().with(c.tag)),
-                ("accent.info", Form::new().with(c.tag).bold()),
-                ("default.debug", Form::new().with(c.comment)),
-                ("accent.debug", Form::new().with(c.constant).bold()),
-                ("cursor.main", Form::new().with(c.bg).on(c.fg)),
-                ("cursor.extra", Form::new().with(c.bg).on(c.tag)),
-                ("selection.main", Form::new().on(c.selection)),
-                ("selection.extra", Form::new().on(c.guide)),
-                ("cursor.main.indent", Form::new().with_on(c.fg)),
-                ("cursor.extra.indent", Form::new().with_on(c.tag)),
-                ("selection.main.indent", Form::new().with_on(c.selection)),
-                ("selection.extra.indent", Form::new().with_on(c.guide)),
-                ("cloak", Form::new().reset().with(c.comment).on(c.bg)),
-                ("replace", Form::new().with(c.guide)),
-                (
-                    "replace.newline.trailing",
-                    Form::new().with(c.error).on(c.selection),
-                ),
-                ("toggle.hover", Form::new().on(c.line)),
-                ("toggle.click", Form::new().on(c.selection)),
-                // duat-base forms
-                ("linenum.main", Form::new().with(c.operator)),
-                ("linenum.wrapped", Form::new().with(c.tag)),
-                ("buffer", Form::new().with(c.operator)),
-                ("selections", Form::new().with(c.tag)),
-                ("coord", Form::new().with(c.accent)),
-                ("separator", Form::mimic("punctuation.delimiter")),
-                ("mode", Form::new().with(c.string)),
-                ("terminal.border", Form::new().with(c.guide).on(c.bg)),
-                ("terminal.frame", Form::new().with(c.fg).on(c.bg)),
-                ("notifs.colon", Form::new().with(c.comment)),
-                ("prompt", Form::new().with(c.string)),
-                ("prompt.colon", Form::new().with(c.comment)),
-                ("key", Form::new().with(c.accent)),
-                ("key.special", Form::new().with(c.tag)),
-                ("default.StatusLine", default.on(c.panel)),
-                ("default.LogBook", default.on(c.panel)),
-                ("default.VertRule", default.with(c.guide)),
-                ("default.LineNumbers", default.with(c.fg_idle)),
-                ("default.Buffer.active", active(default)),
-                ("default.VertRule.active", active(default.with(c.guide))),
-                ("default.LineNumbers.active", active(default.with(c.fg_idle))),
-                ("default.Gutter.active", active(default)),
-                (
-                    "matched_pair",
-                    Form::new().with(c.accent).on(c.selection).bold(),
-                ),
-                ("logbook.location", Form::new().with(c.comment)),
-                (
-                    "default.Buffer.current_line",
-                    default.on(c.line).interpolate(default, 50),
-                ),
-                (
-                    "default.Buffer.diagnostic",
-                    default.on(c.panel).interpolate(default, 50),
-                ),
-                ("default.Completions", default.on(c.panel)),
-                ("selected.Completions", Form::new().with(c.bg).on(c.fg_idle)),
-                ("default.WhichKey", default.with(c.fg)),
-                // For duatmode
-                ("cursor.main.Insert", Form::new().with(c.bg).on(c.constant)),
-                ("cursor.extra.Insert", Form::new().with(c.bg).on(c.operator)),
-                ("param", Form::new().with(c.constant)),
-                ("param.flag", Form::new().with(c.tag)),
-                ("snippet", Form::new().with(c.bg).on(c.operator)),
-                // AST token forms
-                ("variable", Form::new().with(c.fg)),
-                ("variable.builtin", Form::new().with(c.accent)),
-                ("variable.member", Form::new().with(c.fg)),
-                ("constant", Form::new().with(c.constant)),
-                ("constant.builtin", Form::new().with(c.constant)),
-                ("static", Form::new().with(c.constant).reset()),
-                ("module", Form::new().with(c.tag).italic()),
-                ("label", Form::new().with(c.tag)),
-                ("string", Form::new().with(c.string)),
-                ("string.escape", Form::new().with(c.special)),
-                ("string.special.path", Form::new().with(c.tag).underlined()),
-                ("character", Form::new().with(c.special)),
-                ("boolean", Form::new().with(c.constant)),
-                ("number", Form::new().with(c.constant)),
-                ("type", Form::new().with(c.tag).italic()),
-                ("type.builtin", Form::new().with(c.tag).reset()),
-                ("type.enum", Form::new().with(c.tag).reset()),
-                ("type.enum.variant", Form::new().with(c.constant).italic()),
-                ("attribute", Form::new().with(c.keyword)),
-                ("property", Form::new().with(c.fg)),
-                ("function", Form::new().with(c.func).reset()),
-                ("function.macro", Form::new().with(c.special).italic()),
-                ("constructor", Form::new().with(c.tag)),
-                ("operator", Form::new().with(c.operator)),
-                ("keyword", Form::new().with(c.keyword)),
-                ("punctuation.bracket", Form::new().with(c.fg_idle)),
-                ("punctuation.delimiter", Form::new().with(c.fg_idle)),
-                ("comment", Form::new().with(c.comment)),
-                ("comment.documentation", Form::new().with(c.comment).bold()),
-                ("markup", Form::new()),
-                ("markup.strong", Form::new().with(c.markup).bold()),
-                ("markup.italic", Form::new().with(c.markup).italic()),
-                ("markup.strikethrough", Form::new().crossed_out()),
-                ("markup.underline", Form::new().underlined()),
-                ("markup.heading", Form::new().with(c.tag).bold()),
-                ("markup.math", Form::new().with(c.constant)),
-                ("markup.quote", Form::new().with(c.string).bold()),
-                ("markup.environment", Form::new().with(c.keyword)),
-                ("markup.environment.name", Form::new().with(c.tag)),
-                ("markup.link", Form::new().with(c.tag).underlined()),
-                ("markup.raw", Form::new().with(c.string)),
-                ("markup.list", Form::new().with(c.keyword)),
-                ("markup.list.checked", Form::new().with(c.string)),
-                ("markup.list.unchecked", Form::new().with(c.comment)),
-                ("diff.plus", Form::new().with(c.string)),
-                ("diff.delta", Form::new().with(c.tag)),
-                ("diff.delta.renamed", Form::new().with(c.operator)),
-                ("diff.minus", Form::new().with(c.error)),
-                ("unresolved", Form::new().underlined().underline(c.error)),
-                ("completion.lsp.detail", Form::new().with(c.tag)),
-                ("completion.lsp.description", Form::new().with(c.comment)),
-                ("completion.lsp.kind", Form::new().with(c.func)),
-            ]
-        }
-    );
-
-    // Kanagawa by rebelot: https://github.com/rebelot/kanagawa.nvim
-    add_colorschemes!(
-        [("kanagawa", [
-            (old_white, "#C8C093"),
-            (fuji_white, "#DCD7BA"),
-            (fuji_gray, "#727169"),
-            (sumi_ink0, "#16161D"),
-            (sumi_ink1, "#181820"),
-            (sumi_ink2, "#1A1A22"),
-            (sumi_ink3, "#1F1F28"),
-            (sumi_ink4, "#2A2A37"),
-            (sumi_ink5, "#363646"),
-            (sumi_ink6, "#54546D"),
-            (wave_blue1, "#223249"),
-            (wave_blue2, "#2D4F67"),
-            (winter_green, "#2B3328"),
-            (winter_yellow, "#49443C"),
-            (winter_red, "#43242B"),
-            (winter_blue, "#252535"),
-            // Additional LSP forms
-            (autumn_green, "#76946A"),
-            (autumn_red, "#C34043"),
-            (autumn_yellow, "#DCA561"),
-            (samurai_red, "#E82424"),
-            (ronin_yellow, "#FF9E3B"),
-            (wave_aqua1, "#6A9589"),
-            (dragon_blue, "#658594"),
-            (oni_violet, "#957FB8"),
-            (oni_violet2, "#B8B4D0"),
-            (crystal_blue, "#7E9CD8"),
-            (spring_violet1, "#938AA9"),
-            (spring_violet2, "#9CABCA"),
-            (spring_blue, "#7FB4CA"),
-            (wave_aqua2, "#7AA89F"),
-            (wave_aqua3, "#68AD99"),
-            (wave_aqua4, "#7AA880"),
-            (wave_aqua5, "#6CAF95"),
-            (spring_green, "#98BB6C"),
-            (boat_yellow1, "#938056"),
-            (boat_yellow2, "#C0A36E"),
-            (carp_yellow, "#E6C384"),
-            (sakura_pink, "#D27E99"),
-            (wave_red, "#E46876"),
-            (peach_red, "#FF5D62"),
-            (surimi_orange, "#FFA066"),
-            (katana_gray, "#717C7C"),
-        ])],
-        |c, has_background| {
-            let default = if has_background {
-                Form::new().with(c.fuji_white).on(c.sumi_ink3)
-            } else {
-                Form::new().with(c.fuji_white)
-            };
-            let active = |form: Form| form.interpolate(Form::new().on(c.sumi_ink4), 80);
-
-            [
-                ("default", default),
-                ("accent", Form::new().with(c.spring_violet1).bold()),
-                (
-                    "default.error",
-                    Form::new().with(c.samurai_red).undercurled(),
-                ),
-                (
-                    "accent.error",
-                    Form::new().with(c.autumn_red).bold().undercurled(),
-                ),
-                (
-                    "default.warn",
-                    Form::new().with(c.ronin_yellow).undercurled(),
-                ),
-                (
-                    "accent.warn",
-                    Form::new().with(c.autumn_yellow).bold().undercurled(),
-                ),
-                ("default.info", Form::new().with(c.fuji_white).undercurled()),
-                ("accent.info", Form::new().with(c.carp_yellow).bold()),
-                ("default.debug", Form::new().with(c.fuji_gray)),
-                ("accent.debug", Form::new().with(c.ronin_yellow).bold()),
-                ("caret.main", Form::new().reverse()),
-                ("caret.extra", Form::new().reverse()),
-                (
-                    "selection.main",
-                    Form::new().with(c.fuji_white).on(c.wave_blue2),
-                ),
-                (
-                    "selection.extra",
-                    Form::new().with(c.fuji_white).on(c.wave_aqua3),
-                ),
-                ("cloak", Form::new().with(c.fuji_gray).on(c.sumi_ink3)),
-                ("character.control", Form::new().with(c.fuji_gray)),
-                ("replace", Form::new().with(c.sumi_ink6)),
-                (
-                    "replace.new_line.trailing",
-                    Form::new().with(c.autumn_red).on(c.sumi_ink3),
-                ),
-                // duat-base forms
-                ("linenum.main", Form::new().with(c.surimi_orange).bold()),
-                ("linenum.wrapped", Form::new().with(c.sumi_ink4)),
-                ("buffer", Form::new().with(c.boat_yellow1)),
-                ("selections", Form::new().with(c.sumi_ink5)),
-                (
-                    "selection.main.indent",
-                    Form::new().with(c.sumi_ink6).on(c.wave_blue2),
-                ),
-                ("coord", Form::new().with(c.surimi_orange)),
-                ("separator", Form::mimic("punctuation.delimiter")),
-                ("mode", Form::new().with(c.spring_green)),
-                ("key", Form::new().with(c.carp_yellow)),
-                ("key.special", Form::new().with(c.sumi_ink2)),
-                (
-                    "terminal.border",
-                    Form::new().with(c.katana_gray).on(c.sumi_ink3),
-                ),
-                (
-                    "terminal.frame",
-                    Form::new().with(c.fuji_white).on(c.sumi_ink3),
-                ),
-                ("notifs.colon", Form::new().with(c.fuji_gray)),
-                ("prompt", Form::new().with(c.spring_green)),
-                ("prompt.input", Form::new().with(c.spring_green)),
-                ("prompt.colon", Form::new().with(c.fuji_gray)),
-                (
-                    "default.StatusLine",
-                    Form::new().with(c.old_white).on(c.sumi_ink0),
-                ),
-                ("default.LogBook", default.on(c.sumi_ink3)),
-                ("default.VertRule", default.with(c.sumi_ink3)),
-                ("default.LineNumbers", default.with(c.sumi_ink6)),
-                ("default.Buffer.active", active(default)),
-                ("default.VertRule.active", active(default.with(c.sumi_ink3))),
-                ("default.LineNumbers.active", active(default.with(c.sumi_ink6))),
-                ("default.Gutter.active", active(default)),
-                (
-                    "matched_pair",
-                    Form::new().with(c.wave_aqua5).on(c.sumi_ink3).bold(),
-                ),
-                ("log_book.location", Form::new().with(c.fuji_gray)),
-                ("default.Completions", default.on(c.wave_blue2)),
-                (
-                    "selected.Completions",
-                    Form::new().with(c.fuji_white).on(c.wave_blue1).bold(),
-                ),
-                ("default.WhichKey", default.with(c.fuji_white)),
-                // For duatmode
-                (
-                    "caret.main.Normal",
-                    Form::new().with(c.wave_blue1).on(c.wave_aqua2),
-                ),
-                (
-                    "caret.extra.Normal",
-                    Form::new().with(c.wave_blue1).on(c.wave_aqua2),
-                ),
-                (
-                    "caret.main.Insert",
-                    Form::new().with(c.sumi_ink3).on(c.oni_violet),
-                ),
-                (
-                    "caret.extra.Insert",
-                    Form::new().with(c.sumi_ink3).on(c.carp_yellow),
-                ),
-                ("param", Form::new().with(c.oni_violet2)),
-                ("param.flag", Form::new().with(c.oni_violet2)),
-                ("snippet", Form::new().with(c.sumi_ink3).on(c.boat_yellow1)),
-                // AST token forms
-                ("variable", Form::new().with(c.fuji_white)),
-                ("variable.builtin", Form::new().with(c.surimi_orange)),
-                ("variable.member", Form::new().with(c.fuji_white)),
-                ("constant", Form::new().with(c.surimi_orange)),
-                ("constant.builtin", Form::new().with(c.wave_red)),
-                ("module", Form::new().with(c.surimi_orange).italic()),
-                ("label", Form::new().with(c.spring_blue)),
-                ("string", Form::new().with(c.spring_green)),
-                ("string.escape", Form::new().with(c.oni_violet)),
-                (
-                    "string.special.path",
-                    Form::new().with(c.spring_blue).underlined(),
-                ),
-                ("character", Form::new().with(c.surimi_orange)),
-                ("boolean", Form::new().with(c.surimi_orange)),
-                ("number", Form::new().with(c.sakura_pink)),
-                ("type", Form::new().with(c.wave_aqua2)),
-                ("type.builtin", Form::new().with(c.spring_blue)),
-                ("attribute", Form::new().with(c.wave_red)),
-                ("property", Form::new().with(c.carp_yellow)),
-                ("function", Form::new().with(c.crystal_blue).reset()),
-                ("function.macro", Form::new().with(c.wave_red)),
-                ("constructor", Form::new().with(c.spring_blue)),
-                ("operator", Form::new().with(c.boat_yellow2)),
-                ("keyword", Form::new().with(c.oni_violet)),
-                ("punctuation.bracket", Form::new().with(c.spring_violet2)),
-                ("punctuation.delimiter", Form::new().with(c.spring_violet2)),
-                ("comment", Form::new().with(c.fuji_gray)),
-                (
-                    "comment.documentation",
-                    Form::new().with(c.fuji_gray).bold(),
-                ),
-                ("markup", Form::new()),
-                ("markup.strong", Form::new().with(c.surimi_orange).bold()),
-                ("markup.italic", Form::new().with(c.fuji_white).italic()),
-                ("markup.strikethrough", Form::new().crossed_out()),
-                ("markup.underline", Form::new().underlined()),
-                ("markup.heading", Form::new().with(c.spring_violet2).bold()),
-                ("markup.math", Form::new().with(c.dragon_blue)),
-                ("markup.quote", Form::new().with(c.oni_violet2).bold()),
-                ("markup.environment", Form::new().with(c.sakura_pink)),
-                ("markup.environment.name", Form::new().with(c.crystal_blue)),
-                ("markup.link", Form::new().with(c.spring_blue).underlined()),
-                ("markup.raw", Form::new().with(c.spring_green)),
-                ("markup.list", Form::new().with(c.sakura_pink)),
-                ("markup.list.checked", Form::new().with(c.autumn_green)),
-                ("markup.list.unchecked", Form::new().with(c.fuji_gray)),
-                ("diff.plus", Form::new().with(c.autumn_green)),
-                ("diff.delta", Form::new().with(c.autumn_yellow)),
-                ("diff.delta.renamed", Form::new().with(c.autumn_yellow)),
-                ("diff.minus", Form::new().with(c.samurai_red)),
-                ("completion.lsp.detail", Form::new().with(c.boat_yellow2)),
-                ("completion.lsp.description", Form::new().with(c.fuji_gray)),
-                ("completion.lsp.kind", Form::new().with(c.crystal_blue)),
-            ]
-        }
-    );
+    catppuccin::add_colorschemes();
+    tokyo_night::add_colorschemes();
+    github::add_colorschemes();
+    dracula::add_colorschemes();
+    ayu::add_colorschemes();
+    nord::add_colorscheme();
+    kanagawa::add_colorscheme();
+    night_owl::add_colorscheme();
 }
+
+add_colorschemes!(
+    catppuccin,
+    [
+        (catppuccin_latte, "catppuccin-latte", [
+            (rosewater, "#dc8a78"),
+            (flamingo, "#dd7878"),
+            (pink, "#ea76cb"),
+            (mauve, "#8839ef"),
+            (red, "#d20f39"),
+            (maroon, "#e64553"),
+            (peach, "#fe640b"),
+            (yellow, "#df8e1d"),
+            (green, "#40a02b"),
+            (teal, "#179299"),
+            (sky, "#04a5e5"),
+            (sapphire, "#209fb5"),
+            (blue, "#1e66f5"),
+            (lavender, "#7287fd"),
+            (text, "#4c4f69"),
+            (subtext1, "#5c5f77"),
+            (subtext0, "#6c6f85"),
+            (overlay2, "#7c7f93"),
+            (overlay1, "#8c8fa1"),
+            (overlay0, "#9ca0b0"),
+            (surface2, "#acb0be"),
+            (surface1, "#bcc0cc"),
+            (surface0, "#ccd0da"),
+            (base, "#eff1f5"),
+            (mantle, "#e6e9ef"),
+            (crust, "#dce0e8"),
+        ]),
+        (catppuccin_frappe, "catppuccin-frappe", [
+            (rosewater, "#f2d5cf"),
+            (flamingo, "#eebebe"),
+            (pink, "#f4b8e4"),
+            (mauve, "#ca9ee6"),
+            (red, "#e78284"),
+            (maroon, "#ea999c"),
+            (peach, "#ef9f76"),
+            (yellow, "#e5c890"),
+            (green, "#a6d189"),
+            (teal, "#81c8be"),
+            (sky, "#99d1db"),
+            (sapphire, "#85c1dc"),
+            (blue, "#8caaee"),
+            (lavender, "#babbf1"),
+            (text, "#c6d0f5"),
+            (subtext1, "#b5bfe2"),
+            (subtext0, "#a5adce"),
+            (overlay2, "#949cbb"),
+            (overlay1, "#838ba7"),
+            (overlay0, "#737994"),
+            (surface2, "#626880"),
+            (surface1, "#51576d"),
+            (surface0, "#414559"),
+            (base, "#303446"),
+            (mantle, "#292c3c"),
+            (crust, "#232634"),
+        ]),
+        (catppuccin_macchiato, "catppuccin-macchiato", [
+            (rosewater, "#f4dbd6"),
+            (flamingo, "#f0c6c6"),
+            (pink, "#f5bde6"),
+            (mauve, "#c6a0f6"),
+            (red, "#ed8796"),
+            (maroon, "#ee99a0"),
+            (peach, "#f5a97f"),
+            (yellow, "#eed49f"),
+            (green, "#a6da95"),
+            (teal, "#8bd5ca"),
+            (sky, "#91d7e3"),
+            (sapphire, "#7dc4e4"),
+            (blue, "#8aadf4"),
+            (lavender, "#b7bdf8"),
+            (text, "#cad3f5"),
+            (subtext1, "#b8c0e0"),
+            (subtext0, "#a5adcb"),
+            (overlay2, "#939ab7"),
+            (overlay1, "#8087a2"),
+            (overlay0, "#6e738d"),
+            (surface2, "#5b6078"),
+            (surface1, "#494d64"),
+            (surface0, "#363a4f"),
+            (base, "#24273a"),
+            (mantle, "#1e2030"),
+            (crust, "#181926"),
+        ]),
+        (catppuccin_mocha, "catppuccin-mocha", [
+            (rosewater, "#f5e0dc"),
+            (flamingo, "#f2cdcd"),
+            (pink, "#f5c2e7"),
+            (mauve, "#cba6f7"),
+            (red, "#f38ba8"),
+            (maroon, "#eba0ac"),
+            (peach, "#fab387"),
+            (yellow, "#f9e2af"),
+            (green, "#a6e3a1"),
+            (teal, "#94e2d5"),
+            (sky, "#89dceb"),
+            (sapphire, "#74c7ec"),
+            (blue, "#89b4fa"),
+            (lavender, "#b4befe"),
+            (text, "#cdd6f4"),
+            (subtext1, "#bac2de"),
+            (subtext0, "#a6adc8"),
+            (overlay2, "#9399b2"),
+            (overlay1, "#7f849c"),
+            (overlay0, "#6c7086"),
+            (surface2, "#585b70"),
+            (surface1, "#45475a"),
+            (surface0, "#313244"),
+            (base, "#1e1e2e"),
+            (mantle, "#181825"),
+            (crust, "#11111b"),
+        ])
+    ],
+    |c, has_background| {
+        let default = if has_background {
+            Form::new().with(c.text).on(c.base)
+        } else {
+            Form::new().with(c.text)
+        };
+        let active = |form: Form| form.interpolate(Form::new().on(c.surface0), 80);
+
+        [
+            // The default form, self explanatory.
+            ("default", default),
+            // A form to "accent" text, highlighting things.
+            ("accent", Form::new().with(c.rosewater).bold()),
+            // Variations of the above two for different scenarios.
+            ("default.error", Form::new().with(c.maroon)),
+            ("accent.error", Form::new().with(c.flamingo)),
+            ("default.warn", Form::new().with(c.yellow)),
+            ("accent.warn", Form::new().with(c.rosewater)),
+            ("default.info", Form::new().with(c.sapphire)),
+            ("accent.info", Form::new().with(c.text)),
+            ("default.debug", Form::new().with(c.subtext1)),
+            ("accent.debug", Form::new().with(c.lavender).bold()),
+            // In duat, the cursor is the blinking bit.
+            ("cursor.main", Form::new().with(c.base).on(c.rosewater)),
+            ("cursor.extra", Form::new().with(c.base).on(c.teal)),
+            // And the selection is the rest.
+            ("selection.main", Form::new().on(c.surface1)),
+            ("selection.extra", Form::new().on(c.surface0)),
+            // This is to hide selected indent guides.
+            ("cursor.main.indent", Form::new().with_on(c.rosewater)),
+            ("cursor.extra.indent", Form::new().with_on(c.teal)),
+            ("selection.main.indent", Form::new().with_on(c.surface1)),
+            ("selection.extra.indent", Form::new().with_on(c.surface0)),
+            // A utility form, mostly used to cover all other forms on screen.
+            ("cloak", Form::new().reset().with(c.overlay1).on(c.base)),
+            // Form for replacement characters (like indent guides).
+            ("replace", Form::new().with(c.surface0)),
+            // Same, but only for trailing newlines.
+            (
+                "replace.newline.trailing",
+                Form::new().with(c.red).on(c.surface1),
+            ),
+            // Forms for hovered and clicked Toggles.
+            ("toggle.hover", Form::new().on(c.surface0)),
+            ("toggle.click", Form::new().on(c.surface1)),
+            // Forms for the line numbers.
+            ("linenum.main", Form::new().with(c.yellow)),
+            ("linenum.wrapped", Form::new().with(c.teal)),
+            // Various forms for the StatusLine parts.
+            ("buffer", Form::new().with(c.yellow)),
+            ("selections", Form::new().with(c.blue)),
+            ("coord", Form::new().with(c.peach)),
+            ("separator", Form::mimic("punctuation.delimiter")),
+            ("mode", Form::new().with(c.green)),
+            // Borders separate Buffers.
+            ("terminal.border", Form::new().with(c.surface0).on(c.base)),
+            // Frames surround spawned widgets.
+            ("terminal.frame", Form::new().with(c.text).on(c.base)),
+            ("notifs.colon", Form::new().with(c.subtext0)),
+            // The prompt in a promptline (like `reverse search`).
+            ("prompt", Form::new().with(c.green)),
+            // The colon that separates the prompt from the input.
+            ("prompt.colon", Form::new().with(c.subtext0)),
+            // Used in the `mapped_txt` StatusLine part.
+            ("key", Form::new().with(c.peach)),
+            ("key.special", Form::new().with(c.teal)),
+            // Various default forms for specific Widgets.
+            (
+                "default.Buffer.current_line",
+                default.on(c.surface0).interpolate(default, 50),
+            ),
+            (
+                "default.Buffer.diagnostic",
+                default.on(c.mantle).interpolate(default, 50),
+            ),
+            ("default.StatusLine", default.on(c.mantle)),
+            ("default.LogBook", default.on(c.mantle)),
+            ("default.VertRule", default.with(c.surface0)),
+            ("default.LineNumbers", default.with(c.overlay0)),
+            ("default.Completions", default.on(c.surface1)),
+            ("default.Buffer.active", active(default)),
+            ("default.VertRule.active", active(default.with(c.surface0))),
+            (
+                "default.LineNumbers.active",
+                active(default.with(c.overlay0)),
+            ),
+            ("default.Gutter.active", active(default)),
+            // Used when the cursor is over parentheses pairs.
+            (
+                "matched_pair",
+                Form::new().with(c.peach).on(c.surface1).bold(),
+            ),
+            // Form used on the location a log message came from.
+            ("logbook.location", Form::new().with(c.subtext1)),
+            (
+                "selected.Completions",
+                Form::new().with(c.base).on(c.overlay0),
+            ),
+            // Same as before, but on specific Modes.
+            ("cursor.main.Insert", Form::new().with(c.base).on(c.mauve)),
+            ("cursor.extra.Insert", Form::new().with(c.base).on(c.yellow)),
+            // Used when typing arguments to commands.
+            ("param", Form::new().with(c.lavender)),
+            ("param.flag", Form::new().on(c.base).with(c.pink)),
+            ("snippet", Form::new().with(c.base).on(c.yellow)),
+            // AST token forms
+            ("variable", Form::new().with(c.text)),
+            ("variable.builtin", Form::new().with(c.peach)),
+            ("variable.member", Form::new().with(c.lavender)),
+            ("constant", Form::new().with(c.peach).reset()),
+            ("constant.builtin", Form::new().with(c.peach).reset()),
+            ("static", Form::new().with(c.peach).reset()),
+            ("module", Form::new().with(c.blue).italic()),
+            ("label", Form::new().with(c.green)),
+            ("string", Form::new().with(c.green)),
+            ("string.escape", Form::new().with(c.peach)),
+            ("string.special.path", Form::new().with(c.sky).underlined()),
+            ("character", Form::new().with(c.peach)),
+            ("boolean", Form::new().with(c.peach)),
+            ("number", Form::new().with(c.peach)),
+            ("type", Form::new().with(c.yellow).italic()),
+            ("type.builtin", Form::new().with(c.yellow).reset()),
+            ("type.enum", Form::new().with(c.yellow).reset()),
+            ("type.enum.variant", Form::new().with(c.peach).italic()),
+            ("interface", Form::new().with(c.text).bold().reset()),
+            ("attribute", Form::new().with(c.green)),
+            ("property", Form::new().with(c.lavender)),
+            ("function", Form::new().with(c.blue).reset()),
+            ("function.macro", Form::new().with(c.lavender).italic()),
+            ("constructor", Form::new().with(c.peach)),
+            ("operator", Form::new().with(c.sapphire)),
+            ("keyword", Form::new().with(c.mauve)),
+            ("punctuation.bracket", Form::new().with(c.subtext0)),
+            ("punctuation.delimiter", Form::new().with(c.subtext0)),
+            ("comment", Form::new().with(c.overlay1)),
+            ("comment.documentation", Form::new().with(c.overlay1).bold()),
+            ("markup", Form::new()),
+            ("markup.strong", Form::new().with(c.maroon).bold()),
+            ("markup.italic", Form::new().with(c.maroon).italic()),
+            ("markup.strikethrough", Form::new().crossed_out()),
+            ("markup.underline", Form::new().underlined()),
+            ("markup.heading", Form::new().with(c.blue).bold()),
+            ("markup.math", Form::new().with(c.yellow)),
+            ("markup.quote", Form::new().with(c.maroon).bold()),
+            ("markup.environment", Form::new().with(c.pink)),
+            ("markup.environment.name", Form::new().with(c.blue)),
+            ("markup.link", Form::new().with(c.lavender).underlined()),
+            ("markup.raw", Form::new().with(c.teal)),
+            ("markup.list", Form::new().with(c.yellow)),
+            ("markup.list.checked", Form::new().with(c.green)),
+            ("markup.list.unchecked", Form::new().with(c.overlay1)),
+            ("diff.plus", Form::new().with(c.green)),
+            ("diff.delta", Form::new().with(c.blue)),
+            ("diff.delta.renamed", Form::new().with(c.yellow)),
+            ("diff.minus", Form::new().with(c.red)),
+            ("unresolved", Form::new().underlined().underline(c.red)),
+            ("completion.lsp.detail", Form::new().with(c.teal)),
+            ("completion.lsp.description", Form::new().with(c.subtext1)),
+            ("completion.lsp.kind", Form::new().with(c.blue)),
+        ]
+    }
+);
+
+add_colorschemes!(
+    tokyo_night,
+    [
+        (tokyo_night, "tokyo-night", [
+            (red, "#f7768e"),
+            (red1, "#db4b4b"),
+            (orange, "#ff9e64"),
+            (yellow, "#e0af68"),
+            (green, "#9ece6a"),
+            (green1, "#73daca"),
+            (teal, "#1abc9c"),
+            (cyan, "#7dcfff"),
+            (blue, "#7aa2f7"),
+            (blue0, "#3d59a1"),
+            (blue1, "#2ac3de"),
+            (blue5, "#89ddff"),
+            (magenta, "#bb9af7"),
+            (purple, "#9d7cd8"),
+            (text, "#c0caf5"),
+            // Additional LSP forms
+            (fg_dark, "#a9b1d6"),
+            (dark5, "#737aa2"),
+            (comment, "#565f89"),
+            (dark3, "#545c7e"),
+            (terminal_black, "#414868"),
+            (fg_gutter, "#3b4261"),
+            (bg_highlight, "#292e42"),
+            (bg, "#1a1b26"),
+            (bg_dark, "#16161e"),
+            (black, "#15161e"),
+        ]),
+        (tokyo_night_storm, "tokyo-night-storm", [
+            (red, "#f7768e"),
+            (red1, "#db4b4b"),
+            (orange, "#ff9e64"),
+            (yellow, "#e0af68"),
+            (green, "#9ece6a"),
+            (green1, "#73daca"),
+            (teal, "#1abc9c"),
+            (cyan, "#7dcfff"),
+            (blue, "#7aa2f7"),
+            (blue0, "#3d59a1"),
+            (blue1, "#2ac3de"),
+            (blue5, "#89ddff"),
+            (magenta, "#bb9af7"),
+            (purple, "#9d7cd8"),
+            (text, "#c0caf5"),
+            (fg_dark, "#a9b1d6"),
+            (dark5, "#737aa2"),
+            (comment, "#565f89"),
+            (dark3, "#545c7e"),
+            (terminal_black, "#414868"),
+            (fg_gutter, "#3b4261"),
+            (bg_highlight, "#292e42"),
+            (bg, "#24283b"),
+            (bg_dark, "#1f2335"),
+            (black, "#1d202f"),
+        ]),
+    ],
+    |c, has_background| {
+        let default = if has_background {
+            Form::new().with(c.text).on(c.bg)
+        } else {
+            Form::new().with(c.text)
+        };
+        let active = |form: Form| form.interpolate(Form::new().on(c.bg_highlight), 50);
+
+        [
+            ("default", default),
+            ("accent", Form::new().with(c.cyan).bold()),
+            ("default.error", Form::new().with(c.red1)),
+            ("accent.error", Form::new().with(c.red).bold()),
+            ("default.warn", Form::new().with(c.yellow)),
+            ("accent.warn", Form::new().with(c.orange).bold()),
+            ("default.info", Form::new().with(c.blue1)),
+            ("accent.info", Form::new().with(c.cyan).bold()),
+            ("default.debug", Form::new().with(c.fg_dark)),
+            ("accent.debug", Form::new().with(c.purple).bold()),
+            ("cursor.main", Form::new().with(c.bg).on(c.text)),
+            ("cursor.extra", Form::new().with(c.bg).on(c.teal)),
+            ("selection.main", Form::new().on(c.blue0)),
+            ("selection.extra", Form::new().on(c.fg_gutter)),
+            ("cursor.main.indent", Form::new().with_on(c.text)),
+            ("cursor.extra.indent", Form::new().with_on(c.teal)),
+            ("selection.main.indent", Form::new().with_on(c.blue0)),
+            ("selection.extra.indent", Form::new().with_on(c.fg_gutter)),
+            ("cloak", Form::new().reset().with(c.dark5).on(c.bg)),
+            ("replace", Form::new().with(c.bg_highlight)),
+            (
+                "replace.newline.trailing",
+                Form::new().with(c.red).on(c.terminal_black),
+            ),
+            ("toggle.hover", Form::new().on(c.bg_highlight)),
+            ("toggle.click", Form::new().on(c.terminal_black)),
+            // duat-base forms
+            ("linenum.main", Form::new().with(c.yellow)),
+            ("linenum.wrapped", Form::new().with(c.teal)),
+            ("buffer", Form::new().with(c.yellow)),
+            ("selections", Form::new().with(c.blue)),
+            ("coord", Form::new().with(c.orange)),
+            ("separator", Form::mimic("punctuation.delimiter")),
+            ("mode", Form::new().with(c.green)),
+            ("terminal.border", Form::new().with(c.bg_highlight).on(c.bg)),
+            ("terminal.frame", Form::new().with(c.text).on(c.bg)),
+            ("notifs.colon", Form::new().with(c.dark3)),
+            ("prompt", Form::new().with(c.green)),
+            ("prompt.colon", Form::new().with(c.dark3)),
+            ("key", Form::new().with(c.orange)),
+            ("key.special", Form::new().with(c.teal)),
+            ("default.StatusLine", default.on(c.bg_dark)),
+            ("default.LogBook", default.on(c.bg_dark)),
+            ("default.VertRule", default.with(c.fg_gutter)),
+            ("default.LineNumbers", default.with(c.dark3)),
+            ("default.Buffer.active", active(default)),
+            ("default.VertRule.active", active(default.with(c.fg_gutter))),
+            ("default.LineNumbers.active", active(default.with(c.dark3))),
+            ("default.Gutter.active", active(default)),
+            (
+                "matched_pair",
+                Form::new().with(c.orange).on(c.terminal_black).bold(),
+            ),
+            ("logbook.location", Form::new().with(c.fg_dark)),
+            (
+                "default.Buffer.current_line",
+                default.on(c.bg_highlight).interpolate(default, 50),
+            ),
+            (
+                "default.Buffer.diagnostic",
+                default.on(c.bg_dark).interpolate(default, 50),
+            ),
+            ("default.Completions", default.on(c.terminal_black)),
+            ("selected.Completions", Form::new().with(c.bg).on(c.dark5)),
+            ("default.WhichKey", default.with(c.text)),
+            // For duatmode
+            ("cursor.main.Insert", Form::new().with(c.bg).on(c.magenta)),
+            ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
+            ("param", Form::new().with(c.purple)),
+            ("param.flag", Form::new().with(c.cyan)),
+            ("snippet", Form::new().with(c.bg).on(c.yellow)),
+            // AST token forms
+            ("variable", Form::new().with(c.text)),
+            ("variable.builtin", Form::new().with(c.orange)),
+            ("variable.member", Form::new().with(c.green1)),
+            ("constant", Form::new().with(c.orange)),
+            ("constant.builtin", Form::new().with(c.orange)),
+            ("static", Form::new().with(c.orange).reset()),
+            ("module", Form::new().with(c.blue).italic()),
+            ("label", Form::new().with(c.blue)),
+            ("string", Form::new().with(c.green)),
+            ("string.escape", Form::new().with(c.orange)),
+            ("string.special.path", Form::new().with(c.cyan).underlined()),
+            ("character", Form::new().with(c.orange)),
+            ("boolean", Form::new().with(c.orange)),
+            ("number", Form::new().with(c.orange)),
+            ("type", Form::new().with(c.blue1).italic()),
+            ("type.builtin", Form::new().with(c.blue1).reset()),
+            ("type.enum", Form::new().with(c.blue1).reset()),
+            ("type.enum.variant", Form::new().with(c.orange).italic()),
+            ("attribute", Form::new().with(c.yellow)),
+            ("property", Form::new().with(c.green1)),
+            ("function", Form::new().with(c.blue).reset()),
+            ("function.macro", Form::new().with(c.blue).italic()),
+            ("constructor", Form::new().with(c.orange)),
+            ("operator", Form::new().with(c.blue5)),
+            ("keyword", Form::new().with(c.magenta)),
+            ("punctuation.bracket", Form::new().with(c.dark5)),
+            ("punctuation.delimiter", Form::new().with(c.blue5)),
+            ("comment", Form::new().with(c.comment)),
+            ("comment.documentation", Form::new().with(c.comment).bold()),
+            ("markup", Form::new()),
+            ("markup.strong", Form::new().with(c.red).bold()),
+            ("markup.italic", Form::new().with(c.red).italic()),
+            ("markup.strikethrough", Form::new().crossed_out()),
+            ("markup.underline", Form::new().underlined()),
+            ("markup.heading", Form::new().with(c.blue).bold()),
+            ("markup.math", Form::new().with(c.yellow)),
+            ("markup.quote", Form::new().with(c.green).bold()),
+            ("markup.environment", Form::new().with(c.magenta)),
+            ("markup.environment.name", Form::new().with(c.blue)),
+            ("markup.link", Form::new().with(c.cyan).underlined()),
+            ("markup.raw", Form::new().with(c.teal)),
+            ("markup.list", Form::new().with(c.yellow)),
+            ("markup.list.checked", Form::new().with(c.green)),
+            ("markup.list.unchecked", Form::new().with(c.dark5)),
+            ("diff.plus", Form::new().with(c.green)),
+            ("diff.delta", Form::new().with(c.blue)),
+            ("diff.delta.renamed", Form::new().with(c.yellow)),
+            ("diff.minus", Form::new().with(c.red)),
+            ("unresolved", Form::new().underlined().underline(c.red)),
+            ("completion.lsp.detail", Form::new().with(c.teal)),
+            ("completion.lsp.description", Form::new().with(c.fg_dark)),
+            ("completion.lsp.kind", Form::new().with(c.blue)),
+        ]
+    }
+);
+
+add_colorschemes!(
+    github,
+    [
+        (github_dark, "github-dark", [
+            (bg, "#0d1117"),
+            (bg_overlay, "#161b22"),
+            (bg_subtle, "#21262d"),
+            (text, "#e6edf3"),
+            (text_muted, "#8b949e"),
+            (text_subtle, "#6e7681"),
+            (red, "#f85149"),
+            (orange, "#ffa657"),
+            (yellow, "#e3b341"),
+            (green, "#3fb950"),
+            (teal, "#39c5cf"),
+            (blue, "#58a6ff"),
+            (purple, "#d2a8ff"),
+            (string_color, "#a5d6ff"),
+            (number_color, "#79c0ff"),
+            (keyword_color, "#ff7b72"),
+            // Additional LSP forms
+        ]),
+        (github_light, "github-light", [
+            (bg, "#ffffff"),
+            (bg_overlay, "#f6f8fa"),
+            (bg_subtle, "#eaeef2"),
+            (text, "#24292f"),
+            (text_muted, "#57606a"),
+            (text_subtle, "#6e7781"),
+            (red, "#cf222e"),
+            (orange, "#953800"),
+            (yellow, "#9a6700"),
+            (green, "#1a7f37"),
+            (teal, "#0969da"),
+            (blue, "#0550ae"),
+            (purple, "#8250df"),
+            (string_color, "#0a3069"),
+            (number_color, "#0550ae"),
+            (keyword_color, "#cf222e"),
+        ]),
+    ],
+    |c, has_background| {
+        let default = if has_background {
+            Form::new().with(c.text).on(c.bg)
+        } else {
+            Form::new().with(c.text)
+        };
+        let active = |form: Form| form.interpolate(Form::new().on(c.bg_overlay), 50);
+
+        [
+            ("default", default),
+            ("accent", Form::new().with(c.blue).bold()),
+            ("default.error", Form::new().with(c.red)),
+            ("accent.error", Form::new().with(c.red).bold()),
+            ("default.warn", Form::new().with(c.yellow)),
+            ("accent.warn", Form::new().with(c.orange).bold()),
+            ("default.info", Form::new().with(c.teal)),
+            ("accent.info", Form::new().with(c.teal).bold()),
+            ("default.debug", Form::new().with(c.text_muted)),
+            ("accent.debug", Form::new().with(c.purple).bold()),
+            ("cursor.main", Form::new().with(c.bg).on(c.text)),
+            ("cursor.extra", Form::new().with(c.bg).on(c.text_muted)),
+            ("selection.main", Form::new().on(c.bg_subtle)),
+            ("selection.extra", Form::new().on(c.bg_overlay)),
+            ("cursor.main.indent", Form::new().with_on(c.text)),
+            ("cursor.extra.indent", Form::new().with_on(c.text_muted)),
+            ("selection.main.indent", Form::new().with_on(c.bg_subtle)),
+            ("selection.extra.indent", Form::new().with_on(c.bg_overlay)),
+            ("cloak", Form::new().reset().with(c.text_subtle).on(c.bg)),
+            ("replace", Form::new().with(c.bg_subtle)),
+            (
+                "replace.newline.trailing",
+                Form::new().with(c.red).on(c.bg_subtle),
+            ),
+            ("toggle.hover", Form::new().on(c.bg_overlay)),
+            ("toggle.click", Form::new().on(c.bg_subtle)),
+            // duat-base forms
+            ("linenum.main", Form::new().with(c.yellow)),
+            ("linenum.wrapped", Form::new().with(c.teal)),
+            ("buffer", Form::new().with(c.yellow)),
+            ("selections", Form::new().with(c.blue)),
+            ("coord", Form::new().with(c.orange)),
+            ("separator", Form::mimic("punctuation.delimiter")),
+            ("mode", Form::new().with(c.green)),
+            ("terminal.border", Form::new().with(c.bg_subtle).on(c.bg)),
+            ("terminal.frame", Form::new().with(c.text).on(c.bg)),
+            ("notifs.colon", Form::new().with(c.text_muted)),
+            ("prompt", Form::new().with(c.green)),
+            ("prompt.colon", Form::new().with(c.text_muted)),
+            ("key", Form::new().with(c.orange)),
+            ("key.special", Form::new().with(c.teal)),
+            ("default.StatusLine", default.on(c.bg_subtle)),
+            ("default.LogBook", default.on(c.bg_subtle)),
+            ("default.VertRule", default.with(c.bg_subtle)),
+            ("default.LineNumbers", default.with(c.text_subtle)),
+            ("default.Buffer.active", active(default)),
+            ("default.VertRule.active", active(default.with(c.bg_subtle))),
+            (
+                "default.LineNumbers.active",
+                active(default.with(c.text_subtle)),
+            ),
+            ("default.Gutter.active", active(default)),
+            (
+                "matched_pair",
+                Form::new().with(c.orange).on(c.bg_subtle).bold(),
+            ),
+            ("logbook.location", Form::new().with(c.text_muted)),
+            (
+                "default.Buffer.current_line",
+                default.on(c.bg_subtle).interpolate(default, 50),
+            ),
+            (
+                "default.Buffer.diagnostic",
+                default.on(c.bg_overlay).interpolate(default, 50),
+            ),
+            ("default.Completions", default.on(c.bg_overlay)),
+            ("selected.Completions", Form::new().with(c.bg).on(c.blue)),
+            ("default.WhichKey", default.with(c.text)),
+            // For duatmode
+            ("cursor.main.Insert", Form::new().with(c.bg).on(c.purple)),
+            ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
+            ("param", Form::new().with(c.purple)),
+            ("param.flag", Form::new().with(c.teal)),
+            ("snippet", Form::new().with(c.bg).on(c.yellow)),
+            // AST token forms
+            ("variable", Form::new().with(c.text)),
+            ("variable.builtin", Form::new().with(c.orange)),
+            ("variable.member", Form::new().with(c.blue)),
+            ("constant", Form::new().with(c.number_color)),
+            ("constant.builtin", Form::new().with(c.number_color)),
+            ("static", Form::new().with(c.number_color).reset()),
+            ("module", Form::new().with(c.blue).italic()),
+            ("label", Form::new().with(c.green)),
+            ("string", Form::new().with(c.string_color)),
+            ("string.escape", Form::new().with(c.orange)),
+            ("string.special.path", Form::new().with(c.teal).underlined()),
+            ("character", Form::new().with(c.number_color)),
+            ("boolean", Form::new().with(c.number_color)),
+            ("number", Form::new().with(c.number_color)),
+            ("type", Form::new().with(c.teal).italic()),
+            ("type.builtin", Form::new().with(c.teal).reset()),
+            ("type.enum", Form::new().with(c.teal).reset()),
+            ("type.enum.variant", Form::new().with(c.orange).italic()),
+            ("attribute", Form::new().with(c.yellow)),
+            ("property", Form::new().with(c.text_muted)),
+            ("function", Form::new().with(c.purple).reset()),
+            ("function.macro", Form::new().with(c.purple).italic()),
+            ("constructor", Form::new().with(c.orange)),
+            ("operator", Form::new().with(c.keyword_color)),
+            ("keyword", Form::new().with(c.keyword_color)),
+            ("punctuation.bracket", Form::new().with(c.text_subtle)),
+            ("punctuation.delimiter", Form::new().with(c.text_subtle)),
+            ("comment", Form::new().with(c.text_muted)),
+            (
+                "comment.documentation",
+                Form::new().with(c.text_muted).bold(),
+            ),
+            ("markup", Form::new()),
+            ("markup.strong", Form::new().with(c.red).bold()),
+            ("markup.italic", Form::new().with(c.red).italic()),
+            ("markup.strikethrough", Form::new().crossed_out()),
+            ("markup.underline", Form::new().underlined()),
+            ("markup.heading", Form::new().with(c.blue).bold()),
+            ("markup.math", Form::new().with(c.yellow)),
+            ("markup.quote", Form::new().with(c.green).bold()),
+            ("markup.environment", Form::new().with(c.purple)),
+            ("markup.environment.name", Form::new().with(c.blue)),
+            ("markup.link", Form::new().with(c.teal).underlined()),
+            ("markup.raw", Form::new().with(c.string_color)),
+            ("markup.list", Form::new().with(c.yellow)),
+            ("markup.list.checked", Form::new().with(c.green)),
+            ("markup.list.unchecked", Form::new().with(c.text_subtle)),
+            ("diff.plus", Form::new().with(c.green)),
+            ("diff.delta", Form::new().with(c.blue)),
+            ("diff.delta.renamed", Form::new().with(c.yellow)),
+            ("diff.minus", Form::new().with(c.red)),
+            ("unresolved", Form::new().underlined().underline(c.red)),
+            ("completion.lsp.detail", Form::new().with(c.teal)),
+            ("completion.lsp.description", Form::new().with(c.text_muted)),
+            ("completion.lsp.kind", Form::new().with(c.blue)),
+        ]
+    }
+);
+
+// Dracula theme — https://github.com/dracula/dracula-theme
+add_colorschemes!(
+    dracula,
+    [
+        (dracula, "dracula", [
+            (bg, "#282a36"),
+            (current_line, "#44475a"),
+            (selection, "#44475a"),
+            (fg, "#f8f8f2"),
+            (comment, "#6272a4"),
+            (cyan, "#8be9fd"),
+            (green, "#50fa7b"),
+            (orange, "#ffb86c"),
+            (pink, "#ff79c6"),
+            (purple, "#bd93f9"),
+            (red, "#ff5555"),
+            (yellow, "#f1fa8c"),
+            // Additional LSP forms
+        ]),
+        (alucard, "dracula-alucard", [
+            (bg, "#fffbeb"),
+            (current_line, "#6c664b"),
+            (selection, "#cfcfde"),
+            (fg, "#1f1f1f"),
+            (comment, "#6c664b"),
+            (cyan, "#036a96"),
+            (green, "#14710a"),
+            (orange, "#a34d14"),
+            (pink, "#a3144d"),
+            (purple, "#644ac9"),
+            (red, "#cb3a2a"),
+            (yellow, "#846e15"),
+        ])
+    ],
+    |c, has_background| {
+        let default = if has_background {
+            Form::new().with(c.fg).on(c.bg)
+        } else {
+            Form::new().with(c.fg)
+        };
+        let active = |form: Form| form.interpolate(Form::new().on(c.selection), 80);
+
+        [
+            ("default", default),
+            ("accent", Form::new().with(c.cyan).bold()),
+            ("default.error", Form::new().with(c.red)),
+            ("accent.error", Form::new().with(c.red).bold()),
+            ("default.warn", Form::new().with(c.yellow)),
+            ("accent.warn", Form::new().with(c.orange).bold()),
+            ("default.info", Form::new().with(c.cyan)),
+            ("accent.info", Form::new().with(c.cyan).bold()),
+            ("default.debug", Form::new().with(c.comment)),
+            ("accent.debug", Form::new().with(c.purple).bold()),
+            ("cursor.main", Form::new().with(c.bg).on(c.yellow)),
+            ("cursor.extra", Form::new().with(c.bg).on(c.fg)),
+            ("selection.main", Form::new().on(c.selection)),
+            (
+                "selection.extra",
+                Form::new().on(c.selection).interpolate(default, 50),
+            ),
+            ("cursor.main.indent", Form::new().with_on(c.yellow)),
+            ("cursor.extra.indent", Form::new().with_on(c.fg)),
+            ("selection.main.indent", Form::new().with_on(c.selection)),
+            (
+                "selection.extra.indent",
+                Form::new().with_on(c.selection).interpolate(default, 50),
+            ),
+            ("cloak", Form::new().reset().with(c.comment).on(c.bg)),
+            ("replace", Form::new().with(c.current_line)),
+            (
+                "replace.newline.trailing",
+                Form::new().with(c.red).on(c.current_line),
+            ),
+            ("toggle.hover", Form::new().on(c.current_line)),
+            ("toggle.click", Form::new().on(c.comment)),
+            // duat-base forms
+            ("linenum.main", Form::new().with(c.current_line)),
+            ("linenum.wrapped", Form::new().with(c.cyan)),
+            ("buffer", Form::new().with(c.yellow)),
+            ("selections", Form::new().with(c.purple)),
+            ("coord", Form::new().with(c.orange)),
+            ("separator", Form::mimic("punctuation.delimiter")),
+            ("mode", Form::new().with(c.green)),
+            ("terminal.border", Form::new().with(c.current_line).on(c.bg)),
+            ("terminal.frame", Form::new().with(c.fg).on(c.bg)),
+            ("notifs.colon", Form::new().with(c.comment)),
+            ("prompt", Form::new().with(c.green)),
+            ("prompt.colon", Form::new().with(c.comment)),
+            ("key", Form::new().with(c.orange)),
+            ("key.special", Form::new().with(c.cyan)),
+            ("default.StatusLine", default.on(c.current_line)),
+            ("default.LogBook", default.on(c.current_line)),
+            ("default.VertRule", default.with(c.current_line)),
+            ("default.LineNumbers", default.with(c.comment)),
+            ("default.Buffer.active", active(default)),
+            (
+                "default.VertRule.active",
+                active(default.with(c.current_line)),
+            ),
+            (
+                "default.LineNumbers.active",
+                active(default.with(c.comment)),
+            ),
+            ("default.Gutter.active", active(default)),
+            (
+                "matched_pair",
+                Form::new().with(c.orange).on(c.current_line).bold(),
+            ),
+            ("logbook.location", Form::new().with(c.comment)),
+            (
+                "default.Buffer.current_line",
+                default.on(c.current_line).interpolate(default, 50),
+            ),
+            (
+                "default.Buffer.diagnostic",
+                default.on(c.current_line).interpolate(default, 80),
+            ),
+            ("default.Completions", default.on(c.current_line)),
+            ("selected.Completions", Form::new().with(c.bg).on(c.purple)),
+            ("default.WhichKey", default.with(c.fg)),
+            // For duatmode
+            ("cursor.main.Insert", Form::new().with(c.bg).on(c.pink)),
+            ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
+            ("param", Form::new().with(c.purple)),
+            ("param.flag", Form::new().with(c.pink)),
+            ("snippet", Form::new().with(c.bg).on(c.yellow)),
+            // AST token forms
+            ("variable", Form::new().with(c.fg)),
+            ("variable.builtin", Form::new().with(c.orange)),
+            ("variable.member", Form::new().with(c.fg)),
+            ("constant", Form::new().with(c.purple)),
+            ("constant.builtin", Form::new().with(c.purple)),
+            ("static", Form::new().with(c.purple).reset()),
+            ("module", Form::new().with(c.cyan).italic()),
+            ("label", Form::new().with(c.cyan)),
+            ("string", Form::new().with(c.yellow)),
+            ("string.escape", Form::new().with(c.pink)),
+            ("string.special.path", Form::new().with(c.cyan).underlined()),
+            ("character", Form::new().with(c.pink)),
+            ("boolean", Form::new().with(c.purple)),
+            ("number", Form::new().with(c.purple)),
+            ("type", Form::new().with(c.cyan).italic()),
+            ("type.builtin", Form::new().with(c.cyan).reset()),
+            ("type.enum", Form::new().with(c.cyan).reset()),
+            ("type.enum.variant", Form::new().with(c.purple).italic()),
+            ("attribute", Form::new().with(c.green)),
+            ("property", Form::new().with(c.fg)),
+            ("function", Form::new().with(c.green).reset()),
+            ("function.macro", Form::new().with(c.pink).italic()),
+            ("constructor", Form::new().with(c.cyan)),
+            ("operator", Form::new().with(c.pink)),
+            ("keyword", Form::new().with(c.pink)),
+            ("punctuation.bracket", Form::new().with(c.fg)),
+            ("punctuation.delimiter", Form::new().with(c.fg)),
+            ("comment", Form::new().with(c.comment)),
+            ("comment.documentation", Form::new().with(c.comment).bold()),
+            ("markup", Form::new()),
+            ("markup.strong", Form::new().with(c.orange).bold()),
+            ("markup.italic", Form::new().with(c.yellow).italic()),
+            ("markup.strikethrough", Form::new().crossed_out()),
+            ("markup.underline", Form::new().underlined()),
+            ("markup.heading", Form::new().with(c.purple).bold()),
+            ("markup.math", Form::new().with(c.cyan)),
+            ("markup.quote", Form::new().with(c.yellow).bold()),
+            ("markup.environment", Form::new().with(c.pink)),
+            ("markup.environment.name", Form::new().with(c.cyan)),
+            ("markup.link", Form::new().with(c.cyan).underlined()),
+            ("markup.raw", Form::new().with(c.green)),
+            ("markup.list", Form::new().with(c.pink)),
+            ("markup.list.checked", Form::new().with(c.green)),
+            ("markup.list.unchecked", Form::new().with(c.comment)),
+            ("diff.plus", Form::new().with(c.green)),
+            ("diff.delta", Form::new().with(c.cyan)),
+            ("diff.delta.renamed", Form::new().with(c.yellow)),
+            ("diff.minus", Form::new().with(c.red)),
+            ("unresolved", Form::new().underlined().underline(c.red)),
+            ("completion.lsp.detail", Form::new().with(c.cyan)),
+            ("completion.lsp.description", Form::new().with(c.comment)),
+            ("completion.lsp.kind", Form::new().with(c.yellow)),
+        ]
+    }
+);
+
+// Ayu theme — https://github.com/ayu-theme/ayu-vim
+add_colorschemes!(
+    ayu,
+    [
+        (ayu_dark, "ayu-dark", [
+            (bg, "#0F1419"),
+            (panel, "#14191F"),
+            (line, "#151A1E"),
+            (selection, "#253340"),
+            (guide, "#2D3640"),
+            (fg_idle, "#3E4B59"),
+            (fg, "#E6E1CF"),
+            (comment, "#5C6773"),
+            (tag, "#36A3D9"),
+            (string, "#B8CC52"),
+            (regexp, "#95E6CB"),
+            (markup, "#F07178"),
+            // Additional LSP forms
+            (keyword, "#FF7733"),
+            (special, "#E6B673"),
+            (func, "#FFB454"),
+            (constant, "#FFEE99"),
+            (operator, "#E7C547"),
+            (accent, "#F29718"),
+            (error, "#FF3333"),
+        ]),
+        (ayu_light, "ayu-light", [
+            (bg, "#FAFAFA"),
+            (panel, "#FFFFFF"),
+            (line, "#F3F3F3"),
+            (selection, "#F0EEE4"),
+            (guide, "#D9D8D7"),
+            (fg_idle, "#828C99"),
+            (fg, "#5C6773"),
+            (comment, "#ABB0B6"),
+            (tag, "#36A3D9"),
+            (string, "#86B300"),
+            (regexp, "#4CBF99"),
+            (markup, "#F07178"),
+            (keyword, "#FF7733"),
+            (special, "#E6B673"),
+            (func, "#F29718"),
+            (constant, "#A37ACC"),
+            (operator, "#E7C547"),
+            (accent, "#FF6A00"),
+            (error, "#FF3333"),
+        ]),
+        (ayu_mirage, "ayu-mirage", [
+            (bg, "#212733"),
+            (panel, "#272D38"),
+            (line, "#242B38"),
+            (selection, "#343F4C"),
+            (guide, "#3D4751"),
+            (fg_idle, "#607080"),
+            (fg, "#D9D7CE"),
+            (comment, "#5C6773"),
+            (tag, "#5CCFE6"),
+            (string, "#BBE67E"),
+            (regexp, "#95E6CB"),
+            (markup, "#F07178"),
+            (keyword, "#FFAE57"),
+            (special, "#FFC44C"),
+            (func, "#FFD57F"),
+            (constant, "#D4BFFF"),
+            (operator, "#80D4FF"),
+            (accent, "#FFCC66"),
+            (error, "#FF3333"),
+        ])
+    ],
+    |c, has_background| {
+        let default = if has_background {
+            Form::new().with(c.fg).on(c.bg)
+        } else {
+            Form::new().with(c.fg)
+        };
+        let active = |form: Form| form.interpolate(Form::new().on(c.panel), 50);
+
+        [
+            ("default", default),
+            ("accent", Form::new().with(c.accent).bold()),
+            ("default.error", Form::new().with(c.error)),
+            ("accent.error", Form::new().with(c.error).bold()),
+            ("default.warn", Form::new().with(c.operator)),
+            ("accent.warn", Form::new().with(c.special).bold()),
+            ("default.info", Form::new().with(c.tag)),
+            ("accent.info", Form::new().with(c.tag).bold()),
+            ("default.debug", Form::new().with(c.comment)),
+            ("accent.debug", Form::new().with(c.constant).bold()),
+            ("cursor.main", Form::new().with(c.bg).on(c.fg)),
+            ("cursor.extra", Form::new().with(c.bg).on(c.tag)),
+            ("selection.main", Form::new().on(c.selection)),
+            ("selection.extra", Form::new().on(c.guide)),
+            ("cursor.main.indent", Form::new().with_on(c.fg)),
+            ("cursor.extra.indent", Form::new().with_on(c.tag)),
+            ("selection.main.indent", Form::new().with_on(c.selection)),
+            ("selection.extra.indent", Form::new().with_on(c.guide)),
+            ("cloak", Form::new().reset().with(c.comment).on(c.bg)),
+            ("replace", Form::new().with(c.guide)),
+            (
+                "replace.newline.trailing",
+                Form::new().with(c.error).on(c.selection),
+            ),
+            ("toggle.hover", Form::new().on(c.line)),
+            ("toggle.click", Form::new().on(c.selection)),
+            // duat-base forms
+            ("linenum.main", Form::new().with(c.operator)),
+            ("linenum.wrapped", Form::new().with(c.tag)),
+            ("buffer", Form::new().with(c.operator)),
+            ("selections", Form::new().with(c.tag)),
+            ("coord", Form::new().with(c.accent)),
+            ("separator", Form::mimic("punctuation.delimiter")),
+            ("mode", Form::new().with(c.string)),
+            ("terminal.border", Form::new().with(c.guide).on(c.bg)),
+            ("terminal.frame", Form::new().with(c.fg).on(c.bg)),
+            ("notifs.colon", Form::new().with(c.comment)),
+            ("prompt", Form::new().with(c.string)),
+            ("prompt.colon", Form::new().with(c.comment)),
+            ("key", Form::new().with(c.accent)),
+            ("key.special", Form::new().with(c.tag)),
+            ("default.StatusLine", default.on(c.panel)),
+            ("default.LogBook", default.on(c.panel)),
+            ("default.VertRule", default.with(c.guide)),
+            ("default.LineNumbers", default.with(c.fg_idle)),
+            ("default.Buffer.active", active(default)),
+            ("default.VertRule.active", active(default.with(c.guide))),
+            (
+                "default.LineNumbers.active",
+                active(default.with(c.fg_idle)),
+            ),
+            ("default.Gutter.active", active(default)),
+            (
+                "matched_pair",
+                Form::new().with(c.accent).on(c.selection).bold(),
+            ),
+            ("logbook.location", Form::new().with(c.comment)),
+            (
+                "default.Buffer.current_line",
+                default.on(c.line).interpolate(default, 50),
+            ),
+            (
+                "default.Buffer.diagnostic",
+                default.on(c.panel).interpolate(default, 50),
+            ),
+            ("default.Completions", default.on(c.panel)),
+            ("selected.Completions", Form::new().with(c.bg).on(c.fg_idle)),
+            ("default.WhichKey", default.with(c.fg)),
+            // For duatmode
+            ("cursor.main.Insert", Form::new().with(c.bg).on(c.constant)),
+            ("cursor.extra.Insert", Form::new().with(c.bg).on(c.operator)),
+            ("param", Form::new().with(c.constant)),
+            ("param.flag", Form::new().with(c.tag)),
+            ("snippet", Form::new().with(c.bg).on(c.operator)),
+            // AST token forms
+            ("variable", Form::new().with(c.fg)),
+            ("variable.builtin", Form::new().with(c.accent)),
+            ("variable.member", Form::new().with(c.fg)),
+            ("constant", Form::new().with(c.constant)),
+            ("constant.builtin", Form::new().with(c.constant)),
+            ("static", Form::new().with(c.constant).reset()),
+            ("module", Form::new().with(c.tag).italic()),
+            ("label", Form::new().with(c.tag)),
+            ("string", Form::new().with(c.string)),
+            ("string.escape", Form::new().with(c.special)),
+            ("string.special.path", Form::new().with(c.tag).underlined()),
+            ("character", Form::new().with(c.special)),
+            ("boolean", Form::new().with(c.constant)),
+            ("number", Form::new().with(c.constant)),
+            ("type", Form::new().with(c.tag).italic()),
+            ("type.builtin", Form::new().with(c.tag).reset()),
+            ("type.enum", Form::new().with(c.tag).reset()),
+            ("type.enum.variant", Form::new().with(c.constant).italic()),
+            ("attribute", Form::new().with(c.keyword)),
+            ("property", Form::new().with(c.fg)),
+            ("function", Form::new().with(c.func).reset()),
+            ("function.macro", Form::new().with(c.special).italic()),
+            ("constructor", Form::new().with(c.tag)),
+            ("operator", Form::new().with(c.operator)),
+            ("keyword", Form::new().with(c.keyword)),
+            ("punctuation.bracket", Form::new().with(c.fg_idle)),
+            ("punctuation.delimiter", Form::new().with(c.fg_idle)),
+            ("comment", Form::new().with(c.comment)),
+            ("comment.documentation", Form::new().with(c.comment).bold()),
+            ("markup", Form::new()),
+            ("markup.strong", Form::new().with(c.markup).bold()),
+            ("markup.italic", Form::new().with(c.markup).italic()),
+            ("markup.strikethrough", Form::new().crossed_out()),
+            ("markup.underline", Form::new().underlined()),
+            ("markup.heading", Form::new().with(c.tag).bold()),
+            ("markup.math", Form::new().with(c.constant)),
+            ("markup.quote", Form::new().with(c.string).bold()),
+            ("markup.environment", Form::new().with(c.keyword)),
+            ("markup.environment.name", Form::new().with(c.tag)),
+            ("markup.link", Form::new().with(c.tag).underlined()),
+            ("markup.raw", Form::new().with(c.string)),
+            ("markup.list", Form::new().with(c.keyword)),
+            ("markup.list.checked", Form::new().with(c.string)),
+            ("markup.list.unchecked", Form::new().with(c.comment)),
+            ("diff.plus", Form::new().with(c.string)),
+            ("diff.delta", Form::new().with(c.tag)),
+            ("diff.delta.renamed", Form::new().with(c.operator)),
+            ("diff.minus", Form::new().with(c.error)),
+            ("unresolved", Form::new().underlined().underline(c.error)),
+            ("completion.lsp.detail", Form::new().with(c.tag)),
+            ("completion.lsp.description", Form::new().with(c.comment)),
+            ("completion.lsp.kind", Form::new().with(c.func)),
+        ]
+    }
+);
+
+// Nord theme — https://www.nordtheme.com/docs/colors-and-palettes
+add_colorschemes!(
+    (nord, "nord", [
+        // Polar Night
+        (nord0, "#2e3440"),
+        (nord1, "#3b4252"),
+        (nord2, "#434c5e"),
+        (nord3, "#4c566a"),
+        // Snow Storm
+        (nord4, "#d8dee9"),
+        (nord5, "#e5e9f0"),
+        (nord6, "#eceff4"),
+        // Frost
+        (nord7, "#8fbcbb"),
+        (nord8, "#88c0d0"),
+        (nord9, "#81a1c1"),
+        (nord10, "#5e81ac"),
+        // Aurora
+        (nord11, "#bf616a"),
+        // Additional LSP forms
+        (nord12, "#d08770"),
+        (nord13, "#ebcb8b"),
+        (nord14, "#a3be8c"),
+        (nord15, "#b48ead"),
+    ]),
+    |c, has_background| {
+        let default = if has_background {
+            Form::new().with(c.nord4).on(c.nord0)
+        } else {
+            Form::new().with(c.nord4)
+        };
+        let active = |form: Form| form.interpolate(Form::new().on(c.nord1), 80);
+
+        [
+            ("default", default),
+            ("accent", Form::new().with(c.nord8).bold()),
+            ("default.error", Form::new().with(c.nord11)),
+            ("accent.error", Form::new().with(c.nord11).bold()),
+            ("default.warn", Form::new().with(c.nord13)),
+            ("accent.warn", Form::new().with(c.nord12).bold()),
+            ("default.info", Form::new().with(c.nord9)),
+            ("accent.info", Form::new().with(c.nord8).bold()),
+            ("default.debug", Form::new().with(c.nord3)),
+            ("accent.debug", Form::new().with(c.nord15).bold()),
+            ("cursor.main", Form::new().with(c.nord0).on(c.nord4)),
+            ("cursor.extra", Form::new().with(c.nord0).on(c.nord7)),
+            ("selection.main", Form::new().on(c.nord2)),
+            ("selection.extra", Form::new().on(c.nord1)),
+            ("cursor.main.indent", Form::new().with_on(c.nord4)),
+            ("cursor.extra.indent", Form::new().with_on(c.nord7)),
+            ("selection.main.indent", Form::new().with_on(c.nord2)),
+            ("selection.extra.indent", Form::new().with_on(c.nord1)),
+            ("cloak", Form::new().reset().with(c.nord3).on(c.nord0)),
+            ("replace", Form::new().with(c.nord1)),
+            (
+                "replace.newline.trailing",
+                Form::new().with(c.nord11).on(c.nord1),
+            ),
+            ("toggle.hover", Form::new().on(c.nord1)),
+            ("toggle.click", Form::new().on(c.nord2)),
+            ("linenum.main", Form::new().with(c.nord13)),
+            ("linenum.wrapped", Form::new().with(c.nord7)),
+            ("buffer", Form::new().with(c.nord13)),
+            ("selections", Form::new().with(c.nord9)),
+            ("coord", Form::new().with(c.nord12)),
+            ("separator", Form::mimic("punctuation.delimiter")),
+            ("mode", Form::new().with(c.nord14)),
+            ("terminal.border", Form::new().with(c.nord1).on(c.nord0)),
+            ("terminal.frame", Form::new().with(c.nord4).on(c.nord0)),
+            ("notifs.colon", Form::new().with(c.nord3)),
+            ("prompt", Form::new().with(c.nord14)),
+            ("prompt.colon", Form::new().with(c.nord3)),
+            ("key", Form::new().with(c.nord12)),
+            ("key.special", Form::new().with(c.nord7)),
+            ("default.StatusLine", default.on(c.nord1)),
+            ("default.LogBook", default.on(c.nord1)),
+            ("default.VertRule", default.with(c.nord1)),
+            ("default.LineNumbers", default.with(c.nord3)),
+            ("default.Buffer.active", active(default)),
+            ("default.VertRule.active", active(default.with(c.nord1))),
+            ("default.LineNumbers.active", active(default.with(c.nord3))),
+            ("default.Gutter.active", active(default)),
+            (
+                "matched_pair",
+                Form::new().with(c.nord12).on(c.nord2).bold(),
+            ),
+            ("logbook.location", Form::new().with(c.nord3)),
+            (
+                "default.Buffer.current_line",
+                default.on(c.nord1).interpolate(default, 50),
+            ),
+            (
+                "default.Buffer.diagnostic",
+                default.on(c.nord1).interpolate(default, 80),
+            ),
+            ("default.Completions", default.on(c.nord1)),
+            (
+                "selected.Completions",
+                Form::new().with(c.nord0).on(c.nord3),
+            ),
+            ("default.WhichKey", default.with(c.nord4)),
+            // For duatmode
+            ("cursor.main.Insert", Form::new().with(c.nord0).on(c.nord15)),
+            (
+                "cursor.extra.Insert",
+                Form::new().with(c.nord0).on(c.nord13),
+            ),
+            ("param", Form::new().with(c.nord15)),
+            ("param.flag", Form::new().with(c.nord8)),
+            ("snippet", Form::new().with(c.nord0).on(c.nord15)),
+            // AST token forms
+            ("variable", Form::new().with(c.nord4)),
+            ("variable.builtin", Form::new().with(c.nord12)),
+            ("variable.member", Form::new().with(c.nord4)),
+            ("constant", Form::new().with(c.nord12)),
+            ("constant.builtin", Form::new().with(c.nord12)),
+            ("static", Form::new().with(c.nord12).reset()),
+            ("module", Form::new().with(c.nord9).italic()),
+            ("label", Form::new().with(c.nord7)),
+            ("string", Form::new().with(c.nord14)),
+            ("string.escape", Form::new().with(c.nord13)),
+            (
+                "string.special.path",
+                Form::new().with(c.nord8).underlined(),
+            ),
+            ("character", Form::new().with(c.nord14)),
+            ("boolean", Form::new().with(c.nord12)),
+            ("number", Form::new().with(c.nord15)),
+            ("type", Form::new().with(c.nord7).italic()),
+            ("type.builtin", Form::new().with(c.nord7).reset()),
+            ("type.enum", Form::new().with(c.nord7).reset()),
+            ("type.enum.variant", Form::new().with(c.nord12).italic()),
+            ("attribute", Form::new().with(c.nord13)),
+            ("property", Form::new().with(c.nord4)),
+            ("function", Form::new().with(c.nord8).reset()),
+            ("function.macro", Form::new().with(c.nord8).italic()),
+            ("constructor", Form::new().with(c.nord7)),
+            ("operator", Form::new().with(c.nord9)),
+            ("keyword", Form::new().with(c.nord9)),
+            ("punctuation.bracket", Form::new().with(c.nord3)),
+            ("punctuation.delimiter", Form::new().with(c.nord4)),
+            ("comment", Form::new().with(c.nord3)),
+            ("comment.documentation", Form::new().with(c.nord3).bold()),
+            ("markup", Form::new()),
+            ("markup.strong", Form::new().with(c.nord12).bold()),
+            ("markup.italic", Form::new().with(c.nord13).italic()),
+            ("markup.strikethrough", Form::new().crossed_out()),
+            ("markup.underline", Form::new().underlined()),
+            ("markup.heading", Form::new().with(c.nord9).bold()),
+            ("markup.math", Form::new().with(c.nord8)),
+            ("markup.quote", Form::new().with(c.nord14).bold()),
+            ("markup.environment", Form::new().with(c.nord15)),
+            ("markup.environment.name", Form::new().with(c.nord9)),
+            ("markup.link", Form::new().with(c.nord8).underlined()),
+            ("markup.raw", Form::new().with(c.nord7)),
+            ("markup.list", Form::new().with(c.nord9)),
+            ("markup.list.checked", Form::new().with(c.nord14)),
+            ("markup.list.unchecked", Form::new().with(c.nord3)),
+            ("diff.plus", Form::new().with(c.nord14)),
+            ("diff.delta", Form::new().with(c.nord8)),
+            ("diff.delta.renamed", Form::new().with(c.nord13)),
+            ("diff.minus", Form::new().with(c.nord11)),
+            ("unresolved", Form::new().underlined().underline(c.nord11)),
+            ("completion.lsp.detail", Form::new().with(c.nord9)),
+            ("completion.lsp.description", Form::new().with(c.nord4)),
+            ("completion.lsp.kind", Form::new().with(c.nord8)),
+        ]
+    }
+);
+
+// Kanagawa by rebelot: https://github.com/rebelot/kanagawa.nvim
+add_colorschemes!(
+    (kanagawa, "kanagawa", [
+        (old_white, "#C8C093"),
+        (fuji_white, "#DCD7BA"),
+        (fuji_gray, "#727169"),
+        (sumi_ink0, "#16161D"),
+        (sumi_ink1, "#181820"),
+        (sumi_ink2, "#1A1A22"),
+        (sumi_ink3, "#1F1F28"),
+        (sumi_ink4, "#2A2A37"),
+        (sumi_ink5, "#363646"),
+        (sumi_ink6, "#54546D"),
+        (wave_blue1, "#223249"),
+        (wave_blue2, "#2D4F67"),
+        (winter_green, "#2B3328"),
+        (winter_yellow, "#49443C"),
+        (winter_red, "#43242B"),
+        (winter_blue, "#252535"),
+        // Additional LSP forms
+        (autumn_green, "#76946A"),
+        (autumn_red, "#C34043"),
+        (autumn_yellow, "#DCA561"),
+        (samurai_red, "#E82424"),
+        (ronin_yellow, "#FF9E3B"),
+        (wave_aqua1, "#6A9589"),
+        (dragon_blue, "#658594"),
+        (oni_violet, "#957FB8"),
+        (oni_violet2, "#B8B4D0"),
+        (crystal_blue, "#7E9CD8"),
+        (spring_violet1, "#938AA9"),
+        (spring_violet2, "#9CABCA"),
+        (spring_blue, "#7FB4CA"),
+        (wave_aqua2, "#7AA89F"),
+        (wave_aqua3, "#68AD99"),
+        (wave_aqua4, "#7AA880"),
+        (wave_aqua5, "#6CAF95"),
+        (spring_green, "#98BB6C"),
+        (boat_yellow1, "#938056"),
+        (boat_yellow2, "#C0A36E"),
+        (carp_yellow, "#E6C384"),
+        (sakura_pink, "#D27E99"),
+        (wave_red, "#E46876"),
+        (peach_red, "#FF5D62"),
+        (surimi_orange, "#FFA066"),
+        (katana_gray, "#717C7C"),
+    ]),
+    |c, has_background| {
+        let default = if has_background {
+            Form::new().with(c.fuji_white).on(c.sumi_ink3)
+        } else {
+            Form::new().with(c.fuji_white)
+        };
+        let active = |form: Form| form.interpolate(Form::new().on(c.sumi_ink4), 80);
+
+        [
+            ("default", default),
+            ("accent", Form::new().with(c.spring_violet1).bold()),
+            (
+                "default.error",
+                Form::new().with(c.samurai_red).undercurled(),
+            ),
+            (
+                "accent.error",
+                Form::new().with(c.autumn_red).bold().undercurled(),
+            ),
+            (
+                "default.warn",
+                Form::new().with(c.ronin_yellow).undercurled(),
+            ),
+            (
+                "accent.warn",
+                Form::new().with(c.autumn_yellow).bold().undercurled(),
+            ),
+            ("default.info", Form::new().with(c.fuji_white).undercurled()),
+            ("accent.info", Form::new().with(c.carp_yellow).bold()),
+            ("default.debug", Form::new().with(c.fuji_gray)),
+            ("accent.debug", Form::new().with(c.ronin_yellow).bold()),
+            ("caret.main", Form::new().reverse()),
+            ("caret.extra", Form::new().reverse()),
+            (
+                "selection.main",
+                Form::new().with(c.fuji_white).on(c.wave_blue2),
+            ),
+            (
+                "selection.extra",
+                Form::new().with(c.fuji_white).on(c.wave_aqua3),
+            ),
+            ("cloak", Form::new().with(c.fuji_gray).on(c.sumi_ink3)),
+            ("character.control", Form::new().with(c.fuji_gray)),
+            ("replace", Form::new().with(c.sumi_ink6)),
+            (
+                "replace.new_line.trailing",
+                Form::new().with(c.autumn_red).on(c.sumi_ink3),
+            ),
+            // duat-base forms
+            ("linenum.main", Form::new().with(c.surimi_orange).bold()),
+            ("linenum.wrapped", Form::new().with(c.sumi_ink4)),
+            ("buffer", Form::new().with(c.boat_yellow1)),
+            ("selections", Form::new().with(c.sumi_ink5)),
+            (
+                "selection.main.indent",
+                Form::new().with(c.sumi_ink6).on(c.wave_blue2),
+            ),
+            ("coord", Form::new().with(c.surimi_orange)),
+            ("separator", Form::mimic("punctuation.delimiter")),
+            ("mode", Form::new().with(c.spring_green)),
+            ("key", Form::new().with(c.carp_yellow)),
+            ("key.special", Form::new().with(c.sumi_ink2)),
+            (
+                "terminal.border",
+                Form::new().with(c.katana_gray).on(c.sumi_ink3),
+            ),
+            (
+                "terminal.frame",
+                Form::new().with(c.fuji_white).on(c.sumi_ink3),
+            ),
+            ("notifs.colon", Form::new().with(c.fuji_gray)),
+            ("prompt", Form::new().with(c.spring_green)),
+            ("prompt.input", Form::new().with(c.spring_green)),
+            ("prompt.colon", Form::new().with(c.fuji_gray)),
+            (
+                "default.StatusLine",
+                Form::new().with(c.old_white).on(c.sumi_ink0),
+            ),
+            ("default.LogBook", default.on(c.sumi_ink3)),
+            ("default.VertRule", default.with(c.sumi_ink3)),
+            ("default.LineNumbers", default.with(c.sumi_ink6)),
+            ("default.Buffer.active", active(default)),
+            ("default.VertRule.active", active(default.with(c.sumi_ink3))),
+            (
+                "default.LineNumbers.active",
+                active(default.with(c.sumi_ink6)),
+            ),
+            ("default.Gutter.active", active(default)),
+            (
+                "matched_pair",
+                Form::new().with(c.wave_aqua5).on(c.sumi_ink3).bold(),
+            ),
+            ("log_book.location", Form::new().with(c.fuji_gray)),
+            ("default.Completions", default.on(c.wave_blue2)),
+            (
+                "selected.Completions",
+                Form::new().with(c.fuji_white).on(c.wave_blue1).bold(),
+            ),
+            ("default.WhichKey", default.with(c.fuji_white)),
+            // For duatmode
+            (
+                "caret.main.Normal",
+                Form::new().with(c.wave_blue1).on(c.wave_aqua2),
+            ),
+            (
+                "caret.extra.Normal",
+                Form::new().with(c.wave_blue1).on(c.wave_aqua2),
+            ),
+            (
+                "caret.main.Insert",
+                Form::new().with(c.sumi_ink3).on(c.oni_violet),
+            ),
+            (
+                "caret.extra.Insert",
+                Form::new().with(c.sumi_ink3).on(c.carp_yellow),
+            ),
+            ("param", Form::new().with(c.oni_violet2)),
+            ("param.flag", Form::new().with(c.oni_violet2)),
+            ("snippet", Form::new().with(c.sumi_ink3).on(c.boat_yellow1)),
+            // AST token forms
+            ("variable", Form::new().with(c.fuji_white)),
+            ("variable.builtin", Form::new().with(c.surimi_orange)),
+            ("variable.member", Form::new().with(c.fuji_white)),
+            ("constant", Form::new().with(c.surimi_orange)),
+            ("constant.builtin", Form::new().with(c.wave_red)),
+            ("module", Form::new().with(c.surimi_orange).italic()),
+            ("label", Form::new().with(c.spring_blue)),
+            ("string", Form::new().with(c.spring_green)),
+            ("string.escape", Form::new().with(c.oni_violet)),
+            (
+                "string.special.path",
+                Form::new().with(c.spring_blue).underlined(),
+            ),
+            ("character", Form::new().with(c.surimi_orange)),
+            ("boolean", Form::new().with(c.surimi_orange)),
+            ("number", Form::new().with(c.sakura_pink)),
+            ("type", Form::new().with(c.wave_aqua2)),
+            ("type.builtin", Form::new().with(c.spring_blue)),
+            ("attribute", Form::new().with(c.wave_red)),
+            ("property", Form::new().with(c.carp_yellow)),
+            ("function", Form::new().with(c.crystal_blue).reset()),
+            ("function.macro", Form::new().with(c.wave_red)),
+            ("constructor", Form::new().with(c.spring_blue)),
+            ("operator", Form::new().with(c.boat_yellow2)),
+            ("keyword", Form::new().with(c.oni_violet)),
+            ("punctuation.bracket", Form::new().with(c.spring_violet2)),
+            ("punctuation.delimiter", Form::new().with(c.spring_violet2)),
+            ("comment", Form::new().with(c.fuji_gray)),
+            (
+                "comment.documentation",
+                Form::new().with(c.fuji_gray).bold(),
+            ),
+            ("markup", Form::new()),
+            ("markup.strong", Form::new().with(c.surimi_orange).bold()),
+            ("markup.italic", Form::new().with(c.fuji_white).italic()),
+            ("markup.strikethrough", Form::new().crossed_out()),
+            ("markup.underline", Form::new().underlined()),
+            ("markup.heading", Form::new().with(c.spring_violet2).bold()),
+            ("markup.math", Form::new().with(c.dragon_blue)),
+            ("markup.quote", Form::new().with(c.oni_violet2).bold()),
+            ("markup.environment", Form::new().with(c.sakura_pink)),
+            ("markup.environment.name", Form::new().with(c.crystal_blue)),
+            ("markup.link", Form::new().with(c.spring_blue).underlined()),
+            ("markup.raw", Form::new().with(c.spring_green)),
+            ("markup.list", Form::new().with(c.sakura_pink)),
+            ("markup.list.checked", Form::new().with(c.autumn_green)),
+            ("markup.list.unchecked", Form::new().with(c.fuji_gray)),
+            ("diff.plus", Form::new().with(c.autumn_green)),
+            ("diff.delta", Form::new().with(c.autumn_yellow)),
+            ("diff.delta.renamed", Form::new().with(c.autumn_yellow)),
+            ("diff.minus", Form::new().with(c.samurai_red)),
+            ("completion.lsp.detail", Form::new().with(c.boat_yellow2)),
+            ("completion.lsp.description", Form::new().with(c.fuji_gray)),
+            ("completion.lsp.kind", Form::new().with(c.crystal_blue)),
+        ]
+    }
+);
+
+// Night Owl theme — https://github.com/sdras/night-owl-vscode-theme
+add_colorschemes!(
+    (night_owl, "night-owl", [
+        (bg, "#011627"),
+        (surface, "#0b253a"),
+        (surface_highlight, "#1d3b53"),
+        (surface_panel, "#202431"),
+        (surface_inactive, "#01111d"),
+        (text, "#d6deeb"),
+        (text_muted, "#5f7e97"),
+        (text_subtle, "#4b6479"),
+        (comment, "#637777"),
+        (red, "#EF5350"),
+        (orange, "#F78C6C"),
+        (yellow, "#ecc48d"),
+        (sand, "#ffcb8b"),
+        // Additional LSP forms
+        (green, "#c5e478"),
+        (teal, "#7fdbca"),
+        (aqua, "#baebe2"),
+        (blue, "#82AAFF"),
+        (purple, "#c792ea"),
+        (gold, "#faf39f"),
+    ]),
+    |c, has_background| {
+        let default = if has_background {
+            Form::new().with(c.text).on(c.bg)
+        } else {
+            Form::new().with(c.text)
+        };
+        let active = |form: Form| form.interpolate(Form::new().on(c.surface), 50);
+
+        [
+            ("default", default),
+            ("accent", Form::new().with(c.teal).bold()),
+            ("default.error", Form::new().with(c.red)),
+            ("accent.error", Form::new().with(c.red).bold()),
+            ("default.warn", Form::new().with(c.yellow)),
+            ("accent.warn", Form::new().with(c.orange).bold()),
+            ("default.info", Form::new().with(c.blue)),
+            ("accent.info", Form::new().with(c.teal).bold()),
+            ("default.debug", Form::new().with(c.text_muted)),
+            ("accent.debug", Form::new().with(c.purple).bold()),
+            ("cursor.main", Form::new().with(c.bg).on(c.text)),
+            ("cursor.extra", Form::new().with(c.bg).on(c.teal)),
+            ("selection.main", Form::new().on(c.surface_highlight)),
+            ("selection.extra", Form::new().on(c.surface)),
+            ("cursor.main.indent", Form::new().with_on(c.text)),
+            ("cursor.extra.indent", Form::new().with_on(c.teal)),
+            (
+                "selection.main.indent",
+                Form::new().with_on(c.surface_highlight),
+            ),
+            ("selection.extra.indent", Form::new().with_on(c.surface)),
+            ("cloak", Form::new().reset().with(c.text_subtle).on(c.bg)),
+            ("replace", Form::new().with(c.surface)),
+            (
+                "replace.newline.trailing",
+                Form::new().with(c.red).on(c.surface_highlight),
+            ),
+            ("toggle.hover", Form::new().on(c.surface_inactive)),
+            ("toggle.click", Form::new().on(c.surface_highlight)),
+            // duat-base forms
+            ("linenum.main", Form::new().with(c.yellow)),
+            ("linenum.wrapped", Form::new().with(c.teal)),
+            ("buffer", Form::new().with(c.yellow)),
+            ("selections", Form::new().with(c.blue)),
+            ("coord", Form::new().with(c.orange)),
+            ("separator", Form::mimic("punctuation.delimiter")),
+            ("mode", Form::new().with(c.green)),
+            ("terminal.border", Form::new().with(c.surface).on(c.bg)),
+            ("terminal.frame", Form::new().with(c.text).on(c.bg)),
+            ("notifs.colon", Form::new().with(c.text_muted)),
+            ("prompt", Form::new().with(c.green)),
+            ("prompt.colon", Form::new().with(c.text_muted)),
+            ("key", Form::new().with(c.orange)),
+            ("key.special", Form::new().with(c.teal)),
+            ("default.StatusLine", default.on(c.surface_panel)),
+            ("default.LogBook", default.on(c.surface_panel)),
+            ("default.VertRule", default.with(c.surface)),
+            ("default.LineNumbers", default.with(c.text_subtle)),
+            ("default.Buffer.active", active(default)),
+            ("default.VertRule.active", active(default.with(c.surface))),
+            (
+                "default.LineNumbers.active",
+                active(default.with(c.text_subtle)),
+            ),
+            ("default.Gutter.active", active(default)),
+            (
+                "matched_pair",
+                Form::new().with(c.orange).on(c.surface_highlight).bold(),
+            ),
+            ("logbook.location", Form::new().with(c.text_muted)),
+            (
+                "default.Buffer.current_line",
+                default.on(c.surface_highlight).interpolate(default, 50),
+            ),
+            (
+                "default.Buffer.diagnostic",
+                default.on(c.surface).interpolate(default, 50),
+            ),
+            ("default.Completions", default.on(c.surface_panel)),
+            (
+                "selected.Completions",
+                Form::new().with(c.text).on(c.surface_highlight),
+            ),
+            ("default.WhichKey", default.with(c.text)),
+            // For duatmode
+            ("cursor.main.Insert", Form::new().with(c.bg).on(c.purple)),
+            ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
+            ("param", Form::new().with(c.purple)),
+            ("param.flag", Form::new().with(c.teal)),
+            ("snippet", Form::new().with(c.bg).on(c.yellow)),
+            // AST token forms
+            ("variable", Form::new().with(c.text)),
+            ("variable.builtin", Form::new().with(c.teal)),
+            ("variable.member", Form::new().with(c.aqua)),
+            ("constant", Form::new().with(c.blue)),
+            ("constant.builtin", Form::new().with(c.blue)),
+            ("static", Form::new().with(c.blue).reset()),
+            ("module", Form::new().with(c.blue).italic()),
+            ("label", Form::new().with(c.teal)),
+            ("string", Form::new().with(c.yellow)),
+            ("string.escape", Form::new().with(c.orange)),
+            ("string.special.path", Form::new().with(c.blue).underlined()),
+            ("character", Form::new().with(c.orange)),
+            ("boolean", Form::new().with(c.blue)),
+            ("number", Form::new().with(c.orange)),
+            ("type", Form::new().with(c.green).italic()),
+            ("type.builtin", Form::new().with(c.green).reset()),
+            ("type.enum", Form::new().with(c.green).reset()),
+            ("type.enum.variant", Form::new().with(c.orange).italic()),
+            ("attribute", Form::new().with(c.green).italic()),
+            ("property", Form::new().with(c.gold).italic()),
+            ("function", Form::new().with(c.blue).reset()),
+            ("function.macro", Form::new().with(c.purple).italic()),
+            ("constructor", Form::new().with(c.sand)),
+            ("operator", Form::new().with(c.teal)),
+            ("keyword", Form::new().with(c.purple).italic()),
+            ("punctuation.bracket", Form::new().with(c.text_subtle)),
+            ("punctuation.delimiter", Form::new().with(c.text_subtle)),
+            ("comment", Form::new().with(c.comment).italic()),
+            (
+                "comment.documentation",
+                Form::new().with(c.comment).bold().italic(),
+            ),
+            ("markup", Form::new()),
+            ("markup.strong", Form::new().with(c.orange).bold()),
+            ("markup.italic", Form::new().with(c.yellow).italic()),
+            ("markup.strikethrough", Form::new().crossed_out()),
+            ("markup.underline", Form::new().underlined()),
+            ("markup.heading", Form::new().with(c.blue).bold()),
+            ("markup.math", Form::new().with(c.teal)),
+            ("markup.quote", Form::new().with(c.green).bold()),
+            ("markup.environment", Form::new().with(c.purple)),
+            ("markup.environment.name", Form::new().with(c.blue)),
+            ("markup.link", Form::new().with(c.teal).underlined()),
+            ("markup.raw", Form::new().with(c.yellow)),
+            ("markup.list", Form::new().with(c.yellow)),
+            ("markup.list.checked", Form::new().with(c.green)),
+            ("markup.list.unchecked", Form::new().with(c.text_subtle)),
+            ("diff.plus", Form::new().with(c.green)),
+            ("diff.delta", Form::new().with(c.blue)),
+            ("diff.delta.renamed", Form::new().with(c.yellow)),
+            ("diff.minus", Form::new().with(c.red)),
+            ("unresolved", Form::new().underlined().underline(c.red)),
+            ("completion.lsp.detail", Form::new().with(c.teal)),
+            ("completion.lsp.description", Form::new().with(c.comment)),
+            ("completion.lsp.kind", Form::new().with(c.blue)),
+        ]
+    }
+);

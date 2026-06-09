@@ -1416,8 +1416,15 @@ pub mod fns {
 
         widget.edit_main(pa, |s| {
             let pat = s.selection().to_string();
-            *SEARCH.lock().unwrap() = format!(r"\b{}\b", escaped_str(&pat));
-            context::info!("Set search pattern to [a]{pat}");
+
+            let is_w = |char: Option<char>| char.is_some_and(|char| char.is_alphanumeric());
+
+            let s_boundary = if is_w(pat.chars().next()) { r"\b" } else { "" };
+            let e_boundary = if is_w(pat.chars().last()) { r"\b" } else { "" };
+
+            let pattern = format!(r"{s_boundary}{}{e_boundary}", escaped_str(&pat));
+            context::info!("Set search pattern to [a]{pattern}");
+            *SEARCH.lock().unwrap() = pattern;
         })
     }
 
