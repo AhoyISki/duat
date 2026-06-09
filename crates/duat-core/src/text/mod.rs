@@ -92,6 +92,7 @@ use crate::{
     Ns,
     buffer::{Change, History},
     cmd::BufferRangeOrIndex,
+    form::MaskId,
     mode::{Selection, Selections},
     text::{
         tags::{FwdTags, InnerTags, RevTags},
@@ -774,6 +775,12 @@ impl Text {
             })
             .collect()
     }
+
+    /// Returns a list of all [`MaskId`]s that are applied to the
+    /// whole [`Text`].
+    pub(crate) fn full_text_masks(&self) -> Vec<MaskId> {
+        self.0.tags.full_text_masks()
+    }
 }
 
 impl std::ops::Deref for Text {
@@ -1071,7 +1078,7 @@ impl<'t> TextMut<'t> {
                 start..end
             }
         };
-        
+
         self.text.0.selections.move_main(&self.text.0.buf, range);
     }
 }

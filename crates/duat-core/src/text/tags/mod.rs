@@ -18,12 +18,13 @@ use std::{
 use RawTag::*;
 
 pub(super) use crate::text::tags::types::RawTag;
+pub(crate) use crate::text::tags::types::Spawn;
 pub use crate::text::tags::types::{
     Conceal, FormTag, Inlay, Mask, Overlay, Spacer, Tag, TagPart, Toggle, ToggleFn,
 };
-pub(crate) use crate::text::tags::types::Spawn;
 use crate::{
     Ns,
+    form::MaskId,
     text::{
         Point, Text, TextRangeOrIndex,
         shift_list::{Shift, ShiftList, Shiftable},
@@ -755,6 +756,29 @@ impl InnerTags {
     /// Get the [`Inlay`] or [`Overlay`] [`Text`] from an index
     pub(super) fn get_ghost(&self, idx: u32) -> &Text {
         self.ghosts[idx as usize].as_ref().unwrap().0.text()
+    }
+
+    /// Returns a list of all [`MaskId`]s that are applied to the
+    /// whole [`Text`].
+    pub(super) fn full_text_masks(&self) -> Vec<MaskId> {
+        let mut start_ids = Vec::from_iter(
+            self.list
+                .iter_fwd(..)
+                .take_while(|(_, (byte, _))| *byte == 0)
+                .filter_map(|(_, (_, tag))| match tag {
+                    PushMask(_, mask_id) => Some(mask_id),
+                    _ => None,
+                }),
+        );
+
+        start_ids.retain(|s_id| {
+            self.list
+                .iter_rev(..)
+                .take_while(|(_, (byte, _))| *byte as usize >= self.len_bytes())
+                .any(|(_, (_, tag))| matches!(tag, PopMask(_, e_id) if e_id == *s_id))
+        });
+
+        start_ids
     }
 }
 

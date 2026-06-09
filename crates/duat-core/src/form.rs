@@ -11,7 +11,7 @@ use crate::{
     context::{self, sender},
     hook::{self, FormSet},
     session::DuatEvent,
-    text::FormTag,
+    text::{FormTag, Text},
 };
 
 static BASE_FORMS: &[(&str, Form)] = &[
@@ -52,6 +52,7 @@ mod global {
         context,
         form::{FormKind, MaskId},
         hook::{self, ColorschemeSet},
+        text::Text,
     };
 
     static PALETTE: LazyLock<Palette> = LazyLock::new(Palette::new);
@@ -248,16 +249,16 @@ mod global {
     ///
     /// [`RawUi`]: crate::ui::traits::RawUi
     /// [`RwLock`]: std::sync::RwLock
-    pub fn painter() -> Painter {
-        PALETTE.painter(super::DEFAULT_ID)
+    pub fn painter(text: &Text) -> Painter {
+        PALETTE.painter(text, super::DEFAULT_ID)
     }
 
     /// Creates a [`Painter`] with a widget.
-    pub(crate) fn painter_with_widget<W: ?Sized + 'static>() -> Painter {
-        PALETTE.painter(default_id(
-            TypeId::of::<W>(),
-            crate::utils::duat_name::<W>(),
-        ))
+    pub(crate) fn painter_with_widget<W: ?Sized + 'static>(text: &Text) -> Painter {
+        PALETTE.painter(
+            text,
+            default_id(TypeId::of::<W>(), crate::utils::duat_name::<W>()),
+        )
     }
 
     /// Enables the use of this mask.
@@ -1040,7 +1041,7 @@ impl Palette {
     }
 
     /// Returns a [`Painter`].
-    fn painter(&'static self, default_id: FormId) -> Painter {
+    fn painter(&'static self, text: &Text, default_id: FormId) -> Painter {
         let inner = self.0.read().unwrap();
 
         let default = inner
@@ -1059,6 +1060,7 @@ impl Palette {
             set_ul: true,
             reset_attrs: true,
             prev_style: None,
+            full_text_masks: text.full_text_masks(),
         }
     }
 }
@@ -1255,6 +1257,7 @@ pub struct Painter {
     set_ul: bool,
     reset_attrs: bool,
     prev_style: Option<ContentStyle>,
+    full_text_masks: Vec<MaskId>,
 }
 
 impl Painter {
@@ -1456,6 +1459,10 @@ impl Painter {
     /// This will also remap all currently applied `Form`s, so you
     /// should reprint the style.
     pub fn remove_mask(&mut self, id: MaskId) {
+        if self.full_text_masks.contains(&id) {
+            return;
+        }
+
         self.reset_prev_style();
         self.applied_masks.retain(|idx| *idx != id.0 as usize);
 
