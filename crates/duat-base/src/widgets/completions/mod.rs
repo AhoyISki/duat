@@ -276,7 +276,7 @@ impl Completions {
     ///
     /// This can be one of three things:
     ///
-    /// - Any [`IntoIterator<Item = impl CompletionKind>`].
+    /// - Any [`IntoIterator<Item = impl CompletionItem>`].
     /// - The [`WordCompletions`] struct.
     /// - The [`PathCompletions`] struct.
     /// - The [`ExhaustiveCompletionsList`] struct.
@@ -518,7 +518,7 @@ impl Completions {
         }
     }
 
-    /// Updates a list of [`CompletionKind`]s.
+    /// Updates a list of [`CompletionItem`]s.
     ///
     /// This function can be used to add more elements, or to change
     /// things in specific elements, by for example adding
@@ -567,7 +567,7 @@ impl Completions {
         }
     }
 
-    /// Wether there is a list of a specific [`CompletionKind`] with a
+    /// Wether there is a list of a specific [`CompletionItem`] with a
     /// specific [`Ns`].
     pub fn has_list<C: CompletionItem>(pa: &Pass, ns: Ns) -> bool {
         let Some(completions) = context::handle_of::<Completions>(pa) else {

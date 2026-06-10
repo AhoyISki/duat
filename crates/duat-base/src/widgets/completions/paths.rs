@@ -57,7 +57,7 @@ impl PathCompletions {
     /// "subscription" to the `Completions`, which will be
     /// receiving new word lists as is deemed necessary.
     ///
-    /// You can disable this via [`WordCompletions::disable`].
+    /// You can disable this via [`PathCompletions::disable`].
     ///
     /// [`Completions::add_list`]: super::Completions::add_list
     pub fn enable(pa: &mut Pass) {

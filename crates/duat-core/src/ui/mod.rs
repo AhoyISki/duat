@@ -7,7 +7,7 @@
 //! versed on javascript.
 //!
 //! Each [Ui] is essentially a screen separated by a bunch of
-//! [`Ui::Area`]s. This happens by splitting a main `Ui::Area`
+//! [`RawUi::Area`]s. This happens by splitting a main `Ui::Area`
 //! continuously, by pushing [`Widget`]s on other `Widget`s. When a
 //! `Widget` is pushed to another, the area of the prior `Widget`
 //! is split in half, with [`PushSpecs`] defining information about
@@ -17,7 +17,7 @@
 //! as [on `Handle`]s, [on `Text`], or even [around the `Window`]
 //!
 //! Duat also supports multiple [`Window`]s in a [`Windows`] struct,
-//! each of which is defined by a main [`Ui::Area`] that was split
+//! each of which is defined by a main [`RawUi::Area`] that was split
 //! many times over. This `Windows` struct is accessible in
 //! [`context::windows`], and you are free to inspect and mutate
 //! whatever state is in there.
@@ -27,20 +27,20 @@
 //! that `Buffer`. This means a few things. For one, if you close that
 //! `Buffer`, all of its clustered `Widget`s will also close. If
 //! you swap two `Buffer`s, what you will actually swap is the
-//! [`Ui::Area`] that contains the `Buffer` and all of its clustered
+//! [`RawUi::Area`] that contains the `Buffer` and all of its clustered
 //! `Widget`.
 //!
 //! Additionally, on the terminal [Ui], clustering is used to
-//! determine where to draw borders between [`Ui::Area`]s, and it
+//! determine where to draw borders between [`RawUi::Area`]s, and it
 //! should be used like that in other [Ui] implementations as well.
 //!
 //! [`hook`]: crate::hook
 //! [`Buffer`]: crate::buffer::Buffer
 //! [`WidgetOpened`]: crate::hook::WidgetOpened
 //! [Ui]: traits::RawUi
-//! [`Ui::Area`]: traits::RawUi::Area
-//! [on `Handle`]: Handle::spawn_widget
-//! [on `Text`]: crate::text::Spawn
+//! [`RawUi::Area`]: traits::RawUi::Area
+//! [on `Handle`]: Handle::spawn_on_widget
+//! [on `Text`]: Handle::spawn_on_text
 //! [`context::windows`]: crate::context::windows
 use std::{
     fmt::Debug,
@@ -299,7 +299,7 @@ impl PushSpecs {
 /// [`Coord`] on screen.
 ///
 /// [`Handle`]: Handle::push_outer_widget
-/// [`Text`]: crate::text::Spawn
+/// [`Text`]: Handle::spawn_on_text
 #[derive(Default, Debug, Clone, Copy)]
 pub struct DynSpawnSpecs {
     /// The orientation to place this [`Widget`] in.

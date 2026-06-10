@@ -19,7 +19,8 @@ use duat_core::{
 
 pub use self::{
     completions::{
-        CompletionItem, Completions, ExhaustiveCompletionsList, PathCompletions, WordCompletions,
+        CompletionEntries, CompletionItem, Completions, ExhaustiveCompletionsList, PathCompletions,
+        WordCompletions,
     },
     gutter::{Gutter, GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts},
     info::Info,

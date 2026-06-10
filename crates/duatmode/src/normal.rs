@@ -1147,7 +1147,7 @@ pub mod fns {
     /// # Key equivalents:
     ///
     /// - `d`, `c' will yank.
-    /// - `<a-d>`, `<a-c>' won't yank.
+    /// - `<a-d>`, `<a-c>` won't yank.
     ///
     /// [`Normal`]: super::Normal
     pub fn delete_selections(pa: &mut Pass, yank: bool, enter_insert_mode: bool) {
@@ -1411,7 +1411,7 @@ pub mod fns {
     ///
     /// # Key equivalents:
     ///
-    /// - `<a-u>`, <a-U>.
+    /// - `<a-u>`, `<a-U>`.
     ///
     /// [`Normal`]: super::Normal
     pub fn move_on_selection_changes(pa: &mut Pass, count: i32) {
@@ -1431,7 +1431,7 @@ pub mod fns {
     ///
     /// # Key equivalent:
     ///
-    /// - `<c-o>`, <c-i>.
+    /// - `<c-o>`, `<c-i>`.
     ///
     /// [`Normal`]: super::Normal
     pub fn move_on_jump_list(pa: &mut Pass, count: i32) {

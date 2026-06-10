@@ -807,11 +807,9 @@ impl Default for Opts {
     }
 }
 
-/// Options for the default [`Completions`] widget. Not to be confused
-/// with [`CompletionsBuilder`].
+/// Options for the default [`Completions`] widget.
 ///
 /// [`Completions`]: crate::widgets::Completions
-/// [`CompletionsBuilder`]: crate::widgets::CompletionsBuilder
 pub struct CompletionsOpts {
     /// Wether completion should be case insensitive.
     ///

@@ -26,8 +26,7 @@
 //!     can be focused on by calling the `"logs"` command.
 //!   - [`Completions`] is Duat's completion widget, it provides an
 //!     extensible completions list, which allows you to format the
-//!     entries and add new providers via the [`CompletionsProvider`]
-//!     trait.
+//!     entries and add lists via [`Completions::add_list`].
 //!   - [`Gutter`] Sits on the side of each `Buffer`, showing
 //!     diagnostic information about each line of the `Buffer`.
 //!   - [`WhichKey`] shows what each key will do. It shows up
@@ -115,7 +114,7 @@
 //! [`SearchPerformed`]: hooks::SearchPerformed
 //! [`LogBook`]: widgets::LogBook
 //! [`Completions`]: widgets::Completions
-//! [`CompletionsProvider`]: widgets::CompletionsProvider
+//! [`Completions::add_list`]: widgets::Completions::add_list
 //! [`WhichKey`]: widgets::WhichKey
 //! [`Info`]: widgets::Info
 //! [`Gutter`]: widgets::Gutter
@@ -472,11 +471,10 @@ pub mod hooks {
     ///
     /// # Arguments
     ///
-    /// - A [`CompletionEntry`], which can be queried for the specific
-    ///   [`P::Entry`] of any [`CompletionsProvider`].
+    /// - A [`CompletionEntry`], which contains the focused
+    ///   [`CompletionItem`].
     ///
-    /// [`P::Entry`]: crate::widgets::CompletionsProvider::Entry
-    /// [`CompletionsProvider`]: crate::widgets::CompletionsProvider
+    /// [`CompletionItem`]: crate::widgets::CompletionItem
     pub struct CompletionFocused<C>(pub(crate) (InnerCompletionEntry, PhantomData<C>));
 
     impl<C: 'static> Hookable for CompletionFocused<C> {
@@ -502,11 +500,10 @@ pub mod hooks {
     ///
     /// # Arguments
     ///
-    /// - A [`CompletionEntry`], which can be queried for the specific
-    ///   [`P::Entry`] of any [`CompletionsProvider`].
+    /// - A [`CompletionEntry`], which contains the selected
+    ///   [`CompletionItem`].
     ///
-    /// [`P::Entry`]: crate::widgets::CompletionsProvider::Entry
-    /// [`CompletionsProvider`]: crate::widgets::CompletionsProvider
+    /// [`CompletionItem`]: crate::widgets::CompletionItem
     pub struct CompletionSelected<C>(pub(crate) (InnerCompletionEntry, PhantomData<C>));
 
     impl<C: 'static> Hookable for CompletionSelected<C> {
@@ -528,6 +525,8 @@ pub mod hooks {
     /// This came from some [`CompletionItem`], and is used on
     /// the [`CompletionSelected`] and [`CompletionFocused`]
     /// hooks.
+    ///
+    /// [`CompletionItem`]: crate::widgets::CompletionItem
     pub struct CompletionEntry<'h, C> {
         /// The actual item.
         pub item: &'h C,

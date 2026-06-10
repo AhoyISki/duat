@@ -360,10 +360,7 @@ impl<W: 'static + ?Sized> Handle<W> {
     ///
     /// Will return [`Some`] if this `self` was created by calling
     /// [`Handle::push_outer_widget`], [`Handle::push_inner_widget`],
-    /// [`Handle::spawn_widget`], or if the [`Widget`] was [spawned]
-    /// on the master's [`Text`].
-    ///
-    /// [spawned]: crate::text::Spawn
+    /// [`Handle::spawn_on_widget`], or [`Handle::spawn_on_text`].
     pub fn master(&self, pa: &Pass) -> Option<Handle> {
         self.related.read(pa).iter().find_map(|(handle, relation)| {
             (*relation == WidgetRelation::Main).then_some(handle.clone())
@@ -375,10 +372,7 @@ impl<W: 'static + ?Sized> Handle<W> {
     ///
     /// Will return [`Some`] if this `self` was created by calling
     /// [`Handle::push_outer_widget`], [`Handle::push_inner_widget`],
-    /// [`Handle::spawn_widget`], or if the [`Widget`] was [spawned]
-    /// on the master's [`Text`].
-    ///
-    /// [spawned]: crate::text::Spawn
+    /// [`Handle::spawn_on_widget`], or [`Handle::spawn_on_text`].
     pub fn master_buffer(&self, pa: &Pass) -> Option<Handle<Buffer>> {
         self.related.read(pa).iter().find_map(|(handle, relation)| {
             handle

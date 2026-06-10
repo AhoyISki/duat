@@ -1150,6 +1150,8 @@ mod args {
         /// This is useful for the [`Flag`] parameter, since it lets
         /// you distinguish between `--flag` and `"--flag"`,
         /// treating the latter as not a `Flag`
+        ///
+        /// [`Flag`]: super::Flag
         pub is_quoted: bool,
     }
 
@@ -1170,7 +1172,7 @@ mod args {
     /// A iterator over arguments in a `&str`, useful for the [`cmd`]
     /// module.
     ///
-    /// [`cmd`]: super
+    /// [`cmd`]: crate::cmd
     #[derive(Clone)]
     pub struct ArgsIter<'a> {
         command: &'a str,

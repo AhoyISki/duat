@@ -147,6 +147,7 @@
 /// [`&Area`]: duat_core::ui::Area
 /// [`Area`]: duat_core::ui::Area
 /// [`Widget`]: duat_core::ui::Widget
+/// [`status!`]: crate::widgets::status
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __status__ {
