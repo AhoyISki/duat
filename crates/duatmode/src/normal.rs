@@ -138,12 +138,6 @@ impl Mode for Normal {
             (param as usize, param_was_set)
         };
 
-        let register_jump = |pa: &mut Pass| {
-            if let Some(buffer) = widget.get_as() {
-                jump_list::register(pa, &buffer, 5);
-            }
-        };
-
         match key_event {
             ////////// Basic movement keys
             event!(Char('h') | Left) => fns::move_hor(pa, -(param as i32), false),
@@ -286,28 +280,12 @@ impl Mode for Normal {
             ////////// Other mode changing keys
             event!(':') => mode::set(pa, RunCommands::new()),
             event!('|') => mode::set(pa, PipeSelections::new()),
-            event!('g') if param_was_set => {
-                register_jump(pa);
-                widget.remove_extra_selections(pa);
-                widget.edit_main(pa, |mut s| {
-                    s.unset_anchor();
-                    s.move_to_coords(param - 1, 0);
-                });
-                mode::reset_current_sequence(pa);
-                register_jump(pa);
-            }
+
+            event!('g') if param_was_set => fns::go_to_line(pa, param - 1, false),
+            event!('G') if param_was_set => fns::go_to_line(pa, param - 1, true),
             event!('g') => set_onekey(OneKey::GoTo(SelType::Normal)),
-            event!('G') if param_was_set => {
-                register_jump(pa);
-                widget.remove_extra_selections(pa);
-                widget.edit_main(pa, |mut s| {
-                    s.set_anchor_if_needed();
-                    s.move_to_coords(param - 1, 0)
-                });
-                mode::reset_current_sequence(pa);
-                register_jump(pa);
-            }
             event!('G') => set_onekey(OneKey::GoTo(SelType::Extend)),
+
             event!(' ') => mode::set(pa, mode::User),
             event!(Esc) if !widget.widget().is::<Buffer>() => mode::reset::<Buffer>(pa),
 
@@ -1528,6 +1506,32 @@ pub mod fns {
             })
             .grouped(*MACRO_NS);
         }
+    }
+
+    /// [`Normal`] command: Go to a specific line
+    ///
+    /// # Key equivalents:
+    ///
+    /// - `{num}g`, `{num}G`.
+    ///
+    /// [`Normal`]: super::Normal
+    pub fn go_to_line(pa: &mut Pass, line: usize, extend_selection: bool) {
+        save_on_jump_list(pa);
+        let (widget, _) = current_parts(pa);
+        let line = line.min(widget.text(pa).end_point().line());
+
+        widget.remove_extra_selections(pa);
+        widget.edit_main(pa, |mut s| {
+            if extend_selection {
+                s.set_anchor_if_needed();
+            } else {
+                s.unset_anchor();
+            }
+            s.move_to_coords(line, 0);
+        });
+
+        mode::reset_current_sequence(pa);
+        save_on_jump_list(pa);
     }
 }
 
