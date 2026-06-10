@@ -781,7 +781,7 @@ impl Default for Opts {
             space_char: None,
             newline: ' ',
             newline_on_empty: None,
-            newline_trailing: Some('↵'),
+            newline_trailing: Some('↙'),
             lsp: DuatLspOpts::default(),
             duatmode: DuatModeOpts::default(),
             one_line_footer: false,

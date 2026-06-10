@@ -187,7 +187,7 @@ pub fn setup_hooks() {
         let replacement = if let Some(edit) = &entry.item.text_edit {
             let (range, new_text) = match edit {
                 CompletionTextEdit::Edit(edit) => (edit.range, &edit.new_text),
-                CompletionTextEdit::InsertAndReplace(edit) => (edit.insert, &edit.new_text),
+                CompletionTextEdit::InsertAndReplace(edit) => (edit.replace, &edit.new_text),
             };
 
             let text = buffer.text(pa);
@@ -196,23 +196,25 @@ pub fn setup_hooks() {
             let end = encoding.byte_from_pos(text, range.end);
 
             if let (Some(start), Some(end)) = (start, end) {
-                Some((start..end, new_text))
+                Some((Some(start..end), new_text))
             } else {
                 None
             }
         } else {
-            entry
-                .item
-                .insert_text
-                .as_ref()
-                .map(|insert| (entry.orig_range.clone(), insert))
+            entry.item.insert_text.as_ref().map(|insert| (None, insert))
         };
 
-        if let Some((range, edit)) = replacement {
+        if let Some((replace_range, edit)) = replacement {
             let mut text = buffer.text_mut(pa);
-            let start = entry.orig_range.start;
-            let end = entry.orig_range.start + entry.replacement.len();
-            text.replace_range(start..end, &entry.orig_typed);
+
+            let range = if let Some(replace_range) = replace_range {
+                let start = entry.orig_range.start;
+                let end = entry.orig_range.start + entry.replacement.len();
+                text.replace_range(start..end, entry.orig_typed);
+                replace_range
+            } else {
+                entry.orig_range.clone()
+            };
 
             let edited;
             let edit = if let None | Some(InsertTextMode::ADJUST_INDENTATION) =
