@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use duat_base::{
     hooks::{CompletionFocused, CompletionSelected},
     modes::{Prompt, PromptMode},
-    widgets::{CompletionKind, Completions},
+    widgets::{CompletionItem, Completions},
 };
 use duat_core::{
     Ns, context,
@@ -23,67 +23,58 @@ use crate::{Encoding, handle_workspace_edit, server::Server};
 
 /// Add the hooks necessary for the custom modes to work.
 pub fn setup_hooks() {
-    hook::add::<CompletionSelected>(|pa, entry| {
-        let Some(entry) = entry.get_as::<Action>() else {
-            return;
-        };
-
-        match &entry.a_or_c {
-            ActionOrCommand::Action(arc_action, _) => {
-                let encoding = entry.encoding;
-                let server = entry.server.clone();
-                let do_action = move |pa: &mut Pass, action: CodeAction| {
-                    if let Some(edit) = &action.edit {
-                        duat_core::try_or_log_err! {
-                            handle_workspace_edit(pa, edit.clone(), encoding)?;
-                        }
+    hook::add::<CompletionSelected<Action>>(|pa, entry| match &entry.a_or_c {
+        ActionOrCommand::Action(arc_action, _) => {
+            let encoding = entry.encoding;
+            let server = entry.server.clone();
+            let do_action = move |pa: &mut Pass, action: CodeAction| {
+                if let Some(edit) = &action.edit {
+                    duat_core::try_or_log_err! {
+                        handle_workspace_edit(pa, edit.clone(), encoding)?;
                     }
-                    if let Some(command) = &action.command {
-                        server.send_request_with_id::<ExecuteCommand>(
-                            jsonrpc_lite::Id::Str(command.title.clone()),
-                            ExecuteCommandParams {
-                                command: command.title.clone(),
-                                arguments: Vec::new(),
-                                work_done_progress_params: WorkDoneProgressParams::default(),
-                            },
-                            |_, _| {},
-                        )
-                    }
-                };
-
-                let action = arc_action.lock().unwrap();
-                if action.1 {
-                    let code_action = action.0.clone();
-                    entry
-                        .server
-                        .send_request_with_id::<CodeActionResolveRequest>(
-                            jsonrpc_lite::Id::Str(action.0.title.clone()),
-                            code_action,
-                            move |pa, result| {
-                                do_action(pa, result);
-                            },
-                        );
-                } else {
-                    do_action(pa, action.0.clone());
                 }
-            }
-            ActionOrCommand::Command(command) => {
-                entry.server.send_request_with_id::<ExecuteCommand>(
-                    jsonrpc_lite::Id::Str(command.title.clone()),
-                    ExecuteCommandParams {
-                        command: command.title.clone(),
-                        arguments: Vec::new(),
-                        work_done_progress_params: WorkDoneProgressParams::default(),
-                    },
-                    |_, _| {},
-                )
+                if let Some(command) = &action.command {
+                    server.send_request_with_id::<ExecuteCommand>(
+                        jsonrpc_lite::Id::Str(command.title.clone()),
+                        ExecuteCommandParams {
+                            command: command.title.clone(),
+                            arguments: Vec::new(),
+                            work_done_progress_params: WorkDoneProgressParams::default(),
+                        },
+                        |_, _| {},
+                    )
+                }
+            };
+
+            let action = arc_action.lock().unwrap();
+            if action.1 {
+                let code_action = action.0.clone();
+                entry
+                    .server
+                    .send_request_with_id::<CodeActionResolveRequest>(
+                        jsonrpc_lite::Id::Str(action.0.title.clone()),
+                        code_action,
+                        move |pa, result| {
+                            do_action(pa, result);
+                        },
+                    );
+            } else {
+                do_action(pa, action.0.clone());
             }
         }
+        ActionOrCommand::Command(command) => entry.server.send_request_with_id::<ExecuteCommand>(
+            jsonrpc_lite::Id::Str(command.title.clone()),
+            ExecuteCommandParams {
+                command: command.title.clone(),
+                arguments: Vec::new(),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+            },
+            |_, _| {},
+        ),
     });
 
-    hook::add::<CompletionFocused>(|_, entry| {
-        if let Some(entry) = entry.get_as::<Action>()
-            && let ActionOrCommand::Action(action, _) = &entry.a_or_c
+    hook::add::<CompletionFocused<Action>>(|_, entry| {
+        if let ActionOrCommand::Action(action, _) = &entry.a_or_c
             && !action.lock().unwrap().1
         {
             let action = action.clone();
@@ -208,7 +199,7 @@ impl PromptMode for DoCodeAction {
     }
 }
 
-impl CompletionKind for Action {
+impl CompletionItem for Action {
     fn value(&self) -> String {
         title(&self.a_or_c).to_string()
     }

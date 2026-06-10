@@ -37,10 +37,7 @@ use duat_term::Frame;
 pub use crate::widgets::completions::{
     lists::ExhaustiveCompletionsList, paths::PathCompletions, words::WordCompletions,
 };
-use crate::{
-    hooks::{CompletionFocused, CompletionSelected},
-    widgets::{Info, completions::lists::InnerList},
-};
+use crate::widgets::{Info, completions::lists::InnerList};
 
 mod lists;
 mod paths;
@@ -116,14 +113,17 @@ pub fn completions_setup() {
                     && let Some(selected) = &matches.selected
                 {
                     let index = matches.list[selected.idx];
-                    let entry = CompletionEntry {
+
+                    let trigger_selected = comp.lists[matches.list_idx].1.get_trigger_selected();
+                    let entry = InnerCompletionEntry {
                         index,
                         orig_range: comp.start_byte..comp.start_byte + comp.orig_typed.len(),
                         orig_typed: comp.orig_typed.clone(),
                         replacement: selected.value.clone(),
                         entry: comp.lists[matches.list_idx].1.get(index),
                     };
-                    hook::trigger(pa, CompletionSelected(entry));
+
+                    trigger_selected(pa, entry);
                 }
             }
         })
@@ -175,7 +175,7 @@ pub fn completions_setup() {
 ///
 /// This came from some [`CompletionsProvider`], and is used on the
 /// [`CompletionSelected`] and [`CompletionFocused`] hooks.
-pub struct CompletionEntry {
+pub(crate) struct InnerCompletionEntry {
     /// The index on the list where this item came from.
     pub index: usize,
     /// The original byte range of the text being replaced.
@@ -187,7 +187,7 @@ pub struct CompletionEntry {
     entry: Box<dyn Any + Send>,
 }
 
-impl std::fmt::Debug for CompletionEntry {
+impl std::fmt::Debug for InnerCompletionEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CompletionEntry")
             .field("index", &self.index)
@@ -198,7 +198,7 @@ impl std::fmt::Debug for CompletionEntry {
     }
 }
 
-impl CompletionEntry {
+impl InnerCompletionEntry {
     /// Returns `Some` if the completion entry came from the given
     /// [provider].
     ///
@@ -206,11 +206,22 @@ impl CompletionEntry {
     /// a provider before running any post completion hooks.
     ///
     /// [provider]: CompletionsProvider
-    pub fn get_as<C: CompletionKind>(&self) -> Option<&C> {
+    pub fn get_as<C: 'static>(&self) -> Option<&C> {
         self.entry.as_ref().downcast_ref()
     }
 }
 
+/// A list of completion items.
+///
+/// The only implementors are:
+///
+/// - [`WordCompletions`].
+/// - [`PathCompletions`].
+/// - [`impl IntoIterator<Item = impl CompletionItem>`].
+/// - [`ExhaustiveCompletionsList<impl CompletionItem>`].
+///
+/// [`impl IntoIterator<Item = impl CompletionItem>`]: IntoIterator
+#[doc(hidden)]
 #[allow(private_bounds)]
 pub trait CompletionEntries<C>: Sealed<C> {}
 impl<S: Sealed<C>, C> CompletionEntries<C> for S {}
@@ -221,7 +232,7 @@ trait Sealed<C> {
 
 /// A type of object that can be completed and will show up in
 /// the [`Completions`] widget.
-pub trait CompletionKind: Send + Clone + 'static {
+pub trait CompletionItem: Send + Clone + 'static {
     /// Function to pick a word to match on.
     ///
     /// This word is what will be placed over the current word.
@@ -349,7 +360,8 @@ impl Completions {
         };
     }
 
-    /// Removes all completion lists that were added with the given `Ns`.
+    /// Removes all completion lists that were added with the given
+    /// `Ns`.
     pub fn remove_list(pa: &mut Pass, ns: Ns) {
         let Some(completions) = context::handle_of::<Completions>(pa) else {
             return;
@@ -508,13 +520,14 @@ impl Completions {
 
     /// Updates a list of [`CompletionKind`]s.
     ///
-    /// This function can be used to add more elements, or to change things
-    /// in specific elements, by for example adding documentation to an
-    /// item on demand.
+    /// This function can be used to add more elements, or to change
+    /// things in specific elements, by for example adding
+    /// documentation to an item on demand.
     ///
     /// Does not do anything if there was no list to update, or if
-    /// `Completions` was closed. Returns `true` if it has updated a list.
-    pub fn update_list<C: CompletionKind>(
+    /// `Completions` was closed. Returns `true` if it has updated a
+    /// list.
+    pub fn update_list<C: CompletionItem>(
         pa: &mut Pass,
         ns: Ns,
         func: impl FnOnce(&mut Vec<C>),
@@ -554,9 +567,9 @@ impl Completions {
         }
     }
 
-    /// Wether there is a list of a specific [`CompletionKind`] with a specific
-    /// [`Ns`].
-    pub fn has_list<C: CompletionKind>(pa: &Pass, ns: Ns) -> bool {
+    /// Wether there is a list of a specific [`CompletionKind`] with a
+    /// specific [`Ns`].
+    pub fn has_list<C: CompletionItem>(pa: &Pass, ns: Ns) -> bool {
         let Some(completions) = context::handle_of::<Completions>(pa) else {
             return false;
         };
@@ -767,8 +780,9 @@ impl Completions {
             None
         };
 
-        // In this case, don't update the Text, and close the Completions instead.
-        // Let the Text be updated on the new Completions when it shows up.
+        // In this case, don't update the Text, and close the Completions
+        // instead. Let the Text be updated on the new Completions
+        // when it shows up.
         if list!().start_byte() != completions.read(pa).start_byte {
             let orig_typed = master.text(pa)[list!().start_byte()..main_byte].to_string();
 
@@ -835,7 +849,9 @@ impl Completions {
             && let Some(index) = new_idx
         {
             let comp = completions.read(pa);
-            let entry = CompletionEntry {
+
+            let trigger_focused = comp.lists[matches.list_idx].1.get_trigger_focused();
+            let entry = InnerCompletionEntry {
                 index,
                 orig_range: comp.start_byte..comp.start_byte + comp.orig_typed.len(),
                 orig_typed: comp.orig_typed.clone(),
@@ -843,7 +859,7 @@ impl Completions {
                 entry: comp.lists[matches.list_idx].1.get(index),
             };
 
-            _ = hook::trigger(pa, CompletionFocused(entry));
+            trigger_focused(pa, entry);
         }
 
         let comp = completions.write(pa);
@@ -922,6 +938,10 @@ trait ErasedList: Send {
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
     fn as_any(&self) -> &dyn Any;
+
+    fn get_trigger_selected(&self) -> fn(&mut Pass, InnerCompletionEntry);
+
+    fn get_trigger_focused(&self) -> fn(&mut Pass, InnerCompletionEntry);
 }
 
 /// A simple [`String`] comparison function, which prioritizes matched

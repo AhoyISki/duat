@@ -12,10 +12,7 @@
 //!
 //! [`Buffer`]: duat_core::buffer::Buffer
 use std::{
-    any::Any,
-    collections::BTreeMap,
-    ops::Range,
-    sync::{Arc, LazyLock, Mutex},
+    any::Any, collections::BTreeMap, marker::PhantomData, ops::Range, sync::{Arc, LazyLock, Mutex}
 };
 
 use duat_core::{
@@ -28,9 +25,9 @@ use duat_core::{
     ui::Orientation,
 };
 
-use crate::widgets::completions::{CompletionKind, Completions, ErasedList, Sealed, string_cmp};
+use crate::{hooks::{CompletionFocused, CompletionSelected}, widgets::completions::{CompletionItem, Completions, ErasedList, Sealed, string_cmp}};
 
-impl CompletionKind for WordInfo {
+impl CompletionItem for WordInfo {
     fn value(&self) -> String {
         self.word.clone()
     }
@@ -208,6 +205,14 @@ impl ErasedList for InnerWordCompletions {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn get_trigger_selected(&self) -> fn(&mut Pass, super::InnerCompletionEntry) {
+        |pa, entry| _ = hook::trigger(pa, CompletionSelected((entry, PhantomData::<WordInfo>)))
+    }
+
+    fn get_trigger_focused(&self) -> fn(&mut Pass, super::InnerCompletionEntry) {
+        |pa, entry| _ = hook::trigger(pa, CompletionFocused((entry, PhantomData::<WordInfo>)))
     }
 }
 

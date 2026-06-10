@@ -56,6 +56,12 @@ QoL TODO LIST:
 [ ] Fix logs scrolling.
 [ ] Hover should get rid of links.
 
+Bugs with new Completions:
+[ ] Same entry causes the first one to be gobbled up.
+[ ] Sometimes shows up delayed in PromptLine.
+[ ] Replacement is incorrect with Lsp sometimes.
+[ ] Flickering in some situations.
+
 KNOWN BUGS:
  HIGH PRIORITY:
   [ ] Indentation is inefficient because tree-sitter query results aren't cached.

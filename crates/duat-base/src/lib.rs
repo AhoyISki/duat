@@ -417,11 +417,11 @@ pub mod hooks {
     //!
     //! [`hook`]: duat_core::hook
     //! [`IncSearch`]: crate::modes::IncSearch
-    use std::{any::Any, marker::PhantomData};
+    use std::{any::Any, marker::PhantomData, ops::Range};
 
     use duat_core::{data::Pass, hook::Hookable};
 
-    use crate::widgets::{CompletionEntry, PickerPreview};
+    use crate::widgets::{InnerCompletionEntry, PickerPreview};
 
     /// [`Hookable`]: Triggers when a [search] is updated.
     ///
@@ -477,13 +477,19 @@ pub mod hooks {
     ///
     /// [`P::Entry`]: crate::widgets::CompletionsProvider::Entry
     /// [`CompletionsProvider`]: crate::widgets::CompletionsProvider
-    pub struct CompletionFocused(pub(crate) CompletionEntry);
+    pub struct CompletionFocused<C>(pub(crate) (InnerCompletionEntry, PhantomData<C>));
 
-    impl Hookable for CompletionFocused {
-        type Input<'h> = &'h CompletionEntry;
+    impl<C: 'static> Hookable for CompletionFocused<C> {
+        type Input<'h> = CompletionEntry<'h, C>;
 
         fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-            &self.0
+            CompletionEntry {
+                index: self.0.0.index,
+                orig_range: self.0.0.orig_range.clone(),
+                orig_typed: &self.0.0.orig_typed,
+                replacement: &self.0.0.replacement,
+                item: self.0.0.get_as().unwrap(),
+            }
         }
     }
 
@@ -501,13 +507,45 @@ pub mod hooks {
     ///
     /// [`P::Entry`]: crate::widgets::CompletionsProvider::Entry
     /// [`CompletionsProvider`]: crate::widgets::CompletionsProvider
-    pub struct CompletionSelected(pub(crate) CompletionEntry);
+    pub struct CompletionSelected<C>(pub(crate) (InnerCompletionEntry, PhantomData<C>));
 
-    impl Hookable for CompletionSelected {
-        type Input<'h> = &'h CompletionEntry;
+    impl<C: 'static> Hookable for CompletionSelected<C> {
+        type Input<'h> = CompletionEntry<'h, C>;
 
         fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-            &self.0
+            CompletionEntry {
+                index: self.0.0.index,
+                orig_range: self.0.0.orig_range.clone(),
+                orig_typed: &self.0.0.orig_typed,
+                replacement: &self.0.0.replacement,
+                item: self.0.0.get_as().unwrap(),
+            }
+        }
+    }
+
+    /// A completion entry.
+    ///
+    /// This came from some [`CompletionItem`], and is used on
+    /// the [`CompletionSelected`] and [`CompletionFocused`]
+    /// hooks.
+    pub struct CompletionEntry<'h, C> {
+        /// The actual item.
+        pub item: &'h C,
+        /// The index on the list where this item came from.
+        pub index: usize,
+        /// The original byte range of the text being replaced.
+        pub orig_range: Range<usize>,
+        /// What was typed by the user.
+        pub orig_typed: &'h str,
+        /// What the text was replaced with.
+        pub replacement: &'h str,
+    }
+
+    impl<C> std::ops::Deref for CompletionEntry<'_, C> {
+        type Target = C;
+
+        fn deref(&self) -> &Self::Target {
+            self.item
         }
     }
 

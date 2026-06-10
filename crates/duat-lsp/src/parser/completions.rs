@@ -3,7 +3,7 @@ use std::sync::{Arc, LazyLock};
 use duat_base::{
     BaseBuffer,
     hooks::{CompletionFocused, CompletionSelected},
-    widgets::{CompletionKind, Completions},
+    widgets::Completions,
 };
 use duat_core::{
     Ns,
@@ -34,7 +34,7 @@ pub struct Entry {
     encoding: Encoding,
 }
 
-impl CompletionKind for Entry {
+impl duat_base::widgets::CompletionItem for Entry {
     fn value(&self) -> String {
         let common_prefix = |text: &str| {
             let common_prefix = text
@@ -139,23 +139,19 @@ impl std::ops::Deref for Entry {
 
 /// Setup hooks for completions.
 pub fn setup_hooks() {
-    hook::add::<CompletionFocused>(|_, entry| {
-        let Some(lsp_entry) = entry.get_as::<Entry>() else {
-            return;
-        };
-
-        if lsp_entry.documentation.is_some() {
+    hook::add::<CompletionFocused<Entry>>(|_, entry| {
+        if entry.documentation.is_some() {
             return;
         }
 
-        let server_ns = lsp_entry.server_ns;
+        let server_ns = entry.server_ns;
         let idx = entry.index;
 
-        let old_item = lsp_entry.item.clone();
+        let old_item = entry.item.item.clone();
 
-        crate::server::on_ns(lsp_entry.server_ns, |server| {
+        crate::server::on_ns(entry.server_ns, |server| {
             server.send_request_with_id::<ResolveCompletionItem>(
-                Id::Str(format!("{}{}", lsp_entry.label, entry.index)),
+                Id::Str(format!("{}{}", entry.label, entry.index)),
                 old_item.as_ref().clone(),
                 move |pa, new_item| {
                     Completions::update_list::<Entry>(pa, *NS, move |list| {
@@ -178,21 +174,17 @@ pub fn setup_hooks() {
         });
     });
 
-    hook::add::<CompletionSelected>(|pa, entry| {
+    hook::add::<CompletionSelected<Entry>>(|pa, entry| {
         let buffer = context::current_buffer(pa);
         let popts = buffer.opts(pa);
 
-        let Some(lsp_entry) = entry.get_as::<Entry>() else {
-            return;
-        };
-
-        let encoding = crate::server::on_ns(lsp_entry.server_ns, |server| {
+        let encoding = crate::server::on_ns(entry.item.server_ns, |server| {
             server.capabilities().map(Encoding::new)
         })
         .flatten()
         .unwrap();
 
-        let replacement = if let Some(edit) = &lsp_entry.text_edit {
+        let replacement = if let Some(edit) = &entry.item.text_edit {
             let (range, new_text) = match edit {
                 CompletionTextEdit::Edit(edit) => (edit.range, &edit.new_text),
                 CompletionTextEdit::InsertAndReplace(edit) => (edit.insert, &edit.new_text),
@@ -208,7 +200,13 @@ pub fn setup_hooks() {
             } else {
                 None
             }
-        } else { lsp_entry.insert_text.as_ref().map(|insert| (entry.orig_range.clone(), insert)) };
+        } else {
+            entry
+                .item
+                .insert_text
+                .as_ref()
+                .map(|insert| (entry.orig_range.clone(), insert))
+        };
 
         if let Some((range, edit)) = replacement {
             let mut text = buffer.text_mut(pa);
@@ -218,7 +216,7 @@ pub fn setup_hooks() {
 
             let edited;
             let edit = if let None | Some(InsertTextMode::ADJUST_INDENTATION) =
-                lsp_entry.insert_text_mode
+                entry.item.insert_text_mode
                 && let indent = text
                     .line(text.point_at_byte(range.start).line())
                     .indent(popts)
@@ -231,7 +229,7 @@ pub fn setup_hooks() {
                 edit
             };
 
-            if let Some(InsertTextFormat::SNIPPET) = lsp_entry.insert_text_format {
+            if let Some(InsertTextFormat::SNIPPET) = entry.insert_text_format {
                 buffer.replace_with_snippet(pa, range, edit);
                 buffer.jump_snippets(pa, 0);
                 buffer.edit_all(pa, |mut s| s.replace(""));
@@ -242,7 +240,7 @@ pub fn setup_hooks() {
 
         let mut text = buffer.text_mut(pa);
 
-        for edit in lsp_entry.additional_text_edits.iter().flatten().rev() {
+        for edit in entry.additional_text_edits.iter().flatten().rev() {
             let start = encoding.byte_from_pos(&text, edit.range.start);
             let end = encoding.byte_from_pos(&text, edit.range.end);
 
@@ -280,7 +278,7 @@ fn update_completions(pa: &mut Pass) {
     if Completions::is_selecting(pa) {
         return;
     }
-    
+
     let Some(buffer) = context::current_widget(pa).get_as::<Buffer>() else {
         return;
     };

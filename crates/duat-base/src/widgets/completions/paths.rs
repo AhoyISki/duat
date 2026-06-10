@@ -7,6 +7,7 @@
 use std::{
     any::Any,
     fs::ReadDir,
+    marker::PhantomData,
     path::{Path, PathBuf},
     sync::LazyLock,
 };
@@ -21,9 +22,12 @@ use duat_core::{
     utils::expand_path,
 };
 
-use crate::widgets::completions::{CompletionKind, Completions, ErasedList, Sealed};
+use crate::{
+    hooks::{CompletionFocused, CompletionSelected},
+    widgets::completions::{CompletionItem, Completions, ErasedList, Sealed},
+};
 
-impl CompletionKind for PathBuf {
+impl CompletionItem for PathBuf {
     fn value(&self) -> String {
         self.to_string_lossy().to_string()
     }
@@ -49,9 +53,9 @@ impl PathCompletions {
     /// a list of word completions once, at a specific location in
     /// the [`Text`].
     ///
-    /// The purpose of this function is instead to add a "subscription"
-    /// to the `Completions`, which will be receiving new word lists
-    /// as is deemed necessary.
+    /// The purpose of this function is instead to add a
+    /// "subscription" to the `Completions`, which will be
+    /// receiving new word lists as is deemed necessary.
     ///
     /// You can disable this via [`WordCompletions::disable`].
     ///
@@ -244,6 +248,14 @@ impl ErasedList for InnerPathCompletions {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn get_trigger_selected(&self) -> fn(&mut Pass, super::InnerCompletionEntry) {
+        |pa, entry| _ = hook::trigger(pa, CompletionSelected((entry, PhantomData::<PathBuf>)))
+    }
+
+    fn get_trigger_focused(&self) -> fn(&mut Pass, super::InnerCompletionEntry) {
+        |pa, entry| _ = hook::trigger(pa, CompletionFocused((entry, PhantomData::<PathBuf>)))
     }
 }
 

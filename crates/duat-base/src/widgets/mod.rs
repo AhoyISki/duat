@@ -17,8 +17,22 @@ use duat_core::{
     ui::PushTarget,
 };
 
+pub use self::{
+    completions::{
+        CompletionItem, Completions, ExhaustiveCompletionsList, PathCompletions, WordCompletions,
+    },
+    gutter::{Gutter, GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts},
+    info::Info,
+    linenumbers::{LineNumbers, LineNumbersOpts},
+    logbook::{LogBook, LogBookOpts},
+    notifications::{Notifications, NotificationsOpts},
+    picker::{FilePlace, Picker, PickerPreview},
+    promptline::{PromptLine, PromptLineBuilder},
+    statusline::{State, StatusLine, StatusLineFmt, status},
+    whichkey::WhichKey,
+};
 pub(crate) use self::{
-    completions::completions_setup,
+    completions::{InnerCompletionEntry, completions_setup},
     gutter::{
         add_error, add_hint, add_warning, gutter_setup, has_gutter, hover_gutter_entries_on,
         remove_gutter_entries,
@@ -30,21 +44,6 @@ pub(crate) use self::{
     picker::picker_setup,
     promptline::promptline_setup,
     whichkey::whichkey_setup,
-};
-pub use self::{
-    completions::{
-        CompletionEntry, CompletionKind, Completions, ExhaustiveCompletionsList, PathCompletions,
-        WordCompletions,
-    },
-    gutter::{Gutter, GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts},
-    info::Info,
-    linenumbers::{LineNumbers, LineNumbersOpts},
-    logbook::{LogBook, LogBookOpts},
-    notifications::{Notifications, NotificationsOpts},
-    picker::{FilePlace, Picker, PickerPreview},
-    promptline::{PromptLine, PromptLineBuilder},
-    statusline::{State, StatusLine, StatusLineFmt, status},
-    whichkey::WhichKey,
 };
 
 mod completions;
