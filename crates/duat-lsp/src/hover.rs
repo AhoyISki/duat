@@ -64,6 +64,8 @@ pub fn hover(pa: &mut Pass, encoding: Encoding, hover: Hover) {
     for range in link_ranges.into_iter().rev() {
         if text[range.clone()].ends_with(")") {
             let br_range = text[range.clone()].rfind("](").unwrap();
+            let br_range = br_range.start + range.start..br_range.end + range.start;
+            
             // Separate in order to avoid removing the ling tag.
             text.replace_range(br_range.start + 1..range.end, "");
             text.replace_range(br_range.start..br_range.start + 1, "");

@@ -123,11 +123,13 @@ pub fn completions_setup() {
                         entry: comp.lists[matches.list_idx].1.get(index),
                     };
 
+                    context::debug!("triggered selected");
                     trigger_selected(pa, entry);
                 }
             }
         })
-        .lateness(0);
+        .lateness(0)
+        .grouped(ns);
 
         let update_completions = {
             let completions = completions.clone();

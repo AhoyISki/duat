@@ -201,7 +201,11 @@ mod global {
     use std::sync::LazyLock;
 
     use super::{Hookable, InnerHooks};
-    use crate::{Ns, data::Pass, hook::{Callback, Lateness}};
+    use crate::{
+        Ns,
+        data::Pass,
+        hook::{Callback, Lateness},
+    };
 
     static HOOKS: LazyLock<InnerHooks> = LazyLock::new(InnerHooks::default);
 
@@ -1343,10 +1347,10 @@ impl InnerHooks {
                 Box::from_raw(ptr)
             };
 
-            hooks_of
-                .0
-                .borrow_mut()
-                .extend(new_hooks_of.0.borrow_mut().drain(..));
+            let mut hooks_mut = hooks_of.0.borrow_mut();
+            hooks_mut.extend(new_hooks_of.0.borrow_mut().drain(..));
+            hooks_mut.sort_by_key(|hook| hook.lateness);
+            drop(hooks_mut);
 
             types.insert(TypeId::of::<H>(), unsafe {
                 Box::from_raw(Box::into_raw(hooks_of) as *mut dyn HookHolder)

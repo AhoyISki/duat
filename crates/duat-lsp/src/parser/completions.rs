@@ -161,10 +161,20 @@ pub fn setup_hooks() {
                             .and(Some(idx))
                             .or_else(|| list.iter().position(|entry| entry.item == old_item));
 
+                        let item = CompletionItem {
+                            label: old_item.label.clone(),
+                            insert_text: old_item.insert_text.clone(),
+                            insert_text_format: old_item.insert_text_format,
+                            insert_text_mode: old_item.insert_text_mode,
+                            text_edit: old_item.text_edit.clone(),
+                            additional_text_edits: old_item.additional_text_edits.clone(),
+                            ..new_item
+                        };
+
                         if let Some(idx) = idx {
                             list[idx] = Entry {
                                 server_ns,
-                                item: Arc::new(new_item.clone()),
+                                item: Arc::new(item),
                                 encoding: list[idx].encoding,
                             };
                         }
