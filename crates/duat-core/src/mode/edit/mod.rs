@@ -810,27 +810,35 @@ pub(crate) fn on_each_sel<'p>(
     popts: PrintOpts,
     mut func: impl FnMut(SelectionMut),
 ) {
-    let mut current = Vec::new();
-    let mut next_i = Cell::new(0);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut current = Vec::new();
+        let mut next_i = Cell::new(0);
 
-    while let Some((sel, was_main)) = text.selections_mut().remove(next_i.get()) {
-        current.push(Some(ModSelection::new(sel, next_i.get(), was_main)));
+        while let Some((sel, was_main)) = text.selections_mut().remove(next_i.get()) {
+            current.push(Some(ModSelection::new(sel, next_i.get(), was_main)));
 
-        func(SelectionMut::new(
-            &mut current,
-            0,
-            (&mut text, area, popts),
-            Some(&next_i),
-        ));
+            func(SelectionMut::new(
+                &mut current,
+                0,
+                (&mut text, area, popts),
+                Some(&next_i),
+            ));
 
-        reinsert_selections(
-            current.drain(..).flatten(),
-            &mut text,
-            Some(next_i.get_mut()),
-        );
-    }
-
+            reinsert_selections(
+                current.drain(..).flatten(),
+                &mut text,
+                Some(next_i.get_mut()),
+            );
+        }
+    }));
+    
     text.selections_mut().increment_version();
+
+    if let Err(panic) = result {
+        text.selections_mut().populate();
+        text.selections_mut().reset();
+        std::panic::resume_unwind(panic);
+    }
 }
 
 /// Reinsert edited [`Selections`].

@@ -621,27 +621,39 @@ impl<W: Widget + ?Sized> Handle<W> {
         let popts = self.widget.read(pa).print_opts();
         let (mut text, area) = self.text_and_area(pa);
 
-        let mut selections = {
-            let selections = populate(&mut text);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut selections = {
+                let selections = populate(&mut text);
 
-            let Some((selection, was_main)) = selections.remove(n) else {
-                panic!("Selection index {n} out of bounds");
+                let Some((selection, was_main)) = selections.remove(n) else {
+                    panic!("Selection index {n} out of bounds");
+                };
+
+                vec![Some(ModSelection::new(selection, n, was_main))]
             };
 
-            vec![Some(ModSelection::new(selection, n, was_main))]
-        };
+            let ret = edit(SelectionMut::new(
+                &mut selections,
+                0,
+                (&mut text, area, popts),
+                None,
+            ));
 
-        let ret = edit(SelectionMut::new(
-            &mut selections,
-            0,
-            (&mut text, area, popts),
-            None,
-        ));
+            crate::mode::reinsert_selections(selections.into_iter().flatten(), &mut text, None);
 
-        crate::mode::reinsert_selections(selections.into_iter().flatten(), &mut text, None);
+            ret
+        }));
+
         text.selections_mut().increment_version();
 
-        ret
+        match result {
+            Ok(ret) => ret,
+            Err(panic) => {
+                text.selections_mut().populate();
+                text.selections_mut().reset();
+                std::panic::resume_unwind(panic);
+            }
+        }
     }
 
     /// Edits the main [`Selection`] in the [`Text`].
