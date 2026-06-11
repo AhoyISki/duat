@@ -510,8 +510,6 @@ impl Windows {
 
                 self.inner.write(pa).list.push(window.clone());
 
-                hook::trigger(pa, WindowOpened(window));
-
                 // Swap the Buffers ahead of the swapped new_root
                 let lo = buffer.read(pa).layout_order;
 
@@ -522,6 +520,8 @@ impl Windows {
                 // Delete the new_root, which should be the last "Buffer" in the
                 // list of the original Window.
                 new_root.delete(pa);
+
+                hook::trigger(pa, WindowOpened(window));
 
                 self.inner
                     .write(pa)

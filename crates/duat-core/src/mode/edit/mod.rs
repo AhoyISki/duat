@@ -831,7 +831,7 @@ pub(crate) fn on_each_sel<'p>(
             );
         }
     }));
-    
+
     text.selections_mut().increment_version();
 
     if let Err(panic) = result {
