@@ -53,7 +53,8 @@ mod tree;
 
 /// Highlights a range in a [`Text`] as a certain filetype.
 ///
-/// Returns `true` if highlighting succeeded.
+/// Returns the [`Parser`] if highlighting succeeded, which can be
+/// used for running queries and such.
 ///
 /// If this returns `fail`, it could be for a variety of purposes.
 /// It could be the case that the language doesn't exist, or that its
@@ -64,13 +65,13 @@ mod tree;
 /// [`TsLanguageCompiled`] hook in order to trigger things when the
 /// compilation is done.
 #[track_caller]
-pub fn highlight_as(text: TextMut, range: impl TextRange, lang: &str) -> bool {
+pub fn parse_as(text: TextMut, range: impl TextRange, lang: &str) -> Option<Parser> {
     let range = range.to_range(text.len());
     if let Some(parser) = parse_text(lang, &text, 0..text.len()) {
         parser.highlight(range, &mut text.parts());
-        true
+        Some(parser)
     } else {
-        false
+        None
     }
 }
 
@@ -323,7 +324,7 @@ fn query_from_path(
 }
 
 /// Convenience methods for use of tree-sitter in [`Buffer`]s
-pub trait TsHandle {
+pub trait TsBuffer {
     fn get_ts_parser<'p>(&'p self, pa: &'p mut Pass) -> Option<(&'p Parser, &'p Buffer)>;
 
     /// Gets the tree sitter indentation values for all the
@@ -343,7 +344,7 @@ pub trait TsHandle {
     ) -> Option<Vec<usize>>;
 }
 
-impl TsHandle for Handle<Buffer> {
+impl TsBuffer for Handle<Buffer> {
     fn get_ts_parser<'p>(&'p self, pa: &'p mut Pass) -> Option<(&'p Parser, &'p Buffer)> {
         parser::sync_parse(pa, self)
     }

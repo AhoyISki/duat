@@ -2,13 +2,13 @@ use duat_core::text::Strs;
 use tree_sitter::{Node, TreeCursor};
 
 #[allow(unused)]
-pub struct SelectionMut<'a> {
+pub struct Cursor<'a> {
     strs: &'a Strs,
     cursor: TreeCursor<'a>,
 }
 
 #[allow(unused)]
-impl SelectionMut<'_> {
+impl Cursor<'_> {
     pub fn node(&self) -> Node<'_> {
         self.cursor.node()
     }

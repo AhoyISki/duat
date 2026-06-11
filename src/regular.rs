@@ -6,7 +6,7 @@ use duat_core::{
     ui::Widget,
 };
 #[cfg(feature = "treesitter")]
-use duat_treesitter::TsHandle;
+use duat_treesitter::TsBuffer;
 
 use crate::prelude::{
     Handle, cmd,

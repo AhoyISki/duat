@@ -100,26 +100,34 @@ pub(crate) fn add_parser_hook() {
             let mut parser = TsParser::new();
             parser.set_language(lang_parts.1).unwrap();
 
-            PARSERS.register(
-                pa,
-                handle,
-                Parser {
-                    parser,
-                    trees: Trees::new([Ranges::new(0..len_bytes)]),
-                    lang_parts,
-                    forms: forms_from_lang_parts(lang_parts),
-                    injections: Vec::new(),
-                    ranges_to_inject: Ranges::new(0..len_bytes),
-                    is_parsing: false,
-                    ns: Ns::new(),
-                },
-            );
+            PARSERS.register(pa, handle, Parser {
+                parser,
+                trees: Trees::new([Ranges::new(0..len_bytes)]),
+                lang_parts,
+                forms: forms_from_lang_parts(lang_parts),
+                injections: Vec::new(),
+                ranges_to_inject: Ranges::new(0..len_bytes),
+                is_parsing: false,
+                ns: Ns::new(),
+            });
 
             async_parse(pa, handle, printed_lines.clone(), false);
         }
     });
 }
 
+/// A parser for treesitter.
+///
+/// This parser will handle all the things you'd expect, like
+/// highlighting, indentation and injection of languages.
+///
+/// Publicly, it can be obtained either by
+/// [`Handle::<Buffer>::get_ts_parser`] or by [`parse_as`].
+///
+/// The main methods you will care about with this struct are [`root_node`].
+///
+/// [`Handle::<Buffer>::get_ts_parser`]: crate::TsBuffer::get_ts_parser
+/// [`parse_as`]: crate::parse_as
 pub struct Parser {
     parser: TsParser,
     trees: Trees,

@@ -96,7 +96,7 @@ use duat_core::{
     text::{Point, RegexHaystack},
 };
 use duat_filetype::FileType;
-use duat_treesitter::{DuatTreeSitter, TsHandle};
+use duat_treesitter::{DuatTreeSitter, TsBuffer};
 
 /// highlight the match of delimiters under [`Selection`]s
 ///
@@ -215,23 +215,23 @@ struct MatchPairsRef<'mp> {
 }
 
 impl MatchPairsRef<'_> {
-    fn update(self, pa: &mut Pass, handle: &Handle<Buffer>, range: Range<Point>) {
+    fn update(self, pa: &mut Pass, buffer: &Handle<Buffer>, range: Range<Point>) {
         fn ends(str: &[u8]) -> impl Fn(&[&[u8]; 2]) -> bool {
             move |delims| delims.contains(&str)
         }
 
-        let buffer = handle.write(pa);
+        let buf = buffer.write(pa);
 
-        buffer.text_mut().remove_tags(*NS, ..);
+        buf.text_mut().remove_tags(*NS, ..);
 
-        let selections: Vec<_> = buffer
+        let selections: Vec<_> = buf
             .selections()
             .iter_within(range)
-            .map(|(_, sel, is_main)| (sel.byte_range(buffer.text()), is_main))
+            .map(|(_, sel, is_main)| (sel.byte_range(buf.text()), is_main))
             .collect();
 
         'selections: for (c_range, is_main) in selections {
-            let str: Vec<u8> = handle.text(pa)[c_range.clone()].bytes().collect();
+            let str: Vec<u8> = buffer.text(pa)[c_range.clone()].bytes().collect();
 
             // TODO: Support multi-character pairs
             let (delims, escaped) = if let Some(i) = self.ts_and_reg.iter().position(ends(&str)) {
@@ -271,13 +271,13 @@ impl MatchPairsRef<'_> {
                 }
             };
 
-            let (start_range, end_range) = if let Some((parser, _)) = handle.get_ts_parser(pa)
+            let (start_range, end_range) = if let Some((parser, _)) = buffer.get_ts_parser(pa)
                 && let Some(ranges) = get_ts_ranges(parser)
             {
                 ranges
             } else if let Some(escaped) = escaped {
                 if str == delims[0] {
-                    let mut iter = handle.text(pa).search(escaped).range(c_range.start..);
+                    let mut iter = buffer.text(pa).search(escaped).range(c_range.start..);
                     let mut bounds = 0;
 
                     loop {
@@ -290,7 +290,7 @@ impl MatchPairsRef<'_> {
                         }
                     }
                 } else {
-                    let mut iter = handle.text(pa).search(escaped).range(..c_range.end);
+                    let mut iter = buffer.text(pa).search(escaped).range(..c_range.end);
                     let mut bounds = 0;
 
                     loop {
@@ -307,14 +307,14 @@ impl MatchPairsRef<'_> {
                 continue;
             };
 
-            let buffer = handle.write(pa);
+            let buf = buffer.write(pa);
 
             let id = if is_main {
                 form::id_of!("matched_pair.main.start")
             } else {
                 form::id_of!("matched_pair.extra.start")
             };
-            buffer
+            buf
                 .text_mut()
                 .insert_tag(*NS, start_range, id.to_tag(99));
 
@@ -323,7 +323,7 @@ impl MatchPairsRef<'_> {
             } else {
                 form::id_of!("matched_pair.extra.end")
             };
-            buffer.text_mut().insert_tag(*NS, end_range, id.to_tag(99));
+            buf.text_mut().insert_tag(*NS, end_range, id.to_tag(99));
         }
     }
 }

@@ -45,7 +45,7 @@ pub(crate) fn picker_setup() {
 
             text.clear_tags();
             if let Some(filetype) = filetype {
-                duat_treesitter::highlight_as(text.as_mut(), .., filetype);
+                duat_treesitter::parse_as(text.as_mut(), .., filetype);
             }
         }
     });
@@ -99,7 +99,7 @@ pub(crate) fn picker_setup() {
             let end = area.end_points(&text, popts);
 
             text.clear_tags();
-            duat_treesitter::highlight_as(text, start.real..end.real, filetype);
+            duat_treesitter::parse_as(text, start.real..end.real, filetype);
         }
     })
     .lateness(usize::MAX);
@@ -438,7 +438,7 @@ impl PickerPreview {
             let mut text = Text::from(content);
 
             let filetype = if let Some(filetype) = duat_filetype::from_filename(&place.path) {
-                duat_treesitter::highlight_as(text.as_mut(), .., filetype);
+                duat_treesitter::parse_as(text.as_mut(), .., filetype);
                 Some(filetype)
             } else {
                 None

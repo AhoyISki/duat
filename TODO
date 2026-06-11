@@ -57,9 +57,9 @@ QoL TODO LIST:
 [ ] Hover should get rid of links.
 
 Bugs with new Completions:
-[ ] Same entry causes the first one to be gobbled up.
-[ ] Sometimes shows up delayed in PromptLine.
-[ ] Replacement is incorrect with Lsp sometimes.
+[x] Same entry causes the first one to be gobbled up.
+[x] Sometimes shows up delayed in PromptLine.
+[x] Replacement is incorrect with Lsp sometimes.
 [ ] Flickering in some situations.
 
 KNOWN BUGS:

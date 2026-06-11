@@ -23,7 +23,7 @@ pub fn hover(pa: &mut Pass, encoding: Encoding, hover: Hover) {
         HoverContents::Markup(markup_content) => {
             let mut text = Text::from(markup_content.value);
             if markup_content.kind == MarkupKind::Markdown {
-                duat_treesitter::highlight_as(text.as_mut(), .., "markdown");
+                duat_treesitter::parse_as(text.as_mut(), .., "markdown");
             }
             text
         }
@@ -59,6 +59,21 @@ pub fn hover(pa: &mut Pass, encoding: Encoding, hover: Hover) {
         }
     }
 
+    let link_ranges = Vec::from_iter(text.search(r"\[.*?\](\(.*?\))?"));
+
+    for range in link_ranges.into_iter().rev() {
+        if text[range.clone()].ends_with(")") {
+            let br_range = text[range.clone()].rfind("](").unwrap();
+            // Separate in order to avoid removing the ling tag.
+            text.replace_range(br_range.start + 1..range.end, "");
+            text.replace_range(br_range.start..br_range.start + 1, "");
+            text.replace_range(range.start..range.start + 1, "");
+        } else {
+            text.replace_range(range.end - 1..range.end, "");
+            text.replace_range(range.start..range.start + 1, "");
+        }
+    }
+
     let title = {
         let buffer = context::current_buffer(pa);
         let text = buffer.text(pa);
@@ -83,12 +98,12 @@ fn parse_marked_string(marked_string: &MarkedString) -> Text {
     match marked_string {
         MarkedString::String(string) => {
             let mut text = Text::from(string);
-            duat_treesitter::highlight_as(text.as_mut(), .., "markdown");
+            duat_treesitter::parse_as(text.as_mut(), .., "markdown");
             text
         }
         MarkedString::LanguageString(language_string) => {
             let mut text = Text::from(&language_string.value);
-            duat_treesitter::highlight_as(text.as_mut(), .., &language_string.language);
+            duat_treesitter::parse_as(text.as_mut(), .., &language_string.language);
             text
         }
     }

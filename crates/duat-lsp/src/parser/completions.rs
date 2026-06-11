@@ -116,7 +116,7 @@ impl duat_base::widgets::CompletionItem for Entry {
                 Documentation::MarkupContent(markup_content) => {
                     let mut text = Text::from(markup_content.value.clone());
 
-                    duat_treesitter::highlight_as(text.as_mut(), .., "markdown");
+                    duat_treesitter::parse_as(text.as_mut(), .., "markdown");
 
                     Some(text)
                 }

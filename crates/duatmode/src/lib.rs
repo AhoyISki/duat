@@ -54,7 +54,7 @@ use duat_core::{
     utils::Memoized,
 };
 use duat_jump_list::JumpList;
-use duat_treesitter::{DuatTreeSitter, TsHandle};
+use duat_treesitter::{DuatTreeSitter, TsBuffer};
 pub use parameter::{add_to_param, duat_param, duat_param_txt, take_param};
 
 mod parameter {

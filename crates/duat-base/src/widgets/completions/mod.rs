@@ -683,13 +683,18 @@ impl Completions {
                 (None, None) => None,
                 (None, Some(new_idx)) => Some(list!().value_for_index(get_idx(new_idx))),
                 (Some(_), None) => Some(comp.orig_typed.clone()),
-                (Some(selected), Some(new_idx)) => {
+                (Some(_), Some(new_idx)) => {
                     let new_value = list!().value_for_index(get_idx(new_idx));
-                    (new_value != selected.value).then_some(new_value)
+                    Some(new_value)
                 }
             };
 
-            if let Some(replacement) = &replacement {
+            if let Some(replacement) = &replacement
+                && matches
+                    .selected
+                    .as_ref()
+                    .is_none_or(|selected| &selected.value != replacement)
+            {
                 let mut master_has_changed = false;
 
                 master.edit_all(pa, |mut s| {
