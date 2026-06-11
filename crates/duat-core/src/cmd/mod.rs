@@ -721,7 +721,12 @@ impl Commands {
             let mut args = Args::new(&call);
             _ = args.next();
 
-            match catch_panic(move || cmd.lock().unwrap()(pa, args)) {
+            let mut cmd = match cmd.try_lock() {
+                Ok(cmd) => cmd,
+                Err(_) => return Err(txt!("Can't recursively call the same command")),
+            };
+
+            match catch_panic(move || cmd(pa, args)) {
                 Some(result) => result
                     .map(|ok| ok.filter(|_| !silent))
                     .map_err(|err| txt!("[a]{caller}[]: {err}")),

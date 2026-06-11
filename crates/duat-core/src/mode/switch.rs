@@ -132,19 +132,18 @@ pub fn reset_to(pa: &mut Pass, widget: &Handle<impl Widget + ?Sized>) {
     let mut set_default_guard = SET_DEFAULT.lock().unwrap();
 
     if let Some(mut set_default) = set_default_guard.take() {
+        drop(set_default_guard);
         if let Some((_, node)) = {
             context::windows()
                 .entries(pa)
                 .find(|(_, node)| node.handle() == widget)
         } {
-            drop(set_default_guard);
             set_default(pa, node.handle().clone());
             let mut set_default_guard = SET_DEFAULT.lock().unwrap();
             if set_default_guard.is_none() {
                 *set_default_guard = Some(set_default);
             }
         } else {
-            drop(set_default_guard);
             reset::<Buffer>(pa);
         }
     } else {
