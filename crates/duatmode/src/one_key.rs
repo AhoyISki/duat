@@ -241,14 +241,17 @@ fn match_rotate(
                 }
             });
 
-            widget.edit_nth(pa, 0, |mut s| s.replace(last_sel.unwrap()));
+            widget.edit_nth(pa, 0, |mut s| {
+                s.set_anchor_if_needed();
+                s.replace(last_sel.unwrap())
+            });
         }
         // TODO: Implement parameter
         'c' => {
             if widget.selections(pa).len() == 1 {
                 return OneKeyOrResult::Result(SelType::Normal, true);
             }
-            let mut selections = Vec::<String>::new();
+            let mut selections = Vec::new();
             widget.edit_all(pa, |s| selections.push(s.selection().to_string()));
             let mut s_iter = selections.into_iter().cycle();
             s_iter.next();
