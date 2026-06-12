@@ -45,6 +45,7 @@ pub fn setup_hooks() {
 pub struct Insert {
     is_completing: bool,
     widget: Handle,
+    is_on_html_tag: bool,
 }
 
 impl Insert {
@@ -52,7 +53,16 @@ impl Insert {
     ///
     /// [`Widget`]: duat_core::ui::Widget
     pub fn new(widget: Handle) -> Self {
-        Self { is_completing: false, widget }
+        Self {
+            is_completing: false,
+            widget,
+            is_on_html_tag: false,
+        }
+    }
+
+    /// Declares that we're completing html tags.
+    pub(crate) fn on_html_tags(self) -> Self {
+        Self { is_on_html_tag: true, ..self }
     }
 }
 
@@ -176,6 +186,17 @@ impl Mode for Insert {
 
             // Regular commands
             event!(Char(char)) => {
+                if char == ' ' && self.is_on_html_tag {
+                    let mut i = 0;
+                    widget.edit_all(pa, |s| {
+                        if i % 2 == 1 {
+                            s.destroy();
+                        }
+                        i += 1;
+                    });
+                    self.is_on_html_tag = false;
+                }
+
                 widget.edit_all(pa, |mut s| {
                     insert_str(&mut s, char, 1, &mut insert_events);
                 });

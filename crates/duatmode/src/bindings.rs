@@ -22,9 +22,9 @@ pub fn normal_bindings() -> Bindings {
             event!('B' | '{' | '}') => txt!("brace block"),
             event!('r' | '[' | ']') => txt!("bracket block"),
             event!('a' | '<' | '>') => txt!("angle bracket block"),
-            event!('"' | 'Q') => txt!("double quote string"),
-            event!('\'' | 'q') => txt!("single quote string"),
-            event!('`' | 'g') => txt!("grave quote string"),
+            event!('Q' | '"') => txt!("double quote string"),
+            event!('q' | '\'') => txt!("single quote string"),
+            event!('g' | '`') => txt!("grave quote string"),
             event!('w') | event!('e') => word.clone(),
             event!('s') => txt!("sentence"),
             event!('p') => txt!("paragraph"),
@@ -48,9 +48,23 @@ pub fn normal_bindings() -> Bindings {
                     object(&format!("{action} inside object"))
                 ),
                 event!('a') => (
-                    txt!("inside object"),
+                    txt!("around object"),
                     object(&format!("{action} around object"))
                 ),
+                event!('s') => (txt!("surround selection"), Bindings {
+                    title: Some(txt!("surround with")),
+                    ..bindings!(match _ {
+                        event!('b' | '(' | ')') => txt!("parenthesis"),
+                        event!('B' | '{' | '}') => txt!("braces"),
+                        event!('r' | '[' | ']') => txt!("brackets"),
+                        event!('a' | '<' | '>') => txt!("angle brackets"),
+                        event!('Q' | '"') => txt!("double quotes"),
+                        event!('q' | '\'') => txt!("single quotes"),
+                        event!('g' | '`') => txt!("grave quotes"),
+                        event!('t') => txt!("html tag"),
+                        event!(Char(..)) => txt!("another character"),
+                    })
+                }),
             })
         }
     };
@@ -159,12 +173,9 @@ pub fn normal_bindings() -> Bindings {
         event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
         alt!('o' | 'O') => txt!("Add new line {below}"),
         event!('.') => txt!("Repeats the last [mode]Insert[] command"),
-        event!('r') => (
-            txt!("Replace range"),
-            match _ {
-                event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
-            }
-        ),
+        event!('r') => (txt!("Replace range"), match _ {
+            event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
+        }),
         event!('`') => txt!("Lowercase the selection"),
         event!('~') => txt!("Uppercase the selection"),
         alt!('`') => txt!("Swap case of selection"),

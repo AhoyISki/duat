@@ -9,17 +9,31 @@ use crate::{
     Object, SEARCH, SelType, edit_or_destroy_all, select_to_end_of_line, set_anchor_if_needed,
 };
 
+/// Keys that take one additional key.
 #[derive(Clone, Copy)]
 pub(crate) enum OneKey {
+    ////////// Final modes.
+    /// Go to or select to place.
     GoTo(SelType),
+    /// Go to or select to next/previous char.
     Find(usize, SelType, bool),
+    /// Go to or select until next/previous char.
     Until(usize, SelType, bool),
-    Surrounding(usize, bool, bool),
+    /// Select or extend to next object.
     ToNext(usize, bool, bool),
+    /// Select or extend to previous object.
     ToPrevious(usize, bool, bool),
-    Match(usize, bool),
-    Rotate(usize, bool),
+    /// Replace all characters in selection.
     Replace,
+    /// To manipulate selections.
+    Rotate(usize, bool),
+    ////////// Match mode submodes.
+    /// To deal with surrounding objects.
+    Match(usize, bool),
+    /// Select or extend inside or around object.
+    InsideOrAround(usize, bool, bool),
+    /// Surrounds selections with character.
+    SurroundWith,
 }
 
 impl OneKey {
@@ -40,9 +54,6 @@ impl OneKey {
                 }
                 OneKeyOrResult::Result(SelType::Normal, true)
             }
-            (OneKey::Surrounding(count, inside, extend), _) => {
-                match_bounds(pa, &widget, event, count, inside, extend, Bounds::Both)
-            }
             (OneKey::ToNext(count, inside, extend), _) => {
                 match_bounds(pa, &widget, event, count, inside, extend, Bounds::Ahead)
             }
@@ -60,10 +71,14 @@ impl OneKey {
                 });
                 OneKeyOrResult::Result(SelType::Normal, true)
             }
+            (OneKey::Rotate(count, fwd), Some(char)) => match_rotate(pa, &widget, count, fwd, char),
             (OneKey::Match(count, set_anchor), _) => {
                 match_match(pa, &widget, event, count, set_anchor)
             }
-            (OneKey::Rotate(count, fwd), Some(char)) => match_rotate(pa, &widget, count, fwd, char),
+            (OneKey::InsideOrAround(count, inside, extend), _) => {
+                match_bounds(pa, &widget, event, count, inside, extend, Bounds::Both)
+            }
+            (OneKey::SurroundWith, Some(char)) => match_surround(pa, &widget, char),
             _ => OneKeyOrResult::Result(SelType::Normal, false),
         }
     }
@@ -87,6 +102,7 @@ impl OneKey {
         }
     }
 }
+
 /// The result of a [`OneKey`] key being sent.
 pub(crate) enum OneKeyOrResult {
     OneKey(OneKey),
@@ -200,6 +216,55 @@ fn match_find_until(
     });
 }
 
+fn match_rotate(
+    pa: &mut Pass,
+    widget: &Handle,
+    count: usize,
+    fwd: bool,
+    char: char,
+) -> OneKeyOrResult {
+    match char {
+        's' if fwd => widget.rotate_main_selection(pa, count as i32),
+        's' => widget.rotate_main_selection(pa, -(count as i32)),
+        // TODO: Implement parameter
+        'c' if fwd => {
+            if widget.selections(pa).len() == 1 {
+                return OneKeyOrResult::Result(SelType::Normal, true);
+            }
+
+            let mut last_sel = None;
+
+            widget.edit_all(pa, |mut s| {
+                if let Some(last_sel) = last_sel.replace(s.selection().to_string()) {
+                    s.set_anchor_if_needed();
+                    s.replace(last_sel);
+                }
+            });
+
+            widget.edit_nth(pa, 0, |mut s| s.replace(last_sel.unwrap()));
+        }
+        // TODO: Implement parameter
+        'c' => {
+            if widget.selections(pa).len() == 1 {
+                return OneKeyOrResult::Result(SelType::Normal, true);
+            }
+            let mut selections = Vec::<String>::new();
+            widget.edit_all(pa, |s| selections.push(s.selection().to_string()));
+            let mut s_iter = selections.into_iter().cycle();
+            s_iter.next();
+            widget.edit_all(pa, |mut s| {
+                if let Some(next) = s_iter.next() {
+                    s.set_anchor_if_needed();
+                    s.replace(next);
+                }
+            });
+        }
+        _ => return OneKeyOrResult::Result(SelType::Normal, false),
+    }
+
+    OneKeyOrResult::Result(SelType::Normal, true)
+}
+
 fn match_match(
     pa: &mut Pass,
     widget: &Handle,
@@ -268,58 +333,58 @@ fn match_match(
                 (i > 0).then_some(())
             })
         }
-        event!('i') => return OneKeyOrResult::OneKey(OneKey::Surrounding(count, true, extend)),
-        event!('a') => return OneKeyOrResult::OneKey(OneKey::Surrounding(count, false, extend)),
+        event!('i') => return OneKeyOrResult::OneKey(OneKey::InsideOrAround(count, true, extend)),
+        event!('a') => return OneKeyOrResult::OneKey(OneKey::InsideOrAround(count, false, extend)),
+        event!('s') => return OneKeyOrResult::OneKey(OneKey::SurroundWith),
         _ => return OneKeyOrResult::Result(SelType::Normal, false),
     }
 
     OneKeyOrResult::Result(SelType::Normal, true)
 }
 
-fn match_rotate(
-    pa: &mut Pass,
-    widget: &Handle,
-    count: usize,
-    fwd: bool,
-    char: char,
-) -> OneKeyOrResult {
+fn match_surround(pa: &mut Pass, widget: &Handle, char: char) -> OneKeyOrResult {
+    let surround = |pa: &mut Pass, sc: char, ec: char| {
+        widget.edit_all(pa, |mut s| {
+            let was_on_end = s.anchor_is_start();
+
+            s.set_cursor_on_start();
+            s.insert(sc);
+            s.move_hor(1);
+            s.set_cursor_on_end();
+            s.append(ec);
+
+            if !was_on_end {
+                s.set_cursor_on_start();
+            }
+        })
+    };
+
     match char {
-        's' if fwd => widget.rotate_main_selection(pa, count as i32),
-        's' => widget.rotate_main_selection(pa, -(count as i32)),
-        // TODO: Implement parameter
-        'c' if fwd => {
-            if widget.selections(pa).len() == 1 {
-                return OneKeyOrResult::Result(SelType::Normal, true);
-            }
-
-            let mut last_sel = None;
-
+        'b' | '(' | ')' => surround(pa, '(', ')'),
+        'B' | '{' | '}' => surround(pa, '{', '}'),
+        'r' | '[' | ']' => surround(pa, '[', ']'),
+        'a' | '<' | '>' => surround(pa, '<', '>'),
+        'Q' | '"' => surround(pa, '"', '"'),
+        'q' | '\'' => surround(pa, '\'', '\''),
+        'g' | '`' => surround(pa, '`', '`'),
+        't' => {
             widget.edit_all(pa, |mut s| {
-                if let Some(last_sel) = last_sel.replace(s.selection().to_string()) {
-                    s.set_anchor_if_needed();
-                    s.replace(last_sel);
-                }
-            });
+                let range = s.range();
 
-            widget.edit_nth(pa, 0, |mut s| s.replace(last_sel.unwrap()));
-        }
-        // TODO: Implement parameter
-        'c' => {
-            if widget.selections(pa).len() == 1 {
-                return OneKeyOrResult::Result(SelType::Normal, true);
-            }
-            let mut selections = Vec::<String>::new();
-            widget.edit_all(pa, |s| selections.push(s.selection().to_string()));
-            let mut s_iter = selections.into_iter().cycle();
-            s_iter.next();
-            widget.edit_all(pa, |mut s| {
-                if let Some(next) = s_iter.next() {
-                    s.set_anchor_if_needed();
-                    s.replace(next);
-                }
+                s.set_cursor_on_start();
+                s.insert("<>");
+                s.set_cursor_on_end();
+                s.append("</>");
+
+                s.unset_anchor();
+                s.move_to(range.start.byte() + "<".len());
+
+                let mut end_s = s.copy();
+                end_s.move_to(range.end.byte() + "<>".len() + "</".len());
             });
+            mode::set(pa, crate::Insert::new(widget.clone()).on_html_tags());
         }
-        _ => return OneKeyOrResult::Result(SelType::Normal, false),
+        char => surround(pa, char, char),
     }
 
     OneKeyOrResult::Result(SelType::Normal, true)
