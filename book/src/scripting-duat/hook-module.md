@@ -389,7 +389,7 @@ setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup(opts: &mut Opts) {
-    form::enable_mask("hidden");
+    form::enable_mask("hidden", true);
     form::set("cursor.main.hidden", Form::default());
     form::set("cursor.extra.hidden", Form::default());
     form::set("selection.main.hidden", Form::default());

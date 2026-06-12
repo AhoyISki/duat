@@ -1226,7 +1226,7 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
 /// text = txt!("[my_form]This text is red on blue[], [my_form.suffix]undercurled");
 ///
 /// // But if I enable the "suffix" mask that's at the end of the second Form
-/// form::enable_mask("suffix");
+/// form::enable_mask("suffix", false);
 ///
 /// // After calling `handle.set_mask("suffix")` on the Handle that owns this
 /// // Text, it will be equivalent to this:
