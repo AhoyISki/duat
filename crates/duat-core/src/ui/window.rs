@@ -622,7 +622,7 @@ impl Windows {
 
     ////////// Entry lookup
 
-    /// An entry for a [`Handle`].
+    /// The window index for a handle.
     pub(crate) fn handle_window<W: Widget + ?Sized>(
         &self,
         pa: &Pass,
@@ -655,7 +655,7 @@ impl Windows {
     ) -> Option<(usize, Handle<Buffer>)> {
         self.entries(pa).find_map(|(win, node)| {
             (node.read_as(pa).filter(|f: &&Buffer| f.name() == name))
-                .and_then(|_| node.try_downcast().map(|handle| (win, handle)))
+                .and_then(|_| node.try_downcast().map(|buffer| (win, buffer)))
         })
     }
 
@@ -669,7 +669,7 @@ impl Windows {
             (node
                 .read_as(pa)
                 .filter(|f: &&Buffer| f.path_kind().as_path().is_some_and(|p| p == path)))
-            .and_then(|_| node.try_downcast().map(|handle| (win, handle)))
+            .and_then(|_| node.try_downcast().map(|buffer| (win, buffer)))
         })
     }
 
@@ -680,7 +680,11 @@ impl Windows {
     pub(crate) fn node_of<'a, W: Widget>(&'a self, pa: &'a Pass) -> Result<&'a Node, Text> {
         let buffer = context::current_buffer(pa);
 
-        if let Some((handle, _)) = buffer.get_related::<W>(pa).first() {
+        if let Some((handle, _)) = buffer
+            .get_related::<W>(pa)
+            .into_iter()
+            .find(|(handle, _)| !handle.is_closed())
+        {
             self.entries(pa)
                 .find_map(|(.., node)| node.ptr_eq(handle.widget()).then_some(node))
         } else {
@@ -690,7 +694,7 @@ impl Windows {
                 .nodes(pa)
                 .chain(list[cur_win + 1..].iter().flat_map(|win| win.nodes(pa)))
                 .chain(list[..cur_win].iter().flat_map(|win| win.nodes(pa)))
-                .find(|node| node.data_is::<W>())
+                .find(|node| node.data_is::<W>() && !node.handle().is_closed())
         }
         .ok_or(txt!(
             "No widget of type [a]{}[] found",
@@ -849,6 +853,7 @@ impl Windows {
             .list
             .iter()
             .flat_map(|w| w.nodes(pa).map(|n| n.handle().clone()))
+            .filter(|widget| !widget.is_closed())
     }
 
     /// Returns an [`Iterator`] over the [`Handle`]s of Duat.
@@ -858,6 +863,7 @@ impl Windows {
             .list
             .iter()
             .flat_map(|w| w.nodes(pa).filter_map(|n| n.handle().get_as()))
+            .filter(|widget| !widget.is_closed())
             .collect()
     }
 
@@ -1249,7 +1255,9 @@ impl Window {
     /// If you just want an iterator over the [`Buffer`]s, then check
     /// out [`Window::buffers`].
     pub fn handles<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = &'a Handle> {
-        self.nodes(pa).map(|node| node.handle())
+        self.nodes(pa)
+            .map(|node| node.handle())
+            .filter(|handle| !handle.is_closed())
     }
 
     /// The [`Buffer`]s in a single `Window`.

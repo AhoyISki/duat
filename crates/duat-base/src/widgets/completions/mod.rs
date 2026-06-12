@@ -123,7 +123,6 @@ pub fn completions_setup() {
                         entry: comp.lists[matches.list_idx].1.get(index),
                     };
 
-                    context::debug!("triggered selected");
                     trigger_selected(pa, entry);
                 }
             }
@@ -271,6 +270,7 @@ pub struct Completions {
     matches: Option<Matches>,
 
     info: Option<(Handle<Info>, Orientation)>,
+    is_parameter_list: bool,
 }
 
 impl Completions {
@@ -309,8 +309,10 @@ impl Completions {
             return;
         }
 
-        if let Some(completions) = context::handle_of::<Completions>(pa) {
-            let comp = completions.write(pa);
+        if let Some(completions) = context::handle_of::<Self>(pa)
+            && let comp = completions.write(pa)
+            && !comp.is_parameter_list
+        {
             comp.remove_ns(ns);
 
             let mut erased = entries.into_erased(start_byte, comp.min_prefix);
@@ -333,8 +335,10 @@ impl Completions {
             let comp = completions.write(pa);
             comp.lists.insert(list_idx, (priority, erased, ns));
 
-            Completions::scroll_and_update(pa, &completions, 0);
+            Self::scroll_and_update(pa, &completions, 0);
         } else {
+            Self::close(pa);
+
             let opts = OPTS.lock().unwrap();
 
             let min_prefix = if TypeId::of::<C>() == TypeId::of::<CmdDoc>() {
@@ -344,8 +348,9 @@ impl Completions {
             } else {
                 0
             };
+            let text = master.text(pa);
 
-            let comp = Completions {
+            let comp = Self {
                 lists: vec![(priority, entries.into_erased(start_byte, min_prefix), ns)],
                 text: Text::new(),
                 max_height: 20,
@@ -356,6 +361,7 @@ impl Completions {
                 orig_typed: text[start_byte..main_byte].to_string(),
                 matches: None,
                 info: None,
+                is_parameter_list: false,
             };
 
             master.spawn_on_text(pa, comp, start_byte, *WIDGET_NS, SPAWN_SPECS);
@@ -365,13 +371,13 @@ impl Completions {
     /// Removes all completion lists that were added with the given
     /// `Ns`.
     pub fn remove_list(pa: &mut Pass, ns: Ns) {
-        let Some(completions) = context::handle_of::<Completions>(pa) else {
+        let Some(completions) = context::handle_of::<Self>(pa) else {
             return;
         };
 
         completions.write(pa).remove_ns(ns);
 
-        Completions::scroll_and_update(pa, &completions, 0);
+        Self::scroll_and_update(pa, &completions, 0);
     }
 
     fn remove_ns(&mut self, ns: Ns) {
@@ -399,9 +405,18 @@ impl Completions {
         priority: usize,
         mut entries_fn: impl FnMut(&Pass) -> C + Send + Sync + 'static,
     ) {
-        PARAM_COMPLETIONS.lock().unwrap().insert(
+        let mut completions = PARAM_COMPLETIONS.lock().unwrap();
+
+        let ns = if let Some((ns, ..)) = completions.remove(&TypeId::of::<P>()) {
+            ns
+        } else {
+            Ns::new()
+        };
+
+        completions.insert(
             TypeId::of::<P>(),
             (
+                ns,
                 priority,
                 Box::new(Mutex::new(move |pa: &Pass, start_byte| {
                     let opts = OPTS.lock().unwrap();
@@ -411,20 +426,14 @@ impl Completions {
         );
     }
 
-    /// Open the `Completions` for a given [`Parameter`]'s [`TypeId`]
-    ///
-    /// This completions must've been previously added via
-    /// [`Completions::set_for_parameter`].
-    ///
-    /// Returns [`None`] if none of the `TypeId`s had completions set
-    /// for them.
-    pub fn open_for(pa: &mut Pass, param_type_ids: &[TypeId]) {
-        Completions::close(pa);
-
+    /// Adds the completions for a [`Parameter`], given its
+    /// [`TypeId`].
+    pub fn add_parameter_list(pa: &mut Pass, param_type_id: TypeId) {
         let master = context::current_widget(pa);
         let text = master.text(pa);
 
         let Some(main_byte) = text.get_main_sel().map(|s| s.cursor().byte()) else {
+            Self::close(pa);
             context::error!("Tried spawning completions on a widget with no selections");
             return;
         };
@@ -436,47 +445,75 @@ impl Completions {
             .map(|(pat_id, range)| range.start + (pat_id == 0) as usize)
             .unwrap();
 
-        let completions = PARAM_COMPLETIONS.lock().unwrap();
+        let param_completions = PARAM_COMPLETIONS.lock().unwrap();
 
-        let Some(mut lists) = duat_core::utils::catch_panic(|| {
-            Vec::from_iter(
-                param_type_ids
-                    .iter()
-                    .filter_map(|ty| completions.get(ty))
-                    .map(|(prio, entries_fn)| {
-                        (
-                            *prio,
-                            entries_fn.lock().unwrap()(pa, start_byte),
-                            Ns::basic(),
-                        )
-                    }),
-            )
-        }) else {
+        let Some((ns, prio, entries_fn)) = param_completions.get(&param_type_id) else {
             return;
         };
 
-        if lists.is_empty() {
-            return;
+        let mut new_list = (*prio, entries_fn.lock().unwrap()(pa, start_byte), *ns);
+
+        if let Some(completions) = context::handle_of::<Self>(pa)
+            && let comp = completions.write(pa)
+            && (comp.is_parameter_list && comp.start_byte == start_byte)
+        {
+            comp.remove_ns(*ns);
+
+            let (Ok(list_idx) | Err(list_idx)) = comp
+                .lists
+                .binary_search_by(|(prio, ..)| prio.cmp(&new_list.0).reverse());
+
+            if let Some(matches) = &comp.matches
+                && comp.lists[matches.list_idx].0 <= *prio
+                && let Some(list) = new_list.1.match_indices(master.text(pa), true)
+            {
+                completions.write(pa).matches = Some(Matches { list_idx, list, selected: None });
+            } else if let Some(matches) = &mut completions.write(pa).matches
+                && matches.list_idx >= list_idx
+            {
+                matches.list_idx += 1;
+            }
+
+            let comp = completions.write(pa);
+            comp.lists.insert(list_idx, new_list);
+
+            Self::scroll_and_update(pa, &completions, 0);
+        } else {
+            Self::close(pa);
+
+            let case_insensitive = OPTS.lock().unwrap().case_insensitive;
+            let text = master.text(pa);
+
+            let comp = Self {
+                lists: vec![new_list],
+                text: Text::new(),
+                max_height: 20,
+                cur_min_prefix: 0,
+                min_prefix: 0,
+                case_insensitive,
+                start_byte,
+                orig_typed: text[start_byte..main_byte].to_string(),
+                matches: None,
+                info: None,
+                is_parameter_list: true,
+            };
+
+            master.spawn_on_text(pa, comp, start_byte, *WIDGET_NS, SPAWN_SPECS);
+        };
+    }
+
+    /// Removes the completions for a [`Parameter`], given its
+    /// [`TypeId`].
+    pub fn remove_parameter_list(pa: &mut Pass, param_type_id: TypeId) {
+        let param_completions = PARAM_COMPLETIONS.lock().unwrap();
+
+        if let Some(completions) = context::handle_of::<Self>(pa)
+            && let comp = completions.write(pa)
+            && comp.is_parameter_list
+            && let Some((ns, ..)) = param_completions.get(&param_type_id)
+        {
+            Self::remove_list(pa, *ns);
         }
-
-        lists.sort_by(|(lprio, ..), (rprio, ..)| lprio.cmp(rprio).reverse());
-
-        let opts = OPTS.lock().unwrap();
-
-        let comp = Completions {
-            lists,
-            text: Text::new(),
-            max_height: 20,
-            cur_min_prefix: 0,
-            min_prefix: opts.cmd_min_prefix,
-            case_insensitive: opts.case_insensitive,
-            start_byte,
-            orig_typed: text[start_byte..main_byte].to_string(),
-            matches: None,
-            info: None,
-        };
-
-        master.spawn_on_text(pa, comp, start_byte, *WIDGET_NS, SPAWN_SPECS);
     }
 
     /// Closes the `Completions` list
@@ -492,16 +529,16 @@ impl Completions {
             return None;
         }
 
-        let handle = context::handle_of::<Completions>(pa)?;
+        let handle = context::handle_of::<Self>(pa)?;
 
-        let main_repl = Completions::scroll_and_update(pa, &handle, scroll);
+        let main_repl = Self::scroll_and_update(pa, &handle, scroll);
         handle.write(pa).cur_min_prefix = 0;
         main_repl
     }
 
     /// Wether there is an open `Completions` [`Widget`]
     pub fn is_open(pa: &Pass) -> bool {
-        context::handle_of::<Completions>(pa).is_some()
+        context::handle_of::<Self>(pa).is_some()
     }
 
     /// Wether or not an entry is selected.
@@ -510,7 +547,7 @@ impl Completions {
     /// the user is completing text right now, so you don't
     /// alter the `Completions`.
     pub fn is_selecting(pa: &Pass) -> bool {
-        if let Some(completions) = context::handle_of::<Completions>(pa)
+        if let Some(completions) = context::handle_of::<Self>(pa)
             && let Some(matches) = &completions.read(pa).matches
             && matches.selected.is_some()
         {
@@ -534,7 +571,7 @@ impl Completions {
         ns: Ns,
         func: impl FnOnce(&mut Vec<C>),
     ) -> bool {
-        let Some(completions) = context::handle_of::<Completions>(pa) else {
+        let Some(completions) = context::handle_of::<Self>(pa) else {
             return false;
         };
 
@@ -561,7 +598,7 @@ impl Completions {
                 comp.matches = None;
             }
 
-            Completions::scroll_and_update(pa, &completions, 0);
+            Self::scroll_and_update(pa, &completions, 0);
 
             true
         } else {
@@ -572,7 +609,7 @@ impl Completions {
     /// Wether there is a list of a specific [`CompletionItem`] with a
     /// specific [`Ns`].
     pub fn has_list<C: CompletionItem>(pa: &Pass, ns: Ns) -> bool {
-        let Some(completions) = context::handle_of::<Completions>(pa) else {
+        let Some(completions) = context::handle_of::<Self>(pa) else {
             return false;
         };
 
@@ -622,11 +659,12 @@ impl Completions {
             // the matches should be recalculated.
             let still_valid_matches = text.get(comp.start_byte..main_byte).and_then(|strs| {
                 comp.matches.take().filter(|matches| {
-                    matches
-                        .selected
-                        .as_ref()
-                        .is_some_and(|sel| sel.value == strs)
-                        || (matches.selected.is_none() && comp.orig_typed == strs)
+                    !(comp.is_parameter_list && strs.is_empty())
+                        && (matches
+                            .selected
+                            .as_ref()
+                            .is_some_and(|sel| sel.value == strs)
+                            || (matches.selected.is_none() && comp.orig_typed == strs))
                 })
             });
 
@@ -817,6 +855,7 @@ impl Completions {
                 info: comp.info.take(),
 
                 matches: Some(Matches { selected, ..matches }),
+                is_parameter_list: comp.is_parameter_list,
             };
 
             master.spawn_on_text(pa, new_comp, start_byte, *WIDGET_NS, SPAWN_SPECS);
@@ -882,7 +921,7 @@ impl Completions {
             ..matches
         });
 
-        Completions::set_frame(pa, completions, sidebar);
+        Self::set_frame(pa, completions, sidebar);
 
         Some(original).zip(replacement)
     }
@@ -935,7 +974,6 @@ trait ErasedList: Send {
 
     fn value_for_index(&self, i: usize) -> String;
 
-    #[track_caller]
     fn text_for_index(&mut self, i: usize) -> Text;
 
     fn info_for_index(&self, i: usize) -> Option<(Text, Orientation)>;
@@ -992,7 +1030,7 @@ static OPTS: Mutex<Opts> = Mutex::new(Opts {
     cmd_min_prefix: 0,
 });
 static WIDGET_NS: LazyLock<Ns> = Ns::new_lazy();
-static PARAM_COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (usize, ParamCompletions)>>> =
+static PARAM_COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (Ns, usize, ParamCompletions)>>> =
     LazyLock::new(Mutex::default);
 
 #[derive(Debug)]

@@ -925,9 +925,29 @@ impl<'t> TextMut<'t> {
     /// }
     /// ```
     ///
+    /// # Note
+    ///
+    /// You can use this function to get rid of spawn tags, which
+    /// represent [widgets that were spawned on `Text`]. However,
+    /// since this function doesn't take a [`&mut Pass`], it isn't
+    /// allowed to do this right away.
+    ///
+    /// This means that it will happen later, when duat reaquires the
+    /// `Pass`, so you can't rely on the widget in question being
+    /// deleted.
+    ///
+    /// For that purpose, you should get the widget's [`Handle`]
+    /// (through a function like [`context::handle_of`], and call
+    /// [`handle.close(pa)`].
+    ///
     /// [range]: std::ops::RangeBounds
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`BufferUpdated`]: crate::hook::BufferUpdated
+    /// [widgets that were spawned on `Text`]: crate::context::Handle::spawn_on_text
+    /// [`&mut Pass`]: crate::data::Pass
+    /// [`Handle`]: crate::context::Handle
+    /// [`handle.close(pa)`]: crate::context::Handle::close
+    /// [`context::handle_of`]: crate::context::handle_of
     #[track_caller]
     pub fn remove_tags(&mut self, ns: Ns, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len() + 1);
@@ -944,7 +964,27 @@ impl<'t> TextMut<'t> {
     /// If you don't want that to happen, you can use this function
     /// instead.
     ///
+    /// # Note
+    ///
+    /// You can use this function to get rid of spawn tags, which
+    /// represent [widgets that were spawned on `Text`]. However,
+    /// since this function doesn't take a [`&mut Pass`], it isn't
+    /// allowed to do this right away.
+    ///
+    /// This means that it will happen later, when duat reaquires the
+    /// `Pass`, so you can't rely on the widget in question being
+    /// deleted.
+    ///
+    /// For that purpose, you should get the widget's [`Handle`]
+    /// (through a function like [`context::handle_of`], and call
+    /// [`handle.close(pa)`].
+    ///
     /// [`remove_tags`]: Self::remove_tags
+    /// [widgets that were spawned on `Text`]: crate::context::Handle::spawn_on_text
+    /// [`&mut Pass`]: crate::data::Pass
+    /// [`Handle`]: crate::context::Handle
+    /// [`handle.close(pa)`]: crate::context::Handle::close
+    /// [`context::handle_of`]: crate::context::handle_of
     #[track_caller]
     pub fn remove_tags_excl(&mut self, ns: Ns, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len() + 1);
@@ -958,6 +998,27 @@ impl<'t> TextMut<'t> {
     /// that every [`TagPart`] in here is guaranteed to have the same
     /// [`Ns`] as the one passed to the function, so you don't
     /// need to chack for that.
+    ///
+    /// # Note
+    ///
+    /// You can use this function to get rid of spawn tags, which
+    /// represent [widgets that were spawned on `Text`]. However,
+    /// since this function doesn't take a [`&mut Pass`], it isn't
+    /// allowed to do this right away.
+    ///
+    /// This means that it will happen later, when duat reaquires the
+    /// `Pass`, so you can't rely on the widget in question being
+    /// deleted.
+    ///
+    /// For that purpose, you should get the widget's [`Handle`]
+    /// (through a function like [`context::handle_of`], and call
+    /// [`handle.close(pa)`].
+    ///
+    /// [widgets that were spawned on `Text`]: crate::context::Handle::spawn_on_text
+    /// [`&mut Pass`]: crate::data::Pass
+    /// [`Handle`]: crate::context::Handle
+    /// [`handle.close(pa)`]: crate::context::Handle::close
+    /// [`context::handle_of`]: crate::context::handle_of
     #[track_caller]
     pub fn remove_tags_if(
         &mut self,
@@ -972,10 +1033,30 @@ impl<'t> TextMut<'t> {
     /// Removes all [`Tag`]s.
     ///
     /// Refrain from using this function on [`Buffer`]s, as there may
-    /// be other [`Tag`] providers, and you should avoid messing
-    /// with their tags.
+    /// be other `Tag` providers, and you should avoid messing with
+    /// their tags.
+    ///
+    /// # Note
+    ///
+    /// You can use this function to get rid of spawn tags, which
+    /// represent [widgets that were spawned on `Text`]. However,
+    /// since this function doesn't take a [`&mut Pass`], it isn't
+    /// allowed to do this right away.
+    ///
+    /// This means that it will happen later, when duat reaquires the
+    /// `Pass`, so you can't rely on the widget in question being
+    /// deleted.
+    ///
+    /// For that purpose, you should get the widget's [`Handle`]
+    /// (through a function like [`context::handle_of`], and call
+    /// [`handle.close(pa)`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
+    /// [widgets that were spawned on `Text`]: crate::context::Handle::spawn_on_text
+    /// [`&mut Pass`]: crate::data::Pass
+    /// [`Handle`]: crate::context::Handle
+    /// [`handle.close(pa)`]: crate::context::Handle::close
+    /// [`context::handle_of`]: crate::context::handle_of
     pub fn clear_tags(&mut self) {
         self.text.clear_tags();
     }

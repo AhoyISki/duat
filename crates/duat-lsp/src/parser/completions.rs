@@ -161,6 +161,11 @@ pub fn setup_hooks() {
                             .and(Some(idx))
                             .or_else(|| list.iter().position(|entry| entry.item == old_item));
 
+                        // Changes coming from switching words may impact the edits that are
+                        // received. Since duat applies a change every
+                        // time you switch completions, we should keep the original edits,
+                        // since those will assume only the text that was typed, which is
+                        // something we can reliably return to.
                         let item = CompletionItem {
                             label: old_item.label.clone(),
                             insert_text: old_item.insert_text.clone(),
@@ -194,60 +199,47 @@ pub fn setup_hooks() {
         .flatten()
         .unwrap();
 
-        let replacement = if let Some(edit) = &entry.item.text_edit {
-            let (range, new_text) = match edit {
-                CompletionTextEdit::Edit(edit) => (edit.range, &edit.new_text),
-                CompletionTextEdit::InsertAndReplace(edit) => (edit.replace, &edit.new_text),
-            };
+        let text = buffer.text(pa);
 
-            let text = buffer.text(pa);
-
-            let start = encoding.byte_from_pos(text, range.start);
-            let end = encoding.byte_from_pos(text, range.end);
-
-            if let (Some(start), Some(end)) = (start, end) {
-                Some((Some(start..end), new_text))
-            } else {
-                None
-            }
-        } else {
-            entry.item.insert_text.as_ref().map(|insert| (None, insert))
+        let range = {
+            let start = entry.orig_range.start;
+            let end = entry.orig_range.start + entry.replacement.len();
+            start..end
         };
 
-        if let Some((replace_range, edit)) = replacement {
-            let mut text = buffer.text_mut(pa);
-
-            let range = if let Some(replace_range) = replace_range {
-                let start = entry.orig_range.start;
-                let end = entry.orig_range.start + entry.replacement.len();
-                text.replace_range(start..end, entry.orig_typed);
-                replace_range
+        let edited;
+        let replacement = {
+            let replacement = if let Some(edit) = &entry.item.text_edit {
+                match edit {
+                    CompletionTextEdit::Edit(edit) => &edit.new_text,
+                    CompletionTextEdit::InsertAndReplace(edit) => &edit.new_text,
+                }
+            } else if let Some(insert) = entry.insert_text.as_ref() {
+                insert
             } else {
-                entry.orig_range.clone()
+                &entry.label
             };
 
-            let edited;
-            let edit = if let None | Some(InsertTextMode::ADJUST_INDENTATION) =
-                entry.item.insert_text_mode
+            if let None | Some(InsertTextMode::ADJUST_INDENTATION) = entry.item.insert_text_mode
                 && let indent = text
                     .line(text.point_at_byte(range.start).line())
                     .indent(popts)
                 && indent > 0
             {
                 let indented = format!("\n{}", " ".repeat(indent));
-                edited = edit.replace("\n", &indented);
+                edited = replacement.replace("\n", &indented);
                 &edited
             } else {
-                edit
-            };
-
-            if let Some(InsertTextFormat::SNIPPET) = entry.insert_text_format {
-                buffer.replace_with_snippet(pa, range, edit);
-                buffer.jump_snippets(pa, 0);
-                buffer.edit_all(pa, |mut s| s.replace(""));
-            } else {
-                buffer.text_mut(pa).replace_range(range, edit);
+                replacement
             }
+        };
+
+        if let Some(InsertTextFormat::SNIPPET) = entry.insert_text_format {
+            buffer.replace_with_snippet(pa, range, replacement);
+            buffer.jump_snippets(pa, 0);
+            buffer.edit_all(pa, |mut s| s.replace(""));
+        } else {
+            buffer.text_mut(pa).replace_range(range, replacement);
         }
 
         let mut text = buffer.text_mut(pa);

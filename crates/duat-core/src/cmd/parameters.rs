@@ -991,6 +991,7 @@ mod args {
     /// The list of arguments passed to a command.
     #[derive(Clone)]
     pub struct Args<'a> {
+        command: &'a str,
         iter: Peekable<ArgsIter<'a>>,
         param_range: Range<usize>,
         has_to_start_param: bool,
@@ -1010,6 +1011,8 @@ mod args {
         /// This is used to aid completion, by keeping track of when
         /// we have moved on to parsing a new argument.
         last_parsed: Vec<(usize, TypeId)>,
+        /// Wether a [`None`] variant has matched already.
+        matched_none: bool
     }
 
     impl<'arg> Args<'arg> {
@@ -1018,6 +1021,7 @@ mod args {
         /// This _does not_ skip the calling command.
         pub fn new(command: &'arg str) -> Self {
             Self {
+                command,
                 iter: ArgsIter::new(command).peekable(),
                 param_range: 0..0,
                 has_to_start_param: false,
@@ -1025,6 +1029,7 @@ mod args {
                 arg_n: 0,
                 currently_parsing: Vec::new(),
                 last_parsed: Vec::new(),
+                matched_none: false
             }
         }
 
@@ -1137,6 +1142,18 @@ mod args {
         /// completions list to show.
         pub fn use_completions_for<P: Parameter>(&mut self) {
             self.last_parsed.push((self.arg_n, TypeId::of::<P>()));
+        }
+
+        pub fn matched_none(&mut self) {
+        }
+
+        /// Wether the last character of the command is a whitespace
+        /// char.
+        pub(crate) fn ends_with_space(&self) -> bool {
+            self.command
+                .chars()
+                .last()
+                .is_some_and(|char| char.is_ascii_whitespace() && char != '\n')
         }
     }
 

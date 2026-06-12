@@ -504,9 +504,24 @@ impl RunCommands {
                         }
                     }));
 
-                match &new_completion {
-                    Completion::Caller => Completions::add_list(pa, cmd_docs, 0, 100, Ns::basic()),
-                    Completion::Parameters(params) => Completions::open_for(pa, params),
+                match (completions.as_ref(), &new_completion) {
+                    (_, Completion::Caller) => {
+                        Completions::add_list(pa, cmd_docs, 0, 100, Ns::basic())
+                    }
+                    (Some(Completion::Parameters(old)), Completion::Parameters(new)) => {
+                        for ty in new.iter().filter(|ty| !old.contains(ty)) {
+                            Completions::add_parameter_list(pa, *ty);
+                        }
+
+                        for ty in old.iter().filter(|ty| !new.contains(ty)) {
+                            Completions::remove_parameter_list(pa, *ty);
+                        }
+                    }
+                    (_, Completion::Parameters(params)) => {
+                        for ty in params {
+                            Completions::add_parameter_list(pa, *ty);
+                        }
+                    }
                 }
             }
 

@@ -38,6 +38,8 @@ FOR NEXT UPDATE:
 [x] Expose duatmode keys as functions.
 [x] Improvements to duatmode:
   [x] `m` key like helix's.
+    [ ] Surround keys.
+    [x] i and a.
   [x] composite `(` and `)` (and maybe `f` and `t`?).
 [x] Reimplement the minimum prefix stuff.
 [ ] For now, on Windows, duat can only reload if there is only one instance open.
@@ -53,13 +55,13 @@ QoL TODO LIST:
 [x] The g key should record your current position.
 [x] Highlight background of currently active Buffer.
 [x] Allow going to specific coordinates on Buffers.
-[ ] Fix logs scrolling.
-[ ] Hover should get rid of links.
+[x] Hover should get rid of links.
 
 Bugs with new Completions:
 [x] Same entry causes the first one to be gobbled up.
 [x] Sometimes shows up delayed in PromptLine.
 [x] Replacement is incorrect with Lsp sometimes.
+[x] Immediate replacements with empty paths.
 [ ] Flickering in some situations.
 
 KNOWN BUGS:
