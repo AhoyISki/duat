@@ -571,14 +571,25 @@ impl Opts {
     ///
     /// ```rust
     /// # use duat::prelude::*;
-    /// let mode = mode_txt();
-    /// status!("{mode}{Spacer}{name_txt} {sels_txt} {main_txt}");
+    /// let mode_txt = mode_txt();
+    /// let duat_param_txt = duat_param_txt();
+    /// status!("{mode_txt} {name_txt}{Spacer}{sels_txt} {duat_param_txt} {main_txt}")
     /// ```
     ///
-    /// The `mode` has to be explicitely returned, because
-    /// [`mode_txt`] isn't a `StatusLine` part, but a function
-    /// that returns a [`DataMap<&str, Text>`], which can be used
-    /// as a `StatusLine` part.
+    /// And here's the default if [`Opts::one_line_footer`] is set to
+    /// `true`:
+    ///
+    /// ```rust
+    /// # use duat::prelude::*;
+    /// let mode_txt = mode_txt();
+    /// let duat_param_txt = duat_param_txt();
+    /// status!("{Spacer}{name_txt} {mode_txt} {sels_txt} {duat_param_txt} {main_txt}")
+    /// ```
+    ///
+    /// [`mode_txt`] and [`duat_param_txt`] have to be explicitely
+    /// returned, because they aren't a `StatusLine` part, but
+    /// functions that returns a [`DataMap<&str, Text>`], which
+    /// can be used as a `StatusLine` part.
     ///
     /// The [`Spacer`] here serves to do just that, separate the text
     /// into two parts, each on one part of the screen. You can
@@ -610,6 +621,8 @@ impl Opts {
     /// - [`main_txt`]: `Text` showing main cursor and line count
     ///   info.
     /// - [`sels_txt`]: `Text` showing the number of cursors.
+    /// - [`duat_param_txt`]: `Text` showing the parameter for
+    ///   `duatmode`.
     /// - [`mapped_txt`]: `Text` showing the keys being mapped.
     /// - [`last_key`]: The last typed key.
     ///
@@ -743,6 +756,7 @@ impl Opts {
     /// [`main_col`]: crate::state::main_col
     /// [`main_txt`]: crate::state::main_txt
     /// [`sels_txt`]: crate::state::sels_txt
+    /// [`duat_param_txt`]: crate::state::duat_param_txt
     /// [`mapped_txt`]: crate::state::mapped_txt
     /// [`last_key`]: crate::state::last_key
     /// [`Display`]: std::fmt::Display
