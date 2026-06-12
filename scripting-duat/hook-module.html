@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-95777985.js";
+            window.path_to_searchindex_js = "../searchindex-89596e67.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-261cd8e4.js"></script>
@@ -508,7 +508,7 @@ id duat’s behavior, so adding hooks for them makes a lot of sense:</p>
 use duat::prelude::*;
 
 fn setup(opts: &amp;mut Opts) {
-    form::enable_mask("hidden");
+    form::enable_mask("hidden", true);
     form::set("cursor.main.hidden", Form::default());
     form::set("cursor.extra.hidden", Form::default());
     form::set("selection.main.hidden", Form::default());
