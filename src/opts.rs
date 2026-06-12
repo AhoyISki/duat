@@ -573,7 +573,7 @@ impl Opts {
     /// # use duat::prelude::*;
     /// let mode_txt = mode_txt();
     /// let duat_param_txt = duat_param_txt();
-    /// status!("{mode_txt} {name_txt}{Spacer}{sels_txt} {duat_param_txt} {main_txt}")
+    /// status!("{mode_txt} {name_txt}{Spacer}{sels_txt} {duat_param_txt} {main_txt}");
     /// ```
     ///
     /// And here's the default if [`Opts::one_line_footer`] is set to
@@ -583,7 +583,7 @@ impl Opts {
     /// # use duat::prelude::*;
     /// let mode_txt = mode_txt();
     /// let duat_param_txt = duat_param_txt();
-    /// status!("{Spacer}{name_txt} {mode_txt} {sels_txt} {duat_param_txt} {main_txt}")
+    /// status!("{Spacer}{name_txt} {mode_txt} {sels_txt} {duat_param_txt} {main_txt}");
     /// ```
     ///
     /// [`mode_txt`] and [`duat_param_txt`] have to be explicitely
