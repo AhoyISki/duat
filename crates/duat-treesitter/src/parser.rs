@@ -124,10 +124,12 @@ pub(crate) fn add_parser_hook() {
 /// Publicly, it can be obtained either by
 /// [`Handle::<Buffer>::get_ts_parser`] or by [`parse_as`].
 ///
-/// The main methods you will care about with this struct are [`root_node`].
+/// The main methods you will care about with this struct are
+/// [`root_node`] and // TODO
 ///
 /// [`Handle::<Buffer>::get_ts_parser`]: crate::TsBuffer::get_ts_parser
 /// [`parse_as`]: crate::parse_as
+/// [`root_node`]: Parser::root_node
 pub struct Parser {
     parser: TsParser,
     trees: Trees,

@@ -359,18 +359,18 @@ mod global {
 
     /// Returns the [`FormId`] from the name of a [`Form`].
     ///
-    /// If there is no [`Form`] with the given name, a new one is
+    /// If there is no `Form` with the given name, a new one is
     /// created, which will behave according to the following
     /// priority:
     ///
     /// - If the name contains a `'.'` character, it will reference
-    ///   the [`Form`] whose name is a suffix up to the last `'.'`.
+    ///   the `Form` whose name is a suffix up to the last `'.'`.
     ///   For example, `"Prefix.Middle.Suffix"` will reference
     ///   `"Prefix.Middle"`;
     /// - If the name does not contain a `'.'`, it will not reference
     ///   anything, having the [default `Form`];
     ///
-    /// If a referenced [`Form`] does not exist, it will be added,
+    /// If a referenced `Form` does not exist, it will be added,
     /// following the same rules.
     ///
     /// # Note
@@ -425,7 +425,7 @@ mod global {
 
     /// Non static version of [`id_of!`], for many [`Form`]s.
     ///
-    /// You should only use this if the names of the [`Form`]s in
+    /// You should only use this if the names of the `Form`s in
     /// question are not known at compile time. And if that is the
     /// case, you should try to find a way to memoize around this
     /// issue (usually with something like a [`HashMap`]).
