@@ -317,8 +317,8 @@ impl DuatMode {
         normal::setup_hooks();
         insert::setup_hooks();
 
-        form::enable_mask("Insert");
-        form::enable_mask("Normal");
+        form::enable_mask("Insert", true);
+        form::enable_mask("Normal", true);
     }
 }
 

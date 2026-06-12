@@ -59,7 +59,7 @@ pub fn enable_parser() {
         }
     });
 
-    form::enable_mask("indent");
+    form::enable_mask("indent", false);
 }
 
 fn hightlight_current_line(buf: &mut Buffer, ns: Ns) {

@@ -283,7 +283,7 @@ mod global {
     /// text = txt!("[my_form]This text is red on blue[], [my_form.suffix]undercurled");
     ///
     /// // But if I enable the "suffix" mask that's at the end of the second Form
-    /// form::enable_mask("suffix");
+    /// form::enable_mask("suffix", false);
     ///
     /// // After calling `handle.set_mask("suffix")` on the Handle that owns this
     /// // Text, it will be equivalent to this:
@@ -296,19 +296,30 @@ mod global {
     ///
     /// - When you want to temporarily change the [`Form`]s on a
     ///   single [`Widget`]. This is, for example, used in the
-    ///   [`Notifications`] [`Widget`], which maps [`Form`]s in order
-    ///   to correspond to the [`Level`] of their severity.
-    /// - When you want to have [`Widget`]s change [`Form`] based on
+    ///   [`Notifications`] `Widget`, which maps `Form`s in order to
+    ///   correspond to the [`Level`] of their severity.
+    /// - When you want to have `Widget`s change `Form` based on
     ///   [hooks], so you could have, for example, an `"inactive"`
     ///   mask for your [`Buffer`]s
-    /// - If you want to quickly cycle through [`Form`]s in a
-    ///   [`Text`], this is the most efficient way of doing that,
-    ///   since it relies on static remaps, not on changing the
-    ///   [`Form`]s themselves.
+    /// - If you want to quickly cycle through `Form`s in a [`Text`],
+    ///   this is the most efficient way of doing that, since it
+    ///   relies on static remaps, not on changing the `Form`s
+    ///   themselves.
     ///
-    /// When Duat first starts, the only available masks are
-    /// `"error"`, `"warn"` and `"info"`, but you can use this
-    /// function to add more of them.
+    /// When Duat first starts, the available masks are `"error"`,
+    /// `"warn"`, `"info"`, `"active"`, `"inactive"`, `"diagnostic"`
+    /// `"current_line"`, `"indent"`, `"Insert"` and `"Normal"`, but
+    /// you can use this function to add more of them.
+    ///
+    /// # `apply_full`
+    ///
+    /// When `apply_full` is set to true, a mask applied to the
+    /// full range (`..` or `0..text.len()`) will also be applied to
+    /// the rest of the widget, that is, even after the last line, the
+    /// mask will still apply to the remaining empty lines.
+    ///
+    /// By default, all masks but `"diagnostic"`, `"current_line"` and
+    /// `"indent"` are `apply_full` masks.
     ///
     /// [`form::from_id`]: from_id
     /// [`Widget`]: crate::ui::Widget
@@ -317,10 +328,10 @@ mod global {
     /// [hooks]: crate::hook
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`Text`]: crate::text::Text
-    pub fn enable_mask(mask: impl AsRef<str> + Send + Sync + 'static) {
+    pub fn enable_mask(mask: impl AsRef<str> + Send + Sync + 'static, apply_full: bool) {
         let mask = mask.as_ref();
         let mut inner = PALETTE.0.write().unwrap();
-        if !inner.masks.iter().any(|(m, _)| *m == mask) {
+        if !inner.masks.iter().any(|(m, ..)| *m == mask) {
             let mut remaps: Vec<u16> = (0..inner.forms.len() as u16).collect();
 
             for (i, (name, ..)) in inner.forms.iter().enumerate() {
@@ -332,7 +343,9 @@ mod global {
                 }
             }
 
-            inner.masks.push((mask.to_string().leak(), remaps));
+            inner
+                .masks
+                .push((mask.to_string().leak(), remaps, apply_full));
         }
     }
 
@@ -340,7 +353,7 @@ mod global {
     pub(crate) fn mask_id_for(mask: &'static str) -> Option<MaskId> {
         let inner = PALETTE.0.read().unwrap();
         Some(MaskId(
-            inner.masks.iter().position(|(m, _)| *m == mask)? as u32
+            inner.masks.iter().position(|(m, ..)| *m == mask)? as u32
         ))
     }
 
@@ -939,7 +952,7 @@ impl Palette {
             main_cursor,
             extra_cursor: main_cursor,
             forms: BASE_FORMS.iter().map(|(str, form)| (*str, *form)).collect(),
-            masks: vec![("", (0..BASE_FORMS.len() as u16).collect())],
+            masks: vec![("", (0..BASE_FORMS.len() as u16).collect(), true)],
         }))
     }
 
@@ -1069,7 +1082,7 @@ struct InnerPalette {
     main_cursor: Option<CursorShape>,
     extra_cursor: Option<CursorShape>,
     forms: Vec<(&'static str, Form)>,
-    masks: Vec<(&'static str, Vec<u16>)>,
+    masks: Vec<(&'static str, Vec<u16>, bool)>,
 }
 
 impl InnerPalette {
@@ -1179,13 +1192,13 @@ fn mimic_form_to_referee(referee: &mut Form, form: Form, override_style: Content
 /// If setting a form with an existing mask suffix, mask its prefix
 fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
     if inner.masks[0].1.len() < inner.forms.len() {
-        for (_, remaps) in inner.masks.iter_mut() {
+        for (_, remaps, _) in inner.masks.iter_mut() {
             remaps.extend(remaps.len() as u16..inner.forms.len() as u16);
         }
     }
 
     if let Some((pref, mask)) = name.rsplit_once(".")
-        && let Some((_, remaps)) = inner.masks.iter_mut().find(|(m, _)| *m == mask)
+        && let Some((_, remaps, _)) = inner.masks.iter_mut().find(|(m, ..)| *m == mask)
         && let Some(j) = inner.forms.iter().position(|(name, ..)| *name == pref)
     {
         remaps[j] = form_i as u16;
@@ -1459,7 +1472,7 @@ impl Painter {
     /// This will also remap all currently applied `Form`s, so you
     /// should reprint the style.
     pub fn remove_mask(&mut self, id: MaskId) {
-        if self.full_text_masks.contains(&id) {
+        if self.full_text_masks.contains(&id) && self.inner.masks[id.0 as usize].2 {
             return;
         }
 
@@ -1505,7 +1518,7 @@ fn get_form_for(
     id: FormId,
     applied_masks: &[usize],
     forms: &[(&str, Form)],
-    masks: &[(&'static str, Vec<u16>)],
+    masks: &[(&'static str, Vec<u16>, bool)],
 ) -> Form {
     // SAFETY: When you create a form, it gets indexed, and never becomes
     // unindexed, so this should be fine.
@@ -1514,7 +1527,7 @@ fn get_form_for(
             .iter()
             .rev()
             .find_map(|mask_id| {
-                let (_, mask) = masks.get(*mask_id).unwrap_unchecked();
+                let (_, mask, _) = masks.get(*mask_id).unwrap_unchecked();
                 let idx = mask
                     .get(id.0 as usize)
                     .copied()

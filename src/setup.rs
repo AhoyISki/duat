@@ -56,11 +56,11 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
 
     let ui = duat_core::ui::Ui::new::<duat_term::Ui>();
 
-    form::enable_mask("error");
-    form::enable_mask("warn");
-    form::enable_mask("info");
-    form::enable_mask("inactive");
-    form::enable_mask("current_line");
+    form::enable_mask("error", true);
+    form::enable_mask("warn", true);
+    form::enable_mask("info", true);
+    form::enable_mask("inactive", true);
+    form::enable_mask("current_line", false);
 
     let mut opts = OPTS.lock().unwrap();
     duat_core::utils::catch_panic(|| setup(&mut opts));

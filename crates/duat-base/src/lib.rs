@@ -214,7 +214,7 @@ impl DuatBase {
         form::set_weak("buffer.hint", Form::new().underline_grey().underlined());
         form::set_weak("buffer.warn", Form::new().underline_yellow().underlined());
         form::set_weak("buffer.error", Form::new().underline_red().underlined());
-        form::enable_mask("diagnostic");
+        form::enable_mask("diagnostic", false);
 
         // Setup for WhichKey
         form::set_weak("key", Form::mimic("const"));

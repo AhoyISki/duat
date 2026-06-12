@@ -94,7 +94,7 @@ pub(crate) fn add_buffer_hooks() {
         MouseEventKind::ScrollRight => {}
     });
 
-    crate::form::enable_mask("active");
+    crate::form::enable_mask("active", true);
     let ns = Ns::new();
     let active = Mask("active");
 
