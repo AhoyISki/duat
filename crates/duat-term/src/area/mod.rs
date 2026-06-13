@@ -300,29 +300,29 @@ impl RawArea for Area {
 
         let iter = iter::print_iter(text, TwoPoints::default(), max.x, opts);
 
-        let mut max_x = 0;
-        let mut max_y = 0;
+        let mut max_w = 0;
+        let mut height = 0;
         let mut width = 0;
         let mut on_new_line = false;
 
         for (place, item) in iter {
             if place.wrap {
                 on_new_line = true;
-                if max_y == max.y {
+                if height == max.y {
                     break;
                 }
-                max_x = width.max(max_x);
+                max_w = width.max(max_w);
                 width = 0;
             }
 
             if item.part.is_char() {
                 width += place.len;
-                max_y += on_new_line as u32;
+                height += on_new_line as u32;
                 on_new_line = false;
             }
         }
 
-        Ok(ui::Coord::new(max_x.max(width) as f32, max_y as f32))
+        Ok(ui::Coord::new(max_w.max(width) as f32, height as f32))
     }
 
     fn scroll_ver(&self, _: UiPass, text: &Text, by: f32, opts: PrintOpts) {
