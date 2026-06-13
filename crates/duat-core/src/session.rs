@@ -19,7 +19,7 @@ use crate::{
     data::Pass,
     hook::{
         self, BufferClosed, ConfigLoaded, ConfigUnloaded, FocusedOnDuat, KeyTyped, OnMouseEvent,
-        UnfocusedFromDuat,
+        PrintStep, UnfocusedFromDuat,
     },
     mode::{self, Selection, Selections},
     session::ipc::{InitialState, MsgFromChild},
@@ -179,16 +179,8 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
         let mut windows_nodes = get_windows_nodes(pa);
 
         let correct_window_nodes = |pa: &mut Pass, windows_nodes: &mut Vec<_>| {
-            // Additional Widgets may have been created in the meantime.
-            // DDOS vulnerable I guess.
-            while let Some(new_additions) = context::windows().get_additions(pa) {
+            if context::windows().has_changed(pa) {
                 ui.flush_layout();
-
-                let cur_win = context::current_win_index(pa);
-                for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
-                    node.update(pa);
-                }
-
                 *windows_nodes = get_windows_nodes(pa);
             }
         };
@@ -213,6 +205,8 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
                     node.update(pa);
                 }
             }
+
+            hook::trigger(pa, PrintStep);
 
             correct_window_nodes(pa, &mut windows_nodes);
 
@@ -279,8 +273,8 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
                     continue;
                 }
                 DuatEvent::DuatIdled => _ = hook::trigger(pa, hook::Idled),
-                DuatEvent::FocusedOnDuat => _ = hook::trigger(pa, FocusedOnDuat(())),
-                DuatEvent::UnfocusedFromDuat => _ = hook::trigger(pa, UnfocusedFromDuat(())),
+                DuatEvent::FocusedOnDuat => _ = hook::trigger(pa, FocusedOnDuat),
+                DuatEvent::UnfocusedFromDuat => _ = hook::trigger(pa, UnfocusedFromDuat),
                 DuatEvent::RequestReload(request) => match reload_requested {
                     false => {
                         ipc::send(MsgFromChild::RequestReload(request));

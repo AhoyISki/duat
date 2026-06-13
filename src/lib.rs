@@ -14,8 +14,8 @@
 //!
 //! Rust is also known for long compile times, but for Duat, I've
 //! managed to reduce the vast majority of reloads to under 1 second,
-//! with a large chunk taking less than 700 ms (on my 7 year old budget
-//! gaming laptop).
+//! with a large chunk taking less than 700 ms (on my 7 year old
+//! budget gaming laptop).
 //!
 //! Do keep in mind that this is a work in progress, so there might be
 //! bugs. Any feedback on features, bugs or requests is highly
@@ -104,15 +104,15 @@
 //!
 //! - Maps jk to esc in the `Insert` mode;
 //! - Sets options for the `Buffer`, `LineNumbers` and `StatusLine`
-//! - Adds hooks for mode changes in Duat, which change the shape
-//!   of the cursor;
+//! - Adds hooks for mode changes in Duat, which change the shape of
+//!   the cursor;
 //! - Changes the style of the mode printed on the status line;
 //! - Sets a colorscheme
 //!
 //! These are only some of the options available to configure Duat,
-//! you can also add custom commands, completely change the layout with
-//! your own widgets, create custom modes (like vim, emacs, or helix),
-//! and many other things!
+//! you can also add custom commands, completely change the layout
+//! with your own widgets, create custom modes (like vim, emacs, or
+//! helix), and many other things!
 //!
 //! Duat also comes with many builtin features, like an lsp-server,
 //! tree-sitter support, snippets, a whichkey widget, and
@@ -128,8 +128,8 @@
 //! - A fantastic `Text` system, allowing for easy and flexible
 //!   creation of visual interfaces.
 //! - Custom hooks, whose activation is up to the creator.
-//! - Custom commands, with customizable parameters supported by Rust's
-//!   robust type system.
+//! - Custom commands, with customizable parameters supported by
+//!   Rust's robust type system.
 //! - Multi UI adaptability, although for now, only a terminal UI has
 //!   been made.
 //! - And many others.
@@ -490,17 +490,18 @@ pub mod hook {
     //!
     //!
     //! - [`BufferOpened`] is an alias for [`WidgetOpened<Buffer>`].
-    //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
     //! - [`BufferClosed`] triggers when you close/unload a buffer.
+    //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
     //! - [`BufferUpdated`] triggers whenever a buffer changes.
-    //! - [`BufferSwitched`] triggers when switching the active buffer.
-    //! - [`ConfigLoaded`] triggers after loading the config crate.
-    //! - [`ConfigUnloaded`] triggers after unloading the config crate.
+    //! - [`BufferSwitched`] triggers when switching buffers.
+    //! - [`BufferRenamed`] triggers when a buffer is renamed.
+    //! - [`ConfigLoaded`] triggers after loading the config.
+    //! - [`ConfigUnloaded`] triggers after unloading the config.
     //! - [`FocusedOnDuat`] triggers when Duat gains focus.
     //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
     //! - [`WidgetOpened`] triggers when a [`Widget`] is opened.
-    //! - [`WidgetSwitched`] triggers when switching the active window.
-    //! - [`FocusedUpdated`] triggers when a focused [`Widget`] updates.
+    //! - [`WidgetSwitched`] triggers when switching window.
+    //! - [`FocusedUpdated`] triggers on focused [`Widget`] updates.
     //! - [`WindowOpened`] triggers when a [`Window`] is created.
     //! - [`ModeSwitched`] triggers when you change [`Mode`].
     //! - [`KeySent`] triggers when a keys are sent.
@@ -508,9 +509,15 @@ pub mod hook {
     //! - [`OnMouseEvent`] triggers with mouse events.
     //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
     //! - [`ColorschemeSet`] triggers whenever a [colorscheme is set].
-    //! - [`MsgLogged`] triggers after logginng macros like [`debug!`].
+    //! - [`MsgLogged`] triggers after logging macros like [`debug!`].
+    //! - [`Idled`] triggers after spending some time with no events.
+    //! - [`PrintStep`] is the last to trigger, right before printing.
     //! - [`SearchPerformed`] triggers after a search is performed.
-    //! - [`SearchUpdated`]  triggers after a search updates.
+    //! - [`SearchUpdated`] triggers after a search updates.
+    //! - [`CompletionFocused`] triggers on completions focus.
+    //! - [`CompletionSelected`] triggers on completion selection.
+    //! - [`PickerEntryFocused`] triggers on picker entry focus.
+    //! - [`PickerEntrySelected`] triggers on picker entry selection.
     //!
     //! These are just the built-in ones, you can [create your own] as
     //! well.

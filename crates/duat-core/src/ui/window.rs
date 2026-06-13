@@ -39,11 +39,11 @@ pub struct Windows {
 struct InnerWindows {
     layout: Box<Mutex<dyn Layout>>,
     list: Vec<Window>,
-    new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
     cur_buffer: RwData<Handle<Buffer>>,
     cur_node: RwData<Node>,
     cur_win: usize,
     buffer_history: BufferHistory,
+    has_changed: bool,
 }
 
 impl Windows {
@@ -55,18 +55,17 @@ impl Windows {
         layout: Box<Mutex<dyn Layout>>,
         ui: Ui,
     ) {
-        let new_additions = Arc::new(Mutex::default());
-        let (window, node) = Window::new(0, pa, ui, buffer, new_additions.clone());
+        let (window, node) = Window::new(0, pa, ui, buffer);
 
         context::set_windows(Self {
             inner: RwData::new(InnerWindows {
                 layout,
                 list: vec![window.clone()],
-                new_additions,
                 cur_buffer: RwData::new(node.try_downcast().unwrap()),
                 cur_node: RwData::new(node.clone()),
                 cur_win: 0,
                 buffer_history: BufferHistory::default(),
+                has_changed: false,
             }),
             spawns_to_remove: Mutex::new(Vec::new()),
             ui,
@@ -82,8 +81,7 @@ impl Windows {
     /// initialiazed.
     pub(crate) fn new_window(&self, pa: &mut Pass, buffer: Buffer) -> Node {
         let win = self.inner.read(pa).list.len();
-        let new_additions = self.inner.read(pa).new_additions.clone();
-        let (window, node) = Window::new(win, pa, self.ui, buffer, new_additions);
+        let (window, node) = Window::new(win, pa, self.ui, buffer);
 
         let inner = self.inner.write(pa);
         inner.list.push(window);
@@ -165,7 +163,9 @@ impl Windows {
 
         let window = self.inner.write(pa).list.remove(win);
         window.add(pa, node.clone(), None, Location::Spawned(id));
-        self.inner.write(pa).list.insert(win, window);
+        let inner = self.inner.write(pa);
+        inner.list.insert(win, window);
+        inner.has_changed;
 
         hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
 
@@ -389,7 +389,7 @@ impl Windows {
 
         let inner = self.inner.write(pa);
         inner.list = list;
-        inner.new_additions.lock().unwrap().get_or_insert_default();
+        inner.has_changed = true;
 
         // If this is the active Handle, pick another one to make active.
         let inner = self.inner.read(pa);
@@ -450,9 +450,9 @@ impl Windows {
         let rhs_nodes = windows[rhs_win].take_with_related_nodes(pa, rhs);
         windows[lhs_win].insert_nodes(pa, rhs_nodes);
 
-        let wins = self.inner.write(pa);
-        wins.list = windows;
-        wins.new_additions.lock().unwrap().get_or_insert_default();
+        let inner = self.inner.write(pa);
+        inner.list = windows;
+        inner.has_changed = true;
 
         lhs.area().swap(pa, rhs.area());
 
@@ -500,13 +500,7 @@ impl Windows {
                 let path = buffer.read(pa).path_set();
                 let new_root = self.ui.new_root(path.as_ref().map(|p| p.as_ref()));
                 buffer.area().swap(pa, &new_root);
-                let window = Window::new_from_raw(
-                    pa,
-                    win,
-                    buffer.area.clone(),
-                    nodes,
-                    self.inner.read(pa).new_additions.clone(),
-                );
+                let window = Window::new_from_raw(pa, win, buffer.area.clone(), nodes);
 
                 self.inner.write(pa).list.push(window.clone());
 
@@ -523,12 +517,7 @@ impl Windows {
 
                 hook::trigger(pa, WindowOpened(window));
 
-                self.inner
-                    .write(pa)
-                    .new_additions
-                    .lock()
-                    .unwrap()
-                    .get_or_insert_default();
+                self.inner.write(pa).has_changed = true;
 
                 Node::from_handle(buffer)
             }
@@ -893,8 +882,8 @@ impl Windows {
     }
 
     /// Gets the new additions to the [`Windows`].
-    pub(crate) fn get_additions(&self, pa: &mut Pass) -> Option<Vec<(usize, Node)>> {
-        self.inner.write(pa).new_additions.lock().unwrap().take()
+    pub(crate) fn has_changed(&self, pa: &mut Pass) -> bool {
+        std::mem::take(&mut self.inner.write(pa).has_changed)
     }
 }
 
@@ -911,18 +900,11 @@ struct InnerWindow {
     spawned: Vec<(SpawnId, Node)>,
     buffers_area: RwArea,
     master_area: RwArea,
-    new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
 }
 
 impl Window {
     /// Returns a new instance of [`Window`].
-    fn new<W: Widget>(
-        index: usize,
-        pa: &mut Pass,
-        ui: Ui,
-        widget: W,
-        new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
-    ) -> (Self, Node) {
+    fn new<W: Widget>(index: usize, pa: &mut Pass, ui: Ui, widget: W) -> (Self, Node) {
         let widget = RwData::new(widget);
         let path = if let Some(buffer) = widget.write_as::<Buffer>(pa) {
             buffer.layout_order = get_layout_order();
@@ -940,19 +922,12 @@ impl Window {
             None,
         );
 
-        new_additions
-            .lock()
-            .unwrap()
-            .get_or_insert_default()
-            .push((index, node.clone()));
-
         let window = Self(RwData::new(InnerWindow {
             index,
             nodes: vec![node.clone()],
             spawned: Vec::new(),
             buffers_area: area.clone(),
             master_area: area.clone(),
-            new_additions,
         }));
 
         (window, node)
@@ -964,7 +939,6 @@ impl Window {
         index: usize,
         master_area: RwArea,
         nodes: Vec<Node>,
-        new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
     ) -> Self {
         let master_area = master_area
             .get_cluster_master(pa)
@@ -976,7 +950,6 @@ impl Window {
             spawned: Vec::new(),
             buffers_area: master_area.clone(),
             master_area,
-            new_additions,
         }))
     }
 
@@ -1122,14 +1095,6 @@ impl Window {
         {
             self.0.write(pa).master_area = parent.clone()
         }
-
-        let inner = self.0.write(pa);
-        inner
-            .new_additions
-            .lock()
-            .unwrap()
-            .get_or_insert_default()
-            .push((inner.index, node.clone()));
     }
 
     /// Closes the [`Handle`] and all related ones.

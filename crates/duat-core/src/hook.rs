@@ -53,6 +53,7 @@
 //! - [`ColorschemeSet`] triggers whenever a [colorscheme is set].
 //! - [`MsgLogged`] triggers after logginng macros like [`debug!`].
 //! - [`Idled`] triggers after Duat spends some time with no events.
+//! - [`PrintStep`] is the last to trigger, right before printing.
 //!
 //! # Basic makeout
 //!
@@ -877,7 +878,8 @@ impl Hookable for ConfigUnloaded {
 /// # Arguments
 ///
 /// There are no arguments
-pub struct FocusedOnDuat(pub(crate) ());
+#[non_exhaustive]
+pub struct FocusedOnDuat;
 
 impl Hookable for FocusedOnDuat {
     type Input<'h> = ();
@@ -890,7 +892,8 @@ impl Hookable for FocusedOnDuat {
 /// # Arguments
 ///
 /// There are no arguments
-pub struct UnfocusedFromDuat(pub(crate) ());
+#[non_exhaustive]
+pub struct UnfocusedFromDuat;
 
 impl Hookable for UnfocusedFromDuat {
     type Input<'h> = ();
@@ -1161,6 +1164,34 @@ impl Hookable for MsgLogged {
 pub struct Idled;
 
 impl Hookable for Idled {
+    type Input<'h> = ();
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
+}
+
+/// [`Hookable`]: Triggers right before beginning printing.
+///
+/// This is the absolute last hook to trigger before printing the
+/// screen. It will trigger after all [`KeyTyped`]s,
+/// [`BufferUpdated`]s and [`FocusedUpdated`]s. It triggers once every
+/// time Duat prints.
+///
+/// Do note that any changes you make to [`Buffer`]s or the focused
+/// widget will then _not_ trigger further updates, which may lead to
+/// incorrect update results.
+///
+/// You will want to use this hook specifically in order to do things
+/// that need to act on "everything", and only once. An example are
+/// gutter entries, which need to be checked all at once in order to
+/// accurately show up on the `Info` widget.
+///
+/// # Arguments
+///
+/// None
+#[non_exhaustive]
+pub struct PrintStep;
+
+impl Hookable for PrintStep {
     type Input<'h> = ();
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
