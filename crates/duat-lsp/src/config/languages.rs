@@ -152,8 +152,8 @@ static CONFIGS: LazyLock<Mutex<HashMap<&str, (LspList, bool)>>> = LazyLock::new(
         root_globs = ["hie.yaml", "cabal.project", "Setup.hs", "stack.yaml", "*.cabal"]
         command = "haskell-language-server-wrapper"
         args = ["--lsp"]
-        settings_section = "_"
-        [haskell-language-server.settings."_"]
+        [haskell-language-server.settings]
+        plugins.semanticTokens.globalOn = true
         // See https://haskell-language-server.readthedocs.io/en/latest/configuration.html
         // haskell.formattingProvider = "ormolu"
         // There now exists also static-ls, which uses less memory, is faster and suited
@@ -163,6 +163,7 @@ static CONFIGS: LazyLock<Mutex<HashMap<&str, (LspList, bool)>>> = LazyLock::new(
         // and https://github.com/josephsumabat/static-ls/blob/main/docs/advanced-setup.md
         // [static-ls]
         // root_globs = ["*.cabal", "stack.yaml", "cabal.project", "package.yaml", "hie.yaml", "Setup.hs"]
+        
         // command = "static-ls"
     });
 
@@ -520,7 +521,7 @@ static CONFIGS: LazyLock<Mutex<HashMap<&str, (LspList, bool)>>> = LazyLock::new(
     entry!(["scala"], {
         [metals]
         root_globs = ["build.sbt", ".scala-build"]
-        args = ["-Dmetals.extensions=false"]
+        args = ["-Dmetals.http=on"]
         settings_section = "metals"
         [metals.settings.metals]
         icons = "none"

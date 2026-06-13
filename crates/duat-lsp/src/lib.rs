@@ -5,9 +5,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use duat_base::{modes::Prompt, widgets::FilePlace};
+use duat_base::{BaseBuffer, modes::Prompt, widgets::FilePlace};
 use duat_core::{
-    buffer::Buffer, context,
+    buffer::Buffer,
+    context,
     data::Pass,
     form::{self, Form},
     mode::{self, KeyEvent, Mode, User, event},
@@ -161,6 +162,7 @@ impl Mode for Lsp {
                         }
                     },
                 );
+                buffer.hover_gutter_entries_on(pa, buffer.selections(pa).main().cursor());
             }
             event!('d')
                 if let Some((server, encoding, ..)) = get!(
@@ -724,4 +726,3 @@ fn apply_edit(text: &mut TextMut, edit: TextEdit, encoding: Encoding) {
         text.replace_range(start..end, edit.new_text);
     }
 }
-

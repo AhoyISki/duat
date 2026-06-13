@@ -13,8 +13,8 @@ use jsonrpc_lite::Id;
 use lsp_types::{
     DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions, FileChangeType,
     FileEvent, GlobPattern, OneOf, PartialResultParams, SemanticTokensDeltaParams,
-    SemanticTokensParams, SemanticTokensResult, TextDocumentIdentifier, WatchKind,
-    WorkDoneProgressParams,
+    SemanticTokensParams, SemanticTokensRegistrationOptions, SemanticTokensResult,
+    SemanticTokensServerCapabilities, TextDocumentIdentifier, WatchKind, WorkDoneProgressParams,
     notification::{DidChangeWatchedFiles, Notification, PublishDiagnostics},
     request::{
         RegisterCapability, Request, SemanticTokensFullDeltaRequest, SemanticTokensFullRequest,
@@ -187,8 +187,19 @@ impl ServerBridge {
         buffer: &Handle<Buffer>,
         version: u64,
         parser: &Parser,
+        options: SemanticTokensServerCapabilities,
     ) {
         use lsp_types::SemanticTokensServerCapabilities::*;
+
+        if let SemanticTokensOptions(opts)
+        | SemanticTokensRegistrationOptions(lsp_types::SemanticTokensRegistrationOptions {
+            semantic_tokens_options: opts,
+            ..
+        }) = &options
+            && opts.full.is_none()
+        {
+            return;
+        }
 
         let server_ns = self.ns();
         if !parser
@@ -202,7 +213,7 @@ impl ServerBridge {
         let work_done_progress_params = WorkDoneProgressParams { work_done_token: None };
         let partial_result_params = PartialResultParams { partial_result_token: None };
         let text_document = TextDocumentIdentifier { uri: parser.uri().clone() };
-        let handle = buffer.clone();
+        let buffer = buffer.clone();
 
         if let Some(result_id) = parser.tokens.result_id(self.ns()) {
             let id = Id::Str(format!("{version}{}", **parser.uri()));
@@ -219,7 +230,7 @@ impl ServerBridge {
                         return;
                     };
 
-                    let (parser, buffer) = Parser::write_for(pa, &handle).unwrap();
+                    let (parser, buffer) = Parser::write_for(pa, &buffer).unwrap();
                     if let Some(server) = parser
                         .servers
                         .iter()
@@ -268,7 +279,7 @@ impl ServerBridge {
                         return;
                     };
 
-                    let (parser, buffer) = Parser::write_for(pa, &handle).unwrap();
+                    let (parser, buffer) = Parser::write_for(pa, &buffer).unwrap();
                     if let Some(server) = parser
                         .servers
                         .iter()
