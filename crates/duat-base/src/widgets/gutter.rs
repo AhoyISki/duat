@@ -64,7 +64,14 @@ pub fn gutter_setup() {
     })
     .lateness(usize::MAX);
 
-    hook::add::<KeyTyped>(|_, _| CURRENT.lock().unwrap().mouse_coord = None);
+    hook::add::<KeyTyped>(|_, _| {
+        let mut current = CURRENT.lock().unwrap();
+        current.mouse_coord = None;
+        if current.can_remove_point {
+            current.hovered_point = None;
+            current.can_remove_point = false;
+        }
+    });
 }
 
 fn update(pa: &mut Pass, buffer: &Handle<Buffer>) {
@@ -109,8 +116,10 @@ fn update(pa: &mut Pass, buffer: &Handle<Buffer>) {
     };
 
     let mut current = CURRENT.lock().unwrap();
+    if current.hovered_point.is_some() {
+        current.can_remove_point = true;
+    }
 
-    let hovered_point = current.hovered_point.take();
     let (updated, active_entries) = if let Some(point) = current
         .mouse_coord
         .filter(|coord| *coord >= area.top_left() && *coord < area.bottom_right())
@@ -121,7 +130,9 @@ fn update(pa: &mut Pass, buffer: &Handle<Buffer>) {
                     .real,
             )
         })
-        .or(hovered_point
+        .or(current
+            .hovered_point
+            .clone()
             .filter(|(handle, point)| handle == buffer && *point <= buf.text().end_point())
             .map(|(_, point)| point))
     {
@@ -499,7 +510,6 @@ fn insert_gutter_entries<'g>(
     };
 
     let popts = buf.print_opts();
-    let mut start_of_next = buf.text().len();
 
     let entries = Vec::from_iter(
         std::iter::from_fn(|| {
@@ -966,6 +976,7 @@ static CURRENT: Mutex<Current> = Mutex::new(Current {
     related: Vec::new(),
     mouse_coord: None,
     hovered_point: None,
+    can_remove_point: false,
 });
 
 #[derive(Debug, Clone, Copy)]
@@ -998,4 +1009,5 @@ struct Current {
     related: Vec<GutterEntryId>,
     mouse_coord: Option<Coord>,
     hovered_point: Option<(Handle<Buffer>, Point)>,
+    can_remove_point: bool,
 }

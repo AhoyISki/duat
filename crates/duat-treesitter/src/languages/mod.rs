@@ -15,6 +15,7 @@ use duat_core::{
 use indoc::formatdoc;
 use libloading::Library;
 use tree_sitter::Language;
+use tree_sitter_language::LanguageFn;
 
 use self::list::LANGUAGE_OPTIONS;
 use crate::TsLanguageCompiled;
@@ -30,7 +31,11 @@ mod list;
 // or something went wrong `Some(None)` means it exists, but hasn't
 // been compiled, and `Some(Some())` means it exists and has been
 // compiled.
-pub fn get_language(filetype: &str, handle: Option<&Handle<Buffer>>, is_manual: bool) -> Option<Language> {
+pub fn get_language(
+    filetype: &str,
+    handle: Option<&Handle<Buffer>>,
+    is_manual: bool,
+) -> Option<Language> {
     static LIBRARIES: Mutex<Vec<Library>> = Mutex::new(Vec::new());
 
     if FAILED_COPILATION.lock().unwrap().contains(filetype) {
@@ -60,15 +65,33 @@ pub fn get_language(filetype: &str, handle: Option<&Handle<Buffer>>, is_manual: 
     if let Ok(lib) = unsafe { Library::new(&language_path) } {
         let language = unsafe {
             let (symbol, _) = options.symbols[0];
-            let lang_fn = match lib.get::<fn() -> Language>(symbol.to_lowercase().as_bytes()) {
-                Ok(lang_fn) => lang_fn,
-                Err(err) => {
-                    context::error!("{err}");
-                    return None;
-                }
-            };
+            match lang.as_str() {
+                "haskell" => {
+                    let symbol =
+                        lib.get::<unsafe extern "C" fn() -> *const ()>("tree_sitter_haskell");
+                    let lang_fn = match symbol {
+                        Ok(lang_fn) => LanguageFn::from_raw(*lang_fn),
+                        Err(err) => {
+                            context::error!("{err}");
+                            return None;
+                        }
+                    };
 
-            lang_fn()
+                    lang_fn.into()
+                }
+                _ => {
+                    let symbol = lib.get::<fn() -> Language>(symbol.to_lowercase().as_bytes());
+                    let lang_fn = match symbol {
+                        Ok(lang_fn) => lang_fn,
+                        Err(err) => {
+                            context::error!("{err}");
+                            return None;
+                        }
+                    };
+
+                    lang_fn()
+                }
+            }
         };
 
         LIBRARIES.lock().unwrap().push(lib);

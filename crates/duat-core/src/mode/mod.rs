@@ -109,9 +109,9 @@ impl Mode for User {
 
 static KEYS_WERE_SENT: AtomicUsize = AtomicUsize::new(0);
 
-/// Wether any keys were sent via [`mode::send_keys`]
+/// Wether any keys were sent via [`mode::type_keys`]
 ///
-/// [`mode::send_keys`]: send_keys
+/// [`mode::type_keys`]: type_keys
 pub(crate) fn keys_were_sent(_: &mut Pass) -> bool {
     if KEYS_WERE_SENT.load(Ordering::Relaxed) > 0 {
         KEYS_WERE_SENT.fetch_sub(1, Ordering::Relaxed);
