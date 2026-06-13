@@ -13,7 +13,7 @@ use duat_core::{
     context::Handle,
     data::Pass,
     form,
-    hook::{self, BufferOpened, BufferUpdated},
+    hook::{self, BufferOpened},
 };
 
 static SNIPPETS: PerBuffer<Snippets> = PerBuffer::new();
@@ -27,15 +27,9 @@ pub(crate) fn add_snippet_hook() {
             cur_jump: 0,
         });
     });
-
-    hook::add::<BufferUpdated>(|pa, buffer| {
-        if let Some((snippets, buf)) = SNIPPETS.write(pa, buffer) {
-            snippets.apply_changes(buf.moment_for(*NS));
-        }
-    })
-    .lateness(usize::MAX);
 }
 
+#[derive(Debug)]
 struct Snippets {
     list: Vec<Vec<Vec<Range<usize>>>>,
     cur_snippet: usize,
@@ -60,13 +54,17 @@ impl Snippets {
                     let taken_range =
                         change.taken_range().start.byte()..change.taken_range().end.byte();
 
-                    while let Some(range) = ranges.next_if(|r| taken_range.start >= r.end) {
+                    while let Some(range) =
+                        ranges.next_if(|r| taken_range.start >= r.end.saturating_add_signed(shift))
+                    {
                         range.start = range.start.saturating_add_signed(shift);
                         range.end = range.end.saturating_add_signed(shift);
                     }
 
                     if let Some(range) = ranges.peek()
-                        && (taken_range.contains(&range.start) || taken_range.contains(&range.end))
+                        && let start = range.start.saturating_add_signed(shift)
+                        && let end = range.end.saturating_add_signed(shift)
+                        && (taken_range.contains(&start) || taken_range.contains(&end))
                     {
                         if self.cur_snippet == snippet_idx && self.cur_jump >= jump_idx {
                             self.cur_jump = self.cur_jump.saturating_sub(1);
@@ -268,9 +266,12 @@ pub(crate) fn replace_with_snippet(
 ///
 /// Returns `true` if anything happened.
 pub(crate) fn jump_snippets(buffer: &Handle<Buffer>, pa: &mut Pass, mut by: i32) -> bool {
-    if let Some((snippets, _)) = SNIPPETS.write(pa, buffer)
-        && !snippets.list.is_empty()
-    {
+    if let Some((snippets, buf)) = SNIPPETS.write(pa, buffer) {
+        snippets.apply_changes(buf.moment_for(*NS));
+        if snippets.list.is_empty() {
+            return false;
+        }
+
         snippets.cur_snippet = snippets.cur_snippet.min(snippets.list.len() - 1);
 
         snippets.cur_jump = snippets

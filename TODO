@@ -38,7 +38,7 @@ FOR NEXT UPDATE:
 [x] Expose duatmode keys as functions.
 [x] Improvements to duatmode:
   [x] `m` key like helix's.
-    [ ] Surround keys.
+    [x] Surround keys.
     [x] i and a.
   [x] composite `(` and `)` (and maybe `f` and `t`?).
 [x] Reimplement the minimum prefix stuff.
@@ -68,6 +68,7 @@ KNOWN BUGS:
  HIGH PRIORITY:
   [ ] Indentation is inefficient because tree-sitter query results aren't cached.
   [ ] Stop eagerly merging Selections.
+  [x] Snippets are not working properly sometimes.
  LOW PRIORITY:
   [ ] Selections struct that holds a reference to the StrsBuf.
     [ ] Also make the Bytes-less version inaccessible.
