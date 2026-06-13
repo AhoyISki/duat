@@ -161,25 +161,10 @@ pub fn setup_hooks() {
                             .and(Some(idx))
                             .or_else(|| list.iter().position(|entry| entry.item == old_item));
 
-                        // Changes coming from switching words may impact the edits that are
-                        // received. Since duat applies a change every
-                        // time you switch completions, we should keep the original edits,
-                        // since those will assume only the text that was typed, which is
-                        // something we can reliably return to.
-                        let item = CompletionItem {
-                            label: old_item.label.clone(),
-                            insert_text: old_item.insert_text.clone(),
-                            insert_text_format: old_item.insert_text_format,
-                            insert_text_mode: old_item.insert_text_mode,
-                            text_edit: old_item.text_edit.clone(),
-                            additional_text_edits: old_item.additional_text_edits.clone(),
-                            ..new_item
-                        };
-
                         if let Some(idx) = idx {
                             list[idx] = Entry {
                                 server_ns,
-                                item: Arc::new(item),
+                                item: Arc::new(new_item),
                                 encoding: list[idx].encoding,
                             };
                         }
