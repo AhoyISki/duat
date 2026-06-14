@@ -365,7 +365,7 @@ impl BaseBuffer for Handle<Buffer> {
 
     #[track_caller]
     fn add_hint(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId {
-        widgets::add_hint(self, pa, ns, range, msg)
+        widgets::add_gutter_entry(self, pa, ns, range, msg, GutterEntryLevel::Hint)
     }
 
     #[track_caller]
@@ -376,12 +376,12 @@ impl BaseBuffer for Handle<Buffer> {
         range: impl TextRange,
         msg: Text,
     ) -> GutterEntryId {
-        widgets::add_warning(self, pa, ns, range, msg)
+        widgets::add_gutter_entry(self, pa, ns, range, msg, GutterEntryLevel::Warning)
     }
 
     #[track_caller]
     fn add_error(&self, pa: &mut Pass, ns: Ns, range: impl TextRange, msg: Text) -> GutterEntryId {
-        widgets::add_error(self, pa, ns, range, msg)
+        widgets::add_gutter_entry(self, pa, ns, range, msg, GutterEntryLevel::Error)
     }
 
     fn has_gutter(&self, pa: &Pass) -> bool {
@@ -402,6 +402,12 @@ impl BaseBuffer for Handle<Buffer> {
     fn jump_snippets(&self, pa: &mut Pass, by: i32) -> bool {
         snippets::jump_snippets(self, pa, by)
     }
+}
+
+enum GutterEntryLevel {
+    Hint,
+    Warning,
+    Error,
 }
 
 pub mod hooks {

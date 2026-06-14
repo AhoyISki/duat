@@ -31,7 +31,9 @@ use crate::{
     Ns,
     context::{self, Handle, cache},
     data::{Pass, RwData, WriteableTuple},
-    hook::{self, BufferRenamed, BufferSaved, BufferUpdated, FocusedUpdated, OnMouseEvent},
+    hook::{
+        self, BufferOpened, BufferRenamed, BufferSaved, BufferUpdated, FocusedUpdated, OnMouseEvent,
+    },
     mode::{Selections, TwoPointsPlace},
     opts::PrintOpts,
     text::{Mask, Point, Strs, StrsBuf, Text, TextMut, TextParts, TextVersion, txt},
@@ -114,6 +116,9 @@ pub(crate) fn add_buffer_hooks() {
         }
     })
     .absolute_latest();
+
+    hook::add::<BufferOpened>(|pa, buffer| _ = hook::trigger(pa, BufferUpdated(buffer.clone())))
+        .absolute_latest();
 }
 
 /// The widget that is used to print and edit buffers.

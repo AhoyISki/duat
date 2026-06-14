@@ -89,6 +89,8 @@ impl Windows {
         hook::trigger(pa, WindowOpened(self.inner.read(pa).list[win].clone()));
         hook::trigger(pa, WidgetOpened(node.handle().get_as::<Buffer>().unwrap()));
 
+        self.inner.write(pa).has_changed = true;
+
         node
     }
 
@@ -165,7 +167,7 @@ impl Windows {
         window.add(pa, node.clone(), None, Location::Spawned(id));
         let inner = self.inner.write(pa);
         inner.list.insert(win, window);
-        inner.has_changed;
+        inner.has_changed = true;
 
         hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
 
@@ -208,7 +210,9 @@ impl Windows {
 
         let window = self.inner.write(pa).list.remove(win);
         window.add(pa, node.clone(), None, Location::Spawned(id));
-        self.inner.write(pa).list.insert(win, window);
+        let inner = self.inner.write(pa);
+        inner.list.insert(win, window);
+        inner.has_changed = true;
 
         hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
 
@@ -241,7 +245,9 @@ impl Windows {
 
         let window = self.inner.write(pa).list.remove(win);
         window.add(pa, node.clone(), None, Location::Spawned(id));
-        self.inner.write(pa).list.insert(win, window);
+        let inner = self.inner.write(pa);
+        inner.list.insert(win, window);
+        inner.has_changed = true;
 
         hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
 
@@ -1291,6 +1297,13 @@ impl Window {
     /// The height of the `Window`.
     pub fn height(&self) -> f32 {
         crate::context::windows().ui.size().y
+    }
+}
+
+impl std::cmp::Eq for Window {}
+impl std::cmp::PartialEq for Window {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.ptr_eq(&other.0)
     }
 }
 

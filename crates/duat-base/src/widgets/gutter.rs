@@ -10,24 +10,28 @@
 //! [`Buffer`]: duat_core::buffer::Buffer
 use std::{
     cell::LazyCell,
+    collections::HashMap,
     iter::Peekable,
     ops::Range,
+    path::PathBuf,
     sync::{LazyLock, Mutex},
 };
 
 use duat_core::{
     Ns, NsStack,
-    buffer::Buffer,
+    buffer::{Buffer, BufferId},
     context::{self, Handle},
     data::{Pass, RwData},
     form::{self, FormId},
-    hook::{self, BufferOpened, BufferUpdated, KeyTyped, OnMouseEvent},
+    hook::{self, BufferClosed, BufferOpened, BufferUpdated, KeyTyped, OnMouseEvent},
     opts::PrintOpts,
     storage::bincode,
     text::{Builder, Inlay, Mask, Overlay, Point, Text, TextMut, TextRange, TwoPoints},
     txt,
     ui::{Area, Coord, Corner, PushSpecs, Side, Widget},
 };
+
+use crate::GutterEntryLevel;
 
 /// A struct to hold diagnostic hints about a [`Buffer`].
 ///
@@ -38,14 +42,40 @@ use duat_core::{
 /// [`Buffer`]: duat_core::buffer::Buffer
 pub struct Gutter {
     text: Text,
-    entries: Vec<GutterEntry>,
     opts: GutterOpts,
 }
 
 /// Initial setup for the [`Gutter`].
 pub fn gutter_setup() {
-    hook::add::<BufferOpened>(move |pa, buffer| _ = buffer.read(pa).moment_for(*MOMENT_NS));
-    hook::add::<BufferUpdated>(update).lateness(100_000_000);
+    hook::add::<BufferOpened>(|pa, buffer| {
+        let buf = buffer.read(pa);
+        buf.moment_for(*MOMENT_NS);
+
+        let mut state = STATE.lock().unwrap_or_else(|err| err.into_inner());
+        if let Some(path) = buf.path_set()
+            && let Some(entries) = state.entries.remove(&Id::Path(path))
+        {
+            state.entries.insert(Id::BufferId(buf.buffer_id()), entries);
+        }
+    });
+
+    hook::add::<BufferClosed>(|pa, (buffer, is_closing)| {
+        if is_closing {
+            return;
+        }
+
+        let buf = buffer.read(pa);
+        let mut state = STATE.lock().unwrap_or_else(|err| err.into_inner());
+
+        if let Some(entries) = state.entries.remove(&Id::BufferId(buf.buffer_id()))
+            && let Some(path) = buf.path_set()
+        {
+            state.entries.insert(Id::Path(path), entries);
+        }
+    })
+    .lateness(usize::MAX);
+
+    hook::add::<BufferUpdated>(update_displays).lateness(100_000_000);
 
     hook::add::<BufferUpdated>(|pa, buffer| {
         let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
@@ -57,40 +87,66 @@ pub fn gutter_setup() {
     .lateness(usize::MAX);
 
     hook::add::<OnMouseEvent<Buffer>>(move |_, event| {
-        let mut current = CURRENT.lock().unwrap();
-        current.hovered_point = None;
-        current.mouse_coord = Some(event.coord);
-        current.related.clear();
+        let mut state = STATE.lock().unwrap_or_else(|err| err.into_inner());
+        state.hovered_point = None;
+        state.mouse_coord = Some(event.coord);
+        state.related.clear();
     })
     .lateness(usize::MAX);
 
     hook::add::<KeyTyped>(|_, _| {
-        let mut current = CURRENT.lock().unwrap();
-        current.mouse_coord = None;
-        if current.can_remove_point {
-            current.hovered_point = None;
-            current.can_remove_point = false;
+        let mut state = STATE.lock().unwrap_or_else(|err| err.into_inner());
+        state.mouse_coord = None;
+        if state.can_remove_point {
+            state.hovered_point = None;
+            state.can_remove_point = false;
         }
     });
 }
 
-fn update(pa: &mut Pass, buffer: &Handle<Buffer>) {
+fn update_displays(pa: &mut Pass, buffer: &Handle<Buffer>) {
+    let mut spawned_ids = update_buffer(pa, buffer, Vec::new(), false);
+
+    let buffer = buffer.clone();
+    let win = buffer.window(pa).unwrap();
+    context::queue(move |pa| {
+        for other in context::buffers(pa) {
+            if other != buffer {
+                let only_get_spawns = other.window(pa).as_ref() != Some(&win);
+                spawned_ids = update_buffer(pa, &other, spawned_ids, only_get_spawns);
+            }
+        }
+    });
+}
+
+fn update_buffer(
+    pa: &mut Pass,
+    buffer: &Handle<Buffer>,
+    mut spawned_ids: Vec<GutterEntryId>,
+    only_get_spawns: bool,
+) -> Vec<GutterEntryId> {
     let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
-        return;
+        return spawned_ids;
     };
 
     let (gtr, buf) = pa.write_many((&gutter, buffer));
-    if gtr.entries.is_empty() {
-        return;
+    let mut state = STATE.lock().unwrap_or_else(|err| err.into_inner());
+    let state = &mut *state;
+    let Some(entries) = state.entries.get_mut(&Id::BufferId(buf.buffer_id())) else {
+        return spawned_ids;
+    };
+
+    if state.hovered_point.is_some() {
+        state.can_remove_point = true;
     }
 
-    gtr.apply_changes(buf);
+    gtr.apply_changes(buf, entries);
 
     let (gtr, buf, area) = pa.write_many((&gutter, buffer, buffer.area()));
     let popts = buf.print_opts();
 
     let get_entry_lists = |point: Point, on_whole_line: bool| {
-        let direct = Vec::from_iter(gtr.entries.iter().filter_map(|entry| {
+        let direct = Vec::from_iter(entries.iter().filter_map(|entry| {
             if on_whole_line {
                 let range = {
                     let range = buf.text()[entry.range.clone()].range();
@@ -103,9 +159,8 @@ fn update(pa: &mut Pass, buffer: &Handle<Buffer>) {
         }));
 
         let related = Vec::from_iter(
-            ID_RELATIONS
-                .lock()
-                .unwrap()
+            state
+                .id_relations
                 .iter()
                 .filter(|related| direct.iter().any(|id| related.contains(id)))
                 .flatten()
@@ -115,12 +170,7 @@ fn update(pa: &mut Pass, buffer: &Handle<Buffer>) {
         (direct, related)
     };
 
-    let mut current = CURRENT.lock().unwrap();
-    if current.hovered_point.is_some() {
-        current.can_remove_point = true;
-    }
-
-    let (updated, active_entries) = if let Some(point) = current
+    let active_entries = if let Some(point) = state
         .mouse_coord
         .filter(|coord| *coord >= area.top_left() && *coord < area.bottom_right())
         .and_then(|coord| {
@@ -130,47 +180,40 @@ fn update(pa: &mut Pass, buffer: &Handle<Buffer>) {
                     .real,
             )
         })
-        .or(current
+        .or(state
             .hovered_point
             .clone()
             .filter(|(handle, point)| handle == buffer && *point <= buf.text().end_point())
             .map(|(_, point)| point))
     {
-        (
-            true,
-            Some((
-                get_entry_lists(point, gtr.opts.hover_whole_line),
-                Movement::Hovered,
-            )),
-        )
+        Some((
+            get_entry_lists(point, gtr.opts.hover_whole_line),
+            Movement::Hovered,
+        ))
     } else if area.is_active() {
-        (
-            true,
-            Some((
-                get_entry_lists(buf.selections().main().cursor(), false),
-                Movement::Cursored,
-            )),
-        )
+        Some((
+            get_entry_lists(buf.selections().main().cursor(), false),
+            Movement::Cursored,
+        ))
     } else {
-        (false, None)
+        None
     };
 
     let direct = if let Some(((direct, related), movement)) = active_entries {
-        current.related = related;
+        state.related = related;
         Some((direct, movement))
     } else {
         None
     };
 
-    let mut entries = gtr
-        .entries
+    let mut entries = entries
         .iter_mut()
         .map(|entry| {
             if let Some((direct, movement)) = &direct
                 && direct.contains(&entry.id)
             {
                 (entry, Some(*movement))
-            } else if current.related.contains(&entry.id) {
+            } else if state.related.contains(&entry.id) {
                 (entry, Some(Movement::Related))
             } else {
                 (entry, None)
@@ -178,21 +221,28 @@ fn update(pa: &mut Pass, buffer: &Handle<Buffer>) {
         })
         .peekable();
 
-    while let Some((entry, _)) = entries.peek() {
-        let lnum = buf.text().point_at_byte(entry.range.end).line();
-        insert_gutter_entries(&mut entries, lnum, &gtr.opts, buf, area);
+    if only_get_spawns {
+        spawned_ids.extend(entries.filter_map(|(entry, movement)| {
+            match display_for(&gtr.opts, entry.kind, movement)? {
+                GutterDisplay::Spawn => Some(entry.id),
+                GutterDisplay::EndOfLine | GutterDisplay::RightUnder => None,
+            }
+        }));
+    } else {
+        while let Some((entry, _)) = entries.peek() {
+            let lnum = buf.text().point_at_byte(entry.range.end).line();
+
+            spawned_ids.extend(insert_gutter_entries(
+                &mut entries,
+                lnum,
+                &gtr.opts,
+                buf,
+                area,
+            ));
+        }
     }
 
-    if updated {
-        let buffer = buffer.clone();
-        context::queue(move |pa| {
-            for other in context::current_window(pa).buffers(pa) {
-                if other != buffer {
-                    update(pa, &other);
-                }
-            }
-        })
-    }
+    spawned_ids
 }
 
 impl Gutter {
@@ -202,8 +252,15 @@ impl Gutter {
     }
 
     fn form_text(&self, pa: &Pass, buffer: &Handle<Buffer>) -> Text {
+        let state = STATE.lock().unwrap_or_else(|err| err.into_inner());
+        let buf = buffer.read(pa);
+
+        let Some(entries) = state.entries.get(&Id::BufferId(buf.buffer_id())) else {
+            return Text::new();
+        };
+
         let printed_line_numbers = buffer.printed_line_numbers(pa);
-        let text = buffer.text(pa);
+        let text = buf.text();
 
         let mut builder = Text::builder();
 
@@ -216,7 +273,7 @@ impl Gutter {
             let mut kind = None;
             let range = text.line(line.number).byte_range();
 
-            let (Ok(idx) | Err(idx)) = self.entries.binary_search_by(|entry| {
+            let (Ok(idx) | Err(idx)) = entries.binary_search_by(|entry| {
                 entry
                     .range
                     .end
@@ -224,7 +281,7 @@ impl Gutter {
                     .then(entry.range.start.cmp(&range.start))
             });
 
-            let mut iter = self.entries[idx..].iter();
+            let mut iter = entries[idx..].iter();
             while let Some(entry) = iter.next()
                 && text.point_at_byte(entry.range.start).line() == line.number
             {
@@ -256,7 +313,7 @@ impl Gutter {
         builder.build()
     }
 
-    fn apply_changes(&mut self, buf: &mut Buffer) {
+    fn apply_changes(&mut self, buf: &mut Buffer, entries: &mut Vec<GutterEntry>) {
         let moment = buf.moment_for(*MOMENT_NS);
         if moment.is_empty() {
             return;
@@ -272,7 +329,7 @@ impl Gutter {
         // Since the ordering of the starts is essentially random, they
         // have to be checked one by one for each Change.
         for change in moment.iter() {
-            for (i, entry) in self.entries.iter_mut().enumerate() {
+            for (i, entry) in entries.iter_mut().enumerate() {
                 let change_range = change.taken_range();
                 let change_range = change_range.start.byte()..change_range.end.byte();
 
@@ -292,8 +349,8 @@ impl Gutter {
             let mut parts = buf.text_parts();
 
             for idx in to_remove.drain(..).rev() {
-                let entry = self.entries.remove(idx);
-                if let Some((_, ns)) = entry.place {
+                let entry = entries.remove(idx);
+                if let Some(Shown::AtEndOfLine(_, ns) | Shown::RightUnder(_, ns)) = entry.place {
                     parts.tags.remove(ns, ..);
                     NS_STACK.give(ns);
                 }
@@ -419,15 +476,11 @@ impl GutterOpts {
     pub fn push_on(self, pa: &mut Pass, handle: &Handle<Buffer>) -> Handle<Gutter> {
         let text = Text::from(" \n".repeat(handle.text(pa).end_point().line()));
 
-        handle.push_outer_widget(
-            pa,
-            Gutter { text, entries: Vec::new(), opts: self },
-            PushSpecs {
-                side: Side::Left,
-                width: Some(1.0),
-                ..PushSpecs::default()
-            },
-        )
+        handle.push_outer_widget(pa, Gutter { text, opts: self }, PushSpecs {
+            side: Side::Left,
+            width: Some(1.0),
+            ..PushSpecs::default()
+        })
     }
 
     /// The [`GutterSymbolOpts`] for a given [`EntryKind`]
@@ -490,7 +543,7 @@ pub struct GutterEntry {
     msg: Text,
     kind: EntryKind,
     id: GutterEntryId,
-    place: Option<(BufferPlace, Ns)>,
+    place: Option<Shown>,
     ns: Ns,
 }
 
@@ -501,13 +554,13 @@ fn insert_gutter_entries<'g>(
     opts: &GutterOpts,
     buf: &mut Buffer,
     area: &Area,
-) {
-    let display = |kind: EntryKind, movement| match movement {
-        Some(Movement::Hovered) => opts.symbol_opts(kind).hover_display,
-        Some(Movement::Cursored) => opts.symbol_opts(kind).cursor_display,
-        Some(Movement::Related) => opts.symbol_opts(kind).related_display,
-        None => opts.symbol_opts(kind).default_display,
-    };
+) -> Vec<GutterEntryId> {
+    #[derive(PartialEq, Eq)]
+    enum Where {
+        EndOfLine(usize),
+        RightUnder(usize),
+        Spawned,
+    }
 
     let popts = buf.print_opts();
 
@@ -519,16 +572,16 @@ fn insert_gutter_entries<'g>(
             })
         })
         .map(|(entry, movement)| {
-            let place = match display(entry.kind, movement) {
-                Some(GutterDisplay::EndOfLine) => Some(BufferPlace::EndOfLine({
+            let place = match display_for(opts, entry.kind, movement) {
+                Some(GutterDisplay::EndOfLine) => Some(Where::EndOfLine({
                     let lnum = buf.text().point_at_byte(entry.range.end).line();
                     buf.text().line(lnum).len()
                 })),
                 Some(GutterDisplay::RightUnder) => {
-                    inlay_column(entry.range.clone(), buf, area, popts).map(BufferPlace::RightUnder)
+                    inlay_column(entry.range.clone(), buf, area, popts).map(Where::RightUnder)
                 }
-                Some(GutterDisplay::Spawn) => Some(BufferPlace::Spawned),
-                Some(GutterDisplay::Corner) | None => None,
+                Some(GutterDisplay::Spawn) => Some(Where::Spawned),
+                None => None,
             };
             (entry, movement, place)
         }),
@@ -536,11 +589,13 @@ fn insert_gutter_entries<'g>(
 
     // Most likely scenario: Nothing has changed in how these Gutter
     // entries should be displayed, so do nothing.
-    if entries
-        .iter()
-        .all(|(entry, _, place)| entry.place.map(|(place, _)| place) == *place)
-    {
-        return;
+    if entries.iter().all(|(entry, _, place)| {
+        entry.place.map(|place| match place {
+            Shown::AtEndOfLine(line_len, _) => Where::EndOfLine(line_len),
+            Shown::RightUnder(col, _) => Where::RightUnder(col),
+        }) == *place
+    }) {
+        return Vec::new();
     }
 
     let mut parts = buf.text_parts();
@@ -550,27 +605,28 @@ fn insert_gutter_entries<'g>(
     let overlay_ns = LazyCell::new(|| NS_STACK.take());
     let mut inlays = Vec::new();
     let mut overlays = Vec::new();
+    let mut spawns = Vec::new();
 
     for (entry, _, place) in entries {
-        if let Some((_, ns)) = entry.place {
+        if let Some(Shown::AtEndOfLine(_, ns) | Shown::RightUnder(_, ns)) = entry.place {
             parts.tags.remove(ns, ..);
             NS_STACK.give(ns);
         }
 
-        entry.place = place.map(|place| match place {
-            BufferPlace::EndOfLine(_) => (place, *overlay_ns),
-            BufferPlace::RightUnder(_) => (place, *inlay_ns),
-            BufferPlace::Spawned => todo!(),
+        entry.place = place.and_then(|place| match place {
+            Where::EndOfLine(line_len) => {
+                overlays.push((entry.kind, &entry.msg));
+                Some(Shown::AtEndOfLine(line_len, *overlay_ns))
+            }
+            Where::RightUnder(col) => {
+                inlays.push((col, entry.kind, &entry.msg));
+                Some(Shown::RightUnder(col, *inlay_ns))
+            }
+            Where::Spawned => {
+                spawns.push(entry.id);
+                None
+            }
         });
-        let Some((place, _)) = entry.place else {
-            continue;
-        };
-
-        match place {
-            BufferPlace::EndOfLine(_) => overlays.push((entry.kind, &entry.msg)),
-            BufferPlace::RightUnder(column) => inlays.push((column, entry.kind, &entry.msg)),
-            BufferPlace::Spawned => todo!(),
-        }
     }
 
     if !inlays.is_empty() {
@@ -581,6 +637,17 @@ fn insert_gutter_entries<'g>(
     if !overlays.is_empty() {
         let pos = line_range.end - 1;
         parts.tags.insert(*overlay_ns, pos, make_overlay(overlays));
+    }
+
+    spawns
+}
+
+fn display_for(opts: &GutterOpts, kind: EntryKind, mov: Option<Movement>) -> Option<GutterDisplay> {
+    match mov {
+        Some(Movement::Hovered) => opts.symbol_opts(kind).hover_display,
+        Some(Movement::Cursored) => opts.symbol_opts(kind).cursor_display,
+        Some(Movement::Related) => opts.symbol_opts(kind).related_display,
+        None => opts.symbol_opts(kind).default_display,
     }
 }
 
@@ -711,11 +778,6 @@ pub enum GutterDisplay {
     ///
     /// [`hover_display`]: GutterSymbolOpts::hover_display
     Spawn,
-    /// The [`Text`] will be show as a spawned widget on one of the
-    /// corners.
-    ///
-    /// [`Buffer`]: duat_core::buffer::Buffer
-    Corner,
     /// The [`Text`] will be shown as [`Inlay`] lines under the
     /// entry's range.
     RightUnder,
@@ -731,23 +793,27 @@ pub(crate) fn remove_gutter_entries(handle: &Handle<Buffer>, pa: &mut Pass, ns: 
 
     let (gtr, buf) = pa.write_many((&gutter, handle));
     buf.text_mut().remove_tags(ns, ..);
-    gtr.apply_changes(buf);
 
-    let removed_line_ranges = Vec::from_iter(
-        gtr.entries
-            .extract_if(.., |entry| entry.ns == ns)
-            .map(|entry| {
-                let lnum = buf.text().point_at_byte(entry.range.end).line();
-                let line_range = buf.text().line(lnum).byte_range();
-                if let Some((_, ns)) = entry.place {
-                    buf.text_mut().remove_tags(ns, ..);
-                    NS_STACK.give(ns);
-                }
-                line_range
-            }),
-    );
+    let mut state = STATE.lock().unwrap_or_else(|err| err.into_inner());
+    let entries = state
+        .entries
+        .entry(Id::BufferId(buf.buffer_id()))
+        .or_default();
 
-    for entry in &mut gtr.entries {
+    gtr.apply_changes(buf, entries);
+
+    let removed_line_ranges =
+        Vec::from_iter(entries.extract_if(.., |entry| entry.ns == ns).map(|entry| {
+            let lnum = buf.text().point_at_byte(entry.range.end).line();
+            let line_range = buf.text().line(lnum).byte_range();
+            if let Some(Shown::AtEndOfLine(_, ns) | Shown::RightUnder(_, ns)) = entry.place {
+                buf.text_mut().remove_tags(ns, ..);
+                NS_STACK.give(ns);
+            }
+            line_range
+        }));
+
+    for entry in entries {
         if removed_line_ranges
             .iter()
             .any(|range| range.contains(&entry.range.end))
@@ -756,155 +822,62 @@ pub(crate) fn remove_gutter_entries(handle: &Handle<Buffer>, pa: &mut Pass, ns: 
         }
     }
 
-    ID_RELATIONS.lock().unwrap().retain_mut(|ids| {
+    state.id_relations.retain_mut(|ids| {
         ids.retain(|id| id.1 != ns);
         !ids.is_empty()
     });
 }
 
-pub(crate) fn add_hint(
-    handle: &Handle<Buffer>,
-    pa: &mut Pass,
-    ns: Ns,
-    range: impl TextRange,
-    msg: Text,
-) -> GutterEntryId {
-    let Some((gutter, _)) = handle.get_related::<Gutter>(pa).first().cloned() else {
-        panic!("Tried to add a Gutter entry on Buffer with no Gutter");
-    };
-
-    let (gtr, buf) = pa.write_many((&gutter, handle));
-    let range = range.to_range(buf.text().len());
-
-    if let Some(entry) = gtr
-        .entries
-        .iter()
-        .find(|entry| entry.range == range && entry.msg == msg && entry.kind == EntryKind::Hint)
-    {
-        return entry.id;
-    }
-
-    let form_tag = form::id_of!("buffer.hint").to_tag(190);
-    buf.text_mut().insert_tag(ns, range.clone(), form_tag);
-
-    let id = GutterEntryId::new(ns);
-    let entry = GutterEntry {
-        range,
-        msg,
-        kind: EntryKind::Hint,
-        id,
-        place: None,
-        ns,
-    };
-
-    gtr.apply_changes(buf);
-
-    let (Ok(idx) | Err(idx)) = gtr.entries.binary_search_by(|e| {
-        e.range
-            .end
-            .cmp(&entry.range.end)
-            .then(e.range.start.cmp(&entry.range.start))
-    });
-    gtr.entries.insert(idx, entry);
-
-    id
-}
-
 #[track_caller]
-pub(crate) fn add_warning(
-    handle: &Handle<Buffer>,
+pub(crate) fn add_gutter_entry(
+    buffer: &Handle<Buffer>,
     pa: &mut Pass,
     ns: Ns,
     range: impl TextRange,
     msg: Text,
+    level: GutterEntryLevel,
 ) -> GutterEntryId {
-    let Some((gutter, _)) = handle.get_related::<Gutter>(pa).first().cloned() else {
+    let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
         panic!("Tried to add a Gutter entry on Buffer with no Gutter");
     };
 
-    let (gtr, buf) = pa.write_many((&gutter, handle));
+    let (kind, form_tag) = match level {
+        GutterEntryLevel::Error => (EntryKind::Error, form::id_of!("buffer.error").to_tag(192)),
+        GutterEntryLevel::Warning => (EntryKind::Warning, form::id_of!("buffer.warn").to_tag(191)),
+        GutterEntryLevel::Hint => (EntryKind::Hint, form::id_of!("buffer.hint").to_tag(190)),
+    };
+
+    let (gtr, buf) = pa.write_many((&gutter, buffer));
+    let mut state = STATE.lock().unwrap_or_else(|err| err.into_inner());
+    let state = &mut *state;
+    let entries = state
+        .entries
+        .entry(Id::BufferId(buf.buffer_id()))
+        .or_default();
+
+    gtr.apply_changes(buf, entries);
+
     let range = range.to_range(buf.text().len());
 
-    if let Some(entry) = gtr
-        .entries
+    if let Some(entry) = entries
         .iter()
-        .find(|entry| entry.range == range && entry.msg == msg && entry.kind == EntryKind::Warning)
+        .find(|entry| entry.range == range && entry.msg == msg && entry.kind == kind)
     {
         return entry.id;
     }
 
-    let form_tag = form::id_of!("buffer.warn").to_tag(191);
     buf.text_mut().insert_tag(ns, range.clone(), form_tag);
 
-    let id = GutterEntryId::new(ns);
-    let entry = GutterEntry {
-        range,
-        msg,
-        kind: EntryKind::Warning,
-        id,
-        place: None,
-        ns,
-    };
+    let id = GutterEntryId::new(&mut state.extant_ids, ns);
+    let entry = GutterEntry { range, msg, kind, id, place: None, ns };
 
-    gtr.apply_changes(buf);
-
-    let (Ok(idx) | Err(idx)) = gtr.entries.binary_search_by(|e| {
+    let (Ok(idx) | Err(idx)) = entries.binary_search_by(|e| {
         e.range
             .end
             .cmp(&entry.range.end)
             .then(e.range.start.cmp(&entry.range.start))
     });
-    gtr.entries.insert(idx, entry);
-
-    id
-}
-
-#[track_caller]
-pub(crate) fn add_error(
-    handle: &Handle<Buffer>,
-    pa: &mut Pass,
-    ns: Ns,
-    range: impl TextRange,
-    msg: Text,
-) -> GutterEntryId {
-    let Some((gutter, _)) = handle.get_related::<Gutter>(pa).first().cloned() else {
-        panic!("Tried to add a Gutter entry on Buffer with no Gutter");
-    };
-
-    let (gtr, buf) = pa.write_many((&gutter, handle));
-    let range = range.to_range(buf.text().len());
-
-    if let Some(entry) = gtr
-        .entries
-        .iter()
-        .find(|entry| entry.range == range && entry.msg == msg && entry.kind == EntryKind::Error)
-    {
-        return entry.id;
-    }
-
-    let form_tag = form::id_of!("buffer.error").to_tag(192);
-    buf.text_mut().insert_tag(ns, range.clone(), form_tag);
-
-    let id = GutterEntryId::new(ns);
-    let entry = GutterEntry {
-        range,
-        msg,
-        kind: EntryKind::Error,
-        id,
-        place: None,
-        ns,
-    };
-
-    let (gtr, buf) = pa.write_many((&gutter, handle));
-    gtr.apply_changes(buf);
-
-    let (Ok(idx) | Err(idx)) = gtr.entries.binary_search_by(|e| {
-        e.range
-            .end
-            .cmp(&entry.range.end)
-            .then(e.range.start.cmp(&entry.range.start))
-    });
-    gtr.entries.insert(idx, entry);
+    entries.insert(idx, entry);
 
     id
 }
@@ -918,7 +891,10 @@ pub(crate) fn hover_gutter_entries_on(handle: &Handle<Buffer>, pa: &Pass, point:
         point <= handle.text(pa).end_point(),
         "{point:?} out of bounds"
     );
-    CURRENT.lock().unwrap().hovered_point = Some((handle.clone(), point));
+    STATE
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .hovered_point = Some((handle.clone(), point));
 }
 
 /// An id for a [`Gutter`] entry.
@@ -928,13 +904,13 @@ pub struct GutterEntryId(usize, Ns);
 
 impl GutterEntryId {
     /// Returns a new `GutterEntryId`.
-    fn new(ns: Ns) -> Self {
+    fn new(extant_ids: &mut Vec<GutterEntryId>, ns: Ns) -> Self {
         use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
         static COUNT: AtomicUsize = AtomicUsize::new(0);
 
         let id = Self(COUNT.fetch_add(1, Relaxed), ns);
 
-        EXTANT_IDS.lock().unwrap().push(id);
+        extant_ids.push(id);
 
         id
     }
@@ -952,17 +928,16 @@ impl GutterEntryId {
     /// related entries will also be displayed.
     #[track_caller]
     pub fn relate_with_other_entries(&self, entries: impl IntoIterator<Item = GutterEntryId>) {
+        let mut state = STATE.lock().unwrap_or_else(|err| err.into_inner());
         let ids = Vec::from_iter(std::iter::once(*self).chain(entries));
-        let extant_ids = EXTANT_IDS.lock().unwrap();
 
         assert!(
-            ids.iter().all(|id| extant_ids.contains(id)),
+            ids.iter().all(|id| state.extant_ids.contains(id)),
             "Attempted to add entry relations to Gutter, but not all entries still exist"
         );
 
-        let mut id_relations = ID_RELATIONS.lock().unwrap();
-        if !id_relations.contains(&ids) {
-            id_relations.push(ids);
+        if !state.id_relations.contains(&ids) {
+            state.id_relations.push(ids);
         }
     }
 }
@@ -970,13 +945,16 @@ impl GutterEntryId {
 const SPACES: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
 static NS_STACK: NsStack = NsStack::new();
 static MOMENT_NS: LazyLock<Ns> = Ns::new_lazy();
-static ID_RELATIONS: Mutex<Vec<Vec<GutterEntryId>>> = Mutex::new(Vec::new());
-static EXTANT_IDS: Mutex<Vec<GutterEntryId>> = Mutex::new(Vec::new());
-static CURRENT: Mutex<Current> = Mutex::new(Current {
-    related: Vec::new(),
-    mouse_coord: None,
-    hovered_point: None,
-    can_remove_point: false,
+static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
+    Mutex::new(State {
+        entries: HashMap::new(),
+        related: Vec::new(),
+        mouse_coord: None,
+        hovered_point: None,
+        can_remove_point: false,
+        id_relations: Vec::new(),
+        extant_ids: Vec::new(),
+    })
 });
 
 #[derive(Debug, Clone, Copy)]
@@ -988,10 +966,9 @@ enum Movement {
 
 /// Where to place a [`GutterEntry`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum BufferPlace {
-    EndOfLine(usize),
-    RightUnder(usize),
-    Spawned,
+enum Shown {
+    AtEndOfLine(usize, Ns),
+    RightUnder(usize, Ns),
 }
 
 fn inlay_column(range: Range<usize>, buf: &Buffer, area: &Area, opts: PrintOpts) -> Option<usize> {
@@ -1005,9 +982,18 @@ fn inlay_column(range: Range<usize>, buf: &Buffer, area: &Area, opts: PrintOpts)
     Some(area.columns_at(buf.text(), two_points, opts)?.wrapped)
 }
 
-struct Current {
+struct State {
+    entries: HashMap<Id, Vec<GutterEntry>>,
     related: Vec<GutterEntryId>,
     mouse_coord: Option<Coord>,
     hovered_point: Option<(Handle<Buffer>, Point)>,
     can_remove_point: bool,
+    id_relations: Vec<Vec<GutterEntryId>>,
+    extant_ids: Vec<GutterEntryId>,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum Id {
+    BufferId(BufferId),
+    Path(PathBuf),
 }

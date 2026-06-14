@@ -789,20 +789,6 @@ impl<W: Widget + ?Sized> Handle<W> {
     }
 }
 
-#[track_caller]
-fn populate<'p, 't>(text: &'t mut TextMut<'p>) -> &'t mut Selections {
-    if !text.ends_with('\n') {
-        text.apply_change(
-            None,
-            Change::str_insert("\n", text.end_point()).to_string_change(),
-        );
-    }
-
-    let selections = text.selections_mut();
-    selections.populate();
-    selections
-}
-
 impl<W: Widget + ?Sized> Handle<W> {
     /// Pushes a [`Widget`] around this one.
     ///
@@ -1079,4 +1065,18 @@ pub enum WidgetRelation {
     /// A [`Widget`] that was spawned on the `Widget`, e.g.
     /// completion. lists
     Spawned,
+}
+
+#[track_caller]
+fn populate<'p, 't>(text: &'t mut TextMut<'p>) -> &'t mut Selections {
+    if !text.ends_with('\n') {
+        text.apply_change(
+            None,
+            Change::str_insert("\n", text.end_point()).to_string_change(),
+        );
+    }
+
+    let selections = text.selections_mut();
+    selections.populate();
+    selections
 }

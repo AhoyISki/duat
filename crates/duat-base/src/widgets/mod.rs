@@ -35,8 +35,7 @@ pub use self::{
 pub(crate) use self::{
     completions::{InnerCompletionEntry, completions_setup},
     gutter::{
-        add_error, add_hint, add_warning, gutter_setup, has_gutter, hover_gutter_entries_on,
-        remove_gutter_entries,
+        add_gutter_entry, gutter_setup, has_gutter, hover_gutter_entries_on, remove_gutter_entries,
     },
     info::info_setup,
     linenumbers::linenumbers_setup,
