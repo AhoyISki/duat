@@ -116,6 +116,17 @@ fn update_displays(pa: &mut Pass, buffer: &Handle<Buffer>) {
                 spawned_ids = update_buffer(pa, &other, spawned_ids, only_get_spawns);
             }
         }
+
+        spawned_ids.sort_unstable();
+
+        let mut state = STATE.lock().unwrap();
+        if spawned_ids == state.spawned_ids {
+            return;
+        }
+
+        if spawned_ids.is_empty() {
+            
+        }
     });
 }
 
@@ -898,7 +909,9 @@ pub(crate) fn hover_gutter_entries_on(handle: &Handle<Buffer>, pa: &Pass, point:
 }
 
 /// An id for a [`Gutter`] entry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, bincode::Decode, bincode::Encode)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, bincode::Decode, bincode::Encode,
+)]
 #[bincode(crate = "duat_core::context::cache::bincode")]
 pub struct GutterEntryId(usize, Ns);
 
@@ -945,17 +958,7 @@ impl GutterEntryId {
 const SPACES: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
 static NS_STACK: NsStack = NsStack::new();
 static MOMENT_NS: LazyLock<Ns> = Ns::new_lazy();
-static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
-    Mutex::new(State {
-        entries: HashMap::new(),
-        related: Vec::new(),
-        mouse_coord: None,
-        hovered_point: None,
-        can_remove_point: false,
-        id_relations: Vec::new(),
-        extant_ids: Vec::new(),
-    })
-});
+static STATE: LazyLock<Mutex<State>> = LazyLock::new(Mutex::default);
 
 #[derive(Debug, Clone, Copy)]
 enum Movement {
@@ -982,12 +985,14 @@ fn inlay_column(range: Range<usize>, buf: &Buffer, area: &Area, opts: PrintOpts)
     Some(area.columns_at(buf.text(), two_points, opts)?.wrapped)
 }
 
+#[derive(Default)]
 struct State {
     entries: HashMap<Id, Vec<GutterEntry>>,
     related: Vec<GutterEntryId>,
     mouse_coord: Option<Coord>,
     hovered_point: Option<(Handle<Buffer>, Point)>,
     can_remove_point: bool,
+    spawned_ids: Vec<GutterEntryId>,
     id_relations: Vec<Vec<GutterEntryId>>,
     extant_ids: Vec<GutterEntryId>,
 }

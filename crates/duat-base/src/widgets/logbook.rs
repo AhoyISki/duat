@@ -96,7 +96,7 @@ pub fn logbook_setup() {
                 let location = *location;
                 event.handle.spawn_on_text(
                     pa,
-                    Info::new(txt!("[log_book.location]{location}")),
+                    Info::new(Ns::basic(), txt!("[log_book.location]{location}"), 0),
                     points.real,
                     location_ns,
                     DynSpawnSpecs {

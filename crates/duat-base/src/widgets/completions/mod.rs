@@ -794,12 +794,13 @@ impl Completions {
             let info = if let Some((info, ori)) = completions.write(pa).info.take()
                 && (!info.is_closed() && ori == orientation)
             {
-                Info::set_text(pa, &info, |text| *text = info_text);
+                Info::set_section(pa, &info, Ns::basic(), info_text);
                 Some(info)
             } else {
                 let specs = DynSpawnSpecs { orientation, ..Default::default() };
+                let info = Info::new(Ns::basic(), info_text, 0);
 
-                let info_handle = completions.spawn_on_widget(pa, Info::new(info_text), specs);
+                let info_handle = completions.spawn_on_widget(pa, info, specs);
                 completions.write(pa).info = info_handle.clone().map(|info| (info, orientation));
                 info_handle
             };

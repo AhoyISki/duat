@@ -23,7 +23,7 @@ pub use self::{
         WordCompletions,
     },
     gutter::{Gutter, GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts},
-    info::Info,
+    info::{Info, InfoLink, InfoLinkAction},
     linenumbers::{LineNumbers, LineNumbersOpts},
     logbook::{LogBook, LogBookOpts},
     notifications::{Notifications, NotificationsOpts},

@@ -1,6 +1,8 @@
+use std::sync::LazyLock;
+
 use duat_base::widgets::Info;
 use duat_core::{
-    context,
+    Ns, context,
     data::Pass,
     text::{RegexHaystack, Text},
 };
@@ -65,7 +67,7 @@ pub fn hover(pa: &mut Pass, encoding: Encoding, hover: Hover) {
         if text[range.clone()].ends_with(")") {
             let br_range = text[range.clone()].rfind("](").unwrap();
             let br_range = br_range.start + range.start..br_range.end + range.start;
-            
+
             // Separate in order to avoid removing the ling tag.
             text.replace_range(br_range.start + 1..range.end, "");
             text.replace_range(br_range.start..br_range.start + 1, "");
@@ -93,7 +95,12 @@ pub fn hover(pa: &mut Pass, encoding: Encoding, hover: Hover) {
         }
     };
 
-    Info::set_corner(pa, text, title, true);
+    if let Some(info) = Info::get_corner(pa) {
+        Info::set_section(pa, &info, *INFO_NS, text);
+    } else {
+        let info = Info::new(*INFO_NS, text, 0);
+        info.spawn_on_corner(pa, title, true);
+    }
 }
 
 fn parse_marked_string(marked_string: &MarkedString) -> Text {
@@ -110,3 +117,5 @@ fn parse_marked_string(marked_string: &MarkedString) -> Text {
         }
     }
 }
+
+static INFO_NS: LazyLock<Ns> = Ns::new_lazy();
