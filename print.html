@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-89596e67.js";
+            window.path_to_searchindex_js = "searchindex-3b337cb0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-261cd8e4.js"></script>
@@ -2377,7 +2377,7 @@ fn setup(opts: &amp;mut Opts) {
 
                 event.handle.spawn_on_text(
                     pa,
-                    widgets::Info::new(builder.build()),
+                    widgets::Sections::new(Ns::basic(), builder.build(), None, 0),
                     tp.real,
                     showing_forms_ns,
                     ui::DynSpawnSpecs::default()
