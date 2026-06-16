@@ -111,10 +111,10 @@ fn update_displays(pa: &mut Pass, buffer: &Handle<Buffer>) {
     let win = buffer.window(pa).unwrap();
     context::queue(move |pa| {
         for other in context::buffers(pa) {
-            //if other != buffer {
+            if other != buffer {
                 let only_get_spawns = other.window(pa).as_ref() != Some(&win);
                 spawned_ids = update_buffer(pa, &other, spawned_ids, only_get_spawns);
-        //}
+            }
         }
 
         spawned_ids.sort_unstable();

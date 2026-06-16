@@ -124,19 +124,19 @@ impl LineNumbers {
 
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&self, pa: &Pass, buffer: &Handle<Buffer>) -> f32 {
-        let len = buffer.read(pa).text().end_point().line();
+        let len = buffer.text(pa).end_point().line();
         len.ilog10() as f32
     }
 
     fn form_text(&self, pa: &Pass, buffer: &Handle<Buffer>) -> Text {
         let (main_line_num, printed_line_numbers) = {
             let printed_line_numbers = buffer.printed_line_numbers(pa);
-            let buf = buffer.read(pa);
+            let selections = buffer.selections(pa);
 
-            let main_line = if buf.selections().is_empty() {
+            let main_line = if selections.is_empty() {
                 usize::MAX
             } else {
-                buf.selections().main().cursor().line()
+                selections.main().cursor().line()
             };
 
             (main_line, printed_line_numbers)
