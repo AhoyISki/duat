@@ -96,7 +96,6 @@ pub fn linenumbers_setup() {
 /// [`Buffer`]: duat_core::buffer::Buffer
 /// [removing]: duat_core::hook::remove
 pub struct LineNumbers {
-    text: Text,
     /// Wether to show relative numbering
     ///
     /// The default is `false`
@@ -113,6 +112,7 @@ pub struct LineNumbers {
     ///
     /// The default is `false`
     pub show_wraps: bool,
+    text: Text,
 }
 
 impl LineNumbers {

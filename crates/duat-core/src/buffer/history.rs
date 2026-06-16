@@ -21,11 +21,10 @@ use std::{
 use bincode::{Decode, Encode};
 use gap_buf::GapBuffer;
 
-use super::{Point, Text};
 use crate::{
     Ns, Ranges,
     buffer::Buffer,
-    text::{Strs, TextRange},
+    text::{Point, Strs, Text, TextRange},
     utils::{add_shifts as add, merging_range_by_guess_and_lazy_shift},
 };
 

@@ -15,9 +15,8 @@
 use std::{
     collections::HashMap,
     fs,
-    ops::Range,
     path::{Path, PathBuf},
-    sync::{LazyLock, Mutex, MutexGuard},
+    sync::LazyLock,
 };
 
 use crossterm::event::{MouseButton, MouseEventKind};
@@ -36,8 +35,8 @@ use crate::{
     },
     mode::{Selections, TwoPointsPlace},
     opts::PrintOpts,
-    text::{Mask, Point, Strs, StrsBuf, Text, TextMut, TextParts, TextVersion, txt},
-    ui::{Area, Coord, PrintInfo, PrintedLine, Widget},
+    text::{Mask, StrsBuf, Text, TextMut, TextParts, txt},
+    ui::Widget,
 };
 
 mod history;
@@ -128,7 +127,6 @@ pub struct Buffer {
     text: Text,
     pub(crate) layout_order: usize,
     history: History,
-    cached_print_info: Mutex<Option<CachedPrintInfo>>,
     /// The [`PrintOpts`] of this `Buffer`.
     ///
     /// This object, much like `PrintOpts`, implements [`Copy`], which
@@ -138,7 +136,6 @@ pub struct Buffer {
     /// You can use this member to change the way this `Buffer` will
     /// be printed specifically.
     pub opts: BufferOpts,
-    prev_opts: Mutex<PrintOpts>,
     was_reloaded: bool,
 }
 
@@ -179,9 +176,7 @@ impl Buffer {
             text,
             layout_order: 0,
             history,
-            cached_print_info: Mutex::new(None),
             opts,
-            prev_opts: Mutex::new(opts.to_print_opts()),
             was_reloaded: false,
         }
     }
@@ -202,9 +197,7 @@ impl Buffer {
             text: Text::from_parts(buf, selections),
             layout_order,
             history,
-            cached_print_info: Mutex::new(None),
             opts,
-            prev_opts: Mutex::new(opts.to_print_opts()),
             was_reloaded,
         }
     }
@@ -295,55 +288,6 @@ impl Buffer {
     }
 
     ////////// Auxiliatory methods for incremental parsing
-
-    /// Resets the print info if deemed necessary, returning the final
-    /// result, as well as `true` if things have changed
-    ///
-    /// After calling this, `self.cached_print_info` is guaranteed to
-    /// be [`Some`]
-    fn reset_print_info_if_needed<'b>(
-        &'b self,
-        area: &Area,
-    ) -> MutexGuard<'b, Option<CachedPrintInfo>> {
-        let opts_changed = {
-            let mut prev_opts = self.prev_opts.lock().unwrap();
-            let cur_opts = self.opts.to_print_opts();
-            let opts_changed = *prev_opts != cur_opts;
-            *prev_opts = cur_opts;
-            opts_changed
-        };
-
-        let mut cached_print_info = self.cached_print_info.lock().unwrap();
-        if opts_changed
-            || cached_print_info.as_ref().is_none_or(|cpi| {
-                self.text
-                    .version()
-                    .has_structurally_changed_since(cpi.text_state)
-                    || area.get_print_info() != cpi.area_print_info
-                    || area.top_left() != cpi.coords.0
-                    || area.bottom_right() != cpi.coords.1
-            })
-        {
-            let opts = self.opts.to_print_opts();
-            let start = area.start_points(&self.text, opts).real;
-            let end = area.end_points(&self.text, opts).real;
-            let printed_line_numbers = area.get_printed_lines(&self.text, opts).unwrap();
-
-            *cached_print_info = Some(CachedPrintInfo {
-                range: start..end,
-                printed_line_numbers,
-                printed_line_ranges: None,
-                _visible_line_ranges: None,
-                text_state: self.text.version(),
-                area_print_info: area.get_print_info(),
-                coords: (area.top_left(), area.bottom_right()),
-            });
-        } else {
-            cached_print_info.as_mut().unwrap().text_state = self.text.version();
-        };
-
-        cached_print_info
-    }
 
     ////////// General querying functions
 
@@ -489,8 +433,6 @@ impl Buffer {
             );
         }
 
-        drop(buf.reset_print_info_if_needed(area));
-
         hook::trigger(pa, BufferUpdated(buffer.clone()));
         if dyn_widget.area().is_active(pa) {
             hook::trigger(pa, FocusedUpdated(dyn_widget.clone()));
@@ -615,106 +557,6 @@ impl Handle<Buffer> {
         }
 
         Ok(())
-    }
-
-    /// Returns the list of printed line numbers.
-    ///
-    /// These are returned as a `usize`, showing the index of the line
-    /// in the buffer, and a `bool`, which is `true` when the line is
-    /// wrapped.
-    ///
-    /// If you want the actual content of these lines (as [`Strs`]s),
-    /// check out [`Handle::printed_lines`]. If you want the content
-    /// of only the _visible_ portion of these lines, check out
-    /// [`Handle::visible_lines`].
-    #[track_caller]
-    pub fn printed_line_numbers(&self, pa: &Pass) -> Vec<PrintedLine> {
-        let buffer = self.read(pa);
-        let cpi = buffer.reset_print_info_if_needed(self.area().read(pa));
-        cpi.as_ref().unwrap().printed_line_numbers.clone()
-    }
-
-    /// The printed [`Range<Point>`], from the top of the screen to
-    /// the bottom.
-    ///
-    /// Do note that this includes all concealed lines and parts that
-    /// are out of screen. If you want only to include partially
-    /// visible lines, while excluding fully hidden ones, check out
-    /// [`Handle::printed_lines`]. If you want to exclude every
-    /// concealed or out of screen section, check out
-    /// [`Handle::visible_lines`].
-    pub fn full_printed_range(&self, pa: &Pass) -> Range<Point> {
-        let buffer = self.read(pa);
-        let cpi = buffer.reset_print_info_if_needed(self.area().read(pa));
-        cpi.as_ref().unwrap().range.clone()
-    }
-
-    /// Returns the list of printed lines.
-    ///
-    /// These are returned as [`Strs`], which are duat's equivalent of
-    /// [`str`] for the [`Text`] struct.
-    ///
-    /// Note that this function returns all portions of printed lines,
-    /// not just those that are visible. This means that it will also
-    /// include partially [concealed] lines and parts of the line that
-    /// are out of screen.
-    ///
-    /// If you want a list of _only_ the visible sections, check out
-    /// [`Handle::visible_lines`].
-    ///
-    /// If you want a [`Range<Point>`] of the printed section of the
-    /// [`Text`] (including concealed lines), check out
-    /// [`Handle::full_printed_range`].
-    ///
-    /// If you just want the line numbers of the printed lines, check
-    /// out [`Handle::printed_line_numbers`].
-    ///
-    /// [concealed]: crate::text::Conceal
-    pub fn printed_lines<'b>(&'b self, pa: &'b Pass) -> Vec<&'b Strs> {
-        let buffer = self.read(pa);
-        let mut cpi = buffer.reset_print_info_if_needed(self.area().read(pa));
-        let cpi = cpi.as_mut().unwrap();
-        let lines = &cpi.printed_line_numbers;
-
-        let printed_lines = if let Some(printed_lines) = &cpi.printed_line_ranges {
-            printed_lines
-        } else {
-            let mut last = None;
-            cpi.printed_line_ranges.insert(
-                lines
-                    .iter()
-                    .filter(|line| {
-                        last.as_mut()
-                            .is_none_or(|num| std::mem::replace(num, line.number) < line.number)
-                    })
-                    .map(|line| buffer.text.line(line.number).range())
-                    .collect(),
-            )
-        };
-
-        printed_lines
-            .iter()
-            .map(|range| &buffer.text[range.clone()])
-            .collect()
-    }
-
-    /// A list of [`Range<usize>`]s for the byte ranges of each
-    /// printed line.
-    ///
-    /// This is just a shorthand for calling [`Handle::printed_lines`]
-    /// and mapping each one via [`Strs::byte_range`].
-    pub fn printed_line_ranges(&self, pa: &Pass) -> Vec<Range<usize>> {
-        let lines = self.printed_lines(pa);
-        lines.into_iter().map(|line| line.byte_range()).collect()
-    }
-
-    /// Only the visible parts of printed lines.
-    ///
-    /// This is just like [`Handle::printed_lines`], but excludes
-    /// _every_ section that was concealed or is not visible on
-    /// screen.
-    pub fn visible_lines<'b>(&'b self, _: &'b Pass) -> Vec<&'b Strs> {
-        todo!();
     }
 }
 
@@ -888,17 +730,6 @@ impl<P: AsRef<Path>> From<P> for PathKind {
             PathKind::SetAbsent(path.into())
         }
     }
-}
-
-/// Cached information about the printing of this [`Buffer`]
-struct CachedPrintInfo {
-    range: Range<Point>,
-    printed_line_numbers: Vec<PrintedLine>,
-    printed_line_ranges: Option<Vec<Range<Point>>>,
-    _visible_line_ranges: Option<Vec<Range<Point>>>,
-    text_state: TextVersion,
-    area_print_info: PrintInfo,
-    coords: (Coord, Coord),
 }
 
 mod buffer_id {

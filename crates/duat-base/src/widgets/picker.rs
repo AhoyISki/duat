@@ -282,6 +282,7 @@ impl Picker {
             PushSpecs {
                 side: Side::Left,
                 width: Some(width),
+                cluster: false,
                 ..Default::default()
             },
         );

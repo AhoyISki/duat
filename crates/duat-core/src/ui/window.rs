@@ -365,13 +365,13 @@ impl Windows {
 
         // If it's a Buffer, swap all buffers ahead, so this one becomes the
         // last.
-        if let Some(buf_handle) = handle.get_as::<Buffer>() {
+        if let Some(buffer) = handle.get_as::<Buffer>() {
             let buffers_ahead: Vec<Node> = self.inner.read(pa).list[win]
                 .nodes(pa)
                 .filter(|node| {
-                    node.handle().read_as::<Buffer>(pa).is_some_and(|buffer| {
-                        buffer.layout_order > buf_handle.read(pa).layout_order
-                    })
+                    node.handle()
+                        .read_as::<Buffer>(pa)
+                        .is_some_and(|buf| buf.layout_order > buffer.read(pa).layout_order)
                 })
                 .cloned()
                 .collect();
@@ -573,6 +573,7 @@ impl Windows {
         if old_node.handle() != inner.cur_node.read(internal_pass).handle() {
             let former = old_node.handle().clone();
             let current = inner.cur_node.read(internal_pass).handle().clone();
+            let inner = self.inner.read(pa);
             hook::trigger(pa, WidgetSwitched((former, current)));
         }
 
@@ -583,6 +584,7 @@ impl Windows {
             inner.buffer_history.insert(former.clone(), current.clone());
 
             if former != current {
+                let inner = self.inner.read(pa);
                 hook::trigger(pa, BufferSwitched((former, current)));
             }
         }
@@ -1136,9 +1138,11 @@ impl Window {
             (nodes, spawned)
         };
 
+        let mut despawned = Vec::new();
+
         nodes.retain(|node| {
             if rm_areas.iter().any(|a| a.is_eq(pa, node.handle().area())) {
-                node.on_close(pa);
+                despawned.push(node.clone());
                 false
             } else {
                 true
@@ -1146,7 +1150,7 @@ impl Window {
         });
         spawned.retain(|(_, node)| {
             if rm_areas.iter().any(|a| a.is_eq(pa, node.handle().area())) {
-                node.on_close(pa);
+                despawned.push(node.clone());
                 false
             } else {
                 true
@@ -1167,6 +1171,10 @@ impl Window {
                 .unwrap_or(handle.area.clone());
 
             self.0.write(pa).buffers_area = master_area;
+        }
+
+        for node in despawned {
+            node.on_close(pa);
         }
 
         if self.buffers(pa).is_empty() {

@@ -31,9 +31,7 @@ pub use self::edges::{Border, BorderStyle};
 pub struct Printer {
     sync_solver: Mutex<SyncSolver>,
     vars: Mutex<Variables>,
-    old_lines: Mutex<Vec<Lines>>,
-    new_lines: Mutex<Vec<Lines>>,
-    spawned_lines: Mutex<Vec<(Vec<(AreaId, Lines)>, SpawnId, Frame)>>,
+    sent_lines: Mutex<SentLines>,
     spawns_have_changed: AtomicBool,
     max: VarPoint,
     has_to_print_edges: AtomicBool,
@@ -56,9 +54,7 @@ impl Printer {
         Self {
             sync_solver: Mutex::new(sync_solver),
             vars: Mutex::new(vars),
-            old_lines: Mutex::new(Vec::new()),
-            new_lines: Mutex::new(Vec::new()),
-            spawned_lines: Mutex::new(Vec::new()),
+            sent_lines: Mutex::default(),
             spawns_have_changed: AtomicBool::new(false),
             max,
             has_to_print_edges: AtomicBool::new(false),
@@ -280,7 +276,6 @@ impl Printer {
     pub fn print(&self, terminal_border_id: FormId) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
 
-        let new_lines = std::mem::take(&mut *self.new_lines.lock().unwrap());
         let has_to_print_edges = self.has_to_print_edges.swap(false, Relaxed);
 
         let mut stdout = stdout::get();
@@ -293,17 +288,19 @@ impl Printer {
             self.vars.lock().unwrap().print_edges(&mut stdout, form);
         }
 
-        let spawned_lines = self.spawned_lines.lock().unwrap();
-        let mut old_lines = self.old_lines.lock().unwrap();
+        let mut lines = self.sent_lines.lock().unwrap();
+        let sent = &mut *lines;
 
         let max = self.max_value();
 
         // There may be old lines leftover that were cut off screen.
-        old_lines.retain(|lines| lines.coords.intersects(Coords::new(Coord::new(0, 0), max)));
+        sent
+            .old
+            .retain(|lines| lines.coords.intersects(Coords::new(Coord::new(0, 0), max)));
 
         // If there are no more spawns, print everything at least one more
         // time, to clear the spawned areas.
-        let print_old_lines = self.spawns_have_changed.load(Relaxed) || !spawned_lines.is_empty();
+        let print_old_lines = self.spawns_have_changed.load(Relaxed) || !sent.spawned.is_empty();
         self.spawns_have_changed.store(false, Relaxed);
 
         for y in 0..max.y {
@@ -311,8 +308,8 @@ impl Printer {
 
             let mut x = 0;
 
-            let mut old_iter = old_lines.iter().filter_map(|lines| lines.on(y));
-            let mut new_iter = new_lines.iter().filter_map(|lines| lines.on(y)).peekable();
+            let mut old_iter = sent.old.iter().filter_map(|lines| lines.on(y));
+            let mut new_iter = sent.new.iter().filter_map(|lines| lines.on(y)).peekable();
             let mut had_edge_ahead = false;
 
             while let Some((bytes, [start, end], has_edge_ahead)) = new_iter
@@ -339,7 +336,8 @@ impl Printer {
             }
         }
 
-        let cursor_was_real = if let Some(was_real) = new_lines
+        let cursor_was_real = if let Some(was_real) = sent
+            .new
             .iter()
             .filter_map(|lines| lines.real_cursor)
             .reduce(|prev, was_real| prev || was_real)
@@ -352,7 +350,7 @@ impl Printer {
 
         let frame_form = form::from_id(terminal_border_id);
 
-        for (list, _, frame) in spawned_lines.iter() {
+        for (list, _, frame) in sent.spawned.iter() {
             let tl = list.iter().map(|(_, lines)| lines.coords.tl).min().unwrap();
             let br = list.iter().map(|(_, lines)| lines.coords.br).max().unwrap();
 
@@ -382,12 +380,15 @@ impl Printer {
         write!(stdout, "\x1b[?2026l").unwrap();
         stdout.flush().unwrap();
 
-        for info in new_lines {
-            let Err(i) = old_lines.binary_search_by_key(&info.coords, |lines| lines.coords) else {
+        for info in sent.new.drain(..) {
+            let Err(i) = sent
+                .old
+                .binary_search_by_key(&info.coords, |lines| lines.coords)
+            else {
                 unreachable!("Colliding Lines should have been removed already");
             };
 
-            old_lines.insert(i, info);
+            sent.old.insert(i, info);
         }
     }
 
@@ -395,21 +396,20 @@ impl Printer {
 
     /// Sends the finished [`Lines`], off to be printed.
     pub fn send_lines(&self, lines: Lines) {
-        let mut old_lines = self.old_lines.lock().unwrap();
-        old_lines.retain(|l| !l.coords.intersects(lines.coords));
-        drop(old_lines);
+        let mut sent = self.sent_lines.lock().unwrap();
+        sent.old.retain(|l| !l.coords.intersects(lines.coords));
 
-        let mut new_lines = self.new_lines.lock().unwrap();
         // Areas that intersect with this one came from a previous
         // organization of areas or are a previous version of itself, so they
         // should also be removed.
-        new_lines.retain(|l| !l.coords.intersects(lines.coords));
+        sent.new.retain(|l| !l.coords.intersects(lines.coords));
 
-        let i = new_lines
+        let i = sent
+            .new
             .binary_search_by_key(&lines.coords, |lines| lines.coords)
             .unwrap_err();
 
-        new_lines.insert(i, lines);
+        sent.new.insert(i, lines);
     }
 
     /// Sends the finished [`Lines`] of a floating `Widget` to be
@@ -421,18 +421,18 @@ impl Printer {
         lines: Lines,
         frame: &Frame,
     ) {
-        let mut spawned_lines = self.spawned_lines.lock().unwrap();
+        let mut sent = self.sent_lines.lock().unwrap();
 
         let list = if let Some((list, _, old_frame)) =
-            spawned_lines.iter_mut().find(|(_, id, _)| *id == spawn_id)
+            sent.spawned.iter_mut().find(|(_, id, _)| *id == spawn_id)
         {
             if old_frame != frame {
                 *old_frame = frame.clone()
             }
             list
         } else {
-            spawned_lines.push((Vec::new(), spawn_id, frame.clone()));
-            &mut spawned_lines.last_mut().unwrap().0
+            sent.spawned.push((Vec::new(), spawn_id, frame.clone()));
+            &mut sent.spawned.last_mut().unwrap().0
         };
 
         if let Some((_, old_lines)) = list.iter_mut().find(|(id, _)| *id == area_id) {
@@ -446,10 +446,10 @@ impl Printer {
 
     /// Retains the spawned lines based on a predicate.
     fn retain_spawns(&self, pred: impl FnMut(&mut (Vec<(AreaId, Lines)>, SpawnId, Frame)) -> bool) {
-        let mut spawned_lines = self.spawned_lines.lock().unwrap();
-        let old_len = spawned_lines.len();
-        spawned_lines.retain_mut(pred);
-        if spawned_lines.len() != old_len {
+        let mut sent = self.sent_lines.lock().unwrap();
+        let old_len = sent.spawned.len();
+        sent.spawned.retain_mut(pred);
+        if sent.spawned.len() != old_len {
             self.spawns_have_changed.store(true, Relaxed);
             self.has_to_print_edges.store(true, Relaxed);
         }
@@ -641,4 +641,11 @@ mod stdout {
             unsafe { File::from_raw_handle(stdout().as_raw_handle()) }
         }
     }
+}
+
+#[derive(Default)]
+struct SentLines {
+    old: Vec<Lines>,
+    new: Vec<Lines>,
+    spawned: Vec<(Vec<(AreaId, Lines)>, SpawnId, Frame)>,
 }

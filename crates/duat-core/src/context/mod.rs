@@ -224,6 +224,7 @@ mod global {
     /// [`context::current_win_index`]
     ///
     /// [`context::current_win_index`]: current_win_index
+    #[track_caller]
     pub fn current_window(pa: &Pass) -> &Window {
         let win = current_win_index(pa);
         WINDOWS.get().unwrap().get(pa, win).unwrap()

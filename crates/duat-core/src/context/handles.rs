@@ -4,8 +4,9 @@
 //! [`RwData<W>`] conjoined with an [`Area`].
 use std::{
     any::Any,
+    ops::Range,
     sync::{
-        Arc,
+        Arc, Mutex, MutexGuard,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -17,8 +18,13 @@ use crate::{
     data::{HandleFns, Pass, RwData, RwText, WriteableTuple},
     mode::{ModSelection, SelectionMut, Selections},
     opts::PrintOpts,
-    text::{Spawn, Text, TextIndex, TextMut, TextParts, TwoPoints},
-    ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, SpawnId, Widget, Window},
+    text::{
+        Point, Spawn, Strs, Text, TextId, TextIndex, TextMut, TextParts, TextVersion, TwoPoints,
+    },
+    ui::{
+        Area, Coord, DynSpawnSpecs, PrintInfo, PrintedLine, PushSpecs, RwArea, SpawnId, Widget,
+        Window,
+    },
 };
 
 /// A handle to a [`Widget`] in Duat.
@@ -156,6 +162,7 @@ pub struct Handle<W: ?Sized = dyn Widget> {
     spawn_id: Option<SpawnId>,
     sized: Arc<dyn Any + Send + Sync>,
     fns: &'static HandleFns,
+    cached_print_info: Arc<Mutex<Option<CachedPrintInfo>>>,
 }
 
 impl<W: Widget> Handle<W> {
@@ -195,6 +202,7 @@ impl<W: Widget> Handle<W> {
                     W::text_mut(widget, pa)
                 },
             },
+            cached_print_info: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -310,6 +318,7 @@ impl<W: 'static + ?Sized> Handle<W> {
             spawn_id: self.spawn_id,
             sized: self.sized.clone(),
             fns: self.fns,
+            cached_print_info: self.cached_print_info.clone(),
         })
     }
 
@@ -774,6 +783,106 @@ impl<W: Widget + ?Sized> Handle<W> {
         context::windows().close(pa, self)
     }
 
+    ////////// PrintInfo functions
+
+    /// Returns the list of printed line numbers.
+    ///
+    /// These are returned as a `usize`, showing the index of the line
+    /// in the buffer, and a `bool`, which is `true` when the line is
+    /// wrapped.
+    ///
+    /// If you want the actual content of these lines (as [`Strs`]s),
+    /// check out [`Handle::printed_lines`]. If you want the content
+    /// of only the _visible_ portion of these lines, check out
+    /// [`Handle::visible_lines`].
+    #[track_caller]
+    pub fn printed_line_numbers(&self, pa: &Pass) -> Vec<PrintedLine> {
+        let cpi = self.reset_print_info_if_needed(pa);
+        cpi.as_ref().unwrap().printed_line_numbers.clone()
+    }
+
+    /// The printed [`Range<Point>`], from the top of the screen to
+    /// the bottom.
+    ///
+    /// Do note that this includes all concealed lines and parts that
+    /// are out of screen. If you want only to include partially
+    /// visible lines, while excluding fully hidden ones, check out
+    /// [`Handle::printed_lines`]. If you want to exclude every
+    /// concealed or out of screen section, check out
+    /// [`Handle::visible_lines`].
+    pub fn full_printed_range(&self, pa: &Pass) -> Range<Point> {
+        let cpi = self.reset_print_info_if_needed(pa);
+        cpi.as_ref().unwrap().range.clone()
+    }
+
+    /// Returns the list of printed lines.
+    ///
+    /// These are returned as [`Strs`], which are duat's equivalent of
+    /// [`str`] for the [`Text`] struct.
+    ///
+    /// Note that this function returns all portions of printed lines,
+    /// not just those that are visible. This means that it will also
+    /// include partially [concealed] lines and parts of the line that
+    /// are out of screen.
+    ///
+    /// If you want a list of _only_ the visible sections, check out
+    /// [`Handle::visible_lines`].
+    ///
+    /// If you want a [`Range<Point>`] of the printed section of the
+    /// [`Text`] (including concealed lines), check out
+    /// [`Handle::full_printed_range`].
+    ///
+    /// If you just want the line numbers of the printed lines, check
+    /// out [`Handle::printed_line_numbers`].
+    ///
+    /// [concealed]: crate::text::Conceal
+    pub fn printed_lines<'b>(&'b self, pa: &'b Pass) -> Vec<&'b Strs> {
+        let mut cpi = self.reset_print_info_if_needed(pa);
+        let cpi = cpi.as_mut().unwrap();
+        let lines = &cpi.printed_line_numbers;
+        let text = self.text(pa);
+
+        let printed_lines = if let Some(printed_lines) = &cpi.printed_line_ranges {
+            printed_lines
+        } else {
+            let mut last = None;
+            cpi.printed_line_ranges.insert(
+                lines
+                    .iter()
+                    .filter(|line| {
+                        last.as_mut()
+                            .is_none_or(|num| std::mem::replace(num, line.number) < line.number)
+                    })
+                    .map(|line| text.line(line.number).range())
+                    .collect(),
+            )
+        };
+
+        printed_lines
+            .iter()
+            .map(|range| &text[range.clone()])
+            .collect()
+    }
+
+    /// A list of [`Range<usize>`]s for the byte ranges of each
+    /// printed line.
+    ///
+    /// This is just a shorthand for calling [`Handle::printed_lines`]
+    /// and mapping each one via [`Strs::byte_range`].
+    pub fn printed_line_ranges(&self, pa: &Pass) -> Vec<Range<usize>> {
+        let lines = self.printed_lines(pa);
+        lines.into_iter().map(|line| line.byte_range()).collect()
+    }
+
+    /// Only the visible parts of printed lines.
+    ///
+    /// This is just like [`Handle::printed_lines`], but excludes
+    /// _every_ section that was concealed or is not visible on
+    /// screen.
+    pub fn visible_lines<'b>(&'b self, _: &'b Pass) -> Vec<&'b Strs> {
+        todo!();
+    }
+
     /// Get the [`TextMut`] and [`Area`] at once.
     pub(crate) fn text_and_area<'p>(&'p self, pa: &'p mut Pass) -> (TextMut<'p>, &'p mut Area) {
         // SAFETY: A Pass is borrowed, and I know that the same object won't
@@ -786,6 +895,53 @@ impl<W: Widget + ?Sized> Handle<W> {
             }),
             self.area.write(pa),
         )
+    }
+
+    /// Resets the print info if deemed necessary, returning the final
+    /// result, as well as `true` if things have changed
+    ///
+    /// After calling this, `self.cached_print_info` is guaranteed to
+    /// be [`Some`]
+    fn reset_print_info_if_needed<'w>(
+        &'w self,
+        pa: &Pass,
+    ) -> MutexGuard<'w, Option<CachedPrintInfo>> {
+        let opts = self.widget.read(pa).print_opts();
+        let text = self.text(pa);
+        let area = self.area.read(pa);
+
+        let mut cached_print_info = self.cached_print_info.lock().unwrap();
+
+        if cached_print_info.as_ref().is_none_or(|cpi| {
+            opts != cpi.opts
+                || text.id() != cpi.text_id
+                || text
+                    .version()
+                    .has_structurally_changed_since(cpi.text_state)
+                || area.get_print_info() != cpi.area_print_info
+                || area.top_left() != cpi.coords.0
+                || area.bottom_right() != cpi.coords.1
+        }) {
+            let start = area.start_points(text, opts).real;
+            let end = area.end_points(text, opts).real;
+            let printed_line_numbers = area.get_printed_lines(&text, opts).unwrap();
+
+            *cached_print_info = Some(CachedPrintInfo {
+                opts,
+                range: start..end,
+                printed_line_numbers,
+                printed_line_ranges: None,
+                _visible_line_ranges: None,
+                text_state: text.version(),
+                text_id: text.id(),
+                area_print_info: area.get_print_info(),
+                coords: (area.top_left(), area.bottom_right()),
+            });
+        } else {
+            cached_print_info.as_mut().unwrap().text_state = text.version();
+        };
+
+        cached_print_info
     }
 }
 
@@ -1013,6 +1169,7 @@ impl<W: Widget> Handle<W> {
             spawn_id: self.spawn_id,
             sized: self.sized.clone(),
             fns: self.fns,
+            cached_print_info: self.cached_print_info.clone(),
         }
     }
 }
@@ -1040,6 +1197,7 @@ impl<W: ?Sized> Clone for Handle<W> {
             spawn_id: self.spawn_id,
             sized: self.sized.clone(),
             fns: self.fns,
+            cached_print_info: self.cached_print_info.clone(),
         }
     }
 }
@@ -1079,4 +1237,17 @@ fn populate<'p, 't>(text: &'t mut TextMut<'p>) -> &'t mut Selections {
     let selections = text.selections_mut();
     selections.populate();
     selections
+}
+
+/// Cached information about the printing of a [`Handle`]
+struct CachedPrintInfo {
+    opts: PrintOpts,
+    range: Range<Point>,
+    printed_line_numbers: Vec<PrintedLine>,
+    printed_line_ranges: Option<Vec<Range<Point>>>,
+    _visible_line_ranges: Option<Vec<Range<Point>>>,
+    text_state: TextVersion,
+    text_id: TextId,
+    area_print_info: PrintInfo,
+    coords: (Coord, Coord),
 }

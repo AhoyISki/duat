@@ -185,7 +185,6 @@ impl Rect {
         spawn_info: &mut Option<&mut SpawnInfo>,
     ) -> bool {
         let border = self.border;
-        let do_cluster = do_cluster || self.spawn_id.is_some();
 
         let spawn_id = self.spawn_id;
         if let Some((i, orig_parent)) = self.get_parent_mut(target_id) {
@@ -381,37 +380,9 @@ impl Rect {
         let entry = (rect_to_fix, cons_to_fix);
         parent.children_mut().unwrap().insert(i, entry);
 
-        // Spawned Rects are dynamically sized.
         if let Some(info) = spawn_info {
-            match info.spec {
-                SpawnSpec::Dynamic(orientation, _) => {
-                    let specs = DynSpawnSpecs { orientation, ..Default::default() };
-                    let (deps, tl, br) = p.get_spawn_info(info.id).unwrap();
-                    parent.set_dyn_spawned_eqs(p, specs, deps, tl, br, &info.frame);
-
-                    let new_len = recurse_length(self, &info.cons, orientation.axis());
-                    p.set_spawn_len(info.id, new_len.map(|len| len as f64));
-                }
-                SpawnSpec::Static {
-                    top_left,
-                    fractional_repositioning,
-                    orig_max,
-                } => {
-                    let width = recurse_length(self, &info.cons, Axis::Horizontal).unwrap() as f32;
-                    let height = recurse_length(self, &info.cons, Axis::Vertical).unwrap() as f32;
-                    self.set_static_spawned_eqs(
-                        p,
-                        orig_max,
-                        StaticSpawnSpecs {
-                            top_left,
-                            size: duat_core::ui::Coord::new(width, height),
-                            hidden: false,
-                            fractional_repositioning,
-                        },
-                        &info.frame,
-                    );
-                }
-            }
+            let parent_id = parent.id();
+            self.fix_spawned(p, info, Some(parent_id));
         }
 
         Some((new_id, new_parent_id))
@@ -423,7 +394,12 @@ impl Rect {
     /// can't be found within this one.
     ///
     /// Returns `Some(None)` if the `Rect` is the main one.
-    pub fn delete(&mut self, p: &Printer, target_id: AreaId) -> Option<Deletion> {
+    pub(super) fn delete(
+        &mut self,
+        p: &Printer,
+        target_id: AreaId,
+        spawn_info: Option<&mut SpawnInfo>,
+    ) -> Option<Deletion> {
         let border = self.border;
         let cluster_id = self.get_cluster_master(target_id)?;
 
@@ -457,18 +433,23 @@ impl Rect {
                     p.remove_edge(edge)
                 }
 
-                // Since all spawned widgets are clustered, this must be the main
-                // Area.
-                p.remove_eqs(rect.drain_eqs());
-                rect.eqs.extend([
-                    rect.tl.x() | EQ(EDGE_PRIO) | 0.0,
-                    rect.tl.y() | EQ(EDGE_PRIO) | 0.0,
-                    rect.br.x() | EQ(EDGE_PRIO) | p.max().x(),
-                    rect.br.y() | EQ(EDGE_PRIO) | p.max().y(),
-                ]);
-                p.add_eqs(rect.eqs.clone());
-
                 let mut old_self = std::mem::replace(self, rect);
+
+                if let Some(info) = spawn_info {
+                    self.fix_spawned(p, info, None);
+                } else {
+                    // Since all spawned widgets are clustered, this must be the main
+                    // Area.
+                    p.remove_eqs(self.drain_eqs());
+                    self.eqs.extend([
+                        self.tl.x() | EQ(EDGE_PRIO) | 0.0,
+                        self.tl.y() | EQ(EDGE_PRIO) | 0.0,
+                        self.br.x() | EQ(EDGE_PRIO) | p.max().x(),
+                        self.br.y() | EQ(EDGE_PRIO) | p.max().y(),
+                    ]);
+                    p.add_eqs(self.eqs.clone());
+                }
+
                 p.remove_rect(&mut old_self);
 
                 return Some(Deletion::Child(rm_rect, rm_cons, rm_list));
@@ -488,6 +469,11 @@ impl Rect {
         rect_to_fix.set_pushed_eqs(i, parent, p, border, is_resizable, None);
         let entry = (rect_to_fix, cons);
         parent.children_mut().unwrap().insert(i, entry);
+
+        if let Some(info) = spawn_info {
+            let parent_id = parent.id();
+            self.fix_spawned(p, info, Some(parent_id));
+        }
 
         Some(Deletion::Child(rm_rect, rm_cons, rm_list))
     }
@@ -622,6 +608,42 @@ impl Rect {
         constrain_areas(to_cons.unwrap(), self, p);
 
         true
+    }
+
+    fn fix_spawned(&mut self, p: &Printer, info: &mut SpawnInfo, parent_id: Option<AreaId>) {
+        match info.spec {
+            SpawnSpec::Dynamic(orientation, _) => {
+                let specs = DynSpawnSpecs { orientation, ..Default::default() };
+                let (deps, tl, br) = p.get_spawn_info(info.id).unwrap();
+
+                if let Some(id) = parent_id {
+                    let parent = self.get_mut(id).unwrap();
+                    parent.set_dyn_spawned_eqs(p, specs, deps, tl, br, &info.frame);
+                }
+
+                let new_len = recurse_length(self, &info.cons, orientation.axis());
+                p.set_spawn_len(info.id, new_len.map(|len| len as f64));
+            }
+            SpawnSpec::Static {
+                top_left,
+                fractional_repositioning,
+                orig_max,
+                orig_size,
+            } => {
+                let width = recurse_length(self, &info.cons, Axis::Horizontal)
+                    .unwrap_or(orig_size.x) as f32;
+                let height =
+                    recurse_length(self, &info.cons, Axis::Vertical).unwrap_or(orig_size.y) as f32;
+
+                let specs = StaticSpawnSpecs {
+                    top_left,
+                    size: duat_core::ui::Coord::new(width, height),
+                    hidden: false,
+                    fractional_repositioning,
+                };
+                self.set_static_spawned_eqs(p, orig_max, specs, &info.frame);
+            }
+        }
     }
 
     ////////// Constraint modification
@@ -1228,7 +1250,7 @@ pub fn recurse_length(rect: &Rect, cons: &Constraints, on_axis: Axis) -> Option<
     } else {
         // If all children on a the other axis have no size restriction, then
         // the spawned Rect is unrestricted and should have len == None.
-        iter.max().unwrap_or(None)
+        iter.max().flatten()
     }
 }
 

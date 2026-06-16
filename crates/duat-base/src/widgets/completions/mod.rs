@@ -269,7 +269,7 @@ pub struct Completions {
     orig_typed: String,
     matches: Option<Matches>,
 
-    info: Option<(Handle<Sections>, Orientation)>,
+    sections: Option<(Handle<Sections>, Orientation)>,
     is_parameter_list: bool,
 }
 
@@ -360,7 +360,7 @@ impl Completions {
                 start_byte,
                 orig_typed: text[start_byte..main_byte].to_string(),
                 matches: None,
-                info: None,
+                sections: None,
                 is_parameter_list: false,
             };
 
@@ -494,7 +494,7 @@ impl Completions {
                 start_byte,
                 orig_typed: text[start_byte..main_byte].to_string(),
                 matches: None,
-                info: None,
+                sections: None,
                 is_parameter_list: true,
             };
 
@@ -788,26 +788,27 @@ impl Completions {
                 .unwrap_or(0)
         };
 
-        let info = if let Some(idx) = new_idx
+        let sections = if let Some(idx) = new_idx
             && let Some((info_text, orientation)) = list!().info_for_index(get_idx(idx))
         {
-            let info = if let Some((info, ori)) = completions.write(pa).info.take()
-                && (!info.is_closed() && ori == orientation)
+            let sections = if let Some((sections, ori)) = completions.write(pa).sections.take()
+                && (!sections.is_closed() && ori == orientation)
             {
-                Sections::set_section(pa, &info, Ns::basic(), info_text, None, 0);
-                Some(info)
+                Sections::set_section(pa, &sections, Ns::basic(), info_text, None, 0);
+                Some(sections)
             } else {
                 let specs = DynSpawnSpecs { orientation, ..Default::default() };
-                let info = Sections::new(Ns::basic(), info_text, None, 0);
+                let sections = Sections::new(Ns::basic(), info_text, None, 0);
 
-                let info_handle = completions.spawn_on_widget(pa, info, specs);
-                completions.write(pa).info = info_handle.clone().map(|info| (info, orientation));
+                let info_handle = completions.spawn_on_widget(pa, sections, specs);
+                completions.write(pa).sections =
+                    info_handle.clone().map(|sections| (sections, orientation));
                 info_handle
             };
 
             let value = list!().value_for_index(get_idx(idx));
 
-            if let Some(info_handle) = info.as_ref()
+            if let Some(info_handle) = sections.as_ref()
                 && let Some(area) = info_handle.area().write_as::<duat_term::Area>(pa)
             {
                 let mut frame = Frame::default();
@@ -817,10 +818,10 @@ impl Completions {
                 area.set_frame(frame);
             }
 
-            info.zip(Some(orientation))
+            sections.zip(Some(orientation))
         } else {
-            if let Some((info, _)) = completions.write(pa).info.take() {
-                _ = info.close(pa);
+            if let Some((sections, _)) = completions.write(pa).sections.take() {
+                _ = sections.close(pa);
             }
 
             None
@@ -853,7 +854,7 @@ impl Completions {
                 cur_min_prefix: comp.min_prefix,
                 min_prefix: comp.min_prefix,
                 case_insensitive: comp.case_insensitive,
-                info: comp.info.take(),
+                sections: comp.sections.take(),
 
                 matches: Some(Matches { selected, ..matches }),
                 is_parameter_list: comp.is_parameter_list,
@@ -912,7 +913,7 @@ impl Completions {
         let comp = completions.write(pa);
 
         comp.text = text;
-        comp.info = info;
+        comp.sections = sections;
         comp.matches = Some(Matches {
             selected: new_idx.map(|idx| Selected {
                 idx,

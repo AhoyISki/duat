@@ -493,7 +493,7 @@ impl Layout {
     ///
     /// [`Area`]: crate::area::Area
     fn delete(&mut self, id: AreaId) -> Option<Vec<AreaId>> {
-        let ret = if let Some(deletion) = self.main.delete(&self.printer, id) {
+        let ret = if let Some(deletion) = self.main.delete(&self.printer, id, None) {
             if let Deletion::Child(rect, cons, rm_list) = deletion {
                 (rect, cons, rm_list)
             } else {
@@ -510,7 +510,7 @@ impl Layout {
             .spawned
             .iter_mut()
             .enumerate()
-            .find_map(|(i, (_, rect))| Some(i).zip(rect.delete(&self.printer, id)))
+            .find_map(|(i, (info, rect))| Some(i).zip(rect.delete(&self.printer, id, Some(info))))
         {
             if let Deletion::Child(rect, cons, rm_list) = deletion {
                 self.printer.clear_spawn(rect.id());
@@ -620,6 +620,7 @@ impl Layout {
                     top_left: specs.top_left,
                     fractional_repositioning: specs.fractional_repositioning,
                     orig_max,
+                    orig_size: Coord::new(specs.size.x as u32, specs.size.y as u32)
                 },
                 cons,
                 frame: Frame::empty(),
@@ -657,6 +658,7 @@ impl Layout {
                 top_left,
                 fractional_repositioning,
                 orig_max,
+                ..
             } => {
                 let width = recurse_length(rect, &info.cons, Axis::Horizontal).unwrap() as f32;
                 let height = recurse_length(rect, &info.cons, Axis::Vertical).unwrap() as f32;
@@ -892,6 +894,7 @@ enum SpawnSpec {
         top_left: duat_core::ui::Coord,
         fractional_repositioning: Option<bool>,
         orig_max: Coord,
+        orig_size: Coord,
     },
     Dynamic(Orientation, Option<SpawnId>),
 }
@@ -1086,22 +1089,22 @@ impl Frame {
         }
 
         let corners = [
-            (above && right).then_some((
-                Coord::new(coords.br.x, coords.tl.y - 1),
-                [Side::Above, Side::Right],
-            )),
-            (below && right).then_some((
-                Coord::new(coords.br.x, coords.br.y),
-                [Side::Below, Side::Right],
-            )),
-            (below && left).then_some((
-                Coord::new(coords.tl.x - 1, coords.br.y),
-                [Side::Below, Side::Left],
-            )),
-            (above && left).then_some((
-                Coord::new(coords.tl.x - 1, coords.tl.y - 1),
-                [Side::Above, Side::Left],
-            )),
+            (above && right).then_some((Coord::new(coords.br.x, coords.tl.y - 1), [
+                Side::Above,
+                Side::Right,
+            ])),
+            (below && right).then_some((Coord::new(coords.br.x, coords.br.y), [
+                Side::Below,
+                Side::Right,
+            ])),
+            (below && left).then_some((Coord::new(coords.tl.x - 1, coords.br.y), [
+                Side::Below,
+                Side::Left,
+            ])),
+            (above && left).then_some((Coord::new(coords.tl.x - 1, coords.tl.y - 1), [
+                Side::Above,
+                Side::Left,
+            ])),
         ];
 
         for (coord, sides) in corners.into_iter().flatten() {
