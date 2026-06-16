@@ -506,7 +506,7 @@ fn setup(opts: &mut Opts) {
 
                 event.handle.spawn_on_text(
                     pa,
-                    widgets::Info::new(builder.build()),
+                    widgets::Sections::new(Ns::basic(), builder.build(), None, 0),
                     tp.real,
                     showing_forms_ns,
                     ui::DynSpawnSpecs::default()

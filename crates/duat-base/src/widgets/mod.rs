@@ -23,7 +23,7 @@ pub use self::{
         WordCompletions,
     },
     gutter::{Gutter, GutterDisplay, GutterEntryId, GutterOpts, GutterSymbolOpts},
-    info::{Info, InfoLink, InfoLinkAction},
+    sections::{Sections, SectionsLink, SectionsLinkAction},
     linenumbers::{LineNumbers, LineNumbersOpts},
     logbook::{LogBook, LogBookOpts},
     notifications::{Notifications, NotificationsOpts},
@@ -37,7 +37,7 @@ pub(crate) use self::{
     gutter::{
         add_gutter_entry, gutter_setup, has_gutter, hover_gutter_entries_on, remove_gutter_entries,
     },
-    info::info_setup,
+    sections::sections_setup,
     linenumbers::linenumbers_setup,
     logbook::logbook_setup,
     notifications::notifications_setup,
@@ -48,7 +48,7 @@ pub(crate) use self::{
 
 mod completions;
 mod gutter;
-mod info;
+mod sections;
 mod linenumbers;
 mod logbook;
 mod notifications;

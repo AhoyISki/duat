@@ -374,14 +374,16 @@ impl<D: Display> AsBuilderPart<D, D> for D {
 /// The syntax of this struct is very similar to that of [`format!`].
 /// The difference between them is that:
 ///
-/// 1. This macro will accept not only [`Display`] types, but also any
-///    [`Tag`], [`Form`]s and even [`Path`]s as interpolated
-///    arguments.
-/// 2. You can also interpolate arguments within `[]`s. These will be
+/// 1. In between '{}' and as arguments, this macro will accept not
+///    only [`Display`] types, but also any [`Tag`], [`Form`]s and
+///    even [`Path`]s as interpolated arguments.
+/// 2. In between any variation of `{:?}`, [`Debug`] arguments will be
+///    formatted and inlined as [`String`]s, just like with `format!`.
+/// 3. You can also interpolate arguments within `[]`s. These will be
 ///    interpreted as `Form` names, and they will be transformed into
 ///    the forms directly.
 ///
-/// Here's the syntax:
+/// Here's the syntax for forma inlining:
 ///
 /// - `[]`: Will push the `"default"` `Form`, which is actually just
 ///   removing prior `Form`s.
@@ -389,7 +391,16 @@ impl<D: Display> AsBuilderPart<D, D> for D {
 /// - `[{form}]`: Will push the `"{form}"`, where `{form}` can be any
 ///   sequence of valid identifiers, separated by `"."`s.
 ///
-/// [`impl Display`]: std::fmt::Display
+/// # Note
+///
+/// All `Tag`s, including those added by `[]` pairs, but not
+/// including those within inlined `Text`s, will be inserted with
+/// [`Ns::basic`].
+///
+/// So if you do some further manipulation of the `Text` that involves
+/// removing tags with the `Ns::basic` namespace, and you notice that
+/// some tags "misteriously" vanished, this is why.
+///
 /// [`Form`]: crate::form::Form
 /// [`Tag`]: crate::text::Tag
 #[macro_export]

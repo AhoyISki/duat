@@ -23,7 +23,7 @@ use duat_core::{
     ui::{DynSpawnSpecs, Orientation, PushSpecs, PushTarget, Side, Widget},
 };
 
-use crate::widgets::Info;
+use crate::widgets::Sections;
 
 #[derive(Default)]
 struct GlobalLogs {
@@ -96,7 +96,7 @@ pub fn logbook_setup() {
                 let location = *location;
                 event.handle.spawn_on_text(
                     pa,
-                    Info::new(Ns::basic(), txt!("[log_book.location]{location}"), 0),
+                    Sections::new(Ns::basic(), txt!("[log_book.location]{location}"), None, 0),
                     points.real,
                     location_ns,
                     DynSpawnSpecs {

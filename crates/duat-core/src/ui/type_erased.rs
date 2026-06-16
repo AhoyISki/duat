@@ -36,7 +36,6 @@ use crate::{
 };
 
 static CANONICAL_UI: OnceLock<TypeId> = OnceLock::new();
-static CANONICAL_AREA: OnceLock<TypeId> = OnceLock::new();
 
 /// Returns `true` if the [`RawUi`] is of the given type
 pub fn ui_is<U: RawUi>() -> bool {
@@ -72,7 +71,6 @@ impl Ui {
             panic!("The Ui can only be created once");
         } else {
             CANONICAL_UI.set(TypeId::of::<U>()).unwrap();
-            CANONICAL_AREA.set(TypeId::of::<U::Area>()).unwrap();
             DEFAULT_PRINT_INFO
                 .set(|| PrintInfo::new::<U>(<U::Area as RawArea>::PrintInfo::default()))
                 .unwrap();
@@ -282,10 +280,7 @@ impl RwArea {
     ///
     /// [`Plugin`]: https://docs.rs/duat/latest/struct.Plugin.html
     pub fn read_as<'a, A: RawArea>(&'a self, pa: &'a Pass) -> Option<&'a A> {
-        (TypeId::of::<A>() == *CANONICAL_AREA.get().unwrap()).then(|| {
-            let ptr = Box::as_ref(&self.0.read(pa).inner) as *const dyn std::any::Any;
-            unsafe { (ptr as *const A).as_ref().unwrap() }
-        })
+        Box::as_ref(&self.0.read(pa).inner).downcast_ref()
     }
 
     /// Mutable access to an [`Area`]
@@ -311,10 +306,7 @@ impl RwArea {
     ///
     /// [`Plugin`]: https://docs.rs/duat/latest/struct.Plugin.html
     pub fn write_as<'a, A: RawArea>(&'a self, pa: &'a mut Pass) -> Option<&'a mut A> {
-        (TypeId::of::<A>() == *CANONICAL_AREA.get().unwrap()).then(|| {
-            let ptr = Box::as_mut(&mut self.0.write(pa).inner) as *mut dyn std::any::Any;
-            unsafe { (ptr as *mut A).as_mut().unwrap() }
-        })
+        Box::as_mut(&mut self.0.write(pa).inner).downcast_mut()
     }
 
     ////////// Area Modification functions
@@ -668,6 +660,35 @@ impl Area {
     /// Returns a list of the lines that were printed
     pub fn get_printed_lines(&self, text: &Text, opts: PrintOpts) -> Option<Vec<PrintedLine>> {
         (self.fns.get_printed_lines)(self, text, opts)
+    }
+
+    /// Attempts to get a specific implementation of [`RawArea`].
+    ///
+    /// You can use this to deal with individual [`RawArea`]s, so you
+    /// can do a "per Ui" configuration for your
+    /// [`Plugin`]/configuration.
+    ///
+    /// This will return [`None`] if the `RawArea` within is of a
+    /// different type.
+    ///
+    /// [`Plugin`]: https://docs.rs/duat/latest/struct.Plugin.html
+    pub fn get_as<A: RawArea>(&self) -> Option<&A> {
+        Box::as_ref(&self.inner).downcast_ref()
+    }
+
+    /// Attempts to get a mutable specific implementation of
+    /// [`RawArea`].
+    ///
+    /// You can use this to deal with individual [`RawArea`]s, so you
+    /// can do a "per Ui" configuration for your
+    /// [`Plugin`]/configuration.
+    ///
+    /// This will return [`None`] if the `RawArea` within is of a
+    /// different type.
+    ///
+    /// [`Plugin`]: https://docs.rs/duat/latest/struct.Plugin.html
+    pub fn get_as_mut<A: RawArea>(&mut self) -> Option<&mut A> {
+        Box::as_mut(&mut self.inner).downcast_mut()
     }
 
     ////////// PROBABLY DUE FOR DELETION, DON'T LIKE THESE

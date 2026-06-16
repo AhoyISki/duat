@@ -37,7 +37,7 @@ use duat_term::Frame;
 pub use crate::widgets::completions::{
     lists::ExhaustiveCompletionsList, paths::PathCompletions, words::WordCompletions,
 };
-use crate::widgets::{Info, completions::lists::InnerList};
+use crate::widgets::{Sections, completions::lists::InnerList};
 
 mod lists;
 mod paths;
@@ -269,7 +269,7 @@ pub struct Completions {
     orig_typed: String,
     matches: Option<Matches>,
 
-    info: Option<(Handle<Info>, Orientation)>,
+    info: Option<(Handle<Sections>, Orientation)>,
     is_parameter_list: bool,
 }
 
@@ -794,11 +794,11 @@ impl Completions {
             let info = if let Some((info, ori)) = completions.write(pa).info.take()
                 && (!info.is_closed() && ori == orientation)
             {
-                Info::set_section(pa, &info, Ns::basic(), info_text);
+                Sections::set_section(pa, &info, Ns::basic(), info_text, None, 0);
                 Some(info)
             } else {
                 let specs = DynSpawnSpecs { orientation, ..Default::default() };
-                let info = Info::new(Ns::basic(), info_text, 0);
+                let info = Sections::new(Ns::basic(), info_text, None, 0);
 
                 let info_handle = completions.spawn_on_widget(pa, info, specs);
                 completions.write(pa).info = info_handle.clone().map(|info| (info, orientation));

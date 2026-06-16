@@ -308,8 +308,9 @@ mod global {
     ///
     /// When Duat first starts, the available masks are `"error"`,
     /// `"warn"`, `"info"`, `"active"`, `"inactive"`, `"diagnostic"`
-    /// `"current_line"`, `"indent"`, `"Insert"` and `"Normal"`, but
-    /// you can use this function to add more of them.
+    /// `"current_line"`, `"indent"`, `"Insert"`, `"Normal"` and
+    /// `"header"`, but you can use this function to add more of
+    /// them.
     ///
     /// # `apply_full`
     ///
@@ -318,8 +319,8 @@ mod global {
     /// the rest of the widget, that is, even after the last line, the
     /// mask will still apply to the remaining empty lines.
     ///
-    /// By default, all masks but `"diagnostic"`, `"current_line"` and
-    /// `"indent"` are `apply_full` masks.
+    /// By default, all masks but `"diagnostic"`, `"current_line"`,
+    /// `"indent"` and `"header"` are `apply_full` masks.
     ///
     /// [`form::from_id`]: from_id
     /// [`Widget`]: crate::ui::Widget
@@ -364,8 +365,8 @@ mod global {
     /// priority:
     ///
     /// - If the name contains a `'.'` character, it will reference
-    ///   the `Form` whose name is a suffix up to the last `'.'`.
-    ///   For example, `"Prefix.Middle.Suffix"` will reference
+    ///   the `Form` whose name is a suffix up to the last `'.'`. For
+    ///   example, `"Prefix.Middle.Suffix"` will reference
     ///   `"Prefix.Middle"`;
     /// - If the name does not contain a `'.'`, it will not reference
     ///   anything, having the [default `Form`];

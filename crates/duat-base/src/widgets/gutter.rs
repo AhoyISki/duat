@@ -31,7 +31,7 @@ use duat_core::{
     ui::{Area, Coord, Corner, PushSpecs, Side, Widget},
 };
 
-use crate::GutterEntryLevel;
+use crate::{GutterEntryLevel, widgets::Sections};
 
 /// A struct to hold diagnostic hints about a [`Buffer`].
 ///
@@ -49,7 +49,7 @@ pub struct Gutter {
 pub fn gutter_setup() {
     hook::add::<BufferOpened>(|pa, buffer| {
         let buf = buffer.read(pa);
-        buf.moment_for(*MOMENT_NS);
+        buf.moment_for(*NS);
 
         let mut state = STATE.lock().unwrap_or_else(|err| err.into_inner());
         if let Some(path) = buf.path_set()
@@ -90,7 +90,7 @@ pub fn gutter_setup() {
         let mut state = STATE.lock().unwrap_or_else(|err| err.into_inner());
         state.hovered_point = None;
         state.mouse_coord = Some(event.coord);
-        state.related.clear();
+        state.related_ids.clear();
     })
     .lateness(usize::MAX);
 
@@ -111,10 +111,10 @@ fn update_displays(pa: &mut Pass, buffer: &Handle<Buffer>) {
     let win = buffer.window(pa).unwrap();
     context::queue(move |pa| {
         for other in context::buffers(pa) {
-            if other != buffer {
+            //if other != buffer {
                 let only_get_spawns = other.window(pa).as_ref() != Some(&win);
                 spawned_ids = update_buffer(pa, &other, spawned_ids, only_get_spawns);
-            }
+        //}
         }
 
         spawned_ids.sort_unstable();
@@ -123,10 +123,21 @@ fn update_displays(pa: &mut Pass, buffer: &Handle<Buffer>) {
         if spawned_ids == state.spawned_ids {
             return;
         }
+        state.spawned_ids = spawned_ids;
 
-        if spawned_ids.is_empty() {
-            
-        }
+        let text = format_spawn(&state);
+        let title = Some("Diagnostics".to_string());
+
+        if let Some(info) = Sections::get_corner(pa) {
+            if state.spawned_ids.is_empty() {
+                _ = info.close(pa);
+            } else {
+                Sections::set_section(pa, &info, *NS, text, title, usize::MAX);
+            }
+        } else if !state.spawned_ids.is_empty() {
+            let info = Sections::new(*NS, text, title, usize::MAX);
+            info.spawn_on_corner(pa, true);
+        };
     });
 }
 
@@ -211,7 +222,7 @@ fn update_buffer(
     };
 
     let direct = if let Some(((direct, related), movement)) = active_entries {
-        state.related = related;
+        state.related_ids = related;
         Some((direct, movement))
     } else {
         None
@@ -224,7 +235,7 @@ fn update_buffer(
                 && direct.contains(&entry.id)
             {
                 (entry, Some(*movement))
-            } else if state.related.contains(&entry.id) {
+            } else if state.related_ids.contains(&entry.id) {
                 (entry, Some(Movement::Related))
             } else {
                 (entry, None)
@@ -243,13 +254,7 @@ fn update_buffer(
         while let Some((entry, _)) = entries.peek() {
             let lnum = buf.text().point_at_byte(entry.range.end).line();
 
-            spawned_ids.extend(insert_gutter_entries(
-                &mut entries,
-                lnum,
-                &gtr.opts,
-                buf,
-                area,
-            ));
+            spawned_ids.extend(format_entries(&mut entries, lnum, &gtr.opts, buf, area));
         }
     }
 
@@ -325,7 +330,7 @@ impl Gutter {
     }
 
     fn apply_changes(&mut self, buf: &mut Buffer, entries: &mut Vec<GutterEntry>) {
-        let moment = buf.moment_for(*MOMENT_NS);
+        let moment = buf.moment_for(*NS);
         if moment.is_empty() {
             return;
         }
@@ -453,21 +458,21 @@ impl GutterOpts {
             hint: GutterSymbolOpts {
                 symbol: 'i',
                 default_display: None,
-                hover_display: Some(GutterDisplay::RightUnder),
+                hover_display: Some(GutterDisplay::Spawn),
                 cursor_display: Some(GutterDisplay::EndOfLine),
                 related_display: Some(GutterDisplay::EndOfLine),
             },
             warning: GutterSymbolOpts {
                 symbol: '!',
                 default_display: Some(GutterDisplay::EndOfLine),
-                hover_display: Some(GutterDisplay::RightUnder),
+                hover_display: Some(GutterDisplay::Spawn),
                 cursor_display: Some(GutterDisplay::EndOfLine),
                 related_display: Some(GutterDisplay::EndOfLine),
             },
             error: GutterSymbolOpts {
                 symbol: '*',
                 default_display: Some(GutterDisplay::EndOfLine),
-                hover_display: Some(GutterDisplay::RightUnder),
+                hover_display: Some(GutterDisplay::Spawn),
                 cursor_display: Some(GutterDisplay::EndOfLine),
                 related_display: Some(GutterDisplay::EndOfLine),
             },
@@ -559,7 +564,7 @@ pub struct GutterEntry {
 }
 
 /// Inserts multiple [`GutterEntry`]s that are in the same line.
-fn insert_gutter_entries<'g>(
+fn format_entries<'g>(
     iter: &mut Peekable<impl Iterator<Item = (&'g mut GutterEntry, Option<Movement>)>>,
     lnum: usize,
     opts: &GutterOpts,
@@ -643,11 +648,13 @@ fn insert_gutter_entries<'g>(
     if !inlays.is_empty() {
         parts
             .tags
-            .insert(*inlay_ns, line_range.end, make_inlay(inlays));
+            .insert(*inlay_ns, line_range.end, format_inlay(inlays));
     }
     if !overlays.is_empty() {
         let pos = line_range.end - 1;
-        parts.tags.insert(*overlay_ns, pos, make_overlay(overlays));
+        parts
+            .tags
+            .insert(*overlay_ns, pos, format_overlay(overlays));
     }
 
     spawns
@@ -662,7 +669,7 @@ fn display_for(opts: &GutterOpts, kind: EntryKind, mov: Option<Movement>) -> Opt
     }
 }
 
-fn make_inlay(mut inlays: Vec<(usize, EntryKind, &Text)>) -> Inlay {
+fn format_inlay(mut inlays: Vec<(usize, EntryKind, &Text)>) -> Inlay {
     const LINE_LEN: usize = '─'.len_utf8();
     const LINES: &str = {
         const BYTES: [[u8; LINE_LEN]; 150] = {
@@ -673,6 +680,7 @@ fn make_inlay(mut inlays: Vec<(usize, EntryKind, &Text)>) -> Inlay {
         unsafe { std::str::from_utf8_unchecked(BYTES.as_flattened()) }
     };
     static CONN: LazyLock<Overlay> = LazyLock::new(|| Overlay::new(txt!("│")));
+    static CONN_NS: LazyLock<Ns> = Ns::new_lazy();
 
     inlays.sort_unstable_by(|(l_column, l_kind, l_text), (r_column, r_kind, r_text)| {
         l_column
@@ -687,6 +695,7 @@ fn make_inlay(mut inlays: Vec<(usize, EntryKind, &Text)>) -> Inlay {
     };
     let prefix_len = prefix.len();
     let conn = &*CONN;
+    let conn_ns = *CONN_NS;
 
     let mut text = Text::new();
     let mut prev_column = None;
@@ -702,7 +711,7 @@ fn make_inlay(mut inlays: Vec<(usize, EntryKind, &Text)>) -> Inlay {
         );
 
         if columns_are_eq {
-            line_prefix.remove_tags(Ns::basic(), column);
+            line_prefix.remove_tags(conn_ns, column);
         }
 
         let line_ranges = Vec::from_iter(msg.lines().map(|line| line.byte_range()));
@@ -720,7 +729,7 @@ fn make_inlay(mut inlays: Vec<(usize, EntryKind, &Text)>) -> Inlay {
         }
 
         if !columns_are_eq {
-            prefix.insert_tag(Ns::basic(), column, conn.clone());
+            prefix.insert_tag(conn_ns, column, conn.clone());
         }
 
         text.insert_text(0, &msg);
@@ -732,7 +741,7 @@ fn make_inlay(mut inlays: Vec<(usize, EntryKind, &Text)>) -> Inlay {
     Inlay::new(text)
 }
 
-fn make_overlay(mut overlays: Vec<(EntryKind, &Text)>) -> Overlay {
+fn format_overlay(mut overlays: Vec<(EntryKind, &Text)>) -> Overlay {
     overlays.sort_unstable_by(|(l_kind, l_text), (r_kind, r_text)| {
         l_kind.cmp(r_kind).then(l_text.len().cmp(&r_text.len()))
     });
@@ -764,6 +773,59 @@ fn make_overlay(mut overlays: Vec<(EntryKind, &Text)>) -> Overlay {
     )
 }
 
+fn format_spawn(state: &State) -> Text {
+    let mut builder = Text::builder();
+    let mut already_shown = Vec::new();
+
+    let get_entry_and_id = |entry_id: GutterEntryId| {
+        state
+            .entries
+            .iter()
+            .flat_map(|(id, entries)| entries.iter().map(move |entry| (id, entry)))
+            .find(|(_, entry)| entry.id == entry_id)
+            .unwrap()
+    };
+
+    for &entry_id in &state.spawned_ids {
+        if already_shown.contains(&entry_id) {
+            continue;
+        }
+
+        let (id, entry) = get_entry_and_id(entry_id);
+
+        if let Some(related_ids) = state
+            .id_relations
+            .iter()
+            .find(|related| related.contains(&entry_id))
+        {
+            let mut related = Vec::from_iter(related_ids.iter().copied().map(get_entry_and_id));
+
+            related.sort_by(|(l_id, l_entry), (r_id, r_entry)| {
+                l_entry
+                    .kind
+                    .cmp(&r_entry.kind)
+                    .then((*l_id == id).cmp(&(*r_id == id)).reverse())
+                    .then(l_entry.range.start.cmp(&r_entry.range.start))
+                    .then(l_entry.range.end.cmp(&r_entry.range.end))
+            });
+
+            already_shown.extend(related_ids);
+
+            for (i, (_, entry)) in related.iter().enumerate() {
+                builder.push_ref(&entry.msg);
+                if i + 1 < related.len() {
+                    builder.push("\n\n");
+                }
+            }
+        } else {
+            builder.push_ref(&entry.msg);
+            already_shown.push(entry_id);
+        }
+    }
+
+    builder.build()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EntryKind {
     _Custom(char, FormId, FormId),
@@ -780,12 +842,20 @@ pub enum GutterDisplay {
     /// The [`Text`] will be shown at the end of the line, potentially
     /// running off out of screen.
     EndOfLine,
-    /// The [`Text`] will be shown as a spawned widget near the
-    /// entry's range.
+    /// The [`Text`] will be placed in a spawned [`Info`] widget at
+    /// the corner of the [`Buffer`].
     ///
-    /// While you _can_ set this as the any display option, I would
-    /// advise limiting the usage of this method to [`hover_display`],
-    /// since many widgets spawned at once will look really jarring.
+    /// Related entries will be shown alongside each other, with a
+    /// hierarchy if they have different levels. For example, if an
+    /// error entry is related to warning or info entries, or a
+    /// warning is related to info entries, then the `Info` will
+    /// show these entries as "additional information" for
+    /// the main error/warning.
+    ///
+    /// While you _can_ set this as any of the display options, I
+    /// would advise limiting the usage of this method to
+    /// [`hover_display`], since a large widget showing all errors,
+    /// all the time, would get kind of annoying.
     ///
     /// [`hover_display`]: GutterSymbolOpts::hover_display
     Spawn,
@@ -957,7 +1027,7 @@ impl GutterEntryId {
 
 const SPACES: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
 static NS_STACK: NsStack = NsStack::new();
-static MOMENT_NS: LazyLock<Ns> = Ns::new_lazy();
+static NS: LazyLock<Ns> = Ns::new_lazy();
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(Mutex::default);
 
 #[derive(Debug, Clone, Copy)]
@@ -988,10 +1058,10 @@ fn inlay_column(range: Range<usize>, buf: &Buffer, area: &Area, opts: PrintOpts)
 #[derive(Default)]
 struct State {
     entries: HashMap<Id, Vec<GutterEntry>>,
-    related: Vec<GutterEntryId>,
     mouse_coord: Option<Coord>,
     hovered_point: Option<(Handle<Buffer>, Point)>,
     can_remove_point: bool,
+    related_ids: Vec<GutterEntryId>,
     spawned_ids: Vec<GutterEntryId>,
     id_relations: Vec<Vec<GutterEntryId>>,
     extant_ids: Vec<GutterEntryId>,

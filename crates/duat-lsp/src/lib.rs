@@ -158,7 +158,7 @@ impl Mode for Lsp {
                     },
                     move |pa, result| {
                         if let Some(result) = result {
-                            hover::hover(pa, encoding, result);
+                            hover::hover(pa, result);
                         }
                     },
                 );

@@ -61,6 +61,7 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
     form::enable_mask("info", true);
     form::enable_mask("inactive", true);
     form::enable_mask("current_line", false);
+    form::enable_mask("header", false);
 
     let mut opts = OPTS.lock().unwrap();
     duat_core::utils::catch_panic(|| setup(&mut opts));

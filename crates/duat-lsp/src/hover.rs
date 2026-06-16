@@ -1,16 +1,14 @@
 use std::sync::LazyLock;
 
-use duat_base::widgets::Info;
+use duat_base::widgets::Sections;
 use duat_core::{
-    Ns, context,
+    Ns,
     data::Pass,
     text::{RegexHaystack, Text},
 };
 use lsp_types::{Hover, HoverContents, MarkedString, MarkupKind};
 
-use crate::Encoding;
-
-pub fn hover(pa: &mut Pass, encoding: Encoding, hover: Hover) {
+pub fn hover(pa: &mut Pass, hover: Hover) {
     let mut text = match hover.contents {
         HoverContents::Scalar(marked_string) => parse_marked_string(&marked_string),
         HoverContents::Array(marked_strings) => {
@@ -78,28 +76,13 @@ pub fn hover(pa: &mut Pass, encoding: Encoding, hover: Hover) {
         }
     }
 
-    let title = {
-        let buffer = context::current_buffer(pa);
-        let text = buffer.text(pa);
-        if let Some(range) = hover.range {
-            let start = encoding.byte_from_pos(text, range.start);
-            let end = encoding.byte_from_pos(text, range.end);
+    let title = Some("Hover".to_string());
 
-            if let (Some(start), Some(end)) = (start, end) {
-                Some(Text::from(text[start..end].to_string()))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    };
-
-    if let Some(info) = Info::get_corner(pa) {
-        Info::set_section(pa, &info, *INFO_NS, text);
+    if let Some(info) = Sections::get_corner(pa) {
+        Sections::set_section(pa, &info, *INFO_NS, text, title, 0);
     } else {
-        let info = Info::new(*INFO_NS, text, 0);
-        info.spawn_on_corner(pa, title, true);
+        let info = Sections::new(*INFO_NS, text, title, 0);
+        info.spawn_on_corner(pa, true);
     }
 }
 

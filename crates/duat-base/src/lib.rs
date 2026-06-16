@@ -163,7 +163,7 @@ impl DuatBase {
     pub fn _plug(self) {
         widgets::linenumbers_setup();
         widgets::gutter_setup();
-        widgets::info_setup();
+        widgets::sections_setup();
         widgets::logbook_setup();
         widgets::notifications_setup();
         widgets::promptline_setup();
@@ -236,6 +236,8 @@ impl DuatBase {
         form::set_weak("logbook.colon", Form::mimic("prompt.colon"));
         form::set_weak("logbook.bracket", Form::mimic("punctuation.bracket"));
         form::set_weak("logbook.target", Form::mimic("module"));
+
+        //let shitfuck: usize = String::new();
 
         cmd::add("logs", |pa: &mut _| {
             let Some(logbook) = context::handle_of::<LogBook>(pa) else {

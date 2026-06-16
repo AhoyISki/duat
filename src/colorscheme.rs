@@ -640,7 +640,6 @@ add_colorschemes!(
             ),
             ("default.Completions", default.on(c.terminal_black)),
             ("selected.Completions", Form::new().with(c.bg).on(c.dark5)),
-            ("default.WhichKey", default.with(c.text)),
             // For duatmode
             ("cursor.main.Insert", Form::new().with(c.bg).on(c.magenta)),
             ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
@@ -821,7 +820,6 @@ add_colorschemes!(
             ),
             ("default.Completions", default.on(c.bg_overlay)),
             ("selected.Completions", Form::new().with(c.bg).on(c.blue)),
-            ("default.WhichKey", default.with(c.text)),
             // For duatmode
             ("cursor.main.Insert", Form::new().with(c.bg).on(c.purple)),
             ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
@@ -1007,7 +1005,6 @@ add_colorschemes!(
             ),
             ("default.Completions", default.on(c.current_line)),
             ("selected.Completions", Form::new().with(c.bg).on(c.purple)),
-            ("default.WhichKey", default.with(c.fg)),
             // For duatmode
             ("cursor.main.Insert", Form::new().with(c.bg).on(c.pink)),
             ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
@@ -1216,7 +1213,6 @@ add_colorschemes!(
             ),
             ("default.Completions", default.on(c.panel)),
             ("selected.Completions", Form::new().with(c.bg).on(c.fg_idle)),
-            ("default.WhichKey", default.with(c.fg)),
             // For duatmode
             ("cursor.main.Insert", Form::new().with(c.bg).on(c.constant)),
             ("cursor.extra.Insert", Form::new().with(c.bg).on(c.operator)),
@@ -1381,7 +1377,6 @@ add_colorschemes!(
                 "selected.Completions",
                 Form::new().with(c.nord0).on(c.nord3),
             ),
-            ("default.WhichKey", default.with(c.nord4)),
             // For duatmode
             ("cursor.main.Insert", Form::new().with(c.nord0).on(c.nord15)),
             (
@@ -1597,7 +1592,6 @@ add_colorschemes!(
                 "selected.Completions",
                 Form::new().with(c.fuji_white).on(c.wave_blue1).bold(),
             ),
-            ("default.WhichKey", default.with(c.fuji_white)),
             // For duatmode
             (
                 "caret.main.Normal",
@@ -1784,7 +1778,6 @@ add_colorschemes!(
                 "selected.Completions",
                 Form::new().with(c.text).on(c.surface_highlight),
             ),
-            ("default.WhichKey", default.with(c.text)),
             // For duatmode
             ("cursor.main.Insert", Form::new().with(c.bg).on(c.purple)),
             ("cursor.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
