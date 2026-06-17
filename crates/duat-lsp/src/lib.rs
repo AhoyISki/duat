@@ -428,6 +428,7 @@ impl Encoding {
         let mut byte = 0;
         let line = str
             .split_inclusive('\n')
+            .chain(str.ends_with('\n').then_some(""))
             .enumerate()
             .find_map(|(i, line)| {
                 if i as u32 == pos.line {
