@@ -133,7 +133,6 @@ impl PromptMode for RenameSymbol {
     fn before_exit(&mut self, _: &mut Pass, text: Text, _: &RwArea) {
         let mut new_name = text.to_string();
         new_name.truncate(new_name.trim_end().len());
-
         if new_name.is_empty() {
             context::error!("Name can't be empty");
         } else {

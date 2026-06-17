@@ -139,6 +139,7 @@ pub mod modes;
 mod snippets;
 pub mod state;
 pub mod widgets;
+mod splash;
 
 /// The plugin for `duat-base`
 ///
@@ -172,6 +173,7 @@ impl DuatBase {
         widgets::picker_setup();
 
         snippets::add_snippet_hook();
+        splash::add_splash_hook();
 
         modes::add_prompt_hook();
         if self.default_opts_parser {
@@ -236,8 +238,6 @@ impl DuatBase {
         form::set_weak("logbook.colon", Form::mimic("prompt.colon"));
         form::set_weak("logbook.bracket", Form::mimic("punctuation.bracket"));
         form::set_weak("logbook.target", Form::mimic("module"));
-
-        //let shitfuck: usize = String::new();
 
         cmd::add("logs", |pa: &mut _| {
             let Some(logbook) = context::handle_of::<LogBook>(pa) else {

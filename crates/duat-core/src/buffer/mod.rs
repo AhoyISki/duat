@@ -462,6 +462,11 @@ impl Buffer {
         self.history.has_unsaved_changes()
     }
 
+    /// Returns wether this is a scratch `Buffer`.
+    pub fn is_scratch(&self) -> bool {
+        matches!(self.path, PathKind::NotSet(_))
+    }
+
     /// Prepare this `Buffer` for reloading.
     ///
     /// This works by creating a new [`Buffer`], which will take

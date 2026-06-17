@@ -20,10 +20,11 @@ FOR NEXT UPDATE:
   [x] Add user configuration.
 [ ] Perfect print iterators.
   [ ] Perfect words iterator.
+[ ] Link tags apparently.
 [x] Fix pager search.
 [x] Fix commandline completion bs.
 [x] Additional wrap continuation characters.
-[ ] Add a donation splash screen.
+[x] Add a donation splash screen.
 [x] Some QoL features:
   [x] Autocompletions only after n characters.
   [x] Remember if a buffer needed to be saved.

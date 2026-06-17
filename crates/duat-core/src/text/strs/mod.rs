@@ -494,6 +494,13 @@ impl Strs {
         self.len() == 0
     }
 
+    /// Wether this is the equivalent of an empty line.
+    ///
+    /// This can be either `""`, `"\n"` or `"\r\n"`.
+    pub fn is_empty_line(&self) -> bool {
+        self.is_empty() || self == "\n" || self == "\r\n"
+    }
+
     /// Get the current version of the `StrsBuf`
     ///
     /// This version is irrespective of undos/redos, that is, an undo

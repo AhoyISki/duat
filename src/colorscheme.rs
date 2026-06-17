@@ -351,7 +351,7 @@ add_colorschemes!(
         } else {
             Form::new().with(c.text)
         };
-        let active = |form: Form| form.interpolate(Form::new().on(c.surface0), 80);
+        let active = |form: Form| form.interpolate_bg(c.surface0, 80);
 
         [
             // The default form, self explanatory.
@@ -450,6 +450,12 @@ add_colorschemes!(
             ("param", Form::new().with(c.lavender)),
             ("param.flag", Form::new().on(c.base).with(c.pink)),
             ("snippet", Form::new().with(c.base).on(c.yellow)),
+            // Splashscreen colors
+            (
+                "splash.title",
+                Form::new().with_on(c.red).interpolate_bg(c.base, 8),
+            ),
+            ("splash.divider", Form::new().with(c.blue)),
             // AST token forms
             ("variable", Form::new().with(c.text)),
             ("variable.builtin", Form::new().with(c.peach)),
@@ -646,6 +652,12 @@ add_colorschemes!(
             ("param", Form::new().with(c.purple)),
             ("param.flag", Form::new().with(c.cyan)),
             ("snippet", Form::new().with(c.bg).on(c.yellow)),
+            // Splashscreen colors
+            (
+                "splash.title",
+                Form::new().with_on(c.red).interpolate_bg(c.bg, 8),
+            ),
+            ("splash.divider", Form::new().with(c.blue)),
             // AST token forms
             ("variable", Form::new().with(c.text)),
             ("variable.builtin", Form::new().with(c.orange)),
@@ -826,6 +838,12 @@ add_colorschemes!(
             ("param", Form::new().with(c.purple)),
             ("param.flag", Form::new().with(c.teal)),
             ("snippet", Form::new().with(c.bg).on(c.yellow)),
+            // Splashscreen colors
+            (
+                "splash.title",
+                Form::new().with_on(c.red).interpolate_bg(c.bg, 8),
+            ),
+            ("splash.divider", Form::new().with(c.blue)),
             // AST token forms
             ("variable", Form::new().with(c.text)),
             ("variable.builtin", Form::new().with(c.orange)),
@@ -1011,6 +1029,12 @@ add_colorschemes!(
             ("param", Form::new().with(c.purple)),
             ("param.flag", Form::new().with(c.pink)),
             ("snippet", Form::new().with(c.bg).on(c.yellow)),
+            // Splashscreen colors
+            (
+                "splash.title",
+                Form::new().with_on(c.red).interpolate_bg(c.bg, 8),
+            ),
+            ("splash.divider", Form::new().with(c.purple)),
             // AST token forms
             ("variable", Form::new().with(c.fg)),
             ("variable.builtin", Form::new().with(c.orange)),
@@ -1219,6 +1243,12 @@ add_colorschemes!(
             ("param", Form::new().with(c.constant)),
             ("param.flag", Form::new().with(c.tag)),
             ("snippet", Form::new().with(c.bg).on(c.operator)),
+            // Splashscreen colors
+            (
+                "splash.title",
+                Form::new().with_on(c.markup).interpolate_bg(c.bg, 8),
+            ),
+            ("splash.divider", Form::new().with(c.markup)),
             // AST token forms
             ("variable", Form::new().with(c.fg)),
             ("variable.builtin", Form::new().with(c.accent)),
@@ -1386,6 +1416,12 @@ add_colorschemes!(
             ("param", Form::new().with(c.nord15)),
             ("param.flag", Form::new().with(c.nord8)),
             ("snippet", Form::new().with(c.nord0).on(c.nord15)),
+            // Splashscreen colors
+            (
+                "splash.title",
+                Form::new().with_on(c.nord11).interpolate_bg(c.nord0, 8),
+            ),
+            ("splash.divider", Form::new().with(c.nord10)),
             // AST token forms
             ("variable", Form::new().with(c.nord4)),
             ("variable.builtin", Form::new().with(c.nord12)),
@@ -1555,7 +1591,7 @@ add_colorschemes!(
             ("separator", Form::mimic("punctuation.delimiter")),
             ("mode", Form::new().with(c.spring_green)),
             ("key", Form::new().with(c.carp_yellow)),
-            ("key.special", Form::new().with(c.sumi_ink2)),
+            ("key.special", Form::new().with(c.wave_aqua2)),
             (
                 "terminal.border",
                 Form::new().with(c.katana_gray).on(c.sumi_ink3),
@@ -1612,6 +1648,14 @@ add_colorschemes!(
             ("param", Form::new().with(c.oni_violet2)),
             ("param.flag", Form::new().with(c.oni_violet2)),
             ("snippet", Form::new().with(c.sumi_ink3).on(c.boat_yellow1)),
+            // Splashscreen colors
+            (
+                "splash.title",
+                Form::new()
+                    .with_on(c.wave_red)
+                    .interpolate_bg(c.sumi_ink3, 8),
+            ),
+            ("splash.divider", Form::new().with(c.crystal_blue)),
             // AST token forms
             ("variable", Form::new().with(c.fuji_white)),
             ("variable.builtin", Form::new().with(c.surimi_orange)),
@@ -1784,6 +1828,12 @@ add_colorschemes!(
             ("param", Form::new().with(c.purple)),
             ("param.flag", Form::new().with(c.teal)),
             ("snippet", Form::new().with(c.bg).on(c.yellow)),
+            // Splashscreen colors
+            (
+                "splash.title",
+                Form::new().with_on(c.red).interpolate_bg(c.bg, 8),
+            ),
+            ("splash.divider", Form::new().with(c.comment)),
             // AST token forms
             ("variable", Form::new().with(c.text)),
             ("variable.builtin", Form::new().with(c.teal)),

@@ -369,7 +369,7 @@ mod global {
         for modif in modif.iter() {
             builder.push(match modif {
                 KeyMod::ALT => "a",
-                KeyMod::CONTROL => "s",
+                KeyMod::CONTROL => "c",
                 KeyMod::SHIFT => "s",
                 KeyMod::META => "m",
                 KeyMod::SUPER => "Super",

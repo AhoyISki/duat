@@ -232,7 +232,7 @@ impl InnerTags {
         };
 
         if let Some((e_b, e_tag)) = end {
-            if s_b >= e_b {
+            if s_b > e_b {
                 return false;
             }
 

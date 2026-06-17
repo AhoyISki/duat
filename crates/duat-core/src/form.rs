@@ -745,10 +745,7 @@ impl Form {
     /// foreground won't.
     #[track_caller]
     pub const fn with(mut self, color: &str) -> Self {
-        self.style.foreground_color = match str_to_color(color) {
-            Ok(color) => Some(color),
-            Err(_) => panic!("Ill-formed color"),
-        };
+        self.style.foreground_color = Some(str_to_color_or_panic(color));
 
         if let FormKind::Ref(_, style) = &mut self.kind {
             style.foreground_color = self.style.foreground_color;
@@ -771,10 +768,7 @@ impl Form {
     /// background won't.
     #[track_caller]
     pub const fn on(mut self, color: &str) -> Self {
-        self.style.background_color = match str_to_color(color) {
-            Ok(color) => Some(color),
-            Err(_) => panic!("Ill-formed color"),
-        };
+        self.style.background_color = Some(str_to_color_or_panic(color));
 
         if let FormKind::Ref(_, style) = &mut self.kind {
             style.background_color = self.style.background_color;
@@ -800,10 +794,7 @@ impl Form {
     /// background and foreground won't.
     #[track_caller]
     pub const fn with_on(mut self, color: &str) -> Self {
-        let color = match str_to_color(color) {
-            Ok(color) => color,
-            Err(_) => panic!("Ill-formed color"),
-        };
+        let color = str_to_color_or_panic(color);
 
         self.style.background_color = Some(color);
         self.style.foreground_color = Some(color);
@@ -834,10 +825,7 @@ impl Form {
     /// underline color won't.
     #[track_caller]
     pub fn underline(mut self, color: &str) -> Self {
-        self.style.underline_color = match str_to_color(color) {
-            Ok(color) => Some(color),
-            Err(_) => panic!("Ill-formed color"),
-        };
+        self.style.underline_color = Some(str_to_color_or_panic(color));
 
         if let FormKind::Ref(_, style) = &mut self.kind {
             style.underline_color = self.style.underline_color;
@@ -872,38 +860,103 @@ impl Form {
     /// underline color won't.
     #[track_caller]
     pub const fn interpolate(mut self, other: Self, factor: u8) -> Self {
-        const fn interpolate(color: Color, other: Color, factor: u8) -> Color {
-            if let (Color::Rgb { r, g, b }, Color::Rgb { r: or, g: og, b: ob }) = (color, other) {
-                let factor = factor as usize;
-                Color::Rgb {
-                    r: ((r as usize * factor + or as usize * (100 - factor)) / 100) as u8,
-                    g: ((g as usize * factor + og as usize * (100 - factor)) / 100) as u8,
-                    b: ((b as usize * factor + ob as usize * (100 - factor)) / 100) as u8,
-                }
-            } else {
-                color
-            }
-        }
-
         assert!(factor <= 100, "factor must be between 0 and 100");
 
         if let (Some(other_fg), Some(self_fg)) = (other.fg(), &mut self.style.foreground_color) {
-            *self_fg = interpolate(*self_fg, other_fg, factor);
+            *self_fg = try_interpolate(*self_fg, other_fg, factor);
             if let FormKind::Ref(_, style) = &mut self.kind {
                 style.foreground_color = self.style.foreground_color;
             }
         }
         if let (Some(other_bg), Some(self_bg)) = (other.bg(), &mut self.style.background_color) {
-            *self_bg = interpolate(*self_bg, other_bg, factor);
+            *self_bg = try_interpolate(*self_bg, other_bg, factor);
             if let FormKind::Ref(_, style) = &mut self.kind {
                 style.background_color = self.style.background_color;
             }
         }
         if let (Some(other_ul), Some(self_ul)) = (other.ul(), &mut self.style.underline_color) {
-            *self_ul = interpolate(*self_ul, other_ul, factor);
+            *self_ul = try_interpolate(*self_ul, other_ul, factor);
             if let FormKind::Ref(_, style) = &mut self.kind {
                 style.underline_color = self.style.underline_color;
             }
+        }
+
+        self
+    }
+
+    /// Interpolates the foreground color of this `Form` with another
+    /// color.
+    ///
+    /// This works just like [`Form::interpolate`]. This means that
+    /// the `factor` argument is a percentage bias towards this form.
+    ///
+    /// Unlike `Form::interpolate`, if this `Form` doesn't have an rgb
+    /// foreground color, it will instead be replaced entirely by the
+    /// other color.
+    pub const fn interpolate_fg(mut self, color: &str, factor: u8) -> Self {
+        assert!(factor <= 100, "factor must be between 0 and 100");
+
+        let color = str_to_color_or_panic(color);
+
+        if let Some(self_fg) = &mut self.style.foreground_color {
+            *self_fg = try_interpolate(color, *self_fg, 100 - factor);
+            if let FormKind::Ref(_, style) = &mut self.kind {
+                style.foreground_color = self.style.foreground_color;
+            }
+        } else {
+            self.style.foreground_color = Some(color);
+        }
+
+        self
+    }
+
+    /// Interpolates the background color of this `Form` with another
+    /// color.
+    ///
+    /// This works just like [`Form::interpolate`]. This means that
+    /// the `factor` argument is a percentage bias towards this form.
+    ///
+    /// Unlike `Form::interpolate`, if this `Form` doesn't have an rgb
+    /// background color, it will instead be replaced entirely by the
+    /// other color.
+    pub const fn interpolate_bg(mut self, color: &str, factor: u8) -> Self {
+        assert!(factor <= 100, "factor must be between 0 and 100");
+
+        let color = str_to_color_or_panic(color);
+
+        if let Some(self_bg) = &mut self.style.background_color {
+            *self_bg = try_interpolate(color, *self_bg, 100 - factor);
+            if let FormKind::Ref(_, style) = &mut self.kind {
+                style.background_color = self.style.background_color;
+            }
+        } else {
+            self.style.background_color = Some(color);
+        }
+
+        self
+    }
+
+    /// Interpolates the underline color of this `Form` with another
+    /// color.
+    ///
+    /// This works just like [`Form::interpolate`]. This means that
+    /// the `factor` argument is a percentage bias towards this form.
+    ///
+    /// Unlike `Form::interpolate`, if this `Form` doesn't have an rgb
+    /// underline color, it will instead be replaced entirely by the
+    /// other color.
+    pub const fn interpolate_ul(mut self, color: &str, factor: u8) -> Self {
+        assert!(factor <= 100, "factor must be between 0 and 100");
+
+        let color = str_to_color_or_panic(color);
+
+        if let Some(self_ul) = &mut self.style.underline_color {
+            *self_ul = try_interpolate(color, *self_ul, 100 - factor);
+            if let FormKind::Ref(_, style) = &mut self.kind {
+                style.underline_color = self.style.underline_color;
+            }
+        } else {
+            self.style.underline_color = Some(color);
         }
 
         self
@@ -1582,6 +1635,31 @@ fn position_and_form(
         form.kind = FormKind::Weakest;
         forms.push((name.to_string().leak(), form));
         (forms.len() - 1, form)
+    }
+}
+
+/// Tries to interpolate a color with another.
+///
+/// If either of them isn't RGB, the first color will be taken.
+const fn try_interpolate(color: Color, other: Color, factor: u8) -> Color {
+    if let (Color::Rgb { r, g, b }, Color::Rgb { r: or, g: og, b: ob }) = (color, other) {
+        let factor = factor as usize;
+        Color::Rgb {
+            r: ((r as usize * factor + or as usize * (100 - factor)) / 100) as u8,
+            g: ((g as usize * factor + og as usize * (100 - factor)) / 100) as u8,
+            b: ((b as usize * factor + ob as usize * (100 - factor)) / 100) as u8,
+        }
+    } else {
+        color
+    }
+}
+
+/// Like [`str_to_color`] but panics instead.
+#[track_caller]
+const fn str_to_color_or_panic(color: &str) -> Color {
+    match str_to_color(color) {
+        Ok(color) => color,
+        Err(_) => panic!("Ill-formed color"),
     }
 }
 
