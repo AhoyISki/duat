@@ -22,8 +22,8 @@ use crate::{
         Point, Spawn, Strs, Text, TextId, TextIndex, TextMut, TextParts, TextVersion, TwoPoints,
     },
     ui::{
-        Area, Coord, DynSpawnSpecs, PrintInfo, PrintedLine, PushSpecs, RwArea, SpawnId, Widget,
-        Window,
+        Area, AsWidget, Coord, DynSpawnSpecs, PrintInfo, PrintedLine, PushSpecs, RwArea, SpawnId,
+        Widget, Window,
     },
 };
 
@@ -260,6 +260,34 @@ impl<W: 'static> Handle<W> {
         tup_fn: impl FnOnce(&'p W) -> Option<Tup>,
     ) -> Option<Tup::Return> {
         self.widget.write_then_try(pa, tup_fn)
+    }
+
+    /// Returns a [`Mirror<W>`], letting you spawn a mirror of this
+    /// widget.
+    ///
+    /// `Mirror`s show exactly the same [`Text`] as their originals,
+    /// but on a different place.
+    ///
+    /// Normally, when you push/spawn a widget by calling something
+    /// like [`Handle::push_inner_widget`] with a `widget: W`, a new
+    /// widget is created.
+    ///
+    /// However, if you replace that `widget` with a `mirror:
+    /// Mirror<W>`, then a mirror will be created, which will allow
+    /// you to show the same content in multiple places at once.
+    ///
+    /// # Note
+    ///
+    /// Under the hood, this works by sharing the inner [`RwData<W>`]
+    /// inbetween the two `Handle`s. Nothing else is shared, including
+    /// the [`RwArea`].
+    ///
+    /// One consequence of this is that, trying to read the two
+    /// `Handle`s/`RwData<W>`s at once will result in a panic, in case
+    /// of [`Pass::write_many`], or a [`None`], in case of
+    /// [`Pass::try_write_many`].
+    pub fn mirror(&self) -> Mirror<W> {
+        Mirror(self.widget.clone())
     }
 }
 
@@ -924,7 +952,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         }) {
             let start = area.start_points(text, opts).real;
             let end = area.end_points(text, opts).real;
-            let printed_line_numbers = area.get_printed_lines(&text, opts).unwrap();
+            let printed_line_numbers = area.get_printed_lines(text, opts).unwrap();
 
             *cached_print_info = Some(CachedPrintInfo {
                 opts,
@@ -943,9 +971,7 @@ impl<W: Widget + ?Sized> Handle<W> {
 
         cached_print_info
     }
-}
 
-impl<W: Widget + ?Sized> Handle<W> {
     /// Pushes a [`Widget`] around this one.
     ///
     /// This `Widget` will be placed internally, i.e., around the
@@ -988,11 +1014,18 @@ impl<W: Widget + ?Sized> Handle<W> {
     ///
     /// Note that `new` was pushed _around_ other clustered widgets in
     /// the second case, not just around `self`.
+    ///
+    /// # Note
+    ///
+    /// The argument isn't any `impl Widget`, but instead any `impl
+    /// AsWidget`. This trait includes all widgets, but it also
+    /// includes the [`Mirror`] type, which is used to have one widget
+    /// show up on multple places at once.
     #[track_caller]
     pub fn push_inner_widget<PW: Widget>(
         &self,
         pa: &mut Pass,
-        widget: PW,
+        widget: impl AsWidget<PW>,
         specs: PushSpecs,
     ) -> Handle<PW> {
         let main = if let Some((main, _)) = self
@@ -1062,10 +1095,17 @@ impl<W: Widget + ?Sized> Handle<W> {
     ///
     /// Note that `new` was pushed _around_ other clustered widgets in
     /// the first case, not just around `self`.
+    ///
+    /// # Note
+    ///
+    /// The argument isn't any `impl Widget`, but instead any `impl
+    /// AsWidget`. This trait includes all widgets, but it also
+    /// includes the [`Mirror`] type, which is used to have one widget
+    /// show up on multple places at once.
     pub fn push_outer_widget<PW: Widget>(
         &self,
         pa: &mut Pass,
-        widget: PW,
+        widget: impl AsWidget<PW>,
         specs: PushSpecs,
     ) -> Handle<PW> {
         let main = if let Some((main, _)) = self
@@ -1100,10 +1140,17 @@ impl<W: Widget + ?Sized> Handle<W> {
     }
 
     /// Spawns a floating [`Widget`] on the `Handle`.
+    ///
+    /// # Note
+    ///
+    /// The argument isn't any `impl Widget`, but instead any `impl
+    /// AsWidget`. This trait includes all widgets, but it also
+    /// includes the [`Mirror`] type, which is used to have one widget
+    /// show up on multple places at once.
     pub fn spawn_on_widget<SW: Widget>(
         &self,
         pa: &mut Pass,
-        widget: SW,
+        widget: impl AsWidget<SW>,
         specs: DynSpawnSpecs,
     ) -> Option<Handle<SW>> {
         let self_handle = context::windows()
@@ -1135,10 +1182,17 @@ impl<W: Widget + ?Sized> Handle<W> {
     }
 
     /// Spawns a floating [`Widget`] on the `Text`.
+    ///
+    /// # Note
+    ///
+    /// The argument isn't any `impl Widget`, but instead any `impl
+    /// AsWidget`. This trait includes all widgets, but it also
+    /// includes the [`Mirror`] type, which is used to have one widget
+    /// show up on multple places at once.
     pub fn spawn_on_text<SW: Widget>(
         &self,
         pa: &mut Pass,
-        widget: SW,
+        widget: impl AsWidget<SW>,
         index: impl TextIndex,
         ns: Ns,
         specs: DynSpawnSpecs,
@@ -1224,6 +1278,11 @@ pub enum WidgetRelation {
     /// completion. lists
     Spawned,
 }
+
+/// A struct used to mirror one widget to another place.
+///
+/// It is acquired by the [`Handle::mirror`] method.
+pub struct Mirror<W>(pub(crate) RwData<W>);
 
 #[track_caller]
 fn populate<'p, 't>(text: &'t mut TextMut<'p>) -> &'t mut Selections {

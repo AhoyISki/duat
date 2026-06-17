@@ -42,8 +42,10 @@
 //! - [`FocusedOnDuat`] triggers when Duat gains focus.
 //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
 //! - [`WidgetOpened`] triggers when a [`Widget`] is opened.
+//! - [`WidgetClosed`] triggers when a `Widget` is closed.
 //! - [`WidgetSwitched`] triggers when switching the active window.
-//! - [`FocusedUpdated`] triggers when a focused [`Widget`] updates.
+//! - [`WidgetMirrored`] triggers when a `Widget` is mirrored.
+//! - [`FocusedUpdated`] triggers when a focused `Widget` updates.
 //! - [`WindowOpened`] triggers when a [`Window`] is created.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`KeySent`] triggers when a keys are sent.
@@ -725,6 +727,32 @@ impl Hookable for WidgetSwitched {
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         (&self.0.0, &self.0.1)
+    }
+}
+
+/// [`Hookable`]: Triggers when a widget is mirrored to another place.
+///
+/// This hook is triggered instead of [`WidgetOpened`] whenever you
+/// open a widget by calling [`Handle::mirror`] and using that result
+/// as an argument for widget pushing/spawning instead.
+///
+/// This will result in two regions showing the exact same [`Text`],
+/// possibly from different starting points. The biggest example of
+/// where this is useful is with the `Picker` widget, since it can
+/// show a preview of a `Buffer` and allow editing it on the preview
+/// itself.
+///
+/// The reason why this hook exists is because some things (like
+/// adding parsers) should only be done once per [`Buffer`] or
+/// [`Widget`], while other things (like pushing widgets) should be
+/// done every time a widget is mirrored as well.
+pub struct WidgetMirrored<W>(pub(crate) Handle<W>);
+
+impl<W: 'static> Hookable for WidgetMirrored<W> {
+    type Input<'h> = &'h Handle<W>;
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        &self.0
     }
 }
 

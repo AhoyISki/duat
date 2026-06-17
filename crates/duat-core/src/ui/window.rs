@@ -19,9 +19,9 @@ use super::{Node, Widget, layout::Layout};
 use crate::{
     buffer::{Buffer, BufferOpts, PathKind},
     cmd::BufferRangeOrIndex,
-    context::{self, Handle},
+    context::{self, Handle, Mirror},
     data::{Pass, RwData},
-    hook::{self, BufferSwitched, WidgetOpened, WidgetSwitched, WindowOpened},
+    hook::{self, BufferSwitched, WidgetMirrored, WidgetOpened, WidgetSwitched, WindowOpened},
     mode,
     session::UiMouseEvent,
     text::{Text, txt},
@@ -99,10 +99,10 @@ impl Windows {
         &self,
         pa: &mut Pass,
         (target, on_buffers, specs): (&RwArea, Option<bool>, PushSpecs),
-        widget: W,
+        as_widget: impl AsWidget<W>,
         master: Option<&RwArea>,
     ) -> Option<Handle<W>> {
-        self.push(pa, (target, on_buffers, specs), widget, master)?
+        self.push(pa, (target, on_buffers, specs), as_widget, master)?
             .handle()
             .get_as()
     }
@@ -114,7 +114,7 @@ impl Windows {
         &self,
         pa: &mut Pass,
         (target, specs): (&RwArea, DynSpawnSpecs),
-        widget: W,
+        as_widget: impl AsWidget<W>,
         callback: impl FnOnce(&mut Pass, Handle),
     ) -> Option<Handle<W>> {
         let (win, cluster_master, master) =
@@ -142,7 +142,8 @@ impl Windows {
                     }
                 })?;
 
-        let widget = RwData::new(widget);
+        let is_mirror = as_widget.is_mirror();
+        let widget = as_widget.to_rwdata();
         let id = SpawnId::new();
 
         let path = widget
@@ -169,7 +170,7 @@ impl Windows {
         inner.list.insert(win, window);
         inner.has_changed = true;
 
-        hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
+        trigger_spawn_hook::<W>(pa, is_mirror, &node);
 
         callback(pa, node.handle().clone());
 
@@ -181,9 +182,10 @@ impl Windows {
         &self,
         pa: &mut Pass,
         (target, specs): (&RwArea, DynSpawnSpecs),
-        (id, widget, is_closed): (SpawnId, W, Arc<AtomicBool>),
+        (id, as_widget, is_closed): (SpawnId, impl AsWidget<W>, Arc<AtomicBool>),
     ) -> Option<Handle<W>> {
-        let widget = RwData::new(widget);
+        let is_mirror = as_widget.is_mirror();
+        let widget = as_widget.to_rwdata();
         let path = widget
             .read_as::<Buffer>(pa)
             .and_then(|buffer| buffer.path_set());
@@ -214,7 +216,7 @@ impl Windows {
         inner.list.insert(win, window);
         inner.has_changed = true;
 
-        hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
+        trigger_spawn_hook::<W>(pa, is_mirror, &node);
 
         node.handle().get_as()
     }
@@ -224,10 +226,11 @@ impl Windows {
         &self,
         pa: &mut Pass,
         (specs, win): (StaticSpawnSpecs, usize),
-        widget: W,
+        as_widget: impl AsWidget<W>,
     ) -> Option<Handle<W>> {
         let id = SpawnId::new();
-        let widget = RwData::new(widget);
+        let is_mirror = as_widget.is_mirror();
+        let widget = as_widget.to_rwdata();
         let path = widget
             .read_as::<Buffer>(pa)
             .and_then(|buffer| buffer.path_set());
@@ -249,7 +252,7 @@ impl Windows {
         inner.list.insert(win, window);
         inner.has_changed = true;
 
-        hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
+        trigger_spawn_hook::<W>(pa, is_mirror, &node);
 
         node.handle().get_as()
     }
@@ -292,7 +295,7 @@ impl Windows {
         &self,
         pa: &mut Pass,
         (target, on_buffers, mut specs): (&RwArea, Option<bool>, PushSpecs),
-        widget: W,
+        as_widget: impl AsWidget<W>,
         master: Option<&RwArea>,
     ) -> Option<Node> {
         let inner = self.inner.read(pa);
@@ -324,7 +327,8 @@ impl Windows {
             Location::Regular
         };
 
-        let widget = RwData::new(widget);
+        let is_mirror = as_widget.is_mirror();
+        let widget = as_widget.to_rwdata();
         let path = widget
             .read_as::<Buffer>(pa)
             .and_then(|buffer| buffer.path_set());
@@ -348,7 +352,11 @@ impl Windows {
         window.add(pa, node.clone(), parent, location);
         self.inner.write(pa).list.insert(win, window);
 
-        hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
+        if is_mirror {
+            hook::trigger(pa, WidgetMirrored(node.handle().get_as::<W>().unwrap()));
+        } else {
+            hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
+        }
 
         Some(node)
     }
@@ -573,7 +581,6 @@ impl Windows {
         if old_node.handle() != inner.cur_node.read(internal_pass).handle() {
             let former = old_node.handle().clone();
             let current = inner.cur_node.read(internal_pass).handle().clone();
-            let inner = self.inner.read(pa);
             hook::trigger(pa, WidgetSwitched((former, current)));
         }
 
@@ -584,7 +591,6 @@ impl Windows {
             inner.buffer_history.insert(former.clone(), current.clone());
 
             if former != current {
-                let inner = self.inner.read(pa);
                 hook::trigger(pa, BufferSwitched((former, current)));
             }
         }
@@ -895,6 +901,14 @@ impl Windows {
     }
 }
 
+fn trigger_spawn_hook<W: Widget>(pa: &mut Pass, is_mirror: bool, node: &Node) {
+    if is_mirror {
+        hook::trigger(pa, WidgetMirrored(node.handle().get_as::<W>().unwrap()));
+    } else {
+        hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
+    }
+}
+
 /// A region containing [`Handle`]s.
 ///
 /// This is like a browser tab, it can contain any number of regular
@@ -912,8 +926,13 @@ struct InnerWindow {
 
 impl Window {
     /// Returns a new instance of [`Window`].
-    fn new<W: Widget>(index: usize, pa: &mut Pass, ui: Ui, widget: W) -> (Self, Node) {
-        let widget = RwData::new(widget);
+    fn new<W: Widget>(
+        index: usize,
+        pa: &mut Pass,
+        ui: Ui,
+        as_widget: impl AsWidget<W>,
+    ) -> (Self, Node) {
+        let widget = as_widget.to_rwdata();
         let path = if let Some(buffer) = widget.write_as::<Buffer>(pa) {
             buffer.layout_order = get_layout_order();
             buffer.path_set()
@@ -993,6 +1012,13 @@ impl Window {
     /// In this case, each `Window` will have a [`LogBook`] on the
     /// left side as well as [`FooterWidgets`] on the bottom.
     ///
+    /// # Note
+    ///
+    /// The argument isn't any `impl Widget`, but instead any `impl
+    /// AsWidget`. This trait includes all widgets, but it also
+    /// includes the [`Mirror`] type, which is used to have one widget
+    /// show up on multple places at once.
+    ///
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`LogBook`]: https://docs.rs/duat/latest/duat/widgets/struct.LogBook.html
     /// [`FooterWidgets`]: https://docs.rs/duat/latest/duat/widgets/struct.FooterWidgets.html
@@ -1001,7 +1027,7 @@ impl Window {
     pub fn push_inner<W: Widget>(
         &self,
         pa: &mut Pass,
-        widget: W,
+        as_widget: impl AsWidget<W>,
         mut specs: PushSpecs,
     ) -> Handle<W> {
         let target = self.0.read(pa).buffers_area.clone();
@@ -1009,7 +1035,7 @@ impl Window {
         specs.cluster = false;
 
         context::windows()
-            .push_widget(pa, (&target, Some(false), specs), widget, None)
+            .push_widget(pa, (&target, Some(false), specs), as_widget, None)
             .unwrap()
     }
 
@@ -1051,7 +1077,7 @@ impl Window {
     pub fn push_outer<W: Widget>(
         &self,
         pa: &mut Pass,
-        widget: W,
+        as_widget: impl AsWidget<W>,
         mut specs: PushSpecs,
     ) -> Handle<W> {
         let target = self.0.read(pa).master_area.clone();
@@ -1059,7 +1085,7 @@ impl Window {
         specs.cluster = false;
 
         context::windows()
-            .push_widget(pa, (&target, Some(false), specs), widget, None)
+            .push_widget(pa, (&target, Some(false), specs), as_widget, None)
             .unwrap()
     }
 
@@ -1077,9 +1103,14 @@ impl Window {
     /// of the screen.
     ///
     /// [`Coord`]: super::Coord
-    pub fn spawn<W: Widget>(&self, pa: &mut Pass, widget: W, specs: StaticSpawnSpecs) -> Handle<W> {
+    pub fn spawn<W: Widget>(
+        &self,
+        pa: &mut Pass,
+        as_widget: impl AsWidget<W>,
+        specs: StaticSpawnSpecs,
+    ) -> Handle<W> {
         context::windows()
-            .spawn_static(pa, (specs, self.0.read(pa).index), widget)
+            .spawn_static(pa, (specs, self.0.read(pa).index), as_widget)
             .unwrap()
     }
 
@@ -1449,5 +1480,38 @@ impl<'a> Iterator for SpawnedNodes<'a> {
 impl DoubleEndedIterator for SpawnedNodes<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.iter.next_back().map(|(_, node)| node)
+    }
+}
+
+/// Helper crate to allow widget pushing/spawning functions to accept
+/// both [`Widget`]s and [`Mirror`]s.
+#[doc(hidden)]
+pub trait AsWidget<W>: Sealed<W> {}
+impl<W: Widget> AsWidget<W> for W {}
+impl<W: Widget> AsWidget<W> for Mirror<W> {}
+
+trait Sealed<W> {
+    fn to_rwdata(self) -> RwData<W>;
+
+    fn is_mirror(&self) -> bool;
+}
+
+impl<W: Widget> Sealed<W> for W {
+    fn to_rwdata(self) -> RwData<W> {
+        RwData::new(self)
+    }
+
+    fn is_mirror(&self) -> bool {
+        false
+    }
+}
+
+impl<W: Widget> Sealed<W> for Mirror<W> {
+    fn to_rwdata(self) -> RwData<W> {
+        self.0
+    }
+
+    fn is_mirror(&self) -> bool {
+        true
     }
 }

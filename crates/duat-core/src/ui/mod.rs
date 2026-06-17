@@ -27,8 +27,8 @@
 //! that `Buffer`. This means a few things. For one, if you close that
 //! `Buffer`, all of its clustered `Widget`s will also close. If
 //! you swap two `Buffer`s, what you will actually swap is the
-//! [`RawUi::Area`] that contains the `Buffer` and all of its clustered
-//! `Widget`.
+//! [`RawUi::Area`] that contains the `Buffer` and all of its
+//! clustered `Widget`.
 //!
 //! Additionally, on the terminal [Ui], clustering is used to
 //! determine where to draw borders between [`RawUi::Area`]s, and it
@@ -51,7 +51,7 @@ pub(crate) use self::widget::Node;
 pub use self::{
     type_erased::{Area, PrintInfo, RwArea, Ui, ui_is},
     widget::Widget,
-    window::{Window, Windows},
+    window::{AsWidget, Window, Windows},
 };
 use crate::{context::Handle, data::Pass};
 
@@ -633,7 +633,19 @@ pub trait PushTarget {
     ///
     /// Note that `new` was pushed _around_ other clustered widgets in
     /// the second case, not just around `self`.
-    fn push_inner<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW>;
+    ///
+    /// # Note
+    ///
+    /// The argument isn't any `impl Widget`, but instead any `impl
+    /// AsWidget`. This trait includes all widgets, but it also
+    /// includes the [`Mirror`] type, which is used to have one widget
+    /// show up on multple places at once.
+    fn push_inner<PW: Widget>(
+        &self,
+        pa: &mut Pass,
+        widget: impl AsWidget<PW>,
+        specs: PushSpecs,
+    ) -> Handle<PW>;
 
     /// Pushes a [`Widget`] around the "master region" of `self`
     ///
@@ -681,7 +693,19 @@ pub trait PushTarget {
     ///
     /// Note that `new` was pushed _around_ other clustered widgets in
     /// the first case, not just around `self`.
-    fn push_outer<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW>;
+    ///
+    /// # Note
+    ///
+    /// The argument isn't any `impl Widget`, but instead any `impl
+    /// AsWidget`. This trait includes all widgets, but it also
+    /// includes the [`Mirror`] type, which is used to have one widget
+    /// show up on multple places at once.
+    fn push_outer<PW: Widget>(
+        &self,
+        pa: &mut Pass,
+        as_widget: impl AsWidget<PW>,
+        specs: PushSpecs,
+    ) -> Handle<PW>;
 
     /// Tries to downcast to a [`Handle`] of some `W`
     fn try_downcast<W: Widget>(&self) -> Option<Handle<W>>;
@@ -689,13 +713,23 @@ pub trait PushTarget {
 
 impl<W: Widget> PushTarget for Handle<W> {
     #[doc(hidden)]
-    fn push_inner<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
-        self.push_inner_widget(pa, widget, specs)
+    fn push_inner<PW: Widget>(
+        &self,
+        pa: &mut Pass,
+        as_widget: impl AsWidget<PW>,
+        specs: PushSpecs,
+    ) -> Handle<PW> {
+        self.push_inner_widget(pa, as_widget, specs)
     }
 
     #[doc(hidden)]
-    fn push_outer<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
-        self.push_outer_widget(pa, widget, specs)
+    fn push_outer<PW: Widget>(
+        &self,
+        pa: &mut Pass,
+        as_widget: impl AsWidget<PW>,
+        specs: PushSpecs,
+    ) -> Handle<PW> {
+        self.push_outer_widget(pa, as_widget, specs)
     }
 
     fn try_downcast<DW: Widget>(&self) -> Option<Handle<DW>> {
@@ -705,13 +739,23 @@ impl<W: Widget> PushTarget for Handle<W> {
 
 impl PushTarget for Window {
     #[doc(hidden)]
-    fn push_inner<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
-        Window::push_inner(self, pa, widget, specs)
+    fn push_inner<PW: Widget>(
+        &self,
+        pa: &mut Pass,
+        as_widget: impl AsWidget<PW>,
+        specs: PushSpecs,
+    ) -> Handle<PW> {
+        Window::push_inner(self, pa, as_widget, specs)
     }
 
     #[doc(hidden)]
-    fn push_outer<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
-        Window::push_outer(self, pa, widget, specs)
+    fn push_outer<PW: Widget>(
+        &self,
+        pa: &mut Pass,
+        as_widget: impl AsWidget<PW>,
+        specs: PushSpecs,
+    ) -> Handle<PW> {
+        Window::push_outer(self, pa, as_widget, specs)
     }
 
     fn try_downcast<W: Widget>(&self) -> Option<Handle<W>> {

@@ -488,7 +488,6 @@ pub mod hook {
     //! Currently, these are the existing hooks in `duat-core` and
     //! `duat-base`:
     //!
-    //!
     //! - [`BufferOpened`] is an alias for [`WidgetOpened<Buffer>`].
     //! - [`BufferClosed`] triggers when you close/unload a buffer.
     //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
@@ -500,7 +499,9 @@ pub mod hook {
     //! - [`FocusedOnDuat`] triggers when Duat gains focus.
     //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
     //! - [`WidgetOpened`] triggers when a [`Widget`] is opened.
+    //! - [`WidgetClosed`] triggers when a `Widget` is closed.
     //! - [`WidgetSwitched`] triggers when switching window.
+    //! - [`WidgetMirrored`] triggers when a `Widget` is mirrored.
     //! - [`FocusedUpdated`] triggers on focused [`Widget`] updates.
     //! - [`WindowOpened`] triggers when a [`Window`] is created.
     //! - [`ModeSwitched`] triggers when you change [`Mode`].

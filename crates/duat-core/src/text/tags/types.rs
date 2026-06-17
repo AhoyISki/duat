@@ -25,7 +25,7 @@ use crate::{
         Point, Text, TextIndex, TextRange,
         tags::{Ghost, reflist_insert, reflist_pos},
     },
-    ui::{DynSpawnSpecs, RwArea, Widget},
+    ui::{AsWidget, DynSpawnSpecs, RwArea, Widget},
 };
 
 /// [`Tag`]s are used for every visual modification to [`Text`].
@@ -566,7 +566,7 @@ impl Spawn {
     pub fn new<W: Widget>(
         pa: &mut Pass,
         target: &RwArea,
-        widget: W,
+        widget: impl AsWidget<W>,
         specs: DynSpawnSpecs,
     ) -> Option<(Self, Handle<W>)> {
         let id = SpawnId::new();
