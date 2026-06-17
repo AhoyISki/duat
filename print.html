@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3b337cb0.js";
+            window.path_to_searchindex_js = "searchindex-7d4809c0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-261cd8e4.js"></script>
@@ -722,6 +722,11 @@ fn setup(opts: &amp;mut Opts) {
     opts.duatmode.remove_joined_line_indent = true;
     // Bracket pairs to be considered by keys like 'm' and the 'u' object.
     opts.duatmode.set_brackets([["(", ")"], ["{", "}"], ["[", "]"]]);
+
+    // Center the splash text vertically.
+    opts.splash.center_vertically = true;
+    // Sets a new `Text` creation function for the splash screen.
+    opts.splash.set(|pa: &amp;Pass| txt!("default splash text"));
 
     // LineNumbers options:
     // Relative line numbers.
