@@ -25,12 +25,12 @@ static MODE: LazyLock<RwData<Option<Box<dyn Any + Send>>>> =
     LazyLock::new(|| RwData::new(Some(Box::new(()))));
 static SEND_KEY: LazyLock<RwData<Option<KeyFn>>> = LazyLock::new(RwData::default);
 static SEND_FUNCTION: LazyLock<RwData<Option<fn(&mut Pass)>>> = LazyLock::new(RwData::default);
-static SET_DEFAULT: Mutex<Option<ResetFn>> = Mutex::new(None);
+static GET_SET_DEFAULT: Mutex<Option<GetSetDefaultFn>> = Mutex::new(None);
 static DEFERRED: LazyLock<RwData<Vec<Box<dyn FnOnce(&mut Pass) + Send>>>> =
     LazyLock::new(RwData::default);
 
 type KeyFn = fn(&mut Pass, KeyEvent);
-type ResetFn = Box<dyn FnMut(&mut Pass, Handle) + Send>;
+type GetSetDefaultFn = Box<dyn FnMut(Handle) -> Box<dyn FnOnce(&mut Pass)> + Send>;
 
 /// Sets the new default mode.
 ///
@@ -45,9 +45,12 @@ type ResetFn = Box<dyn FnMut(&mut Pass, Handle) + Send>;
 /// [`mode::reset`]: reset
 /// [`Buffer`]: crate::buffer::Buffer
 pub fn set_default<M: Mode>(mut mode_fn: impl FnMut(Handle) -> M + Send + 'static) {
-    *SET_DEFAULT.lock().unwrap() = Some(Box::new(move |pa, widget| {
-        widget.set_as_active(pa);
-        set(pa, mode_fn(widget))
+    *GET_SET_DEFAULT.lock().unwrap() = Some(Box::new(move |widget| {
+        let mode = mode_fn(widget.clone());
+        Box::new(move |pa| {
+            widget.set_as_active(pa);
+            set(pa, mode)
+        })
     }));
 }
 
@@ -110,16 +113,20 @@ pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
 /// [`Buffer`]: crate::buffer::Buffer
 #[track_caller]
 pub fn reset<W: Widget>(pa: &mut Pass) {
-    let mut set_default = SET_DEFAULT.lock().unwrap();
+    let mut get_set_default = GET_SET_DEFAULT.lock().unwrap();
 
-    if let Some(set_default) = set_default.as_mut() {
-        if TypeId::of::<W>() == TypeId::of::<Buffer>() {
-            set_default(pa, context::current_buffer(pa).to_dyn());
+    if let Some(func) = get_set_default.as_mut() {
+        let set_default = if TypeId::of::<W>() == TypeId::of::<Buffer>() {
+            func(context::current_buffer(pa).to_dyn())
         } else if let Some(widget) = context::handle_of::<W>(pa) {
-            set_default(pa, widget.to_dyn())
+            func(widget.to_dyn())
         } else {
             context::error!("No widget of type [a]{}", crate::utils::duat_name::<W>());
-        }
+            return;
+        };
+
+        drop(get_set_default);
+        set_default(pa);
     } else {
         panic!("No default mode set");
     }
@@ -129,21 +136,19 @@ pub fn reset<W: Widget>(pa: &mut Pass) {
 /// given [`Handle`]
 #[track_caller]
 pub fn reset_to(pa: &mut Pass, widget: &Handle<impl Widget + ?Sized>) {
-    let mut set_default_guard = SET_DEFAULT.lock().unwrap();
+    let mut get_set_default = GET_SET_DEFAULT.lock().unwrap();
 
-    if let Some(mut set_default) = set_default_guard.take() {
-        drop(set_default_guard);
+    if let Some(func) = get_set_default.as_mut() {
         if let Some((_, node)) = {
             context::windows()
                 .entries(pa)
                 .find(|(_, node)| node.handle() == widget)
         } {
-            set_default(pa, node.handle().clone());
-            let mut set_default_guard = SET_DEFAULT.lock().unwrap();
-            if set_default_guard.is_none() {
-                *set_default_guard = Some(set_default);
-            }
+            let set_default = func(node.handle().clone());
+            drop(get_set_default);
+            set_default(pa);
         } else {
+            drop(get_set_default);
             reset::<Buffer>(pa);
         }
     } else {
@@ -189,3 +194,5 @@ fn send_function_fn<M: Mode>(pa: &mut Pass) {
         deferred_set(pa);
     }
 }
+
+type SetFn = Box<dyn FnOnce(&Pass)>;
