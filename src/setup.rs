@@ -82,6 +82,11 @@ pub fn full_setup(setup: fn(&mut Opts)) -> (Ui, BufferOpts) {
     duatmode::opts::set(|dmopts| *dmopts = opts.duatmode);
     duat_lsp::set_opts(std::mem::take(&mut opts.lsp));
 
+    duat_base::center_splash_vertically(opts.splash.center_vertically);
+    if let Some(func) = opts.splash.func.take() {
+        duat_base::set_splashscreen_fn(func);
+    }
+
     let default_buffer_opts = {
         BufferOpts {
             highlight_current_line: opts.highlight_current_line,

@@ -132,14 +132,15 @@ use duat_core::{
 };
 use regex_syntax::ast::Ast;
 
+pub use crate::splash::{center_splash_vertically, set_splashscreen_fn};
 use crate::widgets::{GutterEntryId, LogBook};
 
 mod buffer_parser;
 pub mod modes;
 mod snippets;
+mod splash;
 pub mod state;
 pub mod widgets;
-mod splash;
 
 /// The plugin for `duat-base`
 ///

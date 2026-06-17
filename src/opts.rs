@@ -294,6 +294,8 @@ pub struct Opts {
     ///
     /// [`LineNumbers`]: crate::widgets::LineNumbers
     pub linenumbers: LineNumbersOpts,
+    /// Options for the initial splash screen.
+    pub splash: SplashOpts,
     /// Options for the [`Gutter`] widget.
     ///
     /// This widget goes on the left side of each [`Buffer`], adn
@@ -801,6 +803,7 @@ impl Default for Opts {
             one_line_footer: false,
             footer_on_top: false,
             help_key: Some(KeyEvent::new(KeyCode::Char('k'), KeyMod::CONTROL)),
+            splash: SplashOpts { center_vertically: true, func: None },
             linenumbers: LineNumbersOpts::default(),
             gutter: GutterOpts::default(),
             completions: CompletionsOpts::default(),
@@ -978,6 +981,32 @@ impl WhichKeyOpts {
         self.disabled_modes.retain(|ty| *ty != TypeId::of::<M>());
         self.always_shown_modes
             .retain(|ty| *ty != TypeId::of::<M>());
+    }
+}
+
+/// Options for the initial splash screen.
+#[allow(clippy::type_complexity)]
+pub struct SplashOpts {
+    /// Wether to center the splash [`Text`] vertically.
+    ///
+    /// Horizontal centering is done with [`Spacer`]s, and it's your
+    /// responsability to get it right.
+    ///
+    /// WARNING: Using this with the default splash screen will look
+    /// bad, just saying.
+    ///
+    /// [`Spacer`]: crate::text::Spacer
+    pub center_vertically: bool,
+    pub(crate) func: Option<Box<dyn FnMut(&Pass) -> Text + Send>>,
+}
+
+impl SplashOpts {
+    /// Sets the splash [`Text`] creation function.
+    ///
+    /// You can examine the state of duat in order to get something
+    /// more customized onscreen.
+    pub fn set(&mut self, func: impl FnMut(&Pass) -> Text + Send + 'static) {
+        self.func = Some(Box::new(func));
     }
 }
 
