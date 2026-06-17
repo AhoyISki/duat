@@ -218,6 +218,7 @@ pub fn has_background() -> bool {
     WITH_BACKGRUND.load(Relaxed)
 }
 
+#[allow(dead_code)]
 pub(crate) fn add_default() {
     catppuccin::add_colorschemes();
     tokyo_night::add_colorschemes();
