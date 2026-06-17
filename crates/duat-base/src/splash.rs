@@ -78,7 +78,8 @@ fn add_splash(pa: &mut Pass, buffer: &Handle<Buffer>, ns: Ns) {
 
     let mask = Mask("active");
     let nls = if CENTER_VERT.load(Relaxed) {
-        "\n".repeat(((height - size.y) / 2.0) as usize)
+        // +1 because of the initial '\n' from the scratch buffer.
+        "\n".repeat(((height - (size.y + 1.0)) / 2.0) as usize)
     } else {
         String::new()
     };

@@ -194,5 +194,3 @@ fn send_function_fn<M: Mode>(pa: &mut Pass) {
         deferred_set(pa);
     }
 }
-
-type SetFn = Box<dyn FnOnce(&Pass)>;

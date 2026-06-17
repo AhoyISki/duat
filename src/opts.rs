@@ -1005,6 +1005,8 @@ impl SplashOpts {
     ///
     /// You can examine the state of duat in order to get something
     /// more customized onscreen.
+    ///
+    /// For no splash screen, return `Text::new()`.
     pub fn set(&mut self, func: impl FnMut(&Pass) -> Text + Send + 'static) {
         self.func = Some(Box::new(func));
     }

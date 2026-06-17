@@ -155,6 +155,11 @@ fn setup(opts: &mut Opts) {
     // Bracket pairs to be considered by keys like 'm' and the 'u' object.
     opts.duatmode.set_brackets([["(", ")"], ["{", "}"], ["[", "]"]]);
 
+    // Center the splash text vertically.
+    opts.splash.center_vertically = true;
+    // Sets a new `Text` creation function for the splash screen.
+    opts.splash.set(|pa: &Pass| txt!("default splash text"));
+
     // LineNumbers options:
     // Relative line numbers.
     opts.linenumbers.relative = false;

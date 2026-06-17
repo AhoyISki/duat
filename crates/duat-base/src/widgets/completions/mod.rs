@@ -1031,6 +1031,7 @@ static OPTS: Mutex<Opts> = Mutex::new(Opts {
     cmd_min_prefix: 0,
 });
 static WIDGET_NS: LazyLock<Ns> = Ns::new_lazy();
+#[allow(clippy::type_complexity)]
 static PARAM_COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (Ns, usize, ParamCompletions)>>> =
     LazyLock::new(Mutex::default);
 

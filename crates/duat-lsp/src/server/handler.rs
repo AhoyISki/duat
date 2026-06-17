@@ -13,7 +13,7 @@ use jsonrpc_lite::Id;
 use lsp_types::{
     DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions, FileChangeType,
     FileEvent, GlobPattern, OneOf, PartialResultParams, SemanticTokensDeltaParams,
-    SemanticTokensParams, SemanticTokensRegistrationOptions, SemanticTokensResult,
+    SemanticTokensParams, SemanticTokensResult,
     SemanticTokensServerCapabilities, TextDocumentIdentifier, WatchKind, WorkDoneProgressParams,
     notification::{DidChangeWatchedFiles, Notification, PublishDiagnostics},
     request::{

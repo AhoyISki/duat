@@ -234,9 +234,9 @@ impl<C: CompletionItem> ErasedList for InnerExhaustiveList<C> {
 
         entries.sort_by(|lhs, rhs| {
             if case_insensitive {
-                string_cmp(&prefix, &&self.list[*lhs].value().to_uppercase())
+                string_cmp(&prefix, &self.list[*lhs].value().to_uppercase())
                     .unwrap()
-                    .cmp(&string_cmp(&prefix, &&self.list[*rhs].value().to_uppercase()).unwrap())
+                    .cmp(&string_cmp(&prefix, &self.list[*rhs].value().to_uppercase()).unwrap())
             } else {
                 string_cmp(&prefix, &self.list[*lhs].value())
                     .unwrap()
