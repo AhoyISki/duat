@@ -538,7 +538,7 @@ impl std::fmt::Debug for Toggle {
 /// The [`Widget`] will be placed according to the [`DynSpawnSpecs`],
 /// and should move automatically as the `Spawn` moves around the
 /// screen.
-pub(crate) struct Spawn(SpawnId, Arc<AtomicBool>);
+pub(crate) struct Spawn(SpawnId, Arc<AtomicBool>, RwArea);
 
 impl Spawn {
     /// Returns a new instance of `Spawn`.
@@ -577,7 +577,7 @@ impl Spawn {
             (id, widget, is_closed.clone()),
         )?;
 
-        Some((Self(id, is_closed), widget))
+        Some((Self(id, is_closed, target.clone()), widget))
     }
 }
 
@@ -596,7 +596,8 @@ impl<I: TextIndex> Sealed<I> for Spawn {
     }
 
     fn on_insertion(self, tags: &mut InnerTags) {
-        tags.spawns.push(super::SpawnCell(self.0, self.1));
+        tags.spawns
+            .push(super::SpawnCell(self.0, self.1, self.2, false));
     }
 }
 impl<I: TextIndex> Tag<I> for Spawn {}

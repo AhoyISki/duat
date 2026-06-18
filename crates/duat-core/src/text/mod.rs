@@ -98,7 +98,7 @@ use crate::{
         tags::{FwdTags, InnerTags, RevTags},
         utils::implPartialEq,
     },
-    ui::SpawnId,
+    ui::{RwArea, SpawnId},
 };
 pub use crate::{
     text::{
@@ -1161,6 +1161,16 @@ impl<'t> TextMut<'t> {
         };
 
         self.text.0.selections.move_main(&self.text.0.buf, range);
+    }
+
+    /// Enable the spawns for a certain [`RwArea`].
+    pub(crate) fn enable_spawns_for(&mut self, area: &RwArea) {
+        self.text.0.tags.enable_spawns_for(area);
+    }
+
+    /// Disables all spawns.
+    pub(crate) fn disable_spawns(&mut self) {
+        self.text.0.tags.disable_spawns();
     }
 }
 

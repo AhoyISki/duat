@@ -164,6 +164,7 @@ impl<'t> FwdIter<'t> {
             RawTag::Spacer(_) | RawTag::SpawnedWidget(..) | RawTag::Overlay(..)
                 if b < self.init_point.byte() => {}
             RawTag::StartToggle(..) | RawTag::EndToggle(..) => {}
+            RawTag::SpawnedWidget(_, id) => return !self.inner_tags.spawn_is_enabled(*id),
             _ => return false,
         }
 
@@ -341,6 +342,7 @@ impl<'t> RevIter<'t> {
             RawTag::Spacer(_) | RawTag::SpawnedWidget(..) | RawTag::Overlay(..)
                 if b > self.init_point.byte() => {}
             RawTag::StartToggle(..) | RawTag::EndToggle(..) => {}
+            RawTag::SpawnedWidget(_, id) => return !self.inner_tags.spawn_is_enabled(*id),
             _ => return false,
         }
 

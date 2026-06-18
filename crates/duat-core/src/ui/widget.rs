@@ -283,7 +283,9 @@ impl Node {
             text.update_bounds();
         }
 
+        self.handle.text_mut(pa).enable_spawns_for(self.handle.area());
         (self.print)(pa, &self.handle);
+        self.handle.text_mut(pa).disable_spawns();
 
         self.handle.declare_as_read();
         self.handle.area().0.declare_as_read();

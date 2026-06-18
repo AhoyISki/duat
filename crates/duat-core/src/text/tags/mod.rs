@@ -30,7 +30,7 @@ use crate::{
         shift_list::{Shift, ShiftList, Shiftable},
         tags::{bounds::Bounds, extents::NsExtents},
     },
-    ui::SpawnId,
+    ui::{RwArea, SpawnId},
     utils::get_range,
 };
 
@@ -710,11 +710,6 @@ impl InnerTags {
         })
     }
 
-    /// A list of all [`SpawnId`]s that belong to this `Tags`
-    pub(crate) fn get_spawned_ids(&self) -> impl Iterator<Item = SpawnId> {
-        self.spawns.iter().map(|spawn_cell| spawn_cell.0)
-    }
-
     /// a list of all [`ToggleFn`]s surrouding a byte index.
     pub(crate) fn toggles_surrounding(
         &self,
@@ -779,6 +774,39 @@ impl InnerTags {
         });
 
         start_ids
+    }
+
+    ////////// Spawn functions.
+
+    /// A list of all [`SpawnId`]s that belong to this `Tags` and are
+    /// enabled.
+    pub(crate) fn get_spawned_ids(&self) -> impl Iterator<Item = SpawnId> {
+        self.spawns
+            .iter()
+            .filter_map(|spawn_cell| spawn_cell.3.then_some(spawn_cell.0))
+    }
+
+    /// Enable the spawns for a certain [`RwArea`].
+    pub(super) fn enable_spawns_for(&mut self, area: &RwArea) {
+        for SpawnCell(.., target, enabled) in &mut self.spawns {
+            if target == area {
+                *enabled = true;
+            }
+        }
+    }
+
+    /// Disables all spawns.
+    pub(super) fn disable_spawns(&mut self) {
+        for SpawnCell(.., enabled) in &mut self.spawns {
+            *enabled = false;
+        }
+    }
+
+    /// Wether a given spawn index is enabled.
+    pub(super) fn spawn_is_enabled(&self, id: SpawnId) -> bool {
+        self.spawns
+            .iter()
+            .any(|spawn_cell| spawn_cell.0 == id && spawn_cell.3)
     }
 }
 
@@ -967,7 +995,7 @@ impl Shift for i32 {
 }
 
 /// A destructor for spawned `Widget`s
-struct SpawnCell(SpawnId, Arc<AtomicBool>);
+struct SpawnCell(SpawnId, Arc<AtomicBool>, RwArea, bool);
 
 impl Drop for SpawnCell {
     fn drop(&mut self) {
