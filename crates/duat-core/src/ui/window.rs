@@ -1140,7 +1140,7 @@ impl Window {
     ///
     /// Returns `true` if this `Window` is supposed to be removed.
     fn close<W: Widget + ?Sized>(&self, pa: &mut Pass, handle: &Handle<W>) -> bool {
-        let handle_eq = |node: &mut Node| node.handle() == handle;
+        let handle_eq = |node: &mut Node| node.handle().area() == handle.area();
 
         let inner = self.0.write(pa);
 

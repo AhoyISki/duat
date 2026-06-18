@@ -586,6 +586,13 @@ impl RwArea {
     }
 }
 
+impl std::cmp::Eq for RwArea {}
+impl std::cmp::PartialEq for RwArea {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.ptr_eq(&other.0)
+    }
+}
+
 /// A type erased [`RawUi::Area`]
 ///
 /// This struct is accessed by calling [`RwArea::read`] or
@@ -882,6 +889,13 @@ impl Area {
     /// Wether this `Area` is the same as another
     pub fn area_is_eq(&self, other: &Area) -> bool {
         (self.fns.eq)(self, other)
+    }
+}
+
+impl std::cmp::Eq for Area {}
+impl std::cmp::PartialEq for Area {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self.inner.as_ref(), other.inner.as_ref())
     }
 }
 
