@@ -1172,6 +1172,11 @@ impl<'t> TextMut<'t> {
     pub(crate) fn disable_spawns(&mut self) {
         self.text.0.tags.disable_spawns();
     }
+
+    /// Closes the spawns for a given [`RwArea`].
+    pub(crate) fn close_spawns_for(&mut self, area: &RwArea) {
+        self.text.0.tags.close_spawns_for(area);
+    }
 }
 
 impl<'t> std::ops::Deref for TextMut<'t> {

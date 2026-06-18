@@ -802,6 +802,11 @@ impl InnerTags {
         }
     }
 
+    /// Closes all spawns for a particular [`RwArea`].
+    pub(super) fn close_spawns_for(&mut self, area: &RwArea) {
+        self.spawns.retain(|spawn_cell| spawn_cell.2 != *area);
+    }
+
     /// Wether a given spawn index is enabled.
     pub(super) fn spawn_is_enabled(&self, id: SpawnId) -> bool {
         self.spawns

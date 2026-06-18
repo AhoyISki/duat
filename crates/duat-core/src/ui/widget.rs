@@ -283,7 +283,9 @@ impl Node {
             text.update_bounds();
         }
 
-        self.handle.text_mut(pa).enable_spawns_for(self.handle.area());
+        self.handle
+            .text_mut(pa)
+            .enable_spawns_for(self.handle.area());
         (self.print)(pa, &self.handle);
         self.handle.text_mut(pa).disable_spawns();
 
@@ -300,6 +302,9 @@ impl Node {
     }
 
     pub(crate) fn on_close(&self, pa: &mut Pass) {
+        self.handle
+            .text_mut(pa)
+            .close_spawns_for(self.handle.area());
         self.handle.declare_closed();
         let mirrors = self.handle().mirrors.load(Relaxed);
         if mirrors <= 1 {
