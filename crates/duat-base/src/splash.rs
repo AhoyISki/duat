@@ -10,7 +10,7 @@ use duat_core::{
     data::Pass,
     hook::{self, BufferUpdated, ConfigLoaded},
     mode::{self, KeyCode, KeyEvent, KeyMod},
-    text::{Inlay, Mask, Spacer, Text},
+    text::{Inlay, Link, Mask, Spacer, Text},
     txt,
     ui::PrintInfo,
 };
@@ -89,12 +89,17 @@ fn add_splash(pa: &mut Pass, buffer: &Handle<Buffer>, ns: Ns) {
 }
 
 static SPLASH: LazyLock<Text> = LazyLock::new(|| {
+    const VERSION: &str = env!("CARGO_PKG_VERSION");
     let quit_keys = mode::keys_to_text(&mode::str_to_keys(":q<Enter>"));
     let keys_keys = mode::keys_to_text(&[KeyEvent::new(KeyCode::Char('k'), KeyMod::CONTROL)]);
 
+    let book_link = Link::new("https://ahoyiski.github.io/duat");
+    let kofi_link = Link::new("https://ko-fi.com/ahoyiski");
+    let gh_sponsors_link = Link::new("https://github.com/sponsors/ahoyiski");
+
     let f = duat_core::form::id_of!("splash.title");
 
-    txt!(
+    let mut text = txt!(
         r#"{Spacer}   {f}..[]                                       {f}s[]       {Spacer}
 {Spacer}  {f}dF[]                                        {f}:8[]        {Spacer}
 {Spacer} {f}'88bu.[]         {f}x.[]    {f}.[]                    {f}.88[]        {Spacer}
@@ -107,17 +112,23 @@ static SPLASH: LazyLock<Text> = LazyLock::new(|| {
 {Spacer} {f}.888N..888[]   {f}"8888Y[] {f}8888"[]  {f}9888[]  {f}9888[]   {f}^%888*[]       {Spacer}
 {Spacer}  {f}`"888*""[]     {f}`Y"[]   {f}'YP[]    {f}"888*""888"[]    {f}'Y"[]        {Spacer}
 {Spacer}     {f}""[]                      {f}^Y"[]   {f}^Y'[]                {Spacer}
+
+{Spacer} [splash.version]duat v{VERSION}[]     {Spacer}
 {Spacer}[splash.divider]────────────────────────────────────────────────[]    {Spacer}
-{Spacer}Welcome to duat!                                    {Spacer}
-{Spacer}Duat is a free and open source modal text editor    {Spacer}
+{Spacer}Welcome to duat!           Read the book 📖         {Spacer}
+{Spacer}Consider donating!         On ko-fi ☕              {Spacer}
+{Spacer}                           On github sponsors 🐙    {Spacer}
 {Spacer}[splash.divider]────────────────────────────────────────────────[]    {Spacer}
-{Spacer}type   {quit_keys}                 to quit duat       {Spacer}
-{Spacer}type   {keys_keys}                     for keybindings    {Spacer}
-{Spacer}[splash.divider]────────────────────────────────────────────────[]    {Spacer}
-{Spacer}Consider donating!            ko-fi.com/ahoyiski    {Spacer}
-{Spacer}                    github.com/sponsors/ahoyiski    {Spacer}
+{Spacer}type   {quit_keys}           to quit duat             {Spacer}
+{Spacer}type   {keys_keys}               for keybindings          {Spacer}
 "#
-    )
+    );
+
+    text.insert_tag(Ns::basic(), 854..872, book_link);
+    text.insert_tag(Ns::basic(), 909..921, kofi_link);
+    text.insert_tag(Ns::basic(), 963..986, gh_sponsors_link);
+
+    text
 });
 
 static CENTER_VERT: AtomicBool = AtomicBool::new(true);

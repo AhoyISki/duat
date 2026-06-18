@@ -928,6 +928,8 @@ pub fn print_text(
     // For Overlays.
     let mut overlays = Vec::new();
     let mut minimum_x;
+    // For links.
+    let mut link = None;
 
     let endl = |lines: &mut _, painter: &mut Painter, x, overlays: &mut Vec<_>, spawns: &mut _| {
         let mut default = painter.get_default();
@@ -959,6 +961,10 @@ pub fn print_text(
         let TextPlace { part, real, ghost } = item;
 
         if wrap {
+            if link.is_some() {
+                end_link(lines);
+            }
+
             if y == lines.coords().br.y {
                 break;
             }
@@ -975,6 +981,10 @@ pub fn print_text(
                 start_line(lines, initial_space);
             }
             y += 1;
+
+            if let Some(link) = link {
+                start_link(lines, link);
+            }
 
             // Resetting painter to prevent erroneous printing.
             painter.reset_prev_style();
@@ -1104,6 +1114,13 @@ pub fn print_text(
                 painter.remove_mask(id);
                 style_was_set = true;
             }
+            TextPart::StartLink(l) if link.is_none() => {
+                start_link(lines, l);
+                link = Some(l);
+            }
+            TextPart::StartLink(_) => {}
+            TextPart::EndLink(l) if link.take_if(|link| *link == l).is_some() => end_link(lines),
+            TextPart::EndLink(_) => {}
             TextPart::Overlay(overlay) => {
                 let opts = PrintOpts { print_new_line: false, ..opts };
                 let overlay_coords =
@@ -1119,6 +1136,10 @@ pub fn print_text(
                 );
             }
         }
+    }
+
+    if link.is_some() {
+        end_link(&mut lines)
     }
 
     // If this isn't the case, the text is completely empty.
@@ -1147,6 +1168,7 @@ fn continue_overlays<'t, Iter: Iterator<Item = (PrintedPlace, TextPlace<'t>)>>(
     let mut spawns_for_next: Vec<SpawnId> = Vec::new();
     let mut current_x = original_x;
     let mut still_printint_chars = true;
+    let mut link = None;
 
     while let Some((place, item)) = {
         let mut min = None;
@@ -1236,8 +1258,19 @@ fn continue_overlays<'t, Iter: Iterator<Item = (PrintedPlace, TextPlace<'t>)>>(
                 painter.remove_mask(id);
                 *style_was_set = true;
             }
+            TextPart::StartLink(l) if link.is_none() => {
+                start_link(lines, l);
+                link = Some(l);
+            }
+            TextPart::StartLink(_) => {}
+            TextPart::EndLink(l) if link.take_if(|link| *link == l).is_some() => end_link(lines),
+            TextPart::EndLink(_) => {}
             TextPart::Overlay(_) => unreachable!(),
         }
+    }
+
+    if link.is_some() {
+        end_link(lines)
     }
 
     if current_x < original_x
@@ -1279,6 +1312,16 @@ fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPo
         wcol,
         wcol,
     )
+}
+
+fn start_link(lines: &mut Lines, link: &str) {
+    lines.write_all(b"\x1b]8;;").unwrap();
+    lines.write_all(link.as_bytes()).unwrap();
+    lines.write_all(b"\x1b\\").unwrap();
+}
+
+fn end_link(lines: &mut Lines) {
+    lines.write_all(b"\x1b]8;;\x1b\\").unwrap();
 }
 
 const fn get_control_str(char: char) -> Option<&'static str> {

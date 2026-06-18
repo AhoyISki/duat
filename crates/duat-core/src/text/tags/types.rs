@@ -52,6 +52,8 @@ use crate::{
 ///   the mouse pointer.
 /// - [`Mask`]: Maps all [`Form`]s in a region, given a certain `&str`
 ///   suffix.
+/// - [`Link`]: Creates a link area in a region. This link can be
+///   clicked with the mouse, and will open a page in your browser.
 ///
 /// [`Form`]: crate::form::Form
 /// [range]: TextRange
@@ -648,6 +650,57 @@ impl<I: TextRange> Sealed<I> for Mask {
 }
 impl<I: TextRange> Tag<I> for Mask {}
 
+/// [`Tag`]: A clickable link to a url.
+///
+/// This works like `[text](link)` in markdown, that is, it will
+/// create a clickable region that leads to some url, but will format
+/// it like `text`, not like `link`.
+///
+/// If multiple links intercept, all links after the first one should
+/// be ignored completely.
+///
+/// [`Form`]: form::Form
+/// [explicitely set]: form::set
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Link {
+    link: String,
+    idx: Option<usize>,
+}
+
+impl Link {
+    /// Creates a new clickable link that can be added to a [`Text`].
+    pub fn new(link: impl ToString) -> Self {
+        Self { link: link.to_string(), idx: None }
+    }
+}
+
+impl<I: TextRange> Sealed<I> for Link {
+    const IS_META: bool = false;
+
+    fn get_raw(
+        &mut self,
+        tags: &InnerTags,
+        index: I,
+        max: usize,
+        ns: Ns,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        let range = index.to_range(max);
+        let idx = reflist_pos(&tags.links, &self.link);
+
+        self.idx = Some(idx);
+        (
+            (range.start, RawTag::StartLink(ns, idx as u32)),
+            Some((range.end, RawTag::EndLink(ns, idx as u32))),
+        )
+    }
+
+    fn on_insertion(self, tags: &mut InnerTags) {
+        let idx = self.idx.unwrap();
+        reflist_insert(&mut tags.links, self.link, idx);
+    }
+}
+impl<I: TextRange> Tag<I> for Link {}
+
 /// An internal representation of [`Tag`]s.
 ///
 /// Unlike [`Tag`]s, however, each variant here is only placed in a
@@ -703,10 +756,16 @@ pub(in crate::text) enum RawTag {
     /// Removes a mask from the stack. It won't always be the last
     /// one.
     PopMask(Ns, MaskId),
+
+    /// Starts a clickable link
+    StartLink(Ns, u32),
+    /// Ends a clickable link
+    EndLink(Ns, u32),
 }
 
 impl RawTag {
     /// Wether this [`RawTag`] ends with another.
+    #[inline(always)]
     pub fn ends_with(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::PushForm(l_ns, l_id, _), Self::PopForm(r_ns, r_id)) => {
@@ -717,28 +776,42 @@ impl RawTag {
                 l_id == r_id && l_ns == r_ns
             }
             (Self::PushMask(l_ns, l_id), Self::PopMask(r_ns, r_id)) => l_id == r_id && l_ns == r_ns,
+            (Self::StartLink(l_ns, l_id), Self::EndLink(r_ns, r_id)) => {
+                l_id == r_id && l_ns == r_ns
+            }
             _ => false,
         }
     }
 
     /// Wether this [`RawTag`] is the start of a range.
+    #[inline(always)]
     pub fn is_start(&self) -> bool {
         matches!(
             self,
-            Self::PushForm(..) | Self::StartConceal(_) | Self::StartToggle(..) | Self::PushMask(..)
+            Self::PushForm(..)
+                | Self::StartConceal(_)
+                | Self::StartToggle(..)
+                | Self::PushMask(..)
+                | Self::StartLink(..)
         )
     }
 
     /// Wether this [`RawTag`] is the end of a range.
+    #[inline(always)]
     pub fn is_end(&self) -> bool {
         matches!(
             self,
-            Self::PopForm(..) | Self::EndConceal(_) | Self::EndToggle(..) | Self::PopMask(..)
+            Self::PopForm(..)
+                | Self::EndConceal(_)
+                | Self::EndToggle(..)
+                | Self::PopMask(..)
+                | Self::EndLink(..)
         )
     }
 
     /// Wether this is a "meta" tag, that is, wether it alters the
     /// structure of the text itself.
+    #[inline(always)]
     pub fn is_meta(&self) -> bool {
         matches!(
             self,
@@ -747,6 +820,7 @@ impl RawTag {
     }
 
     /// The [`Ns`] of this [`RawTag`].
+    #[inline(always)]
     pub(in crate::text) fn ns(&self) -> Ns {
         match self.get_ns() {
             Some(ns) => ns,
@@ -761,6 +835,7 @@ impl RawTag {
     /// [`InnerTags`].
     ///
     /// [`InnerTags`]: super::InnerTags
+    #[inline(always)]
     fn get_ns(&self) -> Option<Ns> {
         match self {
             Self::PushForm(ns, ..)
@@ -774,7 +849,9 @@ impl RawTag {
             | Self::EndToggle(ns, _)
             | Self::SpawnedWidget(ns, _)
             | Self::PushMask(ns, _)
-            | Self::PopMask(ns, _) => Some(*ns),
+            | Self::PopMask(ns, _)
+            | Self::StartLink(ns, _)
+            | Self::EndLink(ns, _) => Some(*ns),
             Self::ConcealUntil(_) => None,
         }
     }
@@ -783,6 +860,7 @@ impl RawTag {
     /// [`RawTag`]s.
     ///
     /// [`Form`]: crate::form::Form
+    #[inline(always)]
     pub(super) fn priority(&self) -> u8 {
         match self {
             Self::PushForm(.., priority) => *priority + 5,
@@ -796,7 +874,9 @@ impl RawTag {
             Self::PopMask(..) => 7,
             Self::StartConceal(..) => 8,
             Self::StartToggle(..) => 9,
-            Self::SpawnedWidget(..) => 10,
+            Self::StartLink(..) => 10,
+            Self::EndLink(..) => 11,
+            Self::SpawnedWidget(..) => 12,
             Self::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
         }
     }
@@ -878,6 +958,8 @@ impl std::fmt::Debug for RawTag {
             Self::SpawnedWidget(ns, id) => write!(f, "SpawnedWidget({ns:?}, {id:?}"),
             Self::PushMask(ns, id) => write!(f, "PushMask({ns:?}, {})", id.name()),
             Self::PopMask(ns, id) => write!(f, "PopMask({ns:?}, {})", id.name()),
+            Self::StartLink(ns, idx) => write!(f, "StartLink({ns:?}, {idx})"),
+            Self::EndLink(ns, idx) => write!(f, "EndLink({ns:?}, {idx})"),
         }
     }
 }
@@ -936,14 +1018,21 @@ pub enum TagPart<'t> {
     /// Removes a mask from the stack. It won't always be the last
     /// one.
     PopMask(MaskId),
+
+    /// Starts a clickable link.
+    StartLink(&'t str),
+    /// Ends a clickable link.
+    EndLink(&'t str),
 }
 
 impl<'t> TagPart<'t> {
     /// Returns a [`TagPart`] from a [`RawTag`].
+    #[inline(always)]
     pub(super) fn from_raw(
         raw_tag: RawTag,
         ghosts: &'t [Option<(Ghost, usize)>],
         toggles: &'t [Option<(Toggle, usize)>],
+        links: &'t [Option<(String, usize)>],
     ) -> Self {
         match raw_tag {
             PushForm(_, form_id, priority) => Self::PushForm(form_id, priority),
@@ -965,6 +1054,8 @@ impl<'t> TagPart<'t> {
             SpawnedWidget(_, spawn_id) => Self::SpawnedWidget(spawn_id),
             PushMask(_, mask_id) => Self::PushMask(mask_id),
             PopMask(_, mask_id) => Self::PopMask(mask_id),
+            StartLink(_, idx) => Self::StartLink(&links[idx as usize].as_ref().unwrap().0),
+            EndLink(_, idx) => Self::EndLink(&links[idx as usize].as_ref().unwrap().0),
         }
     }
 }

@@ -542,6 +542,10 @@ pub enum TextPart<'t> {
     PushMask(MaskId),
     /// Pop a mask from the [`Painter`].
     PopMask(MaskId),
+    /// Starts a clickable link.
+    StartLink(&'t str),
+    /// Ends a clickable link.
+    EndLink(&'t str),
     /// Resets all [`FormId`]s, [`ToggleId`]s and alignments.
     ///
     /// Used when a [`Conceal`] covers a large region, which Duat
@@ -570,6 +574,8 @@ impl<'t> TextPart<'t> {
             RawTag::Overlay(_, idx) => Self::Overlay(tags.get_ghost(idx)),
             RawTag::PushMask(_, id) => Self::PushMask(id),
             RawTag::PopMask(_, id) => Self::PopMask(id),
+            RawTag::StartLink(_, idx) => Self::StartLink(tags.get_link(idx)),
+            RawTag::EndLink(_, idx) => Self::EndLink(tags.get_link(idx)),
             RawTag::StartConceal(_)
             | RawTag::EndConceal(_)
             | RawTag::Inlay(..)

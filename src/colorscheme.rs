@@ -456,6 +456,7 @@ add_colorschemes!(
                 "splash.title",
                 Form::new().with_on(c.red).interpolate_bg(c.base, 8),
             ),
+            ("splash.version", Form::new().with(c.yellow).bold()),
             ("splash.divider", Form::new().with(c.blue)),
             // AST token forms
             ("variable", Form::new().with(c.text)),
@@ -658,6 +659,7 @@ add_colorschemes!(
                 "splash.title",
                 Form::new().with_on(c.red).interpolate_bg(c.bg, 8),
             ),
+            ("splash.version", Form::new().with(c.yellow).bold()),
             ("splash.divider", Form::new().with(c.blue)),
             // AST token forms
             ("variable", Form::new().with(c.text)),
@@ -844,6 +846,7 @@ add_colorschemes!(
                 "splash.title",
                 Form::new().with_on(c.red).interpolate_bg(c.bg, 8),
             ),
+            ("splash.version", Form::new().with(c.yellow).bold()),
             ("splash.divider", Form::new().with(c.blue)),
             // AST token forms
             ("variable", Form::new().with(c.text)),
@@ -911,7 +914,7 @@ add_colorschemes!(
     [
         (dracula, "dracula", [
             (bg, "#282a36"),
-            (current_line, "#44475a"),
+            (current_line, "#353747"),
             (selection, "#44475a"),
             (fg, "#f8f8f2"),
             (comment, "#6272a4"),
@@ -926,7 +929,7 @@ add_colorschemes!(
         ]),
         (alucard, "dracula-alucard", [
             (bg, "#fffbeb"),
-            (current_line, "#6c664b"),
+            (current_line, "#e2deca"),
             (selection, "#cfcfde"),
             (fg, "#1f1f1f"),
             (comment, "#6c664b"),
@@ -1035,6 +1038,7 @@ add_colorschemes!(
                 "splash.title",
                 Form::new().with_on(c.red).interpolate_bg(c.bg, 8),
             ),
+            ("splash.version", Form::new().with(c.yellow).bold()),
             ("splash.divider", Form::new().with(c.purple)),
             // AST token forms
             ("variable", Form::new().with(c.fg)),
@@ -1249,6 +1253,7 @@ add_colorschemes!(
                 "splash.title",
                 Form::new().with_on(c.markup).interpolate_bg(c.bg, 8),
             ),
+            ("splash.version", Form::new().with(c.string).bold()),
             ("splash.divider", Form::new().with(c.markup)),
             // AST token forms
             ("variable", Form::new().with(c.fg)),
@@ -1422,6 +1427,7 @@ add_colorschemes!(
                 "splash.title",
                 Form::new().with_on(c.nord11).interpolate_bg(c.nord0, 8),
             ),
+            ("splash.version", Form::new().with(c.nord13).bold()),
             ("splash.divider", Form::new().with(c.nord10)),
             // AST token forms
             ("variable", Form::new().with(c.nord4)),
@@ -1656,6 +1662,7 @@ add_colorschemes!(
                     .with_on(c.wave_red)
                     .interpolate_bg(c.sumi_ink3, 8),
             ),
+            ("splash.version", Form::new().with(c.fuji_white).bold()),
             ("splash.divider", Form::new().with(c.crystal_blue)),
             // AST token forms
             ("variable", Form::new().with(c.fuji_white)),
@@ -1834,6 +1841,7 @@ add_colorschemes!(
                 "splash.title",
                 Form::new().with_on(c.red).interpolate_bg(c.bg, 8),
             ),
+            ("splash.version", Form::new().with(c.yellow).bold()),
             ("splash.divider", Form::new().with(c.comment)),
             // AST token forms
             ("variable", Form::new().with(c.text)),

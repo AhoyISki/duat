@@ -107,7 +107,7 @@ pub use crate::{
         iter::{FwdIter, RevIter, TextPart, TextPlace},
         search::{Matches, RegexHaystack, RegexPattern},
         strs::{Lines, SearchStep, Strs, StrsDoubleEndedSearcher, StrsPattern, StrsSearcher},
-        tags::{Conceal, FormTag, Inlay, Mask, Overlay, Spacer, Tag, TagPart, Tags, Toggle},
+        tags::{Conceal, FormTag, Inlay, Link, Mask, Overlay, Spacer, Tag, TagPart, Tags, Toggle},
         utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     },
     txt,

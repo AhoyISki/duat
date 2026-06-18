@@ -1,4 +1,4 @@
-//! Internal struct for holding [`Tag`]s
+//! Internal struct for holding [`Tag`]s.
 //!
 //! [`Tag`]s are held internally as [`RawTag`]s, which occupy much
 //! less space and can be very cheaply copied around. The
@@ -20,7 +20,7 @@ use RawTag::*;
 pub(super) use crate::text::tags::types::RawTag;
 pub(crate) use crate::text::tags::types::Spawn;
 pub use crate::text::tags::types::{
-    Conceal, FormTag, Inlay, Mask, Overlay, Spacer, Tag, TagPart, Toggle, ToggleFn,
+    Conceal, FormTag, Inlay, Link, Mask, Overlay, Spacer, Tag, TagPart, Toggle, ToggleFn,
 };
 use crate::{
     Ns,
@@ -38,7 +38,7 @@ mod bounds;
 mod extents;
 mod types;
 
-/// A public interface for mutating the [`Tag`]s of a [`Text`]
+/// A public interface for mutating the [`Tag`]s of a [`Text`].
 ///
 /// It lets you modify the tags in expected ways, such as adding and
 /// removing [`Tag`]s, without letting you do things like swapping it
@@ -51,7 +51,7 @@ mod types;
 pub struct Tags<'t>(&'t mut InnerTags);
 
 impl Tags<'_> {
-    /// Inserts a [`Tag`] at the given position
+    /// Inserts a [`Tag`] at the given position.
     ///
     /// Insertion may fail if you try to push a `Tag` to a position or
     /// range which already has the exact same `Tag` with the exact
@@ -62,7 +62,7 @@ impl Tags<'_> {
     }
 
     /// Same as [`insert`], but does it after other [`Tags`] of the
-    /// same priority
+    /// same priority.
     ///
     /// [`insert`]: Self::insert
     #[track_caller]
@@ -70,7 +70,7 @@ impl Tags<'_> {
         self.0.insert_inner(ns, idx, tag, true)
     }
 
-    /// Removes the [`Tag`]s of a [ns] from a region
+    /// Removes the [`Tag`]s of a [ns] from a region.
     ///
     /// The input can either be a byte index, a [`Point`], or a
     /// [range] of byte indices/[`Point`]s. If you are implementing a
@@ -107,7 +107,7 @@ impl Tags<'_> {
     }
 
     /// Just like [`Tags::remove`] but excludes ends on the start and
-    /// starts on the end
+    /// starts on the end.
     ///
     /// In the regular [`remove`] function, if you remove from a range
     /// `x..y`, tag ranges that end in `x` or start in `y - 1`
@@ -123,7 +123,7 @@ impl Tags<'_> {
         self.0.remove_from_excl(ns, range);
     }
 
-    /// Like [`Tags::remove`], but removes base on a predicate
+    /// Like [`Tags::remove`], but removes base on a predicate.
     ///
     /// If the function returns `true`, then the tag is removed.
     #[track_caller]
@@ -137,7 +137,7 @@ impl Tags<'_> {
         self.0.remove_if(ns, range, filter)
     }
 
-    /// Removes all [`Tag`]s
+    /// Removes all [`Tag`]s.
     ///
     /// Refrain from using this function on [`Buffer`]s, as there may
     /// be other [`Tag`] providers, and you should avoid measing
@@ -163,44 +163,45 @@ impl std::fmt::Debug for Tags<'_> {
     }
 }
 
-/// The struct that holds the [`RawTag`]s of the [`Text`]
+/// The struct that holds the [`RawTag`]s of the [`Text`].
 ///
 /// It also holds the [`Text`]s of any [`Inlay`]s, and the
 /// functions of [`StartToggle`]s
 pub struct InnerTags {
     list: ShiftList<(i32, RawTag)>,
-    ghosts: Vec<Option<(Ghost, usize)>>,
-    toggles: Vec<Option<(Toggle, usize)>>,
-    spawns: Vec<SpawnCell>,
     bounds: Bounds,
     extents: NsExtents,
+    ghosts: Vec<Option<(Ghost, usize)>>,
+    toggles: Vec<Option<(Toggle, usize)>>,
+    links: Vec<Option<(String, usize)>>,
+    spawns: Vec<SpawnCell>,
     tags_version: u64,
     meta_tags_version: u64,
 }
 
 impl InnerTags {
-    /// Returns a [`Tags`] of `self`
+    /// Returns a [`Tags`] of `self`.
     pub(super) fn tags(&mut self) -> Tags<'_> {
         Tags(self)
     }
 
-    /// Creates a new [`InnerTags`] with a given len
+    /// Creates a new [`InnerTags`] with a given len.
     pub fn new(max: usize) -> Self {
         Self {
             list: ShiftList::new(max as i32),
-            ghosts: Vec::new(),
-            toggles: Vec::new(),
-            spawns: Vec::new(),
             bounds: Bounds::new(max),
             extents: NsExtents::new(max),
+            ghosts: Vec::new(),
+            toggles: Vec::new(),
+            links: Vec::new(),
+            spawns: Vec::new(),
             tags_version: 0,
             meta_tags_version: 0,
         }
     }
 
-    /// Insert a new [`Tag`] at a given [`TextIndex`] or [`TextRange`]
-    ///
-    /// If the `Tag` is ranged (like [`FormTag`] or
+    /// Insert a new [`Tag`] at a given [`TextIndex`] or
+    /// [`TextRange`].
     ///
     /// [`TextIndex`]: super::TextIndex
     /// [`TextRange`]: super::TextRange
@@ -289,7 +290,7 @@ impl InnerTags {
         }
     }
 
-    /// Insert another [`InnerTags`] into this one
+    /// Insert another [`InnerTags`] into this one.
     pub fn insert_tags(&mut self, p: Point, other: &InnerTags) {
         let mut starts = Vec::new();
         let mut added_tags = false;
@@ -298,9 +299,11 @@ impl InnerTags {
         for (_, (b, tag)) in other.list.iter_fwd(..) {
             let b = b as usize + p.byte();
             match tag {
-                PushForm(..) | StartConceal(_) | PushMask(..) | RawTag::StartToggle(..) => {
-                    starts.push((b, tag))
-                }
+                PushForm(..)
+                | StartConceal(_)
+                | PushMask(..)
+                | RawTag::StartToggle(..)
+                | StartLink(..) => starts.push((b, tag)),
                 PopForm(..) | EndConceal(_) | PopMask(..) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, stag) = starts.remove(i);
@@ -328,6 +331,18 @@ impl InnerTags {
                         added_tags |= self.insert_raw((sb, stag), Some((b, tag)), false);
                     }
                 }
+                RawTag::EndLink(_, mut idx) => {
+                    let (link, _) = other.links[idx as usize].as_ref().unwrap();
+                    idx = reflist_pos(&self.links, link) as u32;
+                    reflist_insert(&mut self.links, link.clone(), idx as usize);
+
+                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
+                    let (sb, stag) = starts.remove(i);
+
+                    if b > sb {
+                        added_tags |= self.insert_raw((sb, stag), Some((b, tag)), false);
+                    }
+                }
                 RawTag::Spacer(_) | SpawnedWidget(..) => {
                     added_tags |= self.insert_raw((b, tag), None, false)
                 }
@@ -339,7 +354,7 @@ impl InnerTags {
         self.meta_tags_version += added_meta_tags as u64;
     }
 
-    /// Extends this [`InnerTags`] with another one
+    /// Extends this [`InnerTags`] with another one.
     pub fn extend(&mut self, other: InnerTags) {
         self.list.extend(other.list);
         self.ghosts.extend(other.ghosts);
@@ -347,20 +362,22 @@ impl InnerTags {
         self.extents.extend(other.extents);
     }
 
-    /// Removes all [`RawTag`]s of a given [`Ns`]
+    /// Removes all [`RawTag`]s of a given [`Ns`].
     #[track_caller]
+    #[inline]
     pub(super) fn remove_from(&mut self, ns: Ns, within: Range<usize>) {
         for extent in self.extents.remove(within.clone(), |other| other == ns) {
-            self.remove_inner(extent.clone(), |(_, tag), _, _| tag.ns() == ns);
+            self.remove_inner(extent.clone(), |(_, tag), _, _, _| tag.ns() == ns);
         }
     }
 
     #[track_caller]
+    #[inline]
     pub(super) fn remove_from_excl(&mut self, ns: Ns, within: Range<usize>) {
         let mut remained_on = [false; 2];
 
         for extent in self.extents.remove(within.clone(), |other| other == ns) {
-            self.remove_inner(extent.clone(), |(b, tag), _, _| {
+            self.remove_inner(extent.clone(), |(b, tag), _, _, _| {
                 if ns != tag.ns() {
                     return false;
                 };
@@ -390,7 +407,7 @@ impl InnerTags {
     }
 
     /// Removes every [`TagPart`] from a range that matches a given
-    /// predicate
+    /// predicate.
     pub(super) fn remove_if(
         &mut self,
         ns: Ns,
@@ -398,19 +415,22 @@ impl InnerTags {
         mut filter: impl FnMut(usize, TagPart) -> bool,
     ) {
         for extent in self.extents.iter_over(within.clone(), ns) {
-            self.remove_inner(extent.clone(), |(byte, tag), ghosts, toggles| {
-                filter(byte as usize, TagPart::from_raw(tag, ghosts, toggles))
+            self.remove_inner(extent.clone(), |(byte, tag), ghosts, toggles, links| {
+                filter(
+                    byte as usize,
+                    TagPart::from_raw(tag, ghosts, toggles, links),
+                )
             });
         }
     }
 
     /// Removes every [`RawTag`] from a range, as well as their
-    /// matches
+    /// matches.
     ///
     /// WILL remove every required [`RawTag`], WILL shift the indices
     /// of the [`Bounds`], WILL NOT shift [`NsExtents`] since
     /// there is no byte shifting, WILL NOT shift the bytes of the
-    /// [`Bounds`]
+    /// [`Bounds`].
     #[inline(always)]
     fn remove_inner(
         &mut self,
@@ -419,12 +439,13 @@ impl InnerTags {
             (i32, RawTag),
             &[Option<(Ghost, usize)>],
             &[Option<(Toggle, usize)>],
+            &[Option<(String, usize)>],
         ) -> bool,
     ) {
         let removed = self
             .bounds
             .remove_intersecting(range.clone(), |entry| {
-                filter(entry, &self.ghosts, &self.toggles)
+                filter(entry, &self.ghosts, &self.toggles, &self.links)
             })
             .into_iter();
 
@@ -461,7 +482,7 @@ impl InnerTags {
 
         self.list
             .extract_if_while(start..end, |_, entry| {
-                let remove = filter(entry, &self.ghosts, &self.toggles);
+                let remove = filter(entry, &self.ghosts, &self.toggles, &self.links);
                 if remove {
                     match entry.1 {
                         RawTag::Overlay(_, idx) | RawTag::Inlay(_, idx) => {
@@ -543,7 +564,7 @@ impl InnerTags {
             .for_each(|_| {});
     }
 
-    /// Transforms a byte range into another byte range
+    /// Transforms a byte range into another byte range.
     ///
     /// This will destroy any [`RawTag`]s contained in the original
     /// range.
@@ -556,7 +577,7 @@ impl InnerTags {
             // range.
             // old.start + 1 because we don't want to ge rid of bounds that merely
             // coincide with the edges.
-            self.remove_inner(old.start + 1..old.end, |_, _, _| true);
+            self.remove_inner(old.start + 1..old.end, |_, _, _, _| true);
             self.extents.remove(old.start + 1..old.end, |_| true);
 
             // If the range becomes empty, we should remove the remaining pairs
@@ -600,6 +621,7 @@ impl InnerTags {
         self.extents.shift_by(old.start + 1, shift);
     }
 
+    /// Fixes any possible bounds errors.
     pub fn update_bounds(&mut self) {
         for range in self.bounds.take_ranges() {
             let mut starts = Vec::new();
@@ -621,7 +643,7 @@ impl InnerTags {
 
     ////////// Iterator functions
 
-    /// Returns a forward iterator at a given byte
+    /// Returns a forward iterator at a given byte.
     pub(super) fn fwd_at(&self, b: usize, lookaround: Option<usize>) -> FwdTags<'_> {
         let start = {
             let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(b as i32, |(b, _)| b);
@@ -636,7 +658,7 @@ impl InnerTags {
         bounds.into_iter().chain(tags).peekable()
     }
 
-    /// Returns a reverse iterator at a given byte
+    /// Returns a reverse iterator at a given byte.
     pub(super) fn rev_at(&self, b: usize, lookaround: Option<usize>) -> RevTags<'_> {
         let end = {
             let (Ok(e_i) | Err(e_i)) = self.list.find_by_key(b as i32, |(b, _)| b);
@@ -656,7 +678,7 @@ impl InnerTags {
         self.list.iter_fwd(s_i..).map(|(_, (b, tag))| {
             (
                 b as usize,
-                TagPart::from_raw(tag, &self.ghosts, &self.toggles),
+                TagPart::from_raw(tag, &self.ghosts, &self.toggles, &self.links),
             )
         })
     }
@@ -666,7 +688,7 @@ impl InnerTags {
         self.list.iter_rev(..e_i).map(|(_, (b, tag))| {
             (
                 b as usize,
-                TagPart::from_raw(tag, &self.ghosts, &self.toggles),
+                TagPart::from_raw(tag, &self.ghosts, &self.toggles, &self.links),
             )
         })
     }
@@ -677,30 +699,30 @@ impl InnerTags {
         self.list
             .iter_fwd(s_i..)
             .take_while(move |(_, (cur_b, _))| *cur_b as usize == b)
-            .map(|(_, (_, tag))| TagPart::from_raw(tag, &self.ghosts, &self.toggles))
+            .map(|(_, (_, tag))| TagPart::from_raw(tag, &self.ghosts, &self.toggles, &self.links))
     }
 
     ////////// Querying functions
 
-    /// The version of the `InnerTags`
+    /// The version of the `InnerTags`.
     ///
     /// First element is the `tags_version`, second is the
-    /// `meta_tags_version`
+    /// `meta_tags_version`.
     pub(crate) fn versions(&self) -> (u64, u64) {
         (self.tags_version, self.meta_tags_version)
     }
 
-    /// Returns true if there are no tags
+    /// Returns true if there are no tags.
     pub fn is_empty(&self) -> bool {
         self.list.is_empty()
     }
 
-    /// Returns the len of the [`InnerTags`] in bytes
+    /// Returns the len of the [`InnerTags`] in bytes.
     pub fn len_bytes(&self) -> usize {
         self.list.max() as usize
     }
 
-    /// Returns the length of all [`Inlay`]s in a byte
+    /// Returns the length of all [`Inlay`]s in a byte.
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             TagPart::Inlay(inlay) => {
@@ -710,7 +732,7 @@ impl InnerTags {
         })
     }
 
-    /// A list of all [`SpawnId`]s that belong to this `Tags`
+    /// A list of all [`SpawnId`]s that belong to this `Tags`.
     pub(crate) fn get_spawned_ids(&self) -> impl Iterator<Item = SpawnId> {
         self.spawns.iter().map(|spawn_cell| spawn_cell.0)
     }
@@ -753,9 +775,14 @@ impl InnerTags {
         })
     }
 
-    /// Get the [`Inlay`] or [`Overlay`] [`Text`] from an index
+    /// Get the [`Inlay`] or [`Overlay`] [`Text`] from an index.
     pub(super) fn get_ghost(&self, idx: u32) -> &Text {
         self.ghosts[idx as usize].as_ref().unwrap().0.text()
+    }
+
+    /// Get a link from an index.
+    pub(super) fn get_link(&self, idx: u32) -> &str {
+        &self.links[idx as usize].as_ref().unwrap().0
     }
 
     /// Returns a list of all [`MaskId`]s that are applied to the
@@ -786,11 +813,12 @@ impl Clone for InnerTags {
     fn clone(&self) -> Self {
         Self {
             list: self.list.clone(),
-            ghosts: self.ghosts.clone(),
-            toggles: self.toggles.clone(),
-            spawns: Vec::new(),
             bounds: self.bounds.clone(),
             extents: self.extents.clone(),
+            ghosts: self.ghosts.clone(),
+            toggles: self.toggles.clone(),
+            links: self.links.clone(),
+            spawns: Vec::new(),
             tags_version: self.tags_version,
             meta_tags_version: self.tags_version,
         }
@@ -906,10 +934,10 @@ impl Iterator for FwdBoundsBefore<'_> {
     }
 }
 
-/// A reverse [`Iterator`] of [`RawTag`]s
+/// A reverse [`Iterator`] of [`RawTag`]s.
 ///
 /// This iterator automatically takes into account [`TagRange`]s and
-/// iterates their bounds as if they were regular [`RawTag`]s
+/// iterates their bounds as if they were regular [`RawTag`]s.
 pub type RevTags<'a> = std::iter::Peekable<Chain<RevBoundsAfter<'a>, RevTagsMapper<'a>>>;
 
 #[derive(Debug, Clone)]
