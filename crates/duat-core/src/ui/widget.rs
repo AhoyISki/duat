@@ -37,7 +37,7 @@
 //! [`Area`]: super::Area
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
 };
 
 use crate::{
@@ -119,13 +119,14 @@ pub(crate) struct Node {
 impl Node {
     /// Returns a new `Node`
     pub(crate) fn new<W: Widget>(
-        widget: RwData<W>,
-        area: RwArea,
-        master: Option<Handle>,
+        (widget, mirrors): (RwData<W>, Arc<AtomicUsize>),
+        (area, master): (RwArea, Option<Handle>),
         is_closed: Arc<AtomicBool>,
         spawn_id: Option<SpawnId>,
     ) -> Self {
-        Self::from_handle(Handle::new(widget, area, master, is_closed, spawn_id))
+        Self::from_handle(Handle::new(
+            widget, area, master, is_closed, spawn_id, mirrors,
+        ))
     }
 
     /// Returns a `Node` from an existing [`Handle`]
@@ -249,7 +250,7 @@ impl Node {
             let text = self.handle.text(pa);
             let new = (text.version(), text.id());
             *last_printed != new
-                || self.handle.update_requested.load(Ordering::Relaxed)
+                || self.handle.update_requested.load(Relaxed)
                 || self.handle.widget().has_changed()
                 || self.handle.area.has_changed(pa)
         } else {
@@ -268,7 +269,7 @@ impl Node {
 
     /// Updates and prints this [`Node`]
     pub(crate) fn print(&self, pa: &mut Pass) {
-        self.handle.update_requested.store(false, Ordering::Relaxed);
+        self.handle.update_requested.store(false, Relaxed);
 
         crate::context::windows().cleanup_despawned(pa);
         if self.handle().is_closed() {
@@ -298,7 +299,12 @@ impl Node {
 
     pub(crate) fn on_close(&self, pa: &mut Pass) {
         self.handle.declare_closed();
-        (self.on_close)(pa, &self.handle)
+        let mirrors = self.handle().mirrors.load(Relaxed);
+        if mirrors <= 1 {
+            (self.on_close)(pa, &self.handle)
+        } else {
+            self.handle().mirrors.fetch_sub(1, Relaxed);
+        }
     }
 }
 

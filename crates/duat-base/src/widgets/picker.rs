@@ -28,6 +28,7 @@ pub(crate) fn picker_setup() {
             && new.widget().is::<Buffer>()
         {
             _ = picker.close(pa);
+            _ = picker.read(pa).preview.clone().close(pa);
         } else if let Some(preview) = old.get_as::<Preview>()
             && let pv = preview.write(pa)
             && let Some(PreviewMode::BufferPreview(idx, .., filetype)) = &pv.modes[pv.current]
@@ -313,6 +314,7 @@ impl Picker {
         };
 
         _ = picker.close(pa);
+        _ = picker.read(pa).preview.clone().close(pa);
         let current = picker.read(pa).preview.read(pa).current;
         let pkr = picker.write(pa);
 

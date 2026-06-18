@@ -7,7 +7,7 @@ use std::{
     ops::Range,
     sync::{
         Arc, Mutex, MutexGuard,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
     },
 };
 
@@ -163,6 +163,7 @@ pub struct Handle<W: ?Sized = dyn Widget> {
     sized: Arc<dyn Any + Send + Sync>,
     fns: &'static HandleFns,
     cached_print_info: Arc<Mutex<Option<CachedPrintInfo>>>,
+    pub(crate) mirrors: Arc<AtomicUsize>,
 }
 
 impl<W: Widget> Handle<W> {
@@ -173,6 +174,7 @@ impl<W: Widget> Handle<W> {
         main: Option<Handle>,
         is_closed: Arc<AtomicBool>,
         spawn_id: Option<SpawnId>,
+        mirrors: Arc<AtomicUsize>,
     ) -> Self {
         Self {
             widget: widget.clone(),
@@ -203,6 +205,7 @@ impl<W: Widget> Handle<W> {
                 },
             },
             cached_print_info: Arc::new(Mutex::new(None)),
+            mirrors,
         }
     }
 }
@@ -287,7 +290,7 @@ impl<W: 'static> Handle<W> {
     /// of [`Pass::write_many`], or a [`None`], in case of
     /// [`Pass::try_write_many`].
     pub fn mirror(&self) -> Mirror<W> {
-        Mirror(self.widget.clone())
+        Mirror(self.widget.clone(), self.mirrors.clone())
     }
 }
 
@@ -347,6 +350,7 @@ impl<W: 'static + ?Sized> Handle<W> {
             sized: self.sized.clone(),
             fns: self.fns,
             cached_print_info: self.cached_print_info.clone(),
+            mirrors: self.mirrors.clone(),
         })
     }
 
@@ -387,7 +391,7 @@ impl<W: 'static + ?Sized> Handle<W> {
     ///
     /// You can use this to request updates from other threads.
     pub fn request_update(&self) {
-        self.update_requested.store(true, Ordering::Relaxed);
+        self.update_requested.store(true, Relaxed);
     }
 
     ////////// Related Handles
@@ -487,12 +491,12 @@ impl<W: 'static + ?Sized> Handle<W> {
 
     /// Wether this `Handle` was already closed.
     pub fn is_closed(&self) -> bool {
-        self.is_closed.load(Ordering::Relaxed)
+        self.is_closed.load(Relaxed)
     }
 
     /// Declares that this `Handle` has been closed.
     pub(crate) fn declare_closed(&self) {
-        self.is_closed.store(true, Ordering::Relaxed);
+        self.is_closed.store(true, Relaxed);
     }
 
     /// Sets this [`Handle`] as "active".
@@ -1224,6 +1228,7 @@ impl<W: Widget> Handle<W> {
             sized: self.sized.clone(),
             fns: self.fns,
             cached_print_info: self.cached_print_info.clone(),
+            mirrors: self.mirrors.clone(),
         }
     }
 }
@@ -1252,6 +1257,7 @@ impl<W: ?Sized> Clone for Handle<W> {
             sized: self.sized.clone(),
             fns: self.fns,
             cached_print_info: self.cached_print_info.clone(),
+            mirrors: self.mirrors.clone(),
         }
     }
 }
@@ -1282,7 +1288,7 @@ pub enum WidgetRelation {
 /// A struct used to mirror one widget to another place.
 ///
 /// It is acquired by the [`Handle::mirror`] method.
-pub struct Mirror<W>(pub(crate) RwData<W>);
+pub struct Mirror<W>(pub(crate) RwData<W>, pub(crate) Arc<AtomicUsize>);
 
 #[track_caller]
 fn populate<'p, 't>(text: &'t mut TextMut<'p>) -> &'t mut Selections {

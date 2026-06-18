@@ -12,7 +12,10 @@
 use std::{
     iter::Chain,
     path::Path,
-    sync::{Arc, Mutex, atomic::AtomicBool},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
+    },
 };
 
 use super::{Node, Widget, layout::Layout};
@@ -71,6 +74,7 @@ impl Windows {
             ui,
         });
 
+        node.handle().mirrors.fetch_add(1, Relaxed);
         hook::trigger(pa, WindowOpened(window));
         hook::trigger(pa, WidgetOpened(node.handle().get_as::<Buffer>().unwrap()));
     }
@@ -86,6 +90,7 @@ impl Windows {
         let inner = self.inner.write(pa);
         inner.list.push(window);
 
+        node.handle().mirrors.fetch_add(1, Relaxed);
         hook::trigger(pa, WindowOpened(self.inner.read(pa).list[win].clone()));
         hook::trigger(pa, WidgetOpened(node.handle().get_as::<Buffer>().unwrap()));
 
@@ -143,7 +148,7 @@ impl Windows {
                 })?;
 
         let is_mirror = as_widget.is_mirror();
-        let widget = as_widget.to_rwdata();
+        let (widget, mirrors) = as_widget.to_parts();
         let id = SpawnId::new();
 
         let path = widget
@@ -157,9 +162,8 @@ impl Windows {
         )?;
 
         let node = Node::new(
-            widget,
-            spawned,
-            master,
+            (widget, mirrors),
+            (spawned, master),
             Arc::new(AtomicBool::new(false)),
             Some(id),
         );
@@ -185,7 +189,7 @@ impl Windows {
         (id, as_widget, is_closed): (SpawnId, impl AsWidget<W>, Arc<AtomicBool>),
     ) -> Option<Handle<W>> {
         let is_mirror = as_widget.is_mirror();
-        let widget = as_widget.to_rwdata();
+        let (widget, mirrors) = as_widget.to_parts();
         let path = widget
             .read_as::<Buffer>(pa)
             .and_then(|buffer| buffer.path_set());
@@ -208,7 +212,12 @@ impl Windows {
             .ui
             .new_dyn_spawned(path.as_ref().map(|p| p.as_ref()), id, specs, win);
 
-        let node = Node::new(widget, spawned, Some(master), is_closed, Some(id));
+        let node = Node::new(
+            (widget, mirrors),
+            (spawned, Some(master)),
+            is_closed,
+            Some(id),
+        );
 
         let window = self.inner.write(pa).list.remove(win);
         window.add(pa, node.clone(), None, Location::Spawned(id));
@@ -230,7 +239,7 @@ impl Windows {
     ) -> Option<Handle<W>> {
         let id = SpawnId::new();
         let is_mirror = as_widget.is_mirror();
-        let widget = as_widget.to_rwdata();
+        let (widget, mirrors) = as_widget.to_parts();
         let path = widget
             .read_as::<Buffer>(pa)
             .and_then(|buffer| buffer.path_set());
@@ -239,9 +248,8 @@ impl Windows {
             .new_static_spawned(path.as_ref().map(|p| p.as_ref()), id, specs, win);
 
         let node = Node::new(
-            widget,
-            spawned,
-            None,
+            (widget, mirrors),
+            (spawned, None),
             Arc::new(AtomicBool::new(false)),
             Some(id),
         );
@@ -328,7 +336,7 @@ impl Windows {
         };
 
         let is_mirror = as_widget.is_mirror();
-        let widget = as_widget.to_rwdata();
+        let (widget, mirrors) = as_widget.to_parts();
         let path = widget
             .read_as::<Buffer>(pa)
             .and_then(|buffer| buffer.path_set());
@@ -341,9 +349,8 @@ impl Windows {
         });
 
         let node = Node::new(
-            widget,
-            pushed,
-            master,
+            (widget, mirrors),
+            (pushed, master),
             Arc::new(AtomicBool::new(false)),
             None,
         );
@@ -352,11 +359,7 @@ impl Windows {
         window.add(pa, node.clone(), parent, location);
         self.inner.write(pa).list.insert(win, window);
 
-        if is_mirror {
-            hook::trigger(pa, WidgetMirrored(node.handle().get_as::<W>().unwrap()));
-        } else {
-            hook::trigger(pa, WidgetOpened(node.handle().get_as::<W>().unwrap()));
-        }
+        trigger_spawn_hook::<W>(pa, is_mirror, &node);
 
         Some(node)
     }
@@ -902,6 +905,7 @@ impl Windows {
 }
 
 fn trigger_spawn_hook<W: Widget>(pa: &mut Pass, is_mirror: bool, node: &Node) {
+    node.handle().mirrors.fetch_add(1, Relaxed);
     if is_mirror {
         hook::trigger(pa, WidgetMirrored(node.handle().get_as::<W>().unwrap()));
     } else {
@@ -932,7 +936,7 @@ impl Window {
         ui: Ui,
         as_widget: impl AsWidget<W>,
     ) -> (Self, Node) {
-        let widget = as_widget.to_rwdata();
+        let (widget, mirrors) = as_widget.to_parts();
         let path = if let Some(buffer) = widget.write_as::<Buffer>(pa) {
             buffer.layout_order = get_layout_order();
             buffer.path_set()
@@ -942,9 +946,8 @@ impl Window {
 
         let area = ui.new_root(path.as_ref().map(|p| p.as_ref()));
         let node = Node::new::<W>(
-            widget,
-            area.clone(),
-            None,
+            (widget, mirrors),
+            (area.clone(), None),
             Arc::new(AtomicBool::new(false)),
             None,
         );
@@ -1491,14 +1494,14 @@ impl<W: Widget> AsWidget<W> for W {}
 impl<W: Widget> AsWidget<W> for Mirror<W> {}
 
 trait Sealed<W> {
-    fn to_rwdata(self) -> RwData<W>;
+    fn to_parts(self) -> (RwData<W>, Arc<AtomicUsize>);
 
     fn is_mirror(&self) -> bool;
 }
 
 impl<W: Widget> Sealed<W> for W {
-    fn to_rwdata(self) -> RwData<W> {
-        RwData::new(self)
+    fn to_parts(self) -> (RwData<W>, Arc<AtomicUsize>) {
+        (RwData::new(self), Arc::new(AtomicUsize::new(1)))
     }
 
     fn is_mirror(&self) -> bool {
@@ -1507,8 +1510,8 @@ impl<W: Widget> Sealed<W> for W {
 }
 
 impl<W: Widget> Sealed<W> for Mirror<W> {
-    fn to_rwdata(self) -> RwData<W> {
-        self.0
+    fn to_parts(self) -> (RwData<W>, Arc<AtomicUsize>) {
+        (self.0, self.1)
     }
 
     fn is_mirror(&self) -> bool {
