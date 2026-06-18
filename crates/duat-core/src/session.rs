@@ -16,7 +16,7 @@ use crate::{
     Ns,
     buffer::{Buffer, BufferOpts, History, PathKind},
     context::{self, cache},
-    data::Pass,
+    data::{Pass, RwData},
     hook::{
         self, BufferClosed, ConfigLoaded, ConfigUnloaded, FocusedOnDuat, KeyTyped, OnMouseEvent,
         PrintStep, UnfocusedFromDuat,
@@ -320,6 +320,9 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
 }
 
 fn take_buffers(pa: &mut Pass) -> Vec<Vec<ReloadedBuffer>> {
+    // To deal with mirrors.
+    let mut already_taken = Vec::<RwData<_>>::new();
+
     let buffers =
         context::windows()
             .entries(pa)
@@ -340,6 +343,14 @@ fn take_buffers(pa: &mut Pass) -> Vec<Vec<ReloadedBuffer>> {
         .map(|buffers| {
             buffers
                 .into_iter()
+                .filter(|handle| {
+                    if already_taken.iter().any(|taken| taken.ptr_eq(handle.widget())) {
+                        false
+                    } else {
+                        already_taken.push(handle.widget().clone());
+                        true
+                    }
+                })
                 .map(|handle| {
                     let (buffer, area) = handle.write_with_area(pa);
                     ReloadedBuffer::from_buffer(buffer, area.is_active())

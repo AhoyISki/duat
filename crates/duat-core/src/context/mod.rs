@@ -169,6 +169,7 @@ mod global {
     /// 3. Try to look for those pushed around other [`Window`]s.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
+    #[track_caller]
     pub fn handle_of<W: Widget>(pa: &Pass) -> Option<Handle<W>> {
         windows()
             .node_of::<W>(pa)

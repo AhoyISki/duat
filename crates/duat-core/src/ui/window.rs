@@ -696,16 +696,19 @@ impl Windows {
         } else {
             let cur_win = self.inner.read(pa).cur_win;
             let list = &self.inner.read(pa).list;
-            list[cur_win]
+            list.get(cur_win)
+                .ok_or_else(|| txt!("Duat has closed, so there are no more widgets"))?
                 .nodes(pa)
                 .chain(list[cur_win + 1..].iter().flat_map(|win| win.nodes(pa)))
                 .chain(list[..cur_win].iter().flat_map(|win| win.nodes(pa)))
                 .find(|node| node.data_is::<W>() && !node.handle().is_closed())
         }
-        .ok_or(txt!(
-            "No widget of type [a]{}[] found",
-            std::any::type_name::<W>()
-        ))
+        .ok_or_else(|| {
+            txt!(
+                "No widget of type [a]{}[] found",
+                std::any::type_name::<W>()
+            )
+        })
     }
 
     ////////// Entry iterators
