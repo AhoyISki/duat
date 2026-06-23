@@ -89,13 +89,9 @@ static CONFIGS: LazyLock<Mutex<HashMap<&str, (LspList, bool)>>> = LazyLock::new(
     });
 
     entry!(["elixir"], {
-        [elixir-ls]
+        [expert]
         root_globs = ["mix.exs"]
-        [elixir-ls.settings]
-        settings_section = "elixirLS"
-        [elixir-ls.settings.elixirLS]
-        // See https://github.com/elixir-lsp/elixir-ls/blob/master/apps/language_server/lib/language_server/server.ex
-        // dialyzerEnable = true
+        args = ["--stdio=true"]
     });
 
     entry!(["elm"], {
