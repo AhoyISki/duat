@@ -62,7 +62,7 @@ use crate::{
 ///     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent) {
 ///         match key_event {
 ///             // actions based on the key pressed
-///             event!(KeyCode::Char(char)) => {
+///             unmod!(KeyCode::Char(char)) => {
 ///                 // Do something when the character 's' is typed.
 ///             }
 ///             _ => todo!("The remaining keys"),
@@ -71,7 +71,7 @@ use crate::{
 /// }
 /// ```
 ///
-/// Note the [`event!`] macro. It (alongside [`alt!`], [`ctrl!`] and
+/// Note the [`unmod!`] macro. It (alongside [`alt!`], [`ctrl!`] and
 /// [`shift!`]) can be used to easily create [`KeyEvent`]s for
 /// matching purposes. They are very useful for succinctly describing
 /// an exact match in just a short pattern:
@@ -83,7 +83,7 @@ use crate::{
 ///
 /// let key_event = KeyEvent::from(Char('a'));
 /// match key_event {
-///     event!('a' | 'b') => { /* .. */ }
+///     unmod!('a' | 'b') => { /* .. */ }
 ///     shift!(Right | Left) => { /* .. */ }
 ///     ctrl!(alt!('d')) => { /* .. */ }
 ///     _ => { /* .. */ }
@@ -107,7 +107,7 @@ use crate::{
 ///         let buffer = context::current_buffer(pa);
 ///
 ///         match key_event {
-///             event!(Char(char)) => buffer.edit_all(pa, |mut s| {
+///             unmod!(Char(char)) => buffer.edit_all(pa, |mut s| {
 ///                 s.insert('s');
 ///                 s.move_hor(1);
 ///             }),
@@ -117,7 +117,7 @@ use crate::{
 ///                 }
 ///                 s.move_hor(1);
 ///             }),
-///             event!(KeyCode::Right) => buffer.edit_all(pa, |mut s| {
+///             unmod!(KeyCode::Right) => buffer.edit_all(pa, |mut s| {
 ///                 s.unset_anchor();
 ///                 s.move_hor(1);
 ///             }),
@@ -143,7 +143,7 @@ use crate::{
 /// [editing]: SelectionMut
 /// [moving]: SelectionMut
 /// [`Mode`]: crate::mode::Mode
-/// [`event!`]: crate::mode::event
+/// [`unmod!`]: crate::mode::unmod
 /// [`alt!`]: crate::mode::alt
 /// [`ctrl!`]: crate::mode::ctrl
 /// [`shift!`]: crate::mode::shift

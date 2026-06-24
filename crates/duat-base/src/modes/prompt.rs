@@ -38,9 +38,11 @@ use duat_core::{
     data::Pass,
     form,
     hook::{self, FocusedUpdated, ModeSwitched},
-    mode::{self, KeyEvent, event, shift},
+    mode::{self, KeyEvent},
+    shift,
     text::{Inlay, Text, txt},
     ui::RwArea,
+    unmod,
 };
 
 use crate::widgets::{Completions, PromptLine};
@@ -188,12 +190,12 @@ impl mode::Mode for Prompt {
         use mode::KeyCode::*;
 
         mode::bindings!(match _ {
-            event!(Char(..)) => txt!("Insert the character"),
-            event!(Left | Right) => txt!("Move cursor"),
-            event!(Down | Up) => txt!("Move through command history"),
-            event!(Backspace | Delete) => txt!("Remove character or selection"),
-            event!(Enter) => txt!("Run command and [mode]leave"),
-            event!(Esc) => txt!("[mode]Leave[] without running command"),
+            unmod!(Char(..)) => txt!("Insert the character"),
+            unmod!(Left | Right) => txt!("Move cursor"),
+            unmod!(Down | Up) => txt!("Move through command history"),
+            unmod!(Backspace | Delete) => txt!("Remove character or selection"),
+            unmod!(Enter) => txt!("Run command and [mode]leave"),
+            unmod!(Esc) => txt!("[mode]Leave[] without running command"),
         })
     }
 
@@ -221,7 +223,7 @@ impl mode::Mode for Prompt {
         promptline.text_mut(pa).remove_tags(*PREVIEW_NS, ..);
 
         match key {
-            event!(Char(char)) => {
+            unmod!(Char(char)) => {
                 promptline.edit_main(pa, |mut s| {
                     s.insert(char);
                     s.move_hor(1);
@@ -229,7 +231,7 @@ impl mode::Mode for Prompt {
                 update(pa);
             }
 
-            event!(Backspace) => {
+            unmod!(Backspace) => {
                 if promptline.read(pa).text() == "\n" {
                     update(pa);
                     reset(pa, self);
@@ -244,7 +246,7 @@ impl mode::Mode for Prompt {
                     update(pa);
                 }
             }
-            event!(Delete) => {
+            unmod!(Delete) => {
                 promptline.edit_main(pa, |mut s| {
                     if s.char() != '\n' {
                         s.set_anchor_if_needed();
@@ -254,15 +256,15 @@ impl mode::Mode for Prompt {
                 update(pa);
             }
 
-            event!(Left) => {
+            unmod!(Left) => {
                 promptline.edit_main(pa, |mut s| s.move_hor(-1));
                 update(pa);
             }
-            event!(Right) => {
+            unmod!(Right) => {
                 promptline.edit_main(pa, |mut s| s.move_hor(1));
                 update(pa);
             }
-            event!(Up) => {
+            unmod!(Up) => {
                 let history = HISTORY.lock().unwrap();
                 let Some((_, ty_history)) = history.iter().find(ty_eq) else {
                     return;
@@ -284,7 +286,7 @@ impl mode::Mode for Prompt {
 
                 update(pa);
             }
-            event!(Down) => {
+            unmod!(Down) => {
                 let history = HISTORY.lock().unwrap();
                 let Some((_, ty_history)) = history.iter().find(ty_eq) else {
                     return;
@@ -312,7 +314,7 @@ impl mode::Mode for Prompt {
                 update(pa);
             }
 
-            event!(Tab) => {
+            unmod!(Tab) => {
                 Completions::scroll(pa, 1);
                 update(pa);
             }
@@ -321,7 +323,7 @@ impl mode::Mode for Prompt {
                 update(pa);
             }
 
-            event!(Esc) => {
+            unmod!(Esc) => {
                 promptline.edit_main(pa, |mut s| {
                     s.move_to(..);
                     s.replace("");
@@ -329,7 +331,7 @@ impl mode::Mode for Prompt {
 
                 reset(pa, self);
             }
-            event!(Enter) => {
+            unmod!(Enter) => {
                 if promptline.text(pa).is_empty() {
                     let history = HISTORY.lock().unwrap();
                     if let Some((_, ty_history)) = history.iter().find(ty_eq) {

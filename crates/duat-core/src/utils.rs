@@ -396,7 +396,7 @@ macro_rules! doc_duat {
     ($duat:ident) => {
         #[allow(unused, missing_docs)]
         mod $duat {
-            pub use $crate::{clipboard, notify, process};
+            pub use $crate::{clipboard, notify, process, alt, ctrl, shift, unmod};
 
             pub struct Opts {
                 pub wrap_lines: bool,
@@ -484,13 +484,10 @@ macro_rules! doc_duat {
                     },
                     ui::{self, Area, Widget},
                 };
-                
+
                 pub use super::{
-                    cursor::*,
-                    mode::{
-                        self, KeyCode, KeyEvent, Mode, Prompt, Pager, User, alias, alt, ctrl, event,
-                        map, shift,
-                    },
+                    cursor::*, alt, ctrl, shift, unmod,
+                    mode::{self, KeyCode, KeyEvent, Mode, Prompt, Pager, User, map,alias},
                     state::*, widgets::*, PassFileType, FileType, opts, Opts
                 };
 

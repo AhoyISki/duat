@@ -93,8 +93,10 @@ pub struct User;
 
 impl Mode for User {
     fn bindings() -> Bindings {
+        use crate::unmod;
+
         bindings!(match _ {
-            event!(KeyCode::Esc) => txt!(""),
+            unmod!(KeyCode::Esc) => txt!(""),
         })
     }
 
@@ -386,17 +388,17 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///         let menu = menu.write(pa);
 ///
 ///         match key_event {
-///             event!(Down) => menu.shift_selection(1),
-///             event!(Up) => menu.shift_selection(-1),
-///             event!(Enter | Tab | Char(' ')) => menu.toggle(),
-///             event!(Esc) => mode::reset::<Buffer>(pa),
+///             unmod!(Down) => menu.shift_selection(1),
+///             unmod!(Up) => menu.shift_selection(-1),
+///             unmod!(Enter | Tab | Char(' ')) => menu.toggle(),
+///             unmod!(Esc) => mode::reset::<Buffer>(pa),
 ///             _ => {}
 ///         }
 ///     }
 /// }
 /// ```
 ///
-/// Notice the [`event!`] macro. This macro is useful for pattern
+/// Notice the [`unmod!`] macro. This macro is useful for pattern
 /// matching [`KeyEvent`]s on [`Mode`]s. It (alongside [`alt!`],
 /// [`ctrl!`] and [`shift!`]) gets mapped to a [`KeyEvent`] that can
 /// be used for succinctly matching patterns.
@@ -446,22 +448,22 @@ pub trait Mode: Send + 'static {
     ///         let word = txt!("[a]word[separator]|[a]WORD");
     ///
     ///         let objects = mode::bindings!(match _ {
-    ///             event!('w' | 'W') => txt!("Until next {word}"),
-    ///             event!('e' | 'E') => txt!("End of {word}"),
-    ///             event!('b' | 'B') => txt!("Until start of {word}"),
+    ///             unmod!('w' | 'W') => txt!("Until next {word}"),
+    ///             unmod!('e' | 'E') => txt!("End of {word}"),
+    ///             unmod!('b' | 'B') => txt!("Until start of {word}"),
     ///             // All unlisted keys will not be sent.
     ///         });
     ///
     ///         mode::bindings!(match _ {
-    ///             event!(KeyCode::Char('0'..='9')) => txt!("Add to count"),
-    ///             event!('w' | 'W') => txt!("Move to next {word}"),
-    ///             event!('e' | 'E') => txt!("Move to end of {word}"),
-    ///             event!('b' | 'B') => txt!("Move to start of {word}"),
-    ///             event!('r') => (txt!("Replace selection with [a]char"), match _ {
-    ///                 event!(KeyCode::Char('a')) => txt!("Character to replace with"),
+    ///             unmod!(KeyCode::Char('0'..='9')) => txt!("Add to count"),
+    ///             unmod!('w' | 'W') => txt!("Move to next {word}"),
+    ///             unmod!('e' | 'E') => txt!("Move to end of {word}"),
+    ///             unmod!('b' | 'B') => txt!("Move to start of {word}"),
+    ///             unmod!('r') => (txt!("Replace selection with [a]char"), match _ {
+    ///                 unmod!(KeyCode::Char('a')) => txt!("Character to replace with"),
     ///             }),
-    ///             event!('d') => (txt!("Delete the next object"), objects.clone()),
-    ///             event!('s') => (txt!("Change the next object"), objects.clone()),
+    ///             unmod!('d') => (txt!("Delete the next object"), objects.clone()),
+    ///             unmod!('s') => (txt!("Change the next object"), objects.clone()),
     ///             _ => txt!("Not properly documented, but will be sent"),
     ///         })
     ///     }
@@ -482,7 +484,7 @@ pub trait Mode: Send + 'static {
         Self: Sized,
     {
         bindings!(match _ {
-            _ => txt!("No key binding declarations, implement [function]Mode::bindings"),
+            _ => txt!("No key binding declarations, implement [type]Mode[punctuation]::[function]bindings"),
         })
     }
 }

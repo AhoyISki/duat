@@ -28,9 +28,10 @@ use duat_core::{
     context::{self, Handle},
     data::{Pass, RwData},
     hook::{self, BufferUpdated, KeySent, OnMouseEvent, WidgetOpened, WidgetSwitched},
-    mode::{KeyCode, MouseEventKind, event},
+    mode::{KeyCode, MouseEventKind},
     text::{RegexHaystack, Text, TextIndex, TextMut, txt},
     ui::{DynSpawnSpecs, Orientation, Side, Widget},
+    unmod,
 };
 use duat_term::Frame;
 
@@ -108,7 +109,7 @@ pub fn completions_setup() {
                 }
 
                 let comp = completions.read(pa);
-                if let event!(KeyCode::Char(..) | KeyCode::Enter) = key_event
+                if let unmod!(KeyCode::Char(..) | KeyCode::Enter) = key_event
                     && let Some(matches) = &comp.matches
                     && let Some(selected) = &matches.selected
                 {

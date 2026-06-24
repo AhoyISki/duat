@@ -218,7 +218,10 @@
 //! [dependencies section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 #[doc(inline)]
-pub use duat_core::{Ns, buffer, clipboard, cmd, context, data, notify, process, text, ui, utils};
+pub use duat_core::{
+    Ns, alt, buffer, clipboard, cmd, context, ctrl, data, notify, process, shift, text, ui, unmod,
+    utils,
+};
 pub use duat_lsp as lsp;
 #[cfg(feature = "term-ui")]
 pub use duat_term::{self as term};
@@ -648,7 +651,7 @@ pub mod prelude {
         },
         mode::{
             self, Insert, KeyCode, KeyEvent, Mode, Normal, Prompt, Selection, Selections, User,
-            alias, alt, ctrl, event, map, shift,
+            alias, map,
         },
         opts::{Opts, ScrollOff, TabMode},
         plug, setup_duat,
@@ -658,6 +661,7 @@ pub mod prelude {
         },
         ui::{self, Area, Widget},
         widgets::{self, status},
+        ctrl, alt, unmod, shift
     };
 
     /// Executes a shell command, returning its [`Output`] if

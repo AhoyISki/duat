@@ -91,7 +91,7 @@ fn add_splash(pa: &mut Pass, buffer: &Handle<Buffer>, ns: Ns) {
 static SPLASH: LazyLock<Text> = LazyLock::new(|| {
     const VERSION: &str = env!("CARGO_PKG_VERSION");
     let quit_keys = mode::keys_to_text(&mode::str_to_keys(":q<Enter>"));
-    let keys_keys = mode::keys_to_text(&[KeyEvent::new(KeyCode::Char('k'), KeyMod::CONTROL)]);
+    let keys_keys = mode::keys_to_text(&[KeyEvent::new(KeyCode::Char('h'), KeyMod::CONTROL)]);
 
     let book_link = Link::new("https://ahoyiski.github.io/duat");
     let kofi_link = Link::new("https://ko-fi.com/ahoyiski");

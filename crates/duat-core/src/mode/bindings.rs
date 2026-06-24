@@ -4,6 +4,7 @@ use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyEventState, MediaKeyCode, ModifierKeyCode,
 };
 
+#[doc(inline)]
 pub use crate::__bindings__ as bindings;
 use crate::{
     mode::KeyMod,

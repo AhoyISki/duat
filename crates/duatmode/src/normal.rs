@@ -6,14 +6,17 @@ use duat_base::{
     widgets::Picker,
 };
 use duat_core::{
-    Ns,
+    Ns, alt,
     buffer::Buffer,
     context::{self, Handle},
+    ctrl,
     data::Pass,
     hook::{self, ModeSwitched},
-    mode::{self, KeyEvent, Mode, alt, ctrl, event, shift},
+    mode::{self, KeyEvent, Mode},
     opts::PrintOpts,
+    shift,
     text::Strs,
+    unmod,
 };
 use duat_jump_list::BufferJumps;
 pub use fns::*;
@@ -128,7 +131,7 @@ impl Mode for Normal {
             .map(|buffer| buffer.record_jump(pa, *U_ALT_U_ID, false));
         let rec = if jump_id.is_some() { 2 } else { 1 };
 
-        let (param, param_was_set) = if let event!(Char(char)) = key_event
+        let (param, param_was_set) = if let unmod!(Char(char)) = key_event
             && let Some(digit) = char.to_digit(10)
         {
             crate::parameter::add_to_param(pa, digit);
@@ -140,120 +143,120 @@ impl Mode for Normal {
 
         match key_event {
             ////////// Basic movement keys
-            event!(Char('h') | Left) => fns::move_hor(pa, -(param as i32), false),
-            event!(Char('H')) | shift!(Left) => fns::move_hor(pa, -(param as i32), true),
-            event!(Char('l') | Right) => fns::move_hor(pa, param as i32, false),
-            event!(Char('L')) | shift!(Right) => fns::move_hor(pa, param as i32, true),
+            unmod!(Char('h') | Left) => fns::move_hor(pa, -(param as i32), false),
+            unmod!(Char('H')) | shift!(Left) => fns::move_hor(pa, -(param as i32), true),
+            unmod!(Char('l') | Right) => fns::move_hor(pa, param as i32, false),
+            unmod!(Char('L')) | shift!(Right) => fns::move_hor(pa, param as i32, true),
 
-            event!('j' | 'J') => fns::move_ver(pa, param as i32, key_event.code == Char('J')),
-            event!('k' | 'K') => fns::move_ver(pa, -(param as i32), key_event.code == Char('K')),
+            unmod!('j' | 'J') => fns::move_ver(pa, param as i32, key_event.code == Char('J')),
+            unmod!('k' | 'K') => fns::move_ver(pa, -(param as i32), key_event.code == Char('K')),
 
-            event!(Down) => fns::move_ver_wrapped(pa, param as i32, false),
+            unmod!(Down) => fns::move_ver_wrapped(pa, param as i32, false),
             shift!(Down) => fns::move_ver_wrapped(pa, param as i32, true),
-            event!(Up) => fns::move_ver_wrapped(pa, -(param as i32), false),
+            unmod!(Up) => fns::move_ver_wrapped(pa, -(param as i32), false),
             shift!(Up) => fns::move_ver_wrapped(pa, -(param as i32), true),
 
             alt!(Down) => widget.scroll_ver(pa, param as f32),
             alt!(Up) => widget.scroll_ver(pa, -(param as f32)),
 
             ////////// Object selection keys
-            event!(char @ ('w' | 'e')) => fns::move_words(pa, param as i32, char == 'e', false),
-            event!(char @ ('W' | 'E')) => fns::move_words(pa, param as i32, char == 'E', true),
-            event!(char @ ('b' | 'v')) => fns::move_words(pa, -(param as i32), char == 'v', false),
-            event!(char @ ('B' | 'V')) => fns::move_words(pa, -(param as i32), char == 'V', true),
+            unmod!(char @ ('w' | 'e')) => fns::move_words(pa, param as i32, char == 'e', false),
+            unmod!(char @ ('W' | 'E')) => fns::move_words(pa, param as i32, char == 'E', true),
+            unmod!(char @ ('b' | 'v')) => fns::move_words(pa, -(param as i32), char == 'v', false),
+            unmod!(char @ ('B' | 'V')) => fns::move_words(pa, -(param as i32), char == 'V', true),
 
-            event!('x') => fns::select_line(pa),
+            unmod!('x') => fns::select_line(pa),
 
-            event!(char @ ('f' | 'F')) => set_onekey(OneKey::ft(param as i32, false, char == 'F')),
-            event!(char @ ('t' | 'T')) => set_onekey(OneKey::ft(param as i32, true, char == 'T')),
+            unmod!(char @ ('f' | 'F')) => set_onekey(OneKey::ft(param as i32, false, char == 'F')),
+            unmod!(char @ ('t' | 'T')) => set_onekey(OneKey::ft(param as i32, true, char == 'T')),
             alt!(char @ ('f' | 'F')) => set_onekey(OneKey::ft(-(param as i32), false, char == 'F')),
             alt!(char @ ('t' | 'T')) => set_onekey(OneKey::ft(-(param as i32), true, char == 'T')),
 
-            alt!('h') | event!(Home) => fns::select_to_start_of_line(pa, false),
+            alt!('h') | unmod!(Home) => fns::select_to_start_of_line(pa, false),
             alt!('H') | shift!(Home) => fns::select_to_start_of_line(pa, true),
-            alt!('l') | event!(End) => fns::select_to_end_of_line(pa, false),
+            alt!('l') | unmod!(End) => fns::select_to_end_of_line(pa, false),
             alt!('L') | shift!(End) => fns::select_to_end_of_line(pa, true),
 
-            event!('%') => widget.edit_main(pa, |mut s| s.move_to(..)),
+            unmod!('%') => widget.edit_main(pa, |mut s| s.move_to(..)),
 
-            event!('[') => set_onekey(OneKey::ToPrevious(param, false, true)),
-            event!(']') => set_onekey(OneKey::ToNext(param, false, true)),
-            event!('{') => set_onekey(OneKey::ToPrevious(param, false, false)),
-            event!('}') => set_onekey(OneKey::ToNext(param, false, false)),
+            unmod!('[') => set_onekey(OneKey::ToPrevious(param, false, true)),
+            unmod!(']') => set_onekey(OneKey::ToNext(param, false, true)),
+            unmod!('{') => set_onekey(OneKey::ToPrevious(param, false, false)),
+            unmod!('}') => set_onekey(OneKey::ToNext(param, false, false)),
             alt!('[') => set_onekey(OneKey::ToPrevious(param, true, true)),
             alt!(']') => set_onekey(OneKey::ToNext(param, true, true)),
             alt!('{') => set_onekey(OneKey::ToPrevious(param, true, false)),
             alt!('}') => set_onekey(OneKey::ToNext(param, true, false)),
 
-            event!('m') | alt!('m') => set_onekey(OneKey::Match(param, false)),
-            event!('M') | alt!('M') => set_onekey(OneKey::Match(param, true)),
+            unmod!('m') | alt!('m') => set_onekey(OneKey::Match(param, false)),
+            unmod!('M') | alt!('M') => set_onekey(OneKey::Match(param, true)),
 
             alt!('.') => fns::repeat_selection_sequence(pa),
 
             ////////// Insertion mode keys
-            event!('i') => fns::enter_insert_mode(pa, false),
-            event!('I') => fns::enter_insert_mode(pa, true),
-            event!('a') => fns::enter_append_mode(pa, false),
-            event!('A') => fns::enter_append_mode(pa, true),
+            unmod!('i') => fns::enter_insert_mode(pa, false),
+            unmod!('I') => fns::enter_insert_mode(pa, true),
+            unmod!('a') => fns::enter_append_mode(pa, false),
+            unmod!('A') => fns::enter_append_mode(pa, true),
 
-            event!('o') => fns::open_new_line_below(pa, true),
+            unmod!('o') => fns::open_new_line_below(pa, true),
             alt!('o') => fns::open_new_line_below(pa, false),
-            event!('O') => fns::open_new_line_above(pa, true),
+            unmod!('O') => fns::open_new_line_above(pa, true),
             alt!('O') => fns::open_new_line_above(pa, false),
 
-            event!('.') => fns::repeat_last_insert(pa),
+            unmod!('.') => fns::repeat_last_insert(pa),
 
             ////////// Selection alteration keys
-            event!('r') => set_onekey(OneKey::Replace),
-            event!('`') => fns::lowercase_selections(pa),
-            event!('~') => fns::uppercase_selections(pa),
+            unmod!('r') => set_onekey(OneKey::Replace),
+            unmod!('`') => fns::lowercase_selections(pa),
+            unmod!('~') => fns::uppercase_selections(pa),
             alt!('`') => fns::swap_selections_case(pa),
 
             ////////// Advanced selection manipulation
-            event!(')') => set_onekey(OneKey::Rotate(param, true)),
-            event!('(') => set_onekey(OneKey::Rotate(param, false)),
+            unmod!(')') => set_onekey(OneKey::Rotate(param, true)),
+            unmod!('(') => set_onekey(OneKey::Rotate(param, false)),
 
             alt!(';') => widget.edit_all(pa, |mut s| s.swap_ends()),
-            event!(';') => widget.edit_all(pa, |mut s| _ = s.unset_anchor()),
+            unmod!(';') => widget.edit_all(pa, |mut s| _ = s.unset_anchor()),
             alt!(':') => widget.edit_all(pa, |mut s| _ = s.set_cursor_on_end()),
 
             alt!('_') => fns::merge_selections(pa),
-            event!('X') => fns::split_selections_by_line(pa),
-            event!('D') => fns::divide_selection_on_ends(pa),
+            unmod!('X') => fns::split_selections_by_line(pa),
+            unmod!('D') => fns::divide_selection_on_ends(pa),
 
             ////////// Line alteration keys
-            event!('>') => fns::reindent_selections(pa, param as i32),
-            event!('<') => fns::reindent_selections(pa, -(param as i32)),
+            unmod!('>') => fns::reindent_selections(pa, param as i32),
+            unmod!('<') => fns::reindent_selections(pa, -(param as i32)),
             alt!('j') => fns::merge_lines_below(pa),
 
             ////////// Clipboard keys
-            event!('y') => fns::yank_selections(pa),
-            event!(char @ ('d' | 'c')) => fns::delete_selections(pa, true, char == 'c'),
+            unmod!('y') => fns::yank_selections(pa),
+            unmod!(char @ ('d' | 'c')) => fns::delete_selections(pa, true, char == 'c'),
             alt!(char @ ('d' | 'c')) => fns::delete_selections(pa, false, char == 'c'),
-            event!(char @ ('p' | 'P')) => fns::paste_on_selections(pa, param, char == 'P'),
-            event!('R') => fns::paste_over_selections(pa, param),
+            unmod!(char @ ('p' | 'P')) => fns::paste_on_selections(pa, param, char == 'P'),
+            unmod!('R') => fns::paste_over_selections(pa, param),
 
             ////////// SelectionMut creation and destruction
-            event!(',') => widget.remove_extra_selections(pa),
-            event!('C') => fns::copy_selection_ver(pa, false),
+            unmod!(',') => widget.remove_extra_selections(pa),
+            unmod!('C') => fns::copy_selection_ver(pa, false),
             alt!('C') => fns::copy_selection_ver(pa, true),
 
             ////////// Search keys
-            event!('/') => mode::set(pa, IncSearch::new(SearchFwd, widget.clone())),
+            unmod!('/') => mode::set(pa, IncSearch::new(SearchFwd, widget.clone())),
             alt!('/') => mode::set(pa, IncSearch::new(SearchRev, widget.clone())),
-            event!('?') => mode::set(pa, IncSearch::new(ExtendFwd, widget.clone())),
+            unmod!('?') => mode::set(pa, IncSearch::new(ExtendFwd, widget.clone())),
             alt!('?') => mode::set(pa, IncSearch::new(ExtendRev, widget.clone())),
-            event!('s') => mode::set(pa, IncSearch::new(Select, widget.clone())),
-            event!('S') => mode::set(pa, IncSearch::new(Split, widget.clone())),
+            unmod!('s') => mode::set(pa, IncSearch::new(Select, widget.clone())),
+            unmod!('S') => mode::set(pa, IncSearch::new(Split, widget.clone())),
             alt!('k') => mode::set(pa, IncSearch::new(KeepMatching(true), widget.clone())),
             alt!('K') => mode::set(pa, IncSearch::new(KeepMatching(false), widget.clone())),
 
-            event!('n') => fns::next_search_match(pa, param as i32, false),
+            unmod!('n') => fns::next_search_match(pa, param as i32, false),
             alt!('n') => fns::next_search_match(pa, -(param as i32), false),
-            event!('N') => fns::next_search_match(pa, param as i32, true),
+            unmod!('N') => fns::next_search_match(pa, param as i32, true),
             alt!('N') => fns::next_search_match(pa, -(param as i32), true),
 
-            event!('*') => fns::set_search_to_main_selection(pa),
+            unmod!('*') => fns::set_search_to_main_selection(pa),
 
             ////////// Jumping
             alt!('u') => fns::move_on_selection_changes(pa, -(rec as i32)),
@@ -265,33 +268,33 @@ impl Mode for Normal {
 
             ////////// Jumping around
             ctrl!('o') => fns::move_on_jump_list(pa, -(param as i32)),
-            ctrl!('i') | event!(Tab) => fns::move_on_jump_list(pa, param as i32),
+            ctrl!('i') | unmod!(Tab) => fns::move_on_jump_list(pa, param as i32),
             ctrl!('j') => fns::save_on_jump_list(pa),
 
-            event!(Tab) if Picker::is_open(pa) => {
+            unmod!(Tab) if Picker::is_open(pa) => {
                 if Picker::is_on_preview(pa) {
                     Picker::unfocus_preview(pa);
                 } else if widget.widget().is::<Picker>() {
                     Picker::focus_preview(pa);
                 }
             }
-            event!(Enter) if widget.widget().is::<Picker>() => Picker::select_current(pa),
+            unmod!(Enter) if widget.widget().is::<Picker>() => Picker::select_current(pa),
 
             ////////// Other mode changing keys
-            event!(':') => mode::set(pa, RunCommands::new()),
-            event!('|') => mode::set(pa, PipeSelections::new()),
+            unmod!(':') => mode::set(pa, RunCommands::new()),
+            unmod!('|') => mode::set(pa, PipeSelections::new()),
 
-            event!('g') if param_was_set => fns::go_to_line(pa, param - 1, false),
-            event!('G') if param_was_set => fns::go_to_line(pa, param - 1, true),
-            event!('g') => set_onekey(OneKey::GoTo(SelType::Normal)),
-            event!('G') => set_onekey(OneKey::GoTo(SelType::Extend)),
+            unmod!('g') if param_was_set => fns::go_to_line(pa, param - 1, false),
+            unmod!('G') if param_was_set => fns::go_to_line(pa, param - 1, true),
+            unmod!('g') => set_onekey(OneKey::GoTo(SelType::Normal)),
+            unmod!('G') => set_onekey(OneKey::GoTo(SelType::Extend)),
 
-            event!(' ') => mode::set(pa, mode::User),
-            event!(Esc) if !widget.widget().is::<Buffer>() => mode::reset::<Buffer>(pa),
+            unmod!(' ') => mode::set(pa, mode::User),
+            unmod!(Esc) if !widget.widget().is::<Buffer>() => mode::reset::<Buffer>(pa),
 
             ////////// History manipulation
-            event!('u') => widget.text_mut(pa).undo(),
-            event!('U') => widget.text_mut(pa).redo(),
+            unmod!('u') => widget.text_mut(pa).undo(),
+            unmod!('U') => widget.text_mut(pa).redo(),
             ctrl!('r') => _ = duat_core::cmd::call_notify(pa, "reload"),
 
             ////////// Snippets
@@ -314,7 +317,8 @@ pub mod fns {
         context,
         data::Pass,
         hook::{self, KeyTyped},
-        mode::{self, KeyCode, KeyEvent, VPoint, event},
+        mode::{self, KeyCode, KeyEvent, VPoint},
+        unmod,
     };
     use duat_filetype::{AutoPrefix, FileType};
     use duat_jump_list::BufferJumps;
@@ -1492,7 +1496,7 @@ pub mod fns {
             *MACRO.lock().unwrap() = None;
             hook::add::<KeyTyped>(|_, key_event| {
                 if mode::is::<Normal>()
-                    && let event!('Q' | 'q') = key_event
+                    && let unmod!('Q' | 'q') = key_event
                 {
                     return;
                 }

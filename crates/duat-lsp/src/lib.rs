@@ -11,10 +11,11 @@ use duat_core::{
     context,
     data::Pass,
     form::{self, Form},
-    mode::{self, KeyEvent, Mode, User, event},
+    mode::{self, KeyEvent, Mode, User},
     text::{Point, RegexHaystack, Strs, Text, TextMut},
     txt,
     ui::Widget,
+    unmod,
 };
 use lsp_types::{
     CodeActionContext, CodeActionParams, CodeActionProviderCapability, CodeActionTriggerKind,
@@ -103,13 +104,13 @@ pub struct Lsp;
 impl Mode for Lsp {
     fn bindings() -> duat_core::mode::Bindings {
         mode::bindings!(match _ {
-            event!('h') => txt!("Show hover info"),
-            event!('f') => txt!("Format the buffer"),
-            event!('d') => txt!("Go to definition"),
-            event!('y') => txt!("Go to type definition"),
-            event!('r') => txt!("Go to references"),
-            event!('a') => txt!("List code actions"),
-            event!('R') => txt!("Rename symbol"),
+            unmod!('h') => txt!("Show hover info"),
+            unmod!('f') => txt!("Format the buffer"),
+            unmod!('d') => txt!("Go to definition"),
+            unmod!('y') => txt!("Go to type definition"),
+            unmod!('r') => txt!("Go to references"),
+            unmod!('a') => txt!("List code actions"),
+            unmod!('R') => txt!("Rename symbol"),
         })
     }
 
@@ -144,8 +145,8 @@ impl Mode for Lsp {
         }
 
         match key_event {
-            event!('f') => buffer.lsp_format(pa, None),
-            event!('h')
+            unmod!('f') => buffer.lsp_format(pa, None),
+            unmod!('h')
                 if let Some((server, encoding, ..)) = get!(
                     |cap| &cap.hover_provider,
                     HoverProviderCapability::Simple(true) | HoverProviderCapability::Options(..)
@@ -164,7 +165,7 @@ impl Mode for Lsp {
                 );
                 buffer.hover_gutter_entries_on(pa, buffer.selections(pa).main().cursor());
             }
-            event!('d')
+            unmod!('d')
                 if let Some((server, encoding, ..)) = get!(
                     |cap| &cap.definition_provider,
                     OneOf::Left(true) | OneOf::Right(..)
@@ -179,7 +180,7 @@ impl Mode for Lsp {
                     move |pa, result| goto_definitions(result, pa, encoding),
                 );
             }
-            event!('y')
+            unmod!('y')
                 if let Some((server, encoding, ..)) = get!(
                     |cap| &cap.type_definition_provider,
                     TypeDefinitionProviderCapability::Simple(true)
@@ -195,7 +196,7 @@ impl Mode for Lsp {
                     move |pa, result| goto_definitions(result, pa, encoding),
                 );
             }
-            event!('r')
+            unmod!('r')
                 if let Some((server, encoding, ..)) = get!(
                     |cap| &cap.references_provider,
                     OneOf::Left(true) | OneOf::Right(..)
@@ -223,7 +224,7 @@ impl Mode for Lsp {
                     },
                 );
             }
-            event!('a') => {
+            unmod!('a') => {
                 for server in servers {
                     let Some(capabilities) = &server.capabilities() else {
                         continue;
@@ -273,7 +274,7 @@ impl Mode for Lsp {
                     );
                 }
             }
-            event!('R')
+            unmod!('R')
                 if let Some((server, encoding, ..)) = get!(
                     |cap| &cap.rename_provider,
                     OneOf::Left(true) | OneOf::Right(..)

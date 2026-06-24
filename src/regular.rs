@@ -1,21 +1,22 @@
 use std::sync::Mutex;
 
 use duat_base::modes::{IncSearch, RunCommands, SearchFwd};
-use duat_core::{
-    mode::{ctrl, shift},
-    ui::Widget,
-};
 #[cfg(feature = "treesitter")]
 use duat_treesitter::TsBuffer;
 
-use crate::prelude::{
-    Handle, cmd,
-    data::Pass,
-    mode::{
-        self,
-        KeyCode::{self, *},
-        KeyEvent, event,
+use crate::{
+    ctrl,
+    prelude::{
+        Handle, cmd,
+        data::Pass,
+        mode::{
+            self,
+            KeyCode::{self, *},
+            KeyEvent,
+        },
     },
+    shift, unmod,
+    widgets::Widget,
 };
 
 /// The regular, bogstandard mode, a.k.a., supposed to be like VSCode
@@ -35,7 +36,7 @@ impl mode::Mode for Regular {
 
         match key_event {
             // Characters
-            event!(Char(char)) => {
+            unmod!(Char(char)) => {
                 if !matches!(*last_code, Some(Char(_))) || char == ' ' {
                     widget.text_mut(pa).new_moment();
                 }
@@ -45,7 +46,7 @@ impl mode::Mode for Regular {
                     s.move_hor(1);
                 })
             }
-            event!(Enter) => {
+            unmod!(Enter) => {
                 widget.text_mut(pa).new_moment();
                 widget.edit_all(pa, |mut s| {
                     #[cfg(not(feature = "treesitter"))]
@@ -71,7 +72,7 @@ impl mode::Mode for Regular {
             }
 
             // Text Removal
-            event!(Backspace) => {
+            unmod!(Backspace) => {
                 let mut major_removal = false;
                 widget.edit_all(pa, |mut s| {
                     if s.anchor().is_some()
@@ -92,7 +93,7 @@ impl mode::Mode for Regular {
                     s.unset_anchor();
                 })
             }
-            event!(Delete) => {
+            unmod!(Delete) => {
                 let mut major_removal = false;
                 widget.edit_all(pa, |mut s| {
                     s.set_anchor_if_needed();
@@ -110,19 +111,19 @@ impl mode::Mode for Regular {
             }
 
             // Movement
-            event!(Left) => widget.edit_all(pa, |mut s| {
+            unmod!(Left) => widget.edit_all(pa, |mut s| {
                 s.unset_anchor();
                 s.move_hor(-1);
             }),
-            event!(Right) => widget.edit_all(pa, |mut s| {
+            unmod!(Right) => widget.edit_all(pa, |mut s| {
                 s.unset_anchor();
                 s.move_hor(1);
             }),
-            event!(Up) => widget.edit_all(pa, |mut s| {
+            unmod!(Up) => widget.edit_all(pa, |mut s| {
                 s.unset_anchor();
                 s.move_ver(-1);
             }),
-            event!(Down) => widget.edit_all(pa, |mut s| {
+            unmod!(Down) => widget.edit_all(pa, |mut s| {
                 s.unset_anchor();
                 s.move_ver(1);
             }),
@@ -206,12 +207,12 @@ impl mode::Mode for Regular {
             ctrl!('f') => mode::set(pa, IncSearch::new(SearchFwd, widget.clone())),
 
             // Control
-            ctrl!('P') | event!(F(1)) => mode::set(pa, RunCommands::new()),
+            ctrl!('P') | unmod!(F(1)) => mode::set(pa, RunCommands::new()),
             ctrl!('p') => mode::set(pa, RunCommands::new_with("edit ")),
             ctrl!('n') => mode::set(pa, RunCommands::new_with("open ")),
-            event!('s') => cmd::queue_notify("write"),
-            event!('w') => cmd::queue_notify("write-quit"),
-            event!(',') => cmd::queue_notify("open --cfg"),
+            unmod!('s') => cmd::queue_notify("write"),
+            unmod!('w') => cmd::queue_notify("write-quit"),
+            unmod!(',') => cmd::queue_notify("open --cfg"),
 
             _ => {}
         }

@@ -210,6 +210,8 @@ pub fn add_defalt_commands() {
         None,
     );
     alias("q", "quit");
+    alias("delete-buffer", "quit");
+    alias("db", "quit");
 
     add("quit!", |pa: &mut Pass, buffer: Option<Handle<Buffer>>| {
         let buffer = match buffer {
@@ -231,6 +233,8 @@ pub fn add_defalt_commands() {
         None,
     );
     alias("q!", "quit!");
+    alias("delete-buffer!", "quit!");
+    alias("db!", "quit!");
 
     add("quit-all", |pa: &mut Pass| {
         let windows = context::windows();

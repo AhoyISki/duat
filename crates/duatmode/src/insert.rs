@@ -2,13 +2,16 @@ use std::sync::{Mutex, atomic::Ordering};
 
 use duat_base::{BaseBuffer, widgets::Completions};
 use duat_core::{
-    Ns,
+    Ns, alt,
     buffer::Buffer,
     context::{self, Handle},
+    ctrl,
     data::Pass,
     hook::{self, BufferSwitched, ModeSwitched},
-    mode::{self, KeyEvent, KeyMod, Mode, SelectionMut, alt, ctrl, event, shift},
+    mode::{self, KeyEvent, KeyMod, Mode, SelectionMut},
+    shift,
     text::Mask,
+    unmod,
 };
 use duat_filetype::{AutoPrefix, FileType};
 
@@ -91,7 +94,7 @@ impl Mode for Insert {
             }
         };
 
-        if !matches!(key_event, event!(Tab)) {
+        if !matches!(key_event, unmod!(Tab)) {
             self.is_completing = false;
         }
 
@@ -101,7 +104,7 @@ impl Mode for Insert {
             // Autocompletion commands
             ctrl!('n') => complete(pa, 1, &mut insert_events),
             ctrl!('p') | shift!(BackTab) => complete(pa, -1, &mut insert_events),
-            event!(Tab) => {
+            unmod!(Tab) => {
                 let mut indent_info = (!self.is_completing).then(|| {
                     add_reindent(&mut insert_events);
                     crate::indents(pa, widget)
@@ -185,7 +188,7 @@ impl Mode for Insert {
             }
 
             // Regular commands
-            event!(Char(char)) => {
+            unmod!(Char(char)) => {
                 if char == ' ' && self.is_on_html_tag {
                     let mut i = 0;
                     widget.edit_all(pa, |s| {
@@ -215,7 +218,7 @@ impl Mode for Insert {
                 }
             }
 
-            event!(Enter) => {
+            unmod!(Enter) => {
                 widget.edit_all(pa, |mut s| {
                     let (cursor, anchor) = (s.cursor(), s.anchor());
                     remove_trailing_before_cursor(&mut s);
@@ -250,7 +253,7 @@ impl Mode for Insert {
                     });
                 }
             }
-            event!(Backspace) => widget.edit_all(pa, |mut s| {
+            unmod!(Backspace) => widget.edit_all(pa, |mut s| {
                 let prev_cursor = s.cursor();
                 let prev_anchor = s.unset_anchor();
 
@@ -275,7 +278,7 @@ impl Mode for Insert {
                     }
                 }
             }),
-            event!(Delete) => widget.edit_all(pa, |mut s| {
+            unmod!(Delete) => widget.edit_all(pa, |mut s| {
                 let prev_cursor = s.cursor();
                 let prev_anchor = s.unset_anchor();
                 s.set_anchor();
@@ -297,11 +300,11 @@ impl Mode for Insert {
                     s.swap_ends();
                 }
             }),
-            event!(Left) | shift!(Left) => widget.edit_all(pa, |mut s| {
+            unmod!(Left) | shift!(Left) => widget.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 move_hor(&mut s, -1, &mut insert_events);
             }),
-            event!(Down) | shift!(Down) => widget.edit_all(pa, |mut s| {
+            unmod!(Down) | shift!(Down) => widget.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 if key_event.modifiers == KeyMod::NONE {
                     s.unset_anchor();
@@ -309,7 +312,7 @@ impl Mode for Insert {
                 }
                 move_ver(&mut s, 1, &mut insert_events);
             }),
-            event!(Up) | shift!(Up) => widget.edit_all(pa, |mut s| {
+            unmod!(Up) | shift!(Up) => widget.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 if key_event.modifiers == KeyMod::NONE {
                     s.unset_anchor();
@@ -317,15 +320,15 @@ impl Mode for Insert {
                 }
                 move_ver(&mut s, -1, &mut insert_events);
             }),
-            event!(Right) | shift!(Right) => widget.edit_all(pa, |mut s| {
+            unmod!(Right) | shift!(Right) => widget.edit_all(pa, |mut s| {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut s);
                 move_hor(&mut s, 1, &mut insert_events);
             }),
 
-            event!(Home) => widget.edit_all(pa, |mut s| s.move_to_col(0)),
-            event!(End) => widget.edit_all(pa, |mut s| s.move_to_col(usize::MAX)),
+            unmod!(Home) => widget.edit_all(pa, |mut s| s.move_to_col(0)),
+            unmod!(End) => widget.edit_all(pa, |mut s| s.move_to_col(usize::MAX)),
 
-            event!(Esc) => {
+            unmod!(Esc) => {
                 widget.text_mut(pa).new_moment();
                 mode::set(pa, Normal::new());
             }

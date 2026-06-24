@@ -1,6 +1,6 @@
 //! Macros for very easy [`Mode`] pattern matching
 //!
-//! This module adds the [`event!`], [`alt!`], [`ctrl!`] and
+//! This module adds the [`unmod!`], [`alt!`], [`ctrl!`] and
 //! [`shift!`] macros, which can be used to create very succinct
 //! patterns for matching, greatly improving on the signal to noise
 //! ratio, especially inside the [`Mode::send_key`] function.
@@ -8,21 +8,19 @@
 //! [`Mode`]: super::Mode
 //! [`Mode::send_key`]: super::Mode::send_key
 use crate::mode::KeyMod;
-#[doc(inline)]
-pub use crate::{__alt__ as alt, __ctrl__ as ctrl, __event__ as event, __shift__ as shift};
 
 /// Macro for shortening [`KeyEvent`]s in pattern matching
 ///
 /// This macro just turns this:
 ///
 /// ```rust
-/// # use duat_core::mode::{KeyCode, KeyEvent, event};
+/// # use duat_core::{unmod, mode::{KeyCode, KeyEvent}};
 /// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
-///     event!('s') => {
+///     unmod!('s') => {
 ///         //...
 ///     }
-///     event!(KeyCode::Backspace | KeyCode::Tab) => {
+///     unmod!(KeyCode::Backspace | KeyCode::Tab) => {
 ///         //...
 ///     }
 ///     _ => {
@@ -70,8 +68,7 @@ pub use crate::{__alt__ as alt, __ctrl__ as ctrl, __event__ as event, __shift__ 
 /// [`KeyEvent`]: super::KeyEvent
 /// [`Mode`]: super::Mode
 #[macro_export]
-#[doc(hidden)]
-macro_rules! __event__ {
+macro_rules! unmod {
     (@code $($tokens:tt)*) => {
         $crate::__modified__!(@code $($tokens)*)
     };
@@ -91,7 +88,7 @@ macro_rules! __event__ {
 /// This macro essentially turns this:
 ///
 /// ```rust
-/// # use duat_core::mode::{KeyCode, KeyEvent, alt};
+/// # use duat_core::{alt, mode::{KeyCode, KeyEvent}};
 /// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
 ///     alt!('s') => {
@@ -130,7 +127,7 @@ macro_rules! __event__ {
 /// You can also use this with more complex patterns:
 ///
 /// ```rust
-/// # use duat_core::mode::{KeyCode, KeyEvent, alt, ctrl, shift};
+/// # use duat_core::{alt, ctrl, shift, mode::{KeyCode, KeyEvent}};
 /// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
 ///     ctrl!(alt!('a' | 'b' | 's')) | shift!(alt!(KeyCode::F(3 | 5))) => {
@@ -143,15 +140,14 @@ macro_rules! __event__ {
 /// ```
 ///
 /// For the other two modifiers with this convenience, see [`ctrl!`]
-/// and [`shift!`]. There is also [`event!`], which has no modifiers,
+/// and [`shift!`]. There is also [`unmod!`], which has no modifiers,
 /// and it _cannot_ be nested with the other ones, for obvious
 /// reasons.
 ///
 /// [`KeyEvent`]: super::KeyEvent
 /// [`Mode`]: super::Mode
 #[macro_export]
-#[doc(hidden)]
-macro_rules! __alt__ {
+macro_rules! alt {
     (@code $($tokens:tt)*) => {
         $crate::__modified__!(@code $($tokens)*)
     };
@@ -171,7 +167,7 @@ macro_rules! __alt__ {
 /// This macro essentially turns this:
 ///
 /// ```rust
-/// # use duat_core::mode::{KeyCode, KeyEvent, ctrl};
+/// # use duat_core::{ctrl, mode::{KeyCode, KeyEvent}};
 /// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
 ///     ctrl!(KeyCode::Backspace) => {
@@ -210,7 +206,7 @@ macro_rules! __alt__ {
 /// You can also use this with more complex patterns:
 ///
 /// ```rust
-/// # use duat_core::mode::{KeyCode, KeyEvent, alt, ctrl};
+/// # use duat_core::{alt, ctrl, mode::{KeyCode, KeyEvent}};
 /// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
 ///     ctrl!(alt!(KeyCode::Char('a' | 'b' | 's') | KeyCode::BackTab)) => {
@@ -223,15 +219,14 @@ macro_rules! __alt__ {
 /// ```
 ///
 /// For the other two modifiers with this convenience, see [`alt!`]
-/// and [`shift!`]. There is also [`event!`], which has no modifiers,
+/// and [`shift!`]. There is also [`unmod!`], which has no modifiers,
 /// and it _cannot_ be nested with the other ones, for obvious
 /// reasons.
 ///
 /// [`KeyEvent`]: super::KeyEvent
 /// [`Mode`]: super::Mode
 #[macro_export]
-#[doc(hidden)]
-macro_rules! __ctrl__ {
+macro_rules! ctrl {
     (@code $($tokens:tt)*) => {
         $crate::__modified__!(@code $($tokens)*)
     };
@@ -251,7 +246,7 @@ macro_rules! __ctrl__ {
 /// This macro essentially turns this:
 ///
 /// ```rust
-/// # use duat_core::mode::{KeyCode, KeyEvent, shift};
+/// # use duat_core::{shift, mode::{KeyCode, KeyEvent}};
 /// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
 ///     shift!(KeyCode::Enter) => {
@@ -290,7 +285,7 @@ macro_rules! __ctrl__ {
 /// You can also use this with more complex patterns:
 ///
 /// ```rust
-/// # use duat_core::mode::{KeyCode, KeyEvent, ctrl, shift};
+/// # use duat_core::{ctrl, shift, mode::{KeyCode, KeyEvent}};
 /// # let key_event: KeyEvent = KeyCode::Char('s').into();
 /// match key_event {
 ///     ctrl!(shift!(KeyCode::PageDown | KeyCode::PageUp)) => {
@@ -303,7 +298,7 @@ macro_rules! __ctrl__ {
 /// ```
 ///
 /// For the other two modifiers with this convenience, see [`alt!`]
-/// and [`shift!`]. There is also [`event!`], which has no modifiers,
+/// and [`shift!`]. There is also [`unmod!`], which has no modifiers,
 /// and it _cannot_ be nested with the other ones, for obvious
 /// reasons.
 ///
@@ -325,8 +320,7 @@ macro_rules! __ctrl__ {
 /// [`KeyCode::Char`]: super::KeyCode::Char
 /// [`Mode`]: super::Mode
 #[macro_export]
-#[doc(hidden)]
-macro_rules! __shift__ {
+macro_rules! shift {
     (@code $($tokens:tt)*) => {
         $crate::__modified__!(@code $($tokens)*)
     };

@@ -1,8 +1,9 @@
 use duat_core::{
-    cmd,
+    alt, cmd,
     context::{self, Handle},
     data::Pass,
-    mode::{self, KeyCode, KeyEvent, SelectionMut, alt, event},
+    mode::{self, KeyCode, KeyEvent, SelectionMut},
+    unmod,
 };
 
 use crate::{
@@ -40,12 +41,12 @@ impl OneKey {
     /// Sends a key to this "[`Mode`]"
     ///
     /// [`Mode`]: duat_core::mode::Mode
-    pub(crate) fn send_key(&self, pa: &mut Pass, event: KeyEvent) -> OneKeyOrResult {
-        let just_char = just_char(event);
+    pub(crate) fn send_key(&self, pa: &mut Pass, unmod: KeyEvent) -> OneKeyOrResult {
+        let just_char = just_char(unmod);
         let widget = context::current_widget(pa);
 
         match (*self, just_char) {
-            (OneKey::GoTo(st), _) => match_goto(pa, &widget, event, st),
+            (OneKey::GoTo(st), _) => match_goto(pa, &widget, unmod, st),
             (OneKey::Find(count, st, ss) | OneKey::Until(count, st, ss), Some(char)) => {
                 let is_t = matches!(*self, OneKey::Until(..));
                 match_find_until(pa, &widget, char, count, is_t, st);
@@ -55,10 +56,10 @@ impl OneKey {
                 OneKeyOrResult::Result(SelType::Normal, true)
             }
             (OneKey::ToNext(count, inside, extend), _) => {
-                match_bounds(pa, &widget, event, count, inside, extend, Bounds::Ahead)
+                match_bounds(pa, &widget, unmod, count, inside, extend, Bounds::Ahead)
             }
             (OneKey::ToPrevious(count, inside, extend), _) => {
-                match_bounds(pa, &widget, event, count, inside, extend, Bounds::Behind)
+                match_bounds(pa, &widget, unmod, count, inside, extend, Bounds::Behind)
             }
             (OneKey::Replace, Some(char)) => {
                 widget.edit_all(pa, |mut s| {
@@ -73,10 +74,10 @@ impl OneKey {
             }
             (OneKey::Rotate(count, fwd), Some(char)) => match_rotate(pa, &widget, count, fwd, char),
             (OneKey::Match(count, set_anchor), _) => {
-                match_match(pa, &widget, event, count, set_anchor)
+                match_match(pa, &widget, unmod, count, set_anchor)
             }
             (OneKey::InsideOrAround(count, inside, extend), _) => {
-                match_bounds(pa, &widget, event, count, inside, extend, Bounds::Both)
+                match_bounds(pa, &widget, unmod, count, inside, extend, Bounds::Both)
             }
             (OneKey::SurroundWith, Some(char)) => match_surround(pa, &widget, char),
             _ => OneKeyOrResult::Result(SelType::Normal, false),
@@ -130,26 +131,26 @@ fn match_goto(
     }
 
     match key_event {
-        event!('h') => widget.edit_all(pa, |mut s| {
+        unmod!('h') => widget.edit_all(pa, |mut s| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
             let range = s.search("\n").to_cursor().next_back();
             s.move_to(range.unwrap_or_default().end);
         }),
-        event!('j') => register_and_move(pa, widget, |mut s| {
+        unmod!('j') => register_and_move(pa, widget, |mut s| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
             s.move_ver(i32::MAX);
         }),
-        event!('k' | 'g') => register_and_move(pa, widget, |mut s| {
+        unmod!('k' | 'g') => register_and_move(pa, widget, |mut s| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
             s.move_to_coords(0, 0)
         }),
-        event!('l') => {
+        unmod!('l') => {
             widget.edit_all(pa, |s| {
                 select_to_end_of_line(sel_type == SelType::Extend, s)
             });
             sel_type = SelType::BeforeEndOfLine;
         }
-        event!('i') => widget.edit_all(pa, |mut s| {
+        unmod!('i') => widget.edit_all(pa, |mut s| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut s);
             let range = s.search("(\\A|\n)[ \t]*").to_cursor().next_back();
             if let Some(range) = range {
@@ -163,10 +164,10 @@ fn match_goto(
         }),
 
         ////////// Buffer change keys
-        event!('a') => switch("last-switched-buffer"),
-        event!('n') => switch("next-buffer --global"),
-        event!('N') => switch("prev-buffer --global"),
-        event!('o') => _ = cmd::call(pa, "open"),
+        unmod!('a') => switch("last-switched-buffer"),
+        unmod!('n') => switch("next-buffer --global"),
+        unmod!('N') => switch("prev-buffer --global"),
+        unmod!('o') => _ = cmd::call(pa, "open"),
         _ => {}
     }
 
@@ -271,7 +272,7 @@ fn match_rotate(
 fn match_match(
     pa: &mut Pass,
     widget: &Handle,
-    event: KeyEvent,
+    unmod: KeyEvent,
     count: usize,
     extend: bool,
 ) -> OneKeyOrResult {
@@ -279,8 +280,8 @@ fn match_match(
     let popts = widget.opts(pa);
     let key_event = KeyEvent::from(KeyCode::Char('m'));
 
-    match event {
-        event!(char @ ('l' | 'm' | 'M')) => {
+    match unmod {
+        unmod!(char @ ('l' | 'm' | 'M')) => {
             let mut failed = false;
             let failed = &mut failed;
             edit_or_destroy_all(pa, widget, failed, |s| {
@@ -308,7 +309,7 @@ fn match_match(
                 (i > 0).then_some(())
             })
         }
-        event!(char @ 'h') | alt!(char @ ('m' | 'M')) => {
+        unmod!(char @ 'h') | alt!(char @ ('m' | 'M')) => {
             let mut failed = false;
             let failed = &mut failed;
             edit_or_destroy_all(pa, widget, failed, |s| {
@@ -336,9 +337,9 @@ fn match_match(
                 (i > 0).then_some(())
             })
         }
-        event!('i') => return OneKeyOrResult::OneKey(OneKey::InsideOrAround(count, true, extend)),
-        event!('a') => return OneKeyOrResult::OneKey(OneKey::InsideOrAround(count, false, extend)),
-        event!('s') => return OneKeyOrResult::OneKey(OneKey::SurroundWith),
+        unmod!('i') => return OneKeyOrResult::OneKey(OneKey::InsideOrAround(count, true, extend)),
+        unmod!('a') => return OneKeyOrResult::OneKey(OneKey::InsideOrAround(count, false, extend)),
+        unmod!('s') => return OneKeyOrResult::OneKey(OneKey::SurroundWith),
         _ => return OneKeyOrResult::Result(SelType::Normal, false),
     }
 
@@ -396,7 +397,7 @@ fn match_surround(pa: &mut Pass, widget: &Handle, char: char) -> OneKeyOrResult 
 fn match_bounds(
     pa: &mut Pass,
     widget: &Handle,
-    event: KeyEvent,
+    unmod: KeyEvent,
     count: usize,
     inside: bool,
     extend: bool,
@@ -408,7 +409,7 @@ fn match_bounds(
 
     let mut failed = false;
 
-    if let Some(object) = Object::new(event, opts, brackets) {
+    if let Some(object) = Object::new(unmod, opts, brackets) {
         edit_or_destroy_all(pa, widget, &mut failed, |s| {
             let old_range = s.range();
             match bounds {
@@ -458,7 +459,7 @@ fn match_bounds(
     } else {
         context::warn!(
             "Invalid object: [a]{}",
-            duat_core::mode::keys_to_string(&[event])
+            duat_core::mode::keys_to_string(&[unmod])
         );
 
         OneKeyOrResult::Result(SelType::Normal, false)
@@ -466,7 +467,7 @@ fn match_bounds(
 }
 
 fn just_char(key_event: KeyEvent) -> Option<char> {
-    if let event!(mode::KeyCode::Char(char)) = key_event {
+    if let unmod!(mode::KeyCode::Char(char)) = key_event {
         Some(char)
     } else {
         None

@@ -3,16 +3,17 @@
 //! of my own.
 //!
 //! It goes like this, if helix is meant to be a mixing of kakoune and
-//! vim keybindings, then duat is meant to be a mix of kakoune and helix
-//! keybindings.
+//! vim keybindings, then duat is meant to be a mix of kakoune and
+//! helix keybindings.
 //!
 //! I generally agree with the notion that kakoune has you typing too
 //! many `alt + shift` keys, which afaik was one of the main reasons
 //! helix brought back visual mode.
 //!
-//! However, I have approached this problem in a different way. Instead
-//! of relying on a visual mode, I have simplified some of the keys and
-//! made other keys composed, without changing the formula too much.
+//! However, I have approached this problem in a different way.
+//! Instead of relying on a visual mode, I have simplified some of the
+//! keys and made other keys composed, without changing the formula
+//! too much.
 //!
 //! You will still have your occasional `alt + shift`s here and there,
 //! but it should be much rarer than it is on kakoune at least. Though
@@ -38,19 +39,21 @@ pub use crate::{
     normal::Normal,
 };
 
+mod bindings;
 mod inc_searchers;
 mod insert;
 pub mod normal;
 mod one_key;
-mod bindings;
 
 use duat_base::hooks::SearchPerformed;
 use duat_core::{
+    alt,
     context::Handle,
     data::Pass,
     form, hook,
-    mode::{self, KeyEvent, SelectionMut, alt, event},
+    mode::{self, KeyEvent, SelectionMut},
     opts::PrintOpts,
+    unmod,
     utils::Memoized,
 };
 use duat_jump_list::JumpList;
@@ -467,51 +470,51 @@ impl<'o> Object<'o> {
         };
 
         match key_event {
-            event!('Q') => Some(Self::OneBound(Regexes::simple("\""))),
-            event!('q') => Some(Self::OneBound(Regexes::simple("'"))),
-            event!('g') => Some(Self::OneBound(Regexes::simple("`"))),
-            event!('|') => Some(Self::OneBound(Regexes::simple(r"\|"))),
-            event!('$') => Some(Self::OneBound(Regexes::simple(r"\$"))),
-            event!('^') => Some(Self::OneBound(Regexes::simple(r"\^"))),
-            event!('s') => Some(Self::TwoBounds {
+            unmod!('Q') => Some(Self::OneBound(Regexes::simple("\""))),
+            unmod!('q') => Some(Self::OneBound(Regexes::simple("'"))),
+            unmod!('g') => Some(Self::OneBound(Regexes::simple("`"))),
+            unmod!('|') => Some(Self::OneBound(Regexes::simple(r"\|"))),
+            unmod!('$') => Some(Self::OneBound(Regexes::simple(r"\$"))),
+            unmod!('^') => Some(Self::OneBound(Regexes::simple(r"\^"))),
+            unmod!('s') => Some(Self::TwoBounds {
                 ahead: Regexes::simple(r"[\.;!\?]\s*"),
                 behind: Regexes::new(r"[^\.;!\?]*", r"\s*"),
                 repeat: false,
             }),
-            event!('p') => Some(Self::TwoBounds {
+            unmod!('p') => Some(Self::TwoBounds {
                 ahead: Regexes::new(r"\n{2,}|\z", r"(^\n)*"),
                 behind: Regexes::new(r"\n{2,}|\A", r"(^\n)*"),
                 repeat: false,
             }),
-            event!('b' | '(' | ')') => Some(Self::TwoBounds {
+            unmod!('b' | '(' | ')') => Some(Self::TwoBounds {
                 ahead: Regexes::simple(r"\)"),
                 behind: Regexes::simple(r"\("),
                 repeat: true,
             }),
-            event!('B' | '{' | '}') => Some(Self::TwoBounds {
+            unmod!('B' | '{' | '}') => Some(Self::TwoBounds {
                 ahead: Regexes::simple(r"\}"),
                 behind: Regexes::simple(r"\{"),
                 repeat: true,
             }),
-            event!('r' | '[' | ']') => Some(Self::TwoBounds {
+            unmod!('r' | '[' | ']') => Some(Self::TwoBounds {
                 ahead: Regexes::simple(r"\]"),
                 behind: Regexes::simple(r"\["),
                 repeat: true,
             }),
-            event!('a' | '<' | '>') => Some(Self::TwoBounds {
+            unmod!('a' | '<' | '>') => Some(Self::TwoBounds {
                 ahead: Regexes::simple(r">"),
                 behind: Regexes::simple(r"<"),
                 repeat: true,
             }),
-            event!('m' | 'M') | alt!('m' | 'M') => Some({
+            unmod!('m' | 'M') | alt!('m' | 'M') => Some({
                 let [behind, ahead] = bound_patterns(brackets);
                 Self::TwoBounds { ahead, behind, repeat: true }
             }),
-            event!('u') => Some({
+            unmod!('u') => Some({
                 let [behind, ahead] = bound_patterns(brackets);
                 Self::Argument { ahead, behind }
             }),
-            event!('w') => Some({
+            unmod!('w') => Some({
                 static WORD_PATS: Memoized<&'static [char], [Regexes; 2]> = Memoized::new();
                 let [ahead, behind] = WORD_PATS.get_or_insert_with(&opts.extra_word_chars, || {
                     let cat = opts.word_chars_regex();
@@ -523,18 +526,18 @@ impl<'o> Object<'o> {
 
                 Self::TwoBounds { ahead, behind, repeat: false }
             }),
-            event!('e') => Some(Self::TwoBounds {
+            unmod!('e') => Some(Self::TwoBounds {
                 ahead: Regexes::new("\\A[^ \t\n]+\\s*", r"\s*"),
                 behind: Regexes::new("[^ \t\n]*\\z", ""),
                 repeat: false,
             }),
-            event!(' ') => Some(Self::TwoBounds {
+            unmod!(' ') => Some(Self::TwoBounds {
                 ahead: Regexes::new("\\A[ \t]\n*", "\n*"),
                 behind: Regexes::new("\n*[ \t]\\z", "\n*"),
                 repeat: false,
             }),
-            event!('i') => Some(Self::Indent),
-            event!(mode::KeyCode::Char(char)) if !char.is_alphanumeric() => Some(Self::OneBound({
+            unmod!('i') => Some(Self::Indent),
+            unmod!(mode::KeyCode::Char(char)) if !char.is_alphanumeric() => Some(Self::OneBound({
                 static BOUNDS: Memoized<char, Regexes> = Memoized::new();
                 BOUNDS.get_or_insert_with(&char, || Regexes::simple(char.to_string().leak()))
             })),

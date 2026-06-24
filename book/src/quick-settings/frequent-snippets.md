@@ -380,7 +380,7 @@ fn setup(opts: &mut Opts) {
         let buffer = context::current_buffer(pa);
 
         if let Some("rust") = buffer.read(pa).filetype()
-            && let event!('}' | ')' | ']') = key_event
+            && let unmod!('}' | ')' | ']') = key_event
         {
             _ = buffer.save(pa);
         }
