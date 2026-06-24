@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7d4809c0.js";
+            window.path_to_searchindex_js = "searchindex-15e9a6db.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-261cd8e4.js"></script>
@@ -1513,7 +1513,7 @@ fn setup(opts: &amp;mut Opts) {
         let buffer = context::current_buffer(pa);
 
         if let Some("rust") = buffer.read(pa).filetype()
-            &amp;&amp; let event!('}' | ')' | ']') = key_event
+            &amp;&amp; let unmod!('}' | ')' | ']') = key_event
         {
             _ = buffer.save(pa);
         }
