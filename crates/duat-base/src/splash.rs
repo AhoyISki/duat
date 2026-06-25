@@ -1,3 +1,8 @@
+//! A splash screen for duat.
+//!
+//! This module adds a very simple splash screen to duat, whose
+//! purpose is mostly to provide helpful information and also add
+//! links for donation pages.
 use std::sync::{
     LazyLock, Mutex,
     atomic::{AtomicBool, Ordering::Relaxed},

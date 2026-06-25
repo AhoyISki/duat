@@ -139,6 +139,7 @@ mod buffer_parser;
 pub mod modes;
 mod snippets;
 mod splash;
+mod inspect_forms;
 pub mod state;
 pub mod widgets;
 
@@ -175,6 +176,7 @@ impl DuatBase {
 
         snippets::add_snippet_hook();
         splash::add_splash_hook();
+        inspect_forms::add_command();
 
         modes::add_prompt_hook();
         if self.default_opts_parser {
@@ -255,6 +257,9 @@ impl DuatBase {
             Ok(None)
         })
         .doc(txt!("Toggle and focus on the [a]Logs[]"), None);
+
+        // Setup for other stuff
+        form::set_weak("punctuation.inspect_forms", Form::mimic("punctuation.delimiter"));
     }
 }
 

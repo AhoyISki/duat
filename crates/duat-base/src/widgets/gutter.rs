@@ -88,7 +88,6 @@ pub fn gutter_setup() {
 
     hook::add::<OnMouseEvent<Buffer>>(move |_, event| {
         let mut state = STATE.lock().unwrap_or_else(|err| err.into_inner());
-        state.hovered_point = None;
         state.mouse_coord = Some(event.coord);
         state.related_ids.clear();
     })
@@ -193,21 +192,20 @@ fn update_buffer(
     };
 
     let active_entries = if let Some(point) = state
-        .mouse_coord
-        .filter(|coord| *coord >= area.top_left() && *coord < area.bottom_right())
-        .and_then(|coord| {
-            Some(
-                area.points_at_coord(buf.text(), coord, popts)?
-                    .points()
-                    .real,
-            )
-        })
+        .hovered_point
+        .clone()
+        .filter(|(handle, point)| handle == buffer && *point <= buf.text().end_point())
+        .map(|(_, point)| point)
         .or(state
-            .hovered_point
-            .clone()
-            .filter(|(handle, point)| handle == buffer && *point <= buf.text().end_point())
-            .map(|(_, point)| point))
-    {
+            .mouse_coord
+            .filter(|coord| *coord >= area.top_left() && *coord < area.bottom_right())
+            .and_then(|coord| {
+                Some(
+                    area.points_at_coord(buf.text(), coord, popts)?
+                        .points()
+                        .real,
+                )
+            })) {
         Some((
             get_entry_lists(point, gtr.opts.hover_whole_line),
             Movement::Hovered,
@@ -972,10 +970,8 @@ pub(crate) fn hover_gutter_entries_on(handle: &Handle<Buffer>, pa: &Pass, point:
         point <= handle.text(pa).end_point(),
         "{point:?} out of bounds"
     );
-    STATE
-        .lock()
-        .unwrap_or_else(|err| err.into_inner())
-        .hovered_point = Some((handle.clone(), point));
+    let mut state = STATE.lock().unwrap_or_else(|err| err.into_inner());
+    state.hovered_point = Some((handle.clone(), point));
 }
 
 /// An id for a [`Gutter`] entry.

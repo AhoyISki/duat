@@ -95,7 +95,7 @@ impl Sections {
     ///
     /// If there is already a corner `Sections`, then this will
     /// replace that `Sections` with this one instead.
-    pub fn spawn_on_corner(mut self, pa: &mut Pass, fragile: bool) {
+    pub fn spawn_on_corner(mut self, pa: &mut Pass, fragile: bool) -> Handle<Sections> {
         static NS: LazyLock<Ns> = Ns::new_lazy();
         self.is_corner = true;
 
@@ -109,25 +109,27 @@ impl Sections {
         } else {
             let orientation = *ORIENTATION.lock().unwrap();
             let buffer = context::current_buffer(pa);
-            let Some(sections) = buffer.spawn_on_widget(pa, self, DynSpawnSpecs {
-                orientation,
-                width: None,
-                height: None,
-                hidden: false,
-                inside: true,
-            }) else {
-                return;
-            };
-            sections
+            buffer
+                .spawn_on_widget(pa, self, DynSpawnSpecs {
+                    orientation,
+                    width: None,
+                    height: None,
+                    hidden: false,
+                    inside: true,
+                })
+                .unwrap()
         };
 
         if fragile && !hook::group_exists(*NS) {
+            let sections = sections.clone();
             hook::add_once::<KeyTyped>(move |pa, _| {
                 _ = sections.close(pa);
             })
             .grouped(*NS)
             .lateness(0);
         }
+
+        sections
     }
 
     /// Get the corner `Sections`, if there is one open.
@@ -169,7 +171,11 @@ impl Sections {
         let sec = sections.write(pa);
         sec.sections.retain(|section| section.ns != ns);
 
-        Sections::update(pa, sections);
+        if sec.sections.is_empty() {
+            _ = sections.close(pa);
+        } else {
+            Sections::update(pa, sections);
+        }
     }
 
     /// Sets the [`Orientation`] where the corner [`Sections`] will be

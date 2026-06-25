@@ -59,6 +59,8 @@ pub fn start(setup: fn() -> (Ui, BufferOpts)) -> std::io::Result<()> {
     std::panic::set_hook(Box::new(|panic_info| {
         use std::backtrace::{Backtrace, BacktraceStatus};
 
+        context::log_panic(panic_info);
+
         let backtrace = Backtrace::capture();
         *PANIC_INFO.lock().unwrap() = Some(
             if let BacktraceStatus::Disabled | BacktraceStatus::Unsupported = backtrace.status() {

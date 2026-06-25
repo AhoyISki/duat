@@ -19,7 +19,7 @@ static BASE_FORMS: &[(&str, Form)] = &[
     ("accent", Form::new().bold()),
     ("cursor.main", Form::new().reverse()),
     ("cursor.extra", Form {
-        kind: Ref(2, default_style()),
+        kind: Ref(FormId(2), default_style()),
         ..Form::new().reverse()
     }),
     ("selection.main", Form::new().white().on_dark_grey()),
@@ -28,7 +28,7 @@ static BASE_FORMS: &[(&str, Form)] = &[
     ("character.control", Form::new().grey()),
     ("param.path", Form::new().yellow()),
     ("param.path.exists", Form {
-        kind: Ref(8, ContentStyle {
+        kind: Ref(FormId(8), ContentStyle {
             attributes: Attributes::none().with(Attribute::Underlined),
             ..default_style()
         }),
@@ -50,7 +50,7 @@ mod global {
     pub use crate::__id_of__ as id_of;
     use crate::{
         context,
-        form::{FormKind, MaskId},
+        form::FormKind,
         hook::{self, ColorschemeSet},
         text::Text,
     };
@@ -523,6 +523,29 @@ mod global {
         PALETTE.0.read().unwrap().masks[id.0 as usize].0
     }
 
+    /// An identifier for a mask, which maps [`Form`]s, given a
+    /// suffix.
+    #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct MaskId(pub(super) u32);
+
+    impl MaskId {
+        /// The name of the mask.
+        pub fn name(&self) -> &'static str {
+            name_of_mask(*self)
+        }
+
+        /// The [`FormId`] that this mask maps another `FormId` to.
+        pub fn mapping_for(&self, id: FormId) -> FormId {
+            PALETTE.mapping_for(*self, id).unwrap_or(id)
+        }
+    }
+
+    impl std::fmt::Debug for MaskId {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "MaskId({:?})", name_of_mask(*self))
+        }
+    }
+
     /// The default [`FormId`] of a `Widget`.
     fn default_id(type_id: TypeId, type_name: &'static str) -> FormId {
         static IDS: LazyLock<Mutex<HashMap<TypeId, FormId>>> = LazyLock::new(Mutex::default);
@@ -675,6 +698,40 @@ impl Form {
     mimic_method!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan Color::DarkCyan);
     mimic_method!(/**white*/ white on_white underline_white Color::White);
     mimic_method!(/**grey*/ grey on_grey underline_grey Color::Grey);
+
+    /// The [`FormKind`] of this `Form`.
+    ///
+    /// The form kind details what rules a form follows when it needs
+    /// to update. They follow a "hierarchy of strength" of sorts:
+    ///
+    /// - [`FormKind::Normal`] is the strongest, it can only be
+    ///   updated if the form itself is set via [`form::set`].
+    /// - [`FormKind::Ref`] is a referential form. It will be updated
+    ///   either when `form::set` is called on it, or when it is
+    ///   called either on the referenced form, or on a "reference
+    ///   chain" of forms that end up on it.
+    ///
+    ///   This happens most often
+    ///   with the `.` notation, i.e., if you set the `keyword` form,
+    ///   then unless set explicitely, `keyword.conditional.rust` will
+    ///   also be updated.
+    /// - [`FormKind::Weak`] is set with [`form::set_weak`], given a
+    ///   non referential [`Form`]. The thing about this kind is that
+    ///   it can only be set _if_ the form wasn't already set with a
+    ///   `FormKind::Normal` or `FormKind::Ref`.
+    ///
+    ///   The point of this is to avoid plugins and such from setting
+    ///   forms that the user has already explicitely set. So if `set`
+    ///   is called before or after `set_weak`, it doesn't matter,
+    ///   `set` will always be prioritized.
+    /// - [`FormKind::WeakRef`] is the referential equivalent of
+    ///   `Weak`.
+    ///
+    /// [`form::set`]: set
+    /// [`form::set_weak`]: set
+    pub fn kind(&self) -> FormKind {
+        self.kind
+    }
 }
 
 impl Form {
@@ -711,7 +768,7 @@ impl Form {
     pub fn mimic(form_name: impl AsRef<str>) -> Self {
         let id = id_of_non_static(form_name.as_ref());
         let mut form = from_id(id);
-        form.kind = FormKind::Ref(id.0, default_style());
+        form.kind = FormKind::Ref(id, default_style());
         form
     }
 
@@ -1023,7 +1080,12 @@ impl Palette {
     }
 
     /// Makes a [`Form`] reference another.
-    fn set_ref(&self, name: impl AsRef<str>, refed: u16, override_style: ContentStyle) -> FormId {
+    fn set_ref(
+        &self,
+        name: impl AsRef<str>,
+        refed: FormId,
+        override_style: ContentStyle,
+    ) -> FormId {
         let name = name.as_ref();
         self.0.write().unwrap().set_ref(name, refed, override_style)
     }
@@ -1032,7 +1094,7 @@ impl Palette {
     fn set_weak_ref(
         &self,
         name: impl AsRef<str>,
-        refed: u16,
+        refed: FormId,
         override_style: ContentStyle,
     ) -> FormId {
         let name = name.as_ref();
@@ -1055,10 +1117,8 @@ impl Palette {
             ids.push(match form.kind {
                 FormKind::Normal => inner.set_form(name.as_ref(), form),
                 FormKind::Ref(refed, style) => inner.set_ref(name.as_ref(), refed, style),
-                FormKind::Weakest => inner.set_weak_form(name.as_ref(), form),
-                FormKind::WeakestRef(refed, style) => {
-                    inner.set_weak_ref(name.as_ref(), refed, style)
-                }
+                FormKind::Weak => inner.set_weak_form(name.as_ref(), form),
+                FormKind::WeakRef(refed, style) => inner.set_weak_ref(name.as_ref(), refed, style),
             });
         }
 
@@ -1105,6 +1165,16 @@ impl Palette {
     fn unset_extra_cursor(&self) {
         self.0.write().unwrap().extra_cursor = None;
         sender().send(DuatEvent::FormChange);
+    }
+
+    /// The mapping for a [`FormId`], given a [`MaskId`].
+    fn mapping_for(&self, mask_id: MaskId, form_id: FormId) -> Option<FormId> {
+        let inner = self.0.read().unwrap();
+        inner.masks[mask_id.0 as usize]
+            .1
+            .get(form_id.0 as usize)
+            .copied()
+            .map(FormId)
     }
 
     /// Returns a [`Painter`].
@@ -1165,7 +1235,7 @@ impl InnerPalette {
         let (idx, _) = position_and_form(&mut self.forms, name);
 
         let (_, f) = &mut self.forms[idx];
-        if let FormKind::Weakest | FormKind::WeakestRef(..) = f.kind {
+        if let FormKind::Weak | FormKind::WeakRef(..) = f.kind {
             *f = form;
             f.kind = FormKind::Normal;
 
@@ -1181,8 +1251,8 @@ impl InnerPalette {
     }
 
     /// Makes a [`Form`] reference another.
-    fn set_ref(&mut self, name: &str, refed: u16, override_style: ContentStyle) -> FormId {
-        let (_, form) = self.forms[refed as usize];
+    fn set_ref(&mut self, name: &str, refed: FormId, override_style: ContentStyle) -> FormId {
+        let (_, form) = self.forms[refed.0 as usize];
         let (idx, _) = position_and_form(&mut self.forms, name);
 
         self.forms[idx].1 = form;
@@ -1191,7 +1261,7 @@ impl InnerPalette {
         }
 
         // If it would be circular, we just don't reference anything.
-        if would_be_circular(self, idx, refed as usize) {
+        if would_be_circular(self, idx, refed.0 as usize) {
             self.forms[idx].1.kind = FormKind::Normal;
         } else {
             self.forms[idx].1.kind = FormKind::Ref(refed, override_style);
@@ -1207,14 +1277,14 @@ impl InnerPalette {
     }
 
     /// Makes a [`Form`] reference another "weakly".
-    fn set_weak_ref(&mut self, name: &str, refed: u16, override_style: ContentStyle) -> FormId {
-        let (_, form) = self.forms[refed as usize];
+    fn set_weak_ref(&mut self, name: &str, refed: FormId, override_style: ContentStyle) -> FormId {
+        let (_, form) = self.forms[refed.0 as usize];
         let (idx, _) = position_and_form(&mut self.forms, name);
 
         let (_, f) = &mut self.forms[idx];
-        if let FormKind::Weakest | FormKind::WeakestRef(..) = f.kind {
+        if let FormKind::Weak | FormKind::WeakRef(..) = f.kind {
             *f = form;
-            f.kind = FormKind::WeakestRef(refed, override_style);
+            f.kind = FormKind::WeakRef(refed, override_style);
 
             sender().send(DuatEvent::FormChange);
 
@@ -1560,12 +1630,36 @@ impl Painter {
 
 /// An enum that helps in the modification of forms.
 #[derive(Default, Clone, Copy)]
-enum FormKind {
+pub enum FormKind {
+    /// A normally set [`Form`].
+    ///
+    /// This happens when you call [`form::set`], with a non
+    /// referential `Form`.
+    ///
+    /// [`form::set`]: set
     #[default]
     Normal,
-    Ref(u16, ContentStyle),
-    Weakest,
-    WeakestRef(u16, ContentStyle),
+    /// A normally set [`Form`] reference.
+    ///
+    /// This happens when you call [`form::set`], with a referential
+    /// `Form`.
+    ///
+    /// [`form::set`]: set
+    Ref(FormId, ContentStyle),
+    /// A weakly set [`Form`].
+    ///
+    /// This happens when you call [`form::set_weak`], with a non
+    /// referential `Form`.
+    ///
+    /// [`form::set_weak`]: set_weak
+    Weak,
+    /// A weakly set [`Form`] reference.
+    ///
+    /// This happens when you call [`form::set_weak`], with a
+    /// referential `Form`.
+    ///
+    /// [`form::set_weak`]: set_weak
+    WeakRef(FormId, ContentStyle),
 }
 
 fn get_form_for(
@@ -1596,8 +1690,8 @@ fn get_form_for(
 fn refs_of(inner: &InnerPalette, refed: usize) -> Vec<(usize, ContentStyle)> {
     let mut refs = Vec::new();
     for (i, (_, form)) in inner.forms.iter().enumerate() {
-        if let FormKind::Ref(id, style) | FormKind::WeakestRef(id, style) = form.kind
-            && id as usize == refed
+        if let FormKind::Ref(id, style) | FormKind::WeakRef(id, style) = form.kind
+            && id.0 as usize == refed
         {
             refs.push((i, style));
             refs.extend(refs_of(inner, i));
@@ -1608,10 +1702,10 @@ fn refs_of(inner: &InnerPalette, refed: usize) -> Vec<(usize, ContentStyle)> {
 
 /// If form references would eventually lead to a loop.
 fn would_be_circular(inner: &InnerPalette, referee: usize, refed: usize) -> bool {
-    if let FormKind::Ref(id, _) | FormKind::WeakestRef(id, _) = inner.forms[refed].1.kind {
-        match id as usize == referee {
+    if let FormKind::Ref(id, _) | FormKind::WeakRef(id, _) = inner.forms[refed].1.kind {
+        match id.0 as usize == referee {
             true => true,
-            false => would_be_circular(inner, referee, id as usize),
+            false => would_be_circular(inner, referee, id.0 as usize),
         }
     } else {
         false
@@ -1627,12 +1721,12 @@ fn position_and_form(
         (i, *form)
     } else if let Some((refed, _)) = name.rsplit_once('.') {
         let (i, mut form) = position_and_form(forms, refed);
-        form.kind = FormKind::WeakestRef(i as u16, default_style());
+        form.kind = FormKind::WeakRef(FormId(i as u16), default_style());
         forms.push((name.to_string().leak(), form));
         (forms.len() - 1, form)
     } else {
         let mut form = Form::new();
-        form.kind = FormKind::Weakest;
+        form.kind = FormKind::Weak;
         forms.push((name.to_string().leak(), form));
         (forms.len() - 1, form)
     }
@@ -1881,9 +1975,9 @@ impl std::fmt::Debug for FormKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Normal => write!(f, "Normal"),
-            Self::Ref(refed, _) => write!(f, "Ref({refed})"),
-            Self::Weakest => write!(f, "Weakest"),
-            Self::WeakestRef(refed, _) => write!(f, "WeakestRef({refed})"),
+            Self::Ref(refed, _) => write!(f, "Ref({})", refed.0),
+            Self::Weak => write!(f, "Weak"),
+            Self::WeakRef(refed, _) => write!(f, "WeakRef({})", refed.0),
         }
     }
 }
@@ -1903,19 +1997,3 @@ pub const E_SEL_ID: FormId = FormId(5);
 /// The [`FormId`] of `"character.control"`.
 pub const CONTROL_CHAR_ID: FormId = FormId(7);
 
-/// An identifier for a mask, which maps [`Form`]s, given a suffix.
-#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MaskId(u32);
-
-impl MaskId {
-    /// The name of the mask.
-    pub fn name(&self) -> &'static str {
-        name_of_mask(*self)
-    }
-}
-
-impl std::fmt::Debug for MaskId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "MaskId({:?})", name_of_mask(*self))
-    }
-}
