@@ -595,9 +595,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/amaanq/tree-sitter-kconfig",
             &["@amaanq"],
         ),
-        LanguageOptions::pair_const("kdl", "https://github.com/amaanq/tree-sitter-kdl", &[
-            "@amaanq",
-        ]),
+        LanguageOptions::pair_fn("kdl", "https://github.com/amaanq/tree-sitter-kdl", &["@amaanq"]),
         LanguageOptions::pair_const("kotlin", "https://github.com/fwcd/tree-sitter-kotlin", &[
             "@SalBakraa",
         ]),
@@ -1302,7 +1300,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/Philipp-M/tree-sitter-ungrammar",
             &["@Philipp-M", "@amaanq"],
         ),
-        LanguageOptions::pair_const(
+        LanguageOptions::pair_fn(
             "unison",
             "https://github.com/kylegoetz/tree-sitter-unison",
             &["@tapegram"],
