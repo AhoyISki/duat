@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: "Checkout Language Repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ matrix.lang.url }}
           path: ${{ matrix.lang.name }}
@@ -28,7 +28,7 @@ jobs:
           node-version: 'lts/*'
 
       - name: "Setup Tree-sitter CLI"
-        uses: tree-sitter/setup-action@v1
+        uses: tree-sitter/setup-action@v2
 
       - name: "Generate and Compile Language Object"
         working-directory: ${{ matrix.lang.name }}
