@@ -1,0 +1,38 @@
+name: "Generate tree-sitter language objects"
+
+on: [release, workflow_dispatch]
+
+jobs:
+  generate-languages:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lang:
+          - name: "rust"
+            url: "github.com/tree-sitter/tree-sitter-rust"
+          - name: "python"
+            url: "github.com/tree-sitter/tree-sitter-python"
+          - name: "javascript"
+            url: "github.com/tree-sitter/tree-sitter-javascript"
+
+    steps:
+      - name: "Checkout Language Repository"
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.lang.url }}
+          path: ${{ matrix.lang.name }}
+
+      - name: "Setup Node.js"
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: "Setup Tree-sitter CLI"
+        uses: tree-sitter/setup-action@v1
+
+      - name: "Generate and Compile Language Object"
+        working-directory: ${{ matrix.lang.name }}
+        run: |
+          tree-sitter generate
+          npx node-gyp configure
+          npx node-gyp build
