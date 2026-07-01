@@ -3,56 +3,48 @@ name: "Generate tree-sitter language objects"
 on: [release, workflow_dispatch]
 
 jobs:
-  setup-node:
-    runs-on: ubuntu-latest
-    steps:
-      - name: "Setup Node.js"
-        uses: actions/setup-node@v4
-        with:
-          node-version: 'lts/*'
-          
   generate-languages:
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
         lang:
-          - name: "rust"
-            url: "tree-sitter/tree-sitter-rust"
-          - name: "python"
-            url: "tree-sitter/tree-sitter-python"
-          - name: "javascript"
-            url: "tree-sitter/tree-sitter-javascript"
+          - name: rust
+            url: tree-sitter/tree-sitter-rust
+          - name: python
+            url: tree-sitter/tree-sitter-python
+          - name: javascript
+            url: tree-sitter/tree-sitter-javascript
 
     steps:
-      - name: "Checkout Language Repository"
-        uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - uses: actions/checkout@v7
         with:
           repository: ${{ matrix.lang.url }}
           path: ${{ matrix.lang.name }}
 
+      - uses: tree-sitter/setup-action@v2
 
-
-      - name: "Setup Tree-sitter CLI"
-        uses: tree-sitter/setup-action@v2
-
-      - name: "Generate and Compile Language Object"
+      - name: Build
         working-directory: ${{ matrix.lang.name }}
-        run: "tree-sitter build && pwd"
+        run: |
+          tree-sitter build
 
       - uses: actions/upload-artifact@v7
         with:
-          name: "${{ matrix.lang.name }}_parser.so"
-          path: "${{ matrix.lang.name }}/parser.so"
+          name: ${{ matrix.lang.name }}_parser.so
+          path: ${{ matrix.lang.name }}/parser.so
 
-  merge-artifacts:
-    runs-on: ubuntu-latest
+  merge-languages:
     needs: generate-languages
+    runs-on: ubuntu-latest
+
     steps:
-      - name: Merge all matrix reports
-        uses: actions/upload-artifact/merge@v4
+      - uses: actions/upload-artifact/merge@v7
         with:
           name: parsers
-          pattern: *_parser.so
+          pattern: "*_parser.so"
           delete-merged: true
-          
-        
