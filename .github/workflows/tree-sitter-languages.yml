@@ -32,4 +32,5 @@ jobs:
 
       - name: "Generate and Compile Language Object"
         working-directory: ${{ matrix.lang.name }}
-        run: "tree-sitter build"
+        run: "tree-sitter build && ls"
+        
