@@ -46,5 +46,4 @@ jobs:
       - uses: actions/upload-artifact/merge@v7
         with:
           name: parsers
-          pattern: "*_parser.so"
           delete-merged: true
