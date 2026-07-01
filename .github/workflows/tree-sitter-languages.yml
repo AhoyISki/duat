@@ -33,4 +33,10 @@ jobs:
       - name: "Generate and Compile Language Object"
         working-directory: ${{ matrix.lang.name }}
         run: "tree-sitter build && ls"
+
+      #- uses: actions/upload-artifact@v7
+      #  with:
+      #    name: "languages"
+      #    path: "${{ matrix.lang.name }}/parser.so"
+          
         
