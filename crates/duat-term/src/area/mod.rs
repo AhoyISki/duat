@@ -877,7 +877,7 @@ pub fn print_text(
         return None;
     }
 
-    let (mut lines, iter, mut next_cursor_end) = {
+    let (mut lines, iter, mut next_cursor_bound) = {
         let lines = Lines::new(coords, has_edge_ahead);
         let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
         let iter = print_iter(text, s_points, width, opts);
@@ -996,7 +996,7 @@ pub fn print_text(
 
         match part {
             TextPart::Char(char) if is_contained => {
-                let cursor_style = next_cursor_end(lines, painter, real, ghost);
+                let cursor_style = next_cursor_bound(lines, painter, real, ghost);
                 style_was_set |= cursor_style.is_some();
 
                 minimum_x = continue_overlays(
@@ -1067,7 +1067,7 @@ pub fn print_text(
                 style_was_set = false;
             }
             TextPart::Char(_) => {
-                let cursor_style = next_cursor_end(lines, painter, real, ghost);
+                let cursor_style = next_cursor_bound(lines, painter, real, ghost);
                 style_was_set |= cursor_style.is_some();
 
                 match cursor_style {

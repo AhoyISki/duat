@@ -56,6 +56,8 @@ pub fn add_command() {
                     return;
                 };
 
+                context::debug!("{tpp:#?}");
+
                 let buffer = context::current_buffer(pa);
 
                 if let MouseEventKind::Moved = mouse_event.kind {
@@ -214,6 +216,7 @@ fn get_forms_and_masks(text: &Text, points: TwoPoints) -> (Vec<(FormId, u8)>, Ve
 
     for place in text
         .iter_fwd(points)
+        .inspect(|place| context::debug!("{:#?}", place))
         .take_while(|place| place.points() <= points)
     {
         match place.part {

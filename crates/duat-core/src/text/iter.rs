@@ -94,9 +94,17 @@ impl<'t> FwdIter<'t> {
     /// Returns the current real and ghost [`Point`]s of the
     /// [`Iterator`].
     #[inline(always)]
-    pub fn points(&self) -> TwoPoints {
-        if let Some(MainIter { point, .. }) = self.main_iter.as_ref() {
-            TwoPoints::new(*point, self.ghost.map(|(tg, _)| tg).unwrap())
+    pub const fn points(&self) -> TwoPoints {
+        if let Some((ghost, _)) = self.ghost {
+            // Either there is a main iterator, in which case self.point is the
+            // ghost point, or there isn't, in which case it is the real point.
+            TwoPoints::new(
+                match &self.main_iter {
+                    Some(main_iter) => main_iter.point,
+                    None => self.point,
+                },
+                ghost,
+            )
         } else {
             TwoPoints::new_after_ghost(self.point)
         }
@@ -120,8 +128,8 @@ impl<'t> FwdIter<'t> {
                 let text = self.text.0.tags.get_ghost(*idx);
 
                 let (this_ghost, total_ghost) = if let Some((ghost, dist)) = &mut self.ghost {
-                    if ghost.byte() >= *dist + text.end_point().byte() {
-                        *dist += text.end_point().byte();
+                    if ghost.byte() >= *dist + text.len() {
+                        *dist += text.len();
                         return true;
                     }
                     (text.point_at_byte(ghost.byte() - *dist), *ghost)
@@ -187,6 +195,8 @@ impl<'t> Iterator for FwdIter<'t> {
                 Some(TextPlace::new(self.points(), TextPart::from_raw(tags, tag)))
             }
         } else if let Some(char) = self.chars.next() {
+            self.ghost = self.main_iter.as_ref().and(self.ghost);
+
             let points = self.points();
             self.point = self.point.fwd(char);
 
@@ -258,11 +268,17 @@ impl<'t> RevIter<'t> {
     ////////// Querying functions
 
     /// Returns the current real and ghost [`Point`]s.
-    pub fn points(&self) -> TwoPoints {
-        if let Some(MainIter { point, .. }) = self.main_iter.as_ref() {
-            TwoPoints::new(*point, self.point)
-        } else if let Some((ghost, _)) = self.ghost {
-            TwoPoints::new(self.point, ghost)
+    pub const fn points(&self) -> TwoPoints {
+        if let Some((ghost, _)) = self.ghost {
+            // Either there is a main iterator, in which case self.point is the
+            // ghost point, or there isn't, in which case it is the real point.
+            TwoPoints::new(
+                match &self.main_iter {
+                    Some(main_iter) => main_iter.point,
+                    None => self.point,
+                },
+                ghost,
+            )
         } else {
             TwoPoints::new_after_ghost(self.point)
         }
@@ -283,7 +299,7 @@ impl<'t> RevIter<'t> {
     /// Handles meta [`Tag`]s.
     ///
     /// [`Tag`]: super::Tag
-    #[inline]
+    #[inline(always)]
     fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
             RawTag::Inlay(_, idx) => {

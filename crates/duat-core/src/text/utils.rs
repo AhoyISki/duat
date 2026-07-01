@@ -431,11 +431,12 @@ pub struct TwoPoints {
     ///
     /// A value of [`None`] means that this is either at the end of
     /// the ghosts at a byte (i.e. this `TwoPoints` represents a real
-    /// character), or this byte index doesn't have any ghosts at all.
+    /// character/tag), or this byte index doesn't have any ghosts at
+    /// all.
     ///
     /// A value of [`Some`] means that this `TwoPoints` does _not_
-    /// represent a real character, so it points to a character
-    /// belonging to a [`Inlay`]
+    /// represent a real character, so it points to a character/tag
+    /// belonging to a [`Inlay`].
     ///
     /// If you don't know how to set this value, you should try to use
     /// the [`new`], [`new_before_ghost`] or [`new_after_ghost`]
