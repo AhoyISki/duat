@@ -3,6 +3,14 @@ name: "Generate tree-sitter language objects"
 on: [release, workflow_dispatch]
 
 jobs:
+  setup-node:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Setup Node.js"
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          
   generate-languages:
     runs-on: ubuntu-latest
     strategy:
@@ -22,10 +30,7 @@ jobs:
           repository: ${{ matrix.lang.url }}
           path: ${{ matrix.lang.name }}
 
-      - name: "Setup Node.js"
-        uses: actions/setup-node@v4
-        with:
-          node-version: 'lts/*'
+
 
       - name: "Setup Tree-sitter CLI"
         uses: tree-sitter/setup-action@v2
@@ -34,9 +39,20 @@ jobs:
         working-directory: ${{ matrix.lang.name }}
         run: "tree-sitter build && pwd"
 
-      #- uses: actions/upload-artifact@v7
-      #  with:
-      #    name: "languages"
-      #    path: "${{ matrix.lang.name }}/parser.so"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: "${{ matrix.lang.name }}_parser.so"
+          path: "${{ matrix.lang.name }}/parser.so"
+
+  merge-artifacts:
+    runs-on: ubuntu-latest
+    needs: generate-languages
+    steps:
+      - name: Merge all matrix reports
+        uses: actions/upload-artifact/merge@v4
+        with:
+          name: parsers
+          pattern: *_parser.so
+          delete-merged: true
           
         
