@@ -219,6 +219,12 @@ Starts/stops recording a macro.
 `<c-r>`\
 Reloads the configuration crate.
 
+`<c-u>`\
+Scrolls up by half a page.
+
+`<c-d>`\
+Scrolls down by half a page.
+
 </details>
 
 <details>
@@ -475,6 +481,7 @@ Enter LSP mode, giving you access to a bunch of LSP related actions.
 `L`\
 Enter the logs, letting you see the history of notifications to
 Duat.
+
 </details>
 
 ### LSP mode
