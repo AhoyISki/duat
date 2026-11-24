@@ -151,6 +151,9 @@ impl Mode for Normal {
             unmod!('j' | 'J') => fns::move_ver(pa, param as i32, key_event.code == Char('J')),
             unmod!('k' | 'K') => fns::move_ver(pa, -(param as i32), key_event.code == Char('K')),
 
+            ctrl!('d') => fns::scroll(pa, param as f32, &widget),
+            ctrl!('u') => fns::scroll(pa, -(param as f32), &widget),
+
             unmod!(Down) => fns::move_ver_wrapped(pa, param as i32, false),
             shift!(Down) => fns::move_ver_wrapped(pa, param as i32, true),
             unmod!(Up) => fns::move_ver_wrapped(pa, -(param as i32), false),
@@ -333,6 +336,22 @@ pub mod fns {
         opts::INSERT_TABS,
         reindent, set_anchor_if_needed,
     };
+
+    /// [`Normal`] command: Scroll window vertically by half a page.
+    ///
+    /// `count` represents the number of half pages to move. Negative
+    /// numbers scroll down, positive scroll up.
+    ///
+    /// The cursor is moved by the same amount to maintain its location on screen.
+    ///
+    /// [`Normal`]: super::Normal
+    pub fn scroll(pa: &mut Pass, count: f32, widget: &context::Handle) {
+        let default_shift_amount = (widget.area().height(pa) - 2.) / 2.;
+        let shift_amount = count * default_shift_amount;
+        
+        widget.scroll_ver(pa, shift_amount);
+        move_ver(pa, shift_amount as i32, false);
+    }
 
     /// [`Normal`] command: Move all selections horizontally.
     ///
