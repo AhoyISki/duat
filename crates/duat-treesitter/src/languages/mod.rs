@@ -98,6 +98,7 @@ pub fn get_language(
 
         Some(language)
     } else if let Ok(true) = fs::exists(&crate_dir) {
+
         let fail = || {
             context::error!("Failed to compile tree-sitter language for {filetype}");
             FAILED_COPILATION.lock().unwrap().insert(filetype);
@@ -202,6 +203,12 @@ pub fn get_language(
             .git
             .map(|git| format!("git = \"{git}\"\n"))
             .unwrap_or_default();
+
+        let branch = options
+            .branch
+            .map(|branch| format!("branch = \"{branch}\"\n"))
+            .unwrap_or_default();
+
         let version = options.crate_version.unwrap_or("*");
 
         let cargo_toml = formatdoc! {r#"
@@ -220,7 +227,7 @@ pub fn get_language(
 
             [dependencies.ts]
             version = "{version}"
-            {git}package = "tree-sitter-{crate_name}"
+            {git}{branch}package = "tree-sitter-{crate_name}"
         "#};
 
         fs::create_dir_all(crate_dir.join("src")).ok()?;
@@ -241,6 +248,7 @@ fn get_parsers_dir() -> Option<PathBuf> {
 
 struct LanguageOptions {
     git: Option<&'static str>,
+    branch: Option<&'static str>,
     symbols: &'static [(&'static str, bool)],
     crate_name: &'static str,
     crate_version: Option<&'static str>,
@@ -250,11 +258,12 @@ struct LanguageOptions {
 impl LanguageOptions {
     fn pair_const(
         lang: &'static str,
-        git: &'static str,
+        (git, branch): (&'static str, Option<&'static str>),
         _maintainers: &'static [&'static str],
     ) -> (&'static str, Self) {
         let options = Self {
             git: Some(git),
+            branch,
             symbols: &[("LANGUAGE", false)],
             crate_name: crate_name(lang),
             crate_version: None,
@@ -266,11 +275,12 @@ impl LanguageOptions {
 
     fn pair_fn(
         lang: &'static str,
-        git: &'static str,
+        (git, branch): (&'static str, Option<&'static str>),
         _maintainers: &'static [&'static str],
     ) -> (&'static str, Self) {
         let options = Self {
             git: Some(git),
+            branch,
             symbols: &[("language", true)],
             crate_name: crate_name(lang),
             crate_version: None,
@@ -282,12 +292,13 @@ impl LanguageOptions {
 
     fn pairs_with_symbol(
         lang: &'static str,
-        git: &'static str,
+        (git, branch): (&'static str, Option<&'static str>),
         symbols: &'static [(&'static str, bool)],
         _maintainers: &'static [&'static str],
     ) -> (&'static str, Self) {
         let options = Self {
             git: Some(git),
+            branch,
             symbols,
             crate_name: crate_name(lang),
             crate_version: None,
@@ -299,13 +310,14 @@ impl LanguageOptions {
 
     const fn pairs_with_symbol_and_crate(
         lang: &'static str,
-        git: &'static str,
+        (git, branch): (&'static str, Option<&'static str>),
         symbols: &'static [(&'static str, bool)],
         (crate_name, crate_version): (&'static str, Option<&'static str>),
         _maintainers: &'static [&'static str],
     ) -> (&'static str, Self) {
         let options = Self {
             git: Some(git),
+            branch,
             symbols,
             crate_name,
             crate_version,
